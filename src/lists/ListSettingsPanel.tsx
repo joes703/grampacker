@@ -7,10 +7,20 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import ToggleSwitch from '../components/ToggleSwitch'
 import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
+import { reportFailure } from '../lib/report-failure'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
-type Props = { list: List }
+type Props = {
+  list: List
+  /**
+   * Closes a host that is a top-layer Modal (the mobile one), so the toast of
+   * an action that fails after the click is seen. The desktop popover leaves it
+   * out: a toast shows over it, and closing it would unmount this panel and
+   * with it the "Exporting…" guard against a second export of the same list.
+   */
+  onClose?: () => void
+}
 
 // Current-list management panel. Toggles for list-level settings stack
 // above a subtle divider; below the divider are list lifecycle actions
@@ -43,7 +53,22 @@ type Props = { list: List }
 // Mounted inside ListSettingsButton's popover at md+ and inside a
 // Modal on mobile via MobileListActionBar's Options slot. Both mount
 // points are themselves suppressed in pack mode.
-export default function ListSettingsPanel({ list }: Props) {
+//
+// FAILURES. On mobile this panel is inside a top-layer Modal, where a toast is
+// never seen (the rule in src/lib/mutation-error-handler.ts). So each action
+// either gets out of the way before it can fail, or reports in place:
+//   - Duplicate and Export CSV close the mobile Modal on the CLICK, so their
+//     toasts land on the page. It keeps this panel mounted while closed.
+//   - Delete leaves for /lists on the click. That is also what makes the delete
+//     land anywhere: the optimistic removal drops this list from ['lists'],
+//     ListDetailPage swaps to "List not found" and unmounts this panel, and an
+//     unmounted mutation observer never runs a per-call onSuccess.
+//   - Rename reports inline, or by toast if the panel is no longer on screen
+//     when it fails (src/lib/report-failure.ts). Its snap-back is not under the
+//     cursor here (the input is gone by the time it lands) and on mobile the
+//     title it reverts sits behind the backdrop, so the rollback alone says
+//     nothing. PrivacyPanel's Replace link reports the same way.
+export default function ListSettingsPanel({ list, onClose }: Props) {
   const navigate = useNavigate()
 
   const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftToggle } = useCurrentListActions()
@@ -61,6 +86,8 @@ export default function ListSettingsPanel({ list }: Props) {
   // an optimistic-update echo).
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (renaming) {
@@ -72,6 +99,7 @@ export default function ListSettingsPanel({ list }: Props) {
   const commitOnce = useCommitOnce()
 
   function startRename() {
+    setRenameError(null)
     setDraft(list.name)
     setRenaming(true)
   }
@@ -79,7 +107,18 @@ export default function ListSettingsPanel({ list }: Props) {
   function commitRename() {
     const trimmed = draft.trim()
     if (trimmed && trimmed !== list.name) {
-      renameMut.mutate({ id: list.id, name: trimmed })
+      // Per-call, so it reaches only this panel's own renames, and only while it
+      // is mounted: a desktop popover closed mid-flight has nowhere to say it.
+      // reportFailure falls back to a toast if the mobile Modal was closed in
+      // the meantime (tapping Export right after typing commits the rename on
+      // blur, then closes the Modal).
+      renameMut.mutate(
+        { id: list.id, name: trimmed },
+        {
+          onError: () =>
+            reportFailure(panelRef.current, "Couldn't confirm the new name was saved. Please try again.", setRenameError),
+        },
+      )
     }
     setRenaming(false)
   }
@@ -91,7 +130,7 @@ export default function ListSettingsPanel({ list }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
-    <div className="space-y-3">
+    <div ref={panelRef} className="space-y-3">
       <div className="flex items-center justify-between">
         <span className={PANEL_TOGGLE_LABEL}>Draft</span>
         <ToggleSwitch
@@ -137,15 +176,26 @@ export default function ListSettingsPanel({ list }: Props) {
               Rename
             </RowMenuItem>
           )}
+          {renameError && (
+            <p role="alert" className="px-3 py-1 text-xs text-red-600">
+              {renameError}
+            </p>
+          )}
           <RowMenuItem
             icon={<Copy size={13} />}
-            onClick={() => duplicateMut.mutate(list)}
+            onClick={() => {
+              onClose?.()
+              duplicateMut.mutate(list)
+            }}
           >
             Duplicate
           </RowMenuItem>
           <RowMenuItem
             icon={<Download size={13} />}
-            onClick={() => void exportCsv(list)}
+            onClick={() => {
+              onClose?.()
+              void exportCsv(list)
+            }}
             disabled={exporting}
           >
             {exporting ? 'Exporting…' : 'Export CSV'}
@@ -169,13 +219,10 @@ export default function ListSettingsPanel({ list }: Props) {
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={() => {
             setConfirmingDelete(false)
-            // Navigate away from the now-deleted list. The optimistic
-            // delete removes it from cache immediately; without
-            // navigating, the user lands on ListDetailPage's
-            // "List not found" terminal state.
-            deleteListMut.mutate(list.id, {
-              onSuccess: () => void navigate('/lists'),
-            })
+            // Leave on the click, not on success: see FAILURES above. A failed
+            // delete rolls back and toasts on /lists, where the toast is seen.
+            deleteListMut.mutate(list.id)
+            void navigate('/lists')
           }}
         />
       )}

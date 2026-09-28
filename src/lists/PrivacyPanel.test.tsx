@@ -4,6 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { List } from '../lib/types'
+import { showToast } from '../lib/toast'
+
+vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 
 const { updateList, rotateShareLink } = vi.hoisted(() => ({
   updateList: vi.fn(),
@@ -291,6 +294,7 @@ describe('PrivacyPanel - a failed replace', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
     expect(screen.getByRole('button', { name: /replace link/i })).toBeInTheDocument()
     expect(qc.getMutationCache().getAll()[0]?.options.meta?.errorToast).toBeUndefined()
+    expect(showToast).not.toHaveBeenCalled()
   })
 
   it('refetches the lists anyway, in case the replace committed', async () => {
@@ -347,6 +351,51 @@ describe('PrivacyPanel - a failed replace', () => {
     d.reject(new Error('network'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
+  })
+
+  // The panel can leave the screen before a slow replace fails: mobile List
+  // options closes its Modal on Duplicate or Export, and the Lists page's Share
+  // dialog or the desktop popover can be closed. An inline report is invisible
+  // then, so it falls back to a toast.
+  it('toasts a failure that lands after its Modal was closed', async () => {
+    const d = deferred()
+    rotateShareLink.mockReturnValue(d.promise)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const tree = (open: boolean) => (
+      <QueryClientProvider client={qc}>
+        <dialog open={open}>
+          <PrivacyPanel list={shared} />
+        </dialog>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree(true))
+
+    await confirmReplace()
+    rerender(tree(false))
+    d.reject(new Error('network'))
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm the link was replaced. Refresh to check before trying again.",
+        { type: 'error' },
+      ),
+    )
+    expect(screen.queryByText(failure)).toBeNull()
+  })
+
+  it('toasts a failure that lands after the panel unmounted', async () => {
+    const d = deferred()
+    rotateShareLink.mockReturnValue(d.promise)
+    const qc = renderPanel(shared)
+
+    await confirmReplace()
+    cleanup()
+    d.reject(new Error('network'))
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledTimes(1))
+    expect(qc.isMutating()).toBe(0)
   })
 
   it('clears the report when the next replace starts', async () => {

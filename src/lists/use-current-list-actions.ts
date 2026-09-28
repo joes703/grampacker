@@ -18,6 +18,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
+import { forgetLastListPathTo } from '../lib/last-list-path'
 import { useListFlagToggle } from './use-list-flag-toggle'
 import type { Category, List } from '../lib/types'
 
@@ -113,25 +114,34 @@ export function useCurrentListActions() {
   )
 
   // Non-optimistic: the server performs the deep copy (fresh slug,
-  // isShared/isDraft reset) and returns the new row; invalidate + navigate.
+  // isShared/isDraft reset) and returns the new row; navigate to it. Invalidate
+  // on failure too: a rejected request does not prove the copy was not made, and
+  // it is a non-idempotent POST, so the copy advises checking before retrying
+  // (docs/incidents.md). Hook-level rather than per-call, so both still run when
+  // the caller has unmounted by the time the response lands.
+  // Invalidate BEFORE navigating: the copy is not in ['lists'] yet, and a fetch
+  // already in flight is what makes the new page wait rather than flash "List
+  // not found".
   const duplicateMut = useMutation({
     mutationKey: mutationKeys.duplicateList(),
     mutationFn: (target: List) => duplicateList(target.id),
-    meta: { errorToast: "Couldn't duplicate that list. Please try again." },
-    onSuccess: (created) => {
+    meta: { errorToast: "Couldn't confirm the list was duplicated. Refresh to check before trying again." },
+    onSettled: (created) => {
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
-      void navigate(`/lists/${created.id}`)
+      if (created) void navigate(`/lists/${created.id}`)
     },
   })
 
-  // Toasted per the rule in src/lib/mutation-error-handler.ts, and this is the
-  // worst of the delete rollbacks rather than the mildest. Every call site closes
-  // its confirm before mutating, and the two that navigate do so on SUCCESS only
-  // (DesktopListsPanel, ListSettingsPanel) - so a failure leaves the user wherever
-  // they were with the list silently back in the sidebar, and from
-  // ListSettingsPanel it reads as the list detail page flashing "List not found"
-  // and then recovering on its own. Nothing in that sequence says "the delete
+  // Toasted per the rule in src/lib/mutation-error-handler.ts. Every call site
+  // closes its confirm before mutating, and the two that can delete the OPEN list
+  // (DesktopListsPanel, ListSettingsPanel) leave it on the click - so a failure
+  // shows up as the list silently back in the sidebar or on /lists, somewhere
+  // other than where the user asked for it. Nothing in that says "the delete
   // failed".
+  //
+  // On success, forget the last-list pointer if it names this list. Hook-level,
+  // because the caller that deleted the open list has usually unmounted by now
+  // (see forgetLastListPathTo).
   const deleteListMut = useMutation({
     mutationKey: mutationKeys.deleteList(),
     mutationFn: deleteList,
@@ -141,6 +151,7 @@ export function useCurrentListActions() {
       id: (id) => id,
       errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again.",
     }),
+    onSuccess: (_data, id) => forgetLastListPathTo(id),
   })
 
   // Export a list's items to the Lighterpack-compatible CSV. Items and

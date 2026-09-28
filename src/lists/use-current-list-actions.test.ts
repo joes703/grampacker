@@ -6,6 +6,7 @@ import { createElement, type ReactNode } from 'react'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
 import { useCurrentListActions } from './use-current-list-actions'
 import { showToast } from '../lib/toast'
+import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 
 // TRANSPLANT NOTE (csv): the old repo's suite also covered exportCsv
@@ -124,18 +125,46 @@ describe('useCurrentListActions - duplicate', () => {
   it('duplicates by id, invalidates, and navigates to the server row', async () => {
     q.duplicateList.mockResolvedValueOnce({ ...LIST, id: 'copy-id' })
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() => expect(q.duplicateList).toHaveBeenCalledWith('l1'))
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
+    // The refetch must already be running when the copy's page first renders,
+    // or it flashes "List not found" (the copy is not in ['lists'] yet).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
+    expect(invalidate.mock.invocationCallOrder[0]).toBeLessThan(navigateSpy.mock.invocationCallOrder[0]!)
   })
 
-  it('toasts when duplicateList rejects', async () => {
+  it('toasts refresh-first copy and still invalidates when duplicateList rejects', async () => {
+    // A rejection does not prove the copy was not made, so ['lists'] is refetched
+    // and the copy advises checking before a retry makes a second one.
     q.duplicateList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
     act(() => { result.current.duplicateMut.mutate(LIST) })
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith("Couldn't duplicate that list. Please try again.", { type: 'error' }),
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm the list was duplicated. Refresh to check before trying again.",
+        { type: 'error' },
+      ),
     )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
+    expect(navigateSpy).not.toHaveBeenCalled()
+  })
+
+  it('invalidates and navigates even when the caller unmounted before the response', async () => {
+    // The caller can be gone by the time the copy lands (the user moved on). Only
+    // hook-level callbacks survive an unmount, so the success path must live
+    // there, not in a per-call onSuccess.
+    let resolve!: (row: List) => void
+    q.duplicateList.mockReturnValueOnce(new Promise<List>((r) => { resolve = r }))
+    const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
+    const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
+    act(() => { result.current.duplicateMut.mutate(LIST) })
+    unmount()
+    await act(async () => { resolve({ ...LIST, id: 'copy-id' }) })
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
   })
 })
 
@@ -143,8 +172,52 @@ describe('useCurrentListActions - deleteListMut', () => {
   beforeEach(() => {
     vi.mocked(showToast).mockClear()
     q.deleteList.mockReset()
+    localStorage.clear()
   })
   afterEach(() => cleanup())
+
+  // The last-list pointer only stores strict /lists/<uuid> paths.
+  const DELETED = '11111111-1111-4111-8111-111111111111'
+  const OTHER = '22222222-2222-4222-8222-222222222222'
+
+  it('forgets the last-list pointer to the deleted list, even after the caller unmounted', async () => {
+    // Deleting the open list navigates away on the click, so the list page's own
+    // self-heal never sees it missing; without this, RootRedirect would follow
+    // the pointer into "List not found".
+    writeLastListPath(`/lists/${DELETED}/pack`, 'owner-1')
+    let resolve!: () => void
+    q.deleteList.mockReturnValueOnce(new Promise<void>((r) => { resolve = r }))
+    const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+    unmount()
+    await act(async () => { resolve() })
+
+    await waitFor(() => expect(readLastListPath('owner-1')).toBeNull())
+  })
+
+  it('keeps a pointer to another list (the successor the user moved to)', async () => {
+    writeLastListPath(`/lists/${OTHER}`, 'owner-1')
+    q.deleteList.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+
+    await waitFor(() => expect(q.deleteList).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.deleteListMut.isSuccess).toBe(true))
+    expect(readLastListPath('owner-1')).toBe(`/lists/${OTHER}`)
+  })
+
+  it('keeps the pointer when the delete fails, since the list is still there', async () => {
+    writeLastListPath(`/lists/${DELETED}`, 'owner-1')
+    q.deleteList.mockRejectedValueOnce(new Error('nope'))
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+
+    await waitFor(() => expect(result.current.deleteListMut.isError).toBe(true))
+    expect(readLastListPath('owner-1')).toBe(`/lists/${DELETED}`)
+  })
 
   it('toasts when the delete fails, through the REAL optimistic helper', async () => {
     // This one runs against the actual makeOptimisticDelete rather than a mock, so
@@ -153,9 +226,9 @@ describe('useCurrentListActions - deleteListMut', () => {
     //
     // Why a list delete earns a toast at all (the rule in
     // src/lib/mutation-error-handler.ts): every call site closes its confirm before
-    // mutating, and the two that navigate do so on SUCCESS only, so a failure
-    // leaves the user where they were with the list silently back in the sidebar.
-    // Nothing in that sequence reads as "the delete failed".
+    // mutating, and the two that delete the open list leave it on the click, so a
+    // failure is the list silently back in the sidebar or on /lists. Nothing in
+    // that sequence reads as "the delete failed".
     q.deleteList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
 

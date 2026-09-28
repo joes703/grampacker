@@ -7,6 +7,7 @@ import { PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import { queryKeys, rotateShareLink } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
 import { useListFlagToggle } from './use-list-flag-toggle'
+import { reportFailure } from '../lib/report-failure'
 
 type Props = { list: List }
 
@@ -28,9 +29,10 @@ type Props = { list: List }
 //
 // The confirm is inline rather than a ConfirmDialog because this panel already
 // renders inside a Modal on the Lists page, and a ConfirmDialog is itself a
-// Modal. For the same reason a failed replace is reported inline, never by
-// toast: a toast raised behind a top-layer <dialog> is never seen (the rule in
-// src/lib/mutation-error-handler.ts).
+// Modal. For the same reason a failed replace is reported inline: a toast
+// raised behind a top-layer <dialog> is never seen (the rule in
+// src/lib/mutation-error-handler.ts). Unless the panel has left the screen by
+// the time it fails - then only a toast can be seen, so it gets one.
 //
 // The flip goes through useListFlagToggle (absolute target + synchronous
 // in-flight ref) - see that hook for the double-toggle races the naive
@@ -52,6 +54,8 @@ export default function PrivacyPanel({ list }: Props) {
   // person never saw. Same trap useListFlagToggle documents; same fix, a
   // synchronous ref. Cleared in the mutation's onSettled (success AND error).
   const replacing = useRef(false)
+  // Always rendered, so reportFailure can tell whether the panel is on screen.
+  const anchorRef = useRef<HTMLDivElement>(null)
 
   const shareToggle = useListFlagToggle({
     read: (l) => l.isShared,
@@ -66,8 +70,14 @@ export default function PrivacyPanel({ list }: Props) {
   const replaceMut = useMutation({
     mutationKey: mutationKeys.rotateShareLink(),
     mutationFn: (id: string) => rotateShareLink(id),
+    // Inline while this panel is on screen; by toast if its Modal was closed or
+    // the panel unmounted before the failure landed (src/lib/report-failure.ts).
     onError: () => {
-      setReplaceError("Couldn't confirm the link was replaced. Refresh to check before trying again.")
+      reportFailure(
+        anchorRef.current,
+        "Couldn't confirm the link was replaced. Refresh to check before trying again.",
+        setReplaceError,
+      )
     },
     onSettled: () => {
       replacing.current = false
@@ -87,7 +97,7 @@ export default function PrivacyPanel({ list }: Props) {
 
   return (
     <>
-      <div className="flex items-center justify-between">
+      <div ref={anchorRef} className="flex items-center justify-between">
         <span className={PANEL_TOGGLE_LABEL}>Sharing</span>
         <ToggleSwitch
           checked={list.isShared}

@@ -5,6 +5,7 @@ import {
   writeLastListPath,
   clearLastListPath,
   getListIdFromListPath,
+  forgetLastListPathTo,
 } from './last-list-path'
 
 const UUID = '11111111-2222-3333-4444-555555555555'
@@ -204,5 +205,26 @@ describe('getListIdFromListPath', () => {
     expect(getListIdFromListPath('/lists/not-a-uuid')).toBeNull()
     expect(getListIdFromListPath('/settings')).toBeNull()
     expect(getListIdFromListPath('')).toBeNull()
+  })
+})
+
+describe('forgetLastListPathTo', () => {
+  const OTHER_UUID = '66666666-7777-4888-9999-000000000000'
+
+  it('clears a pointer to the deleted list, in any mode', () => {
+    writeLastListPath(PACK_PATH, OWNER)
+    forgetLastListPathTo(UUID)
+    expect(readLastListPath(OWNER)).toBeNull()
+  })
+
+  it('leaves a pointer to a different list alone', () => {
+    writeLastListPath(`/lists/${OTHER_UUID}`, OWNER)
+    forgetLastListPathTo(UUID)
+    expect(readLastListPath(OWNER)).toBe(`/lists/${OTHER_UUID}`)
+  })
+
+  it('does not throw on a legacy bare-string value', () => {
+    localStorage.setItem('lastListPath', BARE_PATH)
+    expect(() => forgetLastListPathTo(UUID)).not.toThrow()
   })
 })

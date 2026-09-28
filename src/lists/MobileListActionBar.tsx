@@ -83,7 +83,7 @@ export default function MobileListActionBar({ list, mode }: Props) {
           onClose={() => setSettingsOpen(false)}
           title="List options"
         >
-          <ListSettingsPanel list={list} />
+          <ListSettingsPanel list={list} onClose={() => setSettingsOpen(false)} />
         </MobileOptionsModal>
       )}
     </>
