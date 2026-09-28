@@ -10,7 +10,7 @@ afterEach(() => {
 
 const noop = () => {}
 
-function renderToolbar(selectedCount: number) {
+function renderToolbar(selectedCount: number, busy = false) {
   return render(
     <BulkActionsToolbar
       selectedCount={selectedCount}
@@ -18,6 +18,7 @@ function renderToolbar(selectedCount: number) {
       onClose={noop}
       onSelectAll={noop}
       onDeselectAll={noop}
+      busy={busy}
       onCreateList={noop}
       onMoveToCategory={noop}
       onDelete={noop}
@@ -37,5 +38,16 @@ describe('BulkActionsToolbar over-cap warning', () => {
     renderToolbar(LIST_ITEM_CAP + 1)
     expect(screen.getByText(new RegExp(`max ${LIST_ITEM_CAP} per list`))).toBeTruthy()
     expect(screen.getByRole('button', { name: /Create list/ }).hasAttribute('disabled')).toBe(true)
+  })
+})
+
+describe('BulkActionsToolbar while a bulk write is in flight', () => {
+  it('disables every bulk action but leaves the exit and selection controls live', () => {
+    renderToolbar(1, true)
+    for (const name of [/Move to category/, /Create list/, /Delete/]) {
+      expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
+    }
+    expect(screen.getByRole('button', { name: 'Exit selection mode' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Select all' }).hasAttribute('disabled')).toBe(false)
   })
 })

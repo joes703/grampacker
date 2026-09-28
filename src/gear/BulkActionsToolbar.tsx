@@ -9,6 +9,11 @@ type Props = {
   onClose: () => void
   onSelectAll: () => void
   onDeselectAll: () => void
+  /** A bulk write is in flight. Each one rolls back by restoring a whole-cache
+   *  snapshot, so a second started meanwhile could be undone by the first's
+   *  failure: the actions disable until it settles. Close and Select all/none
+   *  stay live. */
+  busy: boolean
   onCreateList: () => void
   onMoveToCategory: () => void
   onDelete: () => void
@@ -45,6 +50,7 @@ export default function BulkActionsToolbar({
   onClose,
   onSelectAll,
   onDeselectAll,
+  busy,
   onCreateList,
   onMoveToCategory,
   onDelete,
@@ -99,14 +105,14 @@ export default function BulkActionsToolbar({
         <div className="flex flex-wrap items-center gap-2 md:ml-auto">
           <button
             onClick={onMoveToCategory}
-            disabled={noneSelected}
+            disabled={noneSelected || busy}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
             Move to category
           </button>
           <button
             onClick={onCreateList}
-            disabled={noneSelected || overListCap}
+            disabled={noneSelected || overListCap || busy}
             title={overListCap ? `Lists can hold at most ${LIST_ITEM_CAP} items (you've selected ${selectedCount})` : undefined}
             className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
           >
@@ -114,7 +120,7 @@ export default function BulkActionsToolbar({
           </button>
           <button
             onClick={onDelete}
-            disabled={noneSelected}
+            disabled={noneSelected || busy}
             className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium tabular-nums text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-600"
           >
             Delete ({selectedCount})

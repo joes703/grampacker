@@ -5,7 +5,7 @@
 // program for THIS file, so each matcher-using test stays self-typed.
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
   // click, not on onSuccess (see the confirmation test below), so re-introducing a
   // callback here should be a type error rather than a silent behavior change.
   removeCategoryMutate: vi.fn<(id: string) => void>(),
+  bulkDeletePending: vi.fn<() => boolean>(),
+  bulkMovePending: vi.fn<() => boolean>(),
 }))
 
 vi.mock('../lib/queries', () => ({
@@ -105,13 +107,16 @@ vi.mock('./CategorySection', () => ({
 vi.mock('./BulkActionsToolbar', () => ({
   default: (props: {
     selectedCount: number
+    busy: boolean
+    onClose: () => void
     onDelete: () => void
     onMoveToCategory: () => void
   }) => (
     <div>
       <p>{props.selectedCount} selected</p>
-      <button type="button" onClick={props.onDelete}>Bulk delete</button>
-      <button type="button" onClick={props.onMoveToCategory}>Move selected</button>
+      <button type="button" onClick={props.onClose}>Exit selection mode</button>
+      <button type="button" onClick={props.onDelete} disabled={props.busy}>Bulk delete</button>
+      <button type="button" onClick={props.onMoveToCategory} disabled={props.busy}>Move selected</button>
     </div>
   ),
 }))
@@ -144,8 +149,8 @@ vi.mock('./use-gear-category-actions', () => ({
 
 vi.mock('./use-gear-bulk-actions', () => ({
   useGearBulkActions: () => ({
-    bulkDelete: { mutate: h.bulkDeleteMutate },
-    bulkMove: { mutate: h.bulkMoveMutate },
+    bulkDelete: { mutate: h.bulkDeleteMutate, isPending: h.bulkDeletePending() },
+    bulkMove: { mutate: h.bulkMoveMutate, isPending: h.bulkMovePending() },
   }),
 }))
 
@@ -222,6 +227,8 @@ beforeEach(() => {
   h.fetchGearItems.mockResolvedValue([gear()])
   h.bulkDeleteMutate.mockImplementation((_ids, options) => options?.onSuccess?.())
   h.bulkMoveMutate.mockImplementation((_input, options) => options?.onSuccess?.())
+  h.bulkDeletePending.mockReturnValue(false)
+  h.bulkMovePending.mockReturnValue(false)
   // removeCategoryMutate is deliberately left inert - it never calls back. The
   // confirm must close without it.
 })
@@ -400,6 +407,44 @@ describe('GearLibraryPage bulk success handling', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Move selected' })).not.toBeInTheDocument())
     expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Select' })).toBeInTheDocument()
+  })
+
+  // The move is optimistic, so the rows have already moved when Move is clicked.
+  // The dialog closes on the CLICK: a modal still standing when a rollback lands
+  // would hide the failure toast behind the top layer (the rule in
+  // src/lib/mutation-error-handler.ts). Select mode survives until success, so a
+  // failed move leaves the selection in place to retry.
+  it('closes the move dialog on the click, and keeps the selection until the move succeeds', async () => {
+    h.bulkMoveMutate.mockImplementation(() => {})
+    renderPage()
+    await selectOneItem()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move selected' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move to uncategorized' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Move selected' })).not.toBeInTheDocument()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+    const options = h.bulkMoveMutate.mock.calls[0]?.[1]
+    act(() => options?.onSuccess?.())
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
+  })
+
+  // Each bulk write rolls back by restoring a whole-cache snapshot, so a second
+  // one started while the first is in flight can be undone by the first's
+  // failure. Only one runs at a time; the way out stays reachable.
+  it.each([
+    ['move', h.bulkMovePending],
+    ['delete', h.bulkDeletePending],
+  ])('disables the bulk actions, but not the exit, while a bulk %s is in flight', async (_label, pending) => {
+    pending.mockReturnValue(true)
+    renderPage()
+    await selectOneItem()
+
+    expect(screen.getByRole('button', { name: 'Move selected' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Bulk delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Exit selection mode' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
   })
 })
 
