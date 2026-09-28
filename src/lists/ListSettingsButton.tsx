@@ -53,7 +53,7 @@ export default function ListSettingsButton({ list }: Props) {
           className={`fixed z-50 w-80 p-3 ${POPOVER_SURFACE}`}
           style={{ top: pos.top, right: pos.right }}
         >
-          <ListSettingsPanel list={list} onClose={() => setPos(null)} />
+          <ListSettingsPanel list={list} />
         </div>,
         document.body,
       )}

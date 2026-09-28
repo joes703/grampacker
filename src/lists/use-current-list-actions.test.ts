@@ -6,6 +6,7 @@ import { createElement, type ReactNode } from 'react'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
 import { useCurrentListActions } from './use-current-list-actions'
 import { showToast } from '../lib/toast'
+import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 
 // TRANSPLANT NOTE (csv): the old repo's suite also covered exportCsv
@@ -152,8 +153,8 @@ describe('useCurrentListActions - duplicate', () => {
   })
 
   it('invalidates and navigates even when the caller unmounted before the response', async () => {
-    // ListSettingsPanel closes its desktop popover - unmounting this hook - on the
-    // click. Only hook-level callbacks survive that, so the success path must live
+    // The caller can be gone by the time the copy lands (the user moved on). Only
+    // hook-level callbacks survive an unmount, so the success path must live
     // there, not in a per-call onSuccess.
     let resolve!: (row: List) => void
     q.duplicateList.mockReturnValueOnce(new Promise<List>((r) => { resolve = r }))
@@ -171,8 +172,52 @@ describe('useCurrentListActions - deleteListMut', () => {
   beforeEach(() => {
     vi.mocked(showToast).mockClear()
     q.deleteList.mockReset()
+    localStorage.clear()
   })
   afterEach(() => cleanup())
+
+  // The last-list pointer only stores strict /lists/<uuid> paths.
+  const DELETED = '11111111-1111-4111-8111-111111111111'
+  const OTHER = '22222222-2222-4222-8222-222222222222'
+
+  it('forgets the last-list pointer to the deleted list, even after the caller unmounted', async () => {
+    // Deleting the open list navigates away on the click, so the list page's own
+    // self-heal never sees it missing; without this, RootRedirect would follow
+    // the pointer into "List not found".
+    writeLastListPath(`/lists/${DELETED}/pack`, 'owner-1')
+    let resolve!: () => void
+    q.deleteList.mockReturnValueOnce(new Promise<void>((r) => { resolve = r }))
+    const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+    unmount()
+    await act(async () => { resolve() })
+
+    await waitFor(() => expect(readLastListPath('owner-1')).toBeNull())
+  })
+
+  it('keeps a pointer to another list (the successor the user moved to)', async () => {
+    writeLastListPath(`/lists/${OTHER}`, 'owner-1')
+    q.deleteList.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+
+    await waitFor(() => expect(q.deleteList).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.deleteListMut.isSuccess).toBe(true))
+    expect(readLastListPath('owner-1')).toBe(`/lists/${OTHER}`)
+  })
+
+  it('keeps the pointer when the delete fails, since the list is still there', async () => {
+    writeLastListPath(`/lists/${DELETED}`, 'owner-1')
+    q.deleteList.mockRejectedValueOnce(new Error('nope'))
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.deleteListMut.mutate(DELETED) })
+
+    await waitFor(() => expect(result.current.deleteListMut.isError).toBe(true))
+    expect(readLastListPath('owner-1')).toBe(`/lists/${DELETED}`)
+  })
 
   it('toasts when the delete fails, through the REAL optimistic helper', async () => {
     // This one runs against the actual makeOptimisticDelete rather than a mock, so

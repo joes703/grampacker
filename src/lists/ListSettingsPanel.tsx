@@ -12,8 +12,13 @@ import { useCurrentListActions } from './use-current-list-actions'
 
 type Props = {
   list: List
-  /** Closes the host (the mobile Modal, or the desktop popover). */
-  onClose: () => void
+  /**
+   * Closes a host that is a top-layer Modal (the mobile one), so the toast of
+   * an action that fails after the click is seen. The desktop popover leaves it
+   * out: a toast shows over it, and closing it would unmount this panel and
+   * with it the "Exporting…" guard against a second export of the same list.
+   */
+  onClose?: () => void
 }
 
 // Current-list management panel. Toggles for list-level settings stack
@@ -51,8 +56,8 @@ type Props = {
 // FAILURES. On mobile this panel is inside a top-layer Modal, where a toast is
 // never seen (the rule in src/lib/mutation-error-handler.ts). So each action
 // either gets out of the way before it can fail, or reports in place:
-//   - Duplicate and Export CSV close the host on the CLICK, so their toasts land
-//     on the page.
+//   - Duplicate and Export CSV close the mobile Modal on the CLICK, so their
+//     toasts land on the page. It keeps this panel mounted while closed.
 //   - Delete leaves for /lists on the click. That is also what makes the delete
 //     land anywhere: the optimistic removal drops this list from ['lists'],
 //     ListDetailPage swaps to "List not found" and unmounts this panel, and an
@@ -169,7 +174,7 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
           <RowMenuItem
             icon={<Copy size={13} />}
             onClick={() => {
-              onClose()
+              onClose?.()
               duplicateMut.mutate(list)
             }}
           >
@@ -178,7 +183,7 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
           <RowMenuItem
             icon={<Download size={13} />}
             onClick={() => {
-              onClose()
+              onClose?.()
               void exportCsv(list)
             }}
             disabled={exporting}

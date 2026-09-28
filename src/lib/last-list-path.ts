@@ -122,6 +122,28 @@ export function clearLastListPath(): void {
 }
 
 /**
+ * Forget the stored path if it points at `listId` - for a list that was just
+ * deleted. The self-heal effect on ListDetailPage cannot be relied on for that:
+ * deleting the open list navigates away on the click, so the page is gone before
+ * it could see the list missing, and RootRedirect would follow the pointer into
+ * "List not found". A pointer at any other list (say, the successor the desktop
+ * panel moved to) is left alone. Owner-blind on purpose: list ids are UUIDs, so a
+ * pointer naming this id can only be to the list being deleted.
+ */
+export function forgetLastListPathTo(listId: string): void {
+  try {
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return
+    const parsed: unknown = JSON.parse(raw)
+    const path =
+      typeof parsed === 'object' && parsed !== null ? (parsed as Partial<StoredLastList>).p : undefined
+    if (typeof path === 'string' && getListIdFromListPath(path) === listId) clearLastListPath()
+  } catch {
+    // Unreadable storage or a legacy bare string: nothing we could follow.
+  }
+}
+
+/**
  * Extract the list UUID from a stored path, or null if the path doesn't match
  * LIST_PATH_RE. Used by the self-heal effect on ListDetailPage to compare the
  * cached path against the current route's listId without re-implementing the

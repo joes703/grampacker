@@ -18,6 +18,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
+import { forgetLastListPathTo } from '../lib/last-list-path'
 import { useListFlagToggle } from './use-list-flag-toggle'
 import type { Category, List } from '../lib/types'
 
@@ -117,7 +118,7 @@ export function useCurrentListActions() {
   // on failure too: a rejected request does not prove the copy was not made, and
   // it is a non-idempotent POST, so the copy advises checking before retrying
   // (docs/incidents.md). Hook-level rather than per-call, so both still run when
-  // the caller has unmounted (ListSettingsPanel closes its popover on the click).
+  // the caller has unmounted by the time the response lands.
   // Invalidate BEFORE navigating: the copy is not in ['lists'] yet, and a fetch
   // already in flight is what makes the new page wait rather than flash "List
   // not found".
@@ -137,6 +138,10 @@ export function useCurrentListActions() {
   // shows up as the list silently back in the sidebar or on /lists, somewhere
   // other than where the user asked for it. Nothing in that says "the delete
   // failed".
+  //
+  // On success, forget the last-list pointer if it names this list. Hook-level,
+  // because the caller that deleted the open list has usually unmounted by now
+  // (see forgetLastListPathTo).
   const deleteListMut = useMutation({
     mutationKey: mutationKeys.deleteList(),
     mutationFn: deleteList,
@@ -146,6 +151,7 @@ export function useCurrentListActions() {
       id: (id) => id,
       errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again.",
     }),
+    onSuccess: (_data, id) => forgetLastListPathTo(id),
   })
 
   // Export a list's items to the Lighterpack-compatible CSV. Items and

@@ -5,15 +5,17 @@
 // the panel only while its list is in ['lists'], and "List not found" otherwise.
 // That swap is what unmounts the panel mid-delete, and an unmounted mutation
 // observer drops per-call callbacks - which the mocked-hook suite beside this
-// one cannot show.
+// one cannot show. The harness has none of the page's effects, including its
+// last-list pointer self-heal; the pointer assertions below show the delete
+// clears it without that page's help.
 
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MutationCache, QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
 import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
+import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import { showToast } from '../lib/toast'
 import type { List } from '../lib/types'
 
@@ -64,12 +66,14 @@ beforeAll(() => {
 beforeEach(() => {
   for (const spy of Object.values(q)) spy.mockReset()
   vi.mocked(showToast).mockClear()
+  localStorage.clear()
 })
 
 afterEach(cleanup)
 
 const LIST: List = {
-  id: 'l1',
+  // A real UUID: the last-list pointer only stores strict /lists/<uuid> paths.
+  id: '11111111-1111-4111-8111-111111111111',
   name: 'Trip',
   description: null,
   slug: 'trip',
@@ -88,23 +92,19 @@ function deferred<T>() {
 }
 
 // ListDetailPage's shape, reduced: the panel exists only while its list does.
-// `popover` mimics the desktop host, which unmounts the panel when it closes;
-// without it the host stays mounted, like the mobile Modal.
-function ListRoute({ popover }: { popover: boolean }) {
+function ListRoute() {
   const { id } = useParams()
-  const [open, setOpen] = useState(true)
   const { data } = useQuery({ queryKey: ['lists'], queryFn: q.fetchLists, staleTime: Infinity })
   const list = data?.find((l: List) => l.id === id)
   if (!list) return <p>List not found</p>
-  if (popover && !open) return <p>popover closed</p>
-  return <ListSettingsPanel list={list} onClose={() => setOpen(false)} />
+  return <ListSettingsPanel list={list} onClose={() => {}} />
 }
 
 function LocationProbe() {
   return <p data-testid="location">{useLocation().pathname}</p>
 }
 
-function renderAt(path: string, { popover = false } = {}) {
+function renderAt(path: string) {
   const qc = new QueryClient({
     mutationCache: new MutationCache({ onError: mutationErrorHandler }),
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
@@ -115,7 +115,7 @@ function renderAt(path: string, { popover = false } = {}) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/lists" element={<p>All lists</p>} />
-          <Route path="/lists/:id" element={<ListRoute popover={popover} />} />
+          <Route path="/lists/:id" element={<ListRoute />} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>
@@ -135,7 +135,8 @@ describe('ListSettingsPanel delete, through the real hook', () => {
     const request = deferred<void>()
     q.deleteList.mockReturnValueOnce(request.promise)
     q.fetchLists.mockResolvedValue([])
-    renderAt('/lists/l1')
+    writeLastListPath(`/lists/${LIST.id}`, 'owner-1')
+    renderAt(`/lists/${LIST.id}`)
 
     await confirmDelete()
     await act(async () => { request.resolve() })
@@ -143,13 +144,16 @@ describe('ListSettingsPanel delete, through the real hook', () => {
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/lists$/))
     expect(screen.getByText('All lists')).toBeInTheDocument()
     expect(showToast).not.toHaveBeenCalled()
+    // Or `/` would follow it back into "List not found".
+    await waitFor(() => expect(readLastListPath('owner-1')).toBeNull())
   })
 
   it('rolls back and toasts on /lists when the delete fails', async () => {
     const request = deferred<void>()
     q.deleteList.mockReturnValueOnce(request.promise)
     q.fetchLists.mockResolvedValue([LIST])
-    const qc = renderAt('/lists/l1')
+    writeLastListPath(`/lists/${LIST.id}`, 'owner-1')
+    const qc = renderAt(`/lists/${LIST.id}`)
 
     await confirmDelete()
     await act(async () => { request.reject(new Error('nope')) })
@@ -161,22 +165,8 @@ describe('ListSettingsPanel delete, through the real hook', () => {
       ),
     )
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/lists$/)
-    expect(qc.getQueryData<List[]>(['lists'])?.map((l) => l.id)).toEqual(['l1'])
-  })
-})
-
-describe('ListSettingsPanel duplicate, through the real hook', () => {
-  it('still opens the copy when the desktop popover closed on the click', async () => {
-    const request = deferred<List>()
-    q.duplicateList.mockReturnValueOnce(request.promise)
-    q.fetchLists.mockResolvedValue([LIST, { ...LIST, id: 'copy-id' }])
-    renderAt('/lists/l1', { popover: true })
-
-    await userEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
-    expect(screen.getByText('popover closed')).toBeInTheDocument()
-    await act(async () => { request.resolve({ ...LIST, id: 'copy-id' }) })
-
-    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/lists\/copy-id$/))
+    expect(qc.getQueryData<List[]>(['lists'])?.map((l) => l.id)).toEqual([LIST.id])
+    expect(readLastListPath('owner-1')).toBe(`/lists/${LIST.id}`)
   })
 })
 
@@ -184,7 +174,7 @@ describe('ListSettingsPanel rename, through the real hook', () => {
   it('reports a failed rename inline while the mobile Modal keeps the panel mounted', async () => {
     q.updateList.mockRejectedValueOnce(new Error('nope'))
     q.fetchLists.mockResolvedValue([LIST])
-    renderAt('/lists/l1')
+    renderAt(`/lists/${LIST.id}`)
 
     await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
     const input = screen.getByRole('textbox', { name: 'List name' })

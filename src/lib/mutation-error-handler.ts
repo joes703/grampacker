@@ -40,9 +40,9 @@ import { showToast } from './toast'
 // constraint is the top layer, not visibility.
 //
 // The corollary is what makes the delete confirms, the gear library's bulk
-// "Move to category" dialog, and List options' Duplicate, Export CSV and Delete
-// list get out of the way on the CLICK rather than on success - a modal still
-// standing when the failure lands would swallow the toast that explains it.
+// "Move to category" dialog, and mobile List options' Duplicate, Export CSV and
+// Delete list get out of the way on the CLICK rather than on success - a modal
+// still standing when the failure lands would swallow the toast that explains it.
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: { errorToast?: string }
