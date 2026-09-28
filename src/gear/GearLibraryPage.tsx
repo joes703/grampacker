@@ -64,9 +64,8 @@ import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
 
 // `saveError` on the two GearItemDialog variants is the dialog's own failure
-// surface. It has to be inline rather than a toast: Modal opens a native <dialog>
-// via showModal(), which sits in the browser's top layer, so a toast raised from
-// behind one is never seen (the rule and its rationale live in
+// surface. It is inline rather than a toast because the dialog stays open on
+// failure and the error belongs beside the form (the modal rule in
 // src/lib/mutation-error-handler.ts). Keeping it in the dialog STATE rather than a
 // separate useState is what makes closing the dialog discard the error with it,
 // and is what the save's completion guard compares identity against.
@@ -230,11 +229,12 @@ export default function GearLibraryPage() {
   }
 
   // The editor holds its own error rather than raising a toast, and stays open with
-  // the typed name until the create actually succeeds. Both halves are forced.
+  // the typed name until the create actually succeeds. Both halves are deliberate.
   //
-  // A toast is out because `addCategory` is shared with GearItemDialog's "create
-  // category" affordance, which runs inside a native <dialog> - top layer - where a
-  // toast is never seen (see src/lib/mutation-error-handler.ts). Closing on the
+  // No toast because `addCategory` is shared with GearItemDialog's "create
+  // category" affordance, which is inside a modal and so reports inline (the modal
+  // rule in src/lib/mutation-error-handler.ts); a toast as well would say it
+  // twice. Closing on the
   // optimistic insert is out because the placeholder takes the next sort order and
   // so lands at the END of the category list, which on a library of any size is
   // below the fold: it can appear and roll back without ever being on screen.
@@ -357,9 +357,9 @@ export default function GearLibraryPage() {
   const navigate = useNavigate()
   // No meta.errorToast, deliberately, even though this is a NON-optimistic mutation
   // - the case the toast mechanism exists for. Its dialog stays open on failure and
-  // is a modal, so the toast this used to raise expired behind the backdrop and the
-  // create failed silently. The dialog carries the error inline instead. See the
-  // rule in src/lib/mutation-error-handler.ts.
+  // is a modal, so the error goes inline, beside the form. (The toast this used to
+  // raise expired behind the backdrop, before toasts rendered over modals, and the
+  // create failed silently.) See the rule in src/lib/mutation-error-handler.ts.
   const createListFromSelectionMut = useMutation({
     mutationKey: mutationKeys.createListFromSelection(),
     mutationFn: createListFromSelection,
@@ -921,12 +921,11 @@ export default function GearLibraryPage() {
           // close to the page.
           onCancel={() => setDialog(dialog.returnDialog ?? null)}
           // Close first, then mutate - the same order every delete confirm in the
-          // lists code already uses. Two reasons it matters here. The delete is
-          // optimistic, so the row is gone the instant this runs and a modal
-          // sitting over a list that already reflects the deletion is just in the
-          // way. And the failure toast is raised from the mutation's rollback: a
-          // native <dialog> renders in the top layer, so had the confirm still been
-          // open the toast would have expired behind it unseen.
+          // lists code already uses. The delete is optimistic, so the row is gone
+          // the instant this runs and a modal sitting over a list that already
+          // reflects the deletion is just in the way. (It also used to be what kept
+          // the rollback's failure toast from expiring unseen behind the confirm,
+          // before toasts rendered over modals.)
           onConfirm={() => {
             const target = dialog.item
             setDialog(null)
@@ -1046,9 +1045,9 @@ export default function GearLibraryPage() {
           count={selectedIds.size}
           onMove={(categoryId) => {
             // Close on the click: the move is optimistic, so the rows have
-            // already moved, and a dialog still open when a rollback lands would
-            // hide its toast behind the top layer. Select mode waits for success
-            // so a failed move leaves the selection in place to retry.
+            // already moved and the dialog has nothing left to show. Select mode
+            // waits for success so a failed move leaves the selection in place
+            // to retry.
             setDialog(null)
             bulkMove.mutate({ ids: Array.from(selectedIds), categoryId }, { onSuccess: exitSelectMode })
           }}

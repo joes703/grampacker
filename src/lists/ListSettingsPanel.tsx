@@ -14,10 +14,11 @@ import { useCurrentListActions } from './use-current-list-actions'
 type Props = {
   list: List
   /**
-   * Closes a host that is a top-layer Modal (the mobile one), so the toast of
-   * an action that fails after the click is seen. The desktop popover leaves it
-   * out: a toast shows over it, and closing it would unmount this panel and
-   * with it the "Exporting…" guard against a second export of the same list.
+   * Closes a host that is a Modal (the mobile one) on Duplicate and Export.
+   * That once kept their failure toasts from expiring behind it, before toasts
+   * rendered over modals; it is kept as their behavior. The desktop popover
+   * leaves it out: closing it would unmount this panel and with it the
+   * "Exporting…" guard against a second export of the same list.
    */
   onClose?: () => void
 }
@@ -54,11 +55,10 @@ type Props = {
 // Modal on mobile via MobileListActionBar's Options slot. Both mount
 // points are themselves suppressed in pack mode.
 //
-// FAILURES. On mobile this panel is inside a top-layer Modal, where a toast is
-// never seen (the rule in src/lib/mutation-error-handler.ts). So each action
-// either gets out of the way before it can fail, or reports in place:
-//   - Duplicate and Export CSV close the mobile Modal on the CLICK, so their
-//     toasts land on the page. It keeps this panel mounted while closed.
+// FAILURES. Each action either gets out of the way before it can fail, or
+// reports in place (the modal rule in src/lib/mutation-error-handler.ts):
+//   - Duplicate and Export CSV close the mobile Modal on the CLICK, and report
+//     by toast. Modal keeps this panel mounted while closed.
 //   - Delete leaves for /lists on the click. That is also what makes the delete
 //     land anywhere: the optimistic removal drops this list from ['lists'],
 //     ListDetailPage swaps to "List not found" and unmounts this panel, and an

@@ -13,9 +13,9 @@ type Props = {
   onSubmit: (name: string, description: string | null) => void
   onClose: () => void
   /** Save-time error from the parent, rendered inline. This dialog stays open on
-   *  failure, and it is a modal - a native <dialog> in the browser's top layer -
-   *  so a toast raised behind it would never be seen. Same contract as
-   *  GearItemDialog's `saveError`; see src/lib/mutation-error-handler.ts. */
+   *  failure, so the error goes beside the form, where the user can retry
+   *  without retyping. Same contract as GearItemDialog's `saveError`; see the
+   *  modal rule in src/lib/mutation-error-handler.ts. */
   saveError?: string | null
 }
 
