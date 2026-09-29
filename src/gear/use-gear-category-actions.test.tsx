@@ -114,9 +114,8 @@ describe('useGearCategoryActions', () => {
       // Load-bearing absence. `addCategory` is fired from two places: the gear
       // library's inline toolbar editor, which keeps its own error, and
       // GearItemDialog's "create category" affordance, which keeps `categoryError`.
-      // The second runs inside a native <dialog> - top layer - so a toast raised
-      // there would sit behind the backdrop and expire unseen while the inline
-      // message said the same thing. See src/lib/mutation-error-handler.ts.
+      // A toast as well would say the same thing twice. See the modal rule in
+      // src/lib/mutation-error-handler.ts.
       setup([])
       expect(h.makeOptimisticInsert.mock.calls[0]![0].errorToast).toBeUndefined()
     })

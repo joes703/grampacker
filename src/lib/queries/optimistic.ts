@@ -158,9 +158,8 @@ type CommonOpts = {
   // because the snap-back explains itself, while deletes/removals, bulk
   // transforms and reorders do not and need saying out loud. Omit it whenever the
   // calling surface shows the error inline instead - a dialog with its own error
-  // state, or the gear library's inline category editor. That is mandatory, not
-  // preferred, for anything reachable from inside a modal: a native <dialog>
-  // renders in the top layer, so a toast raised behind one is never seen.
+  // state, or the gear library's inline category editor; the modal rule there
+  // makes that the default for anything reached from inside a modal.
   errorToast?: string
 }
 

@@ -263,8 +263,8 @@ describe('PrivacyPanel - replacing the share link', () => {
 })
 
 // A failed replace is reported INLINE: this panel lives inside a Modal on the
-// Lists page and in mobile List options, where a toast would render behind the
-// top-layer <dialog>. The rotate is a non-idempotent POST that may have
+// Lists page and in mobile List options, and the modal rule puts the error beside
+// the control. The rotate is a non-idempotent POST that may have
 // committed before the failure, so the copy claims only what it can prove and
 // advises a refresh before retrying.
 describe('PrivacyPanel - a failed replace', () => {

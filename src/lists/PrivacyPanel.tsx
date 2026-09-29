@@ -29,10 +29,9 @@ type Props = { list: List }
 //
 // The confirm is inline rather than a ConfirmDialog because this panel already
 // renders inside a Modal on the Lists page, and a ConfirmDialog is itself a
-// Modal. For the same reason a failed replace is reported inline: a toast
-// raised behind a top-layer <dialog> is never seen (the rule in
-// src/lib/mutation-error-handler.ts). Unless the panel has left the screen by
-// the time it fails - then only a toast can be seen, so it gets one.
+// Modal. A failed replace is reported inline too, beside the control (the modal
+// rule in src/lib/mutation-error-handler.ts). Unless the panel has left the
+// screen by the time it fails - then only a toast can be seen, so it gets one.
 //
 // The flip goes through useListFlagToggle (absolute target + synchronous
 // in-flight ref) - see that hook for the double-toggle races the naive

@@ -447,10 +447,9 @@ describe('the inline new-category editor', () => {
 
 describe('the delete-item confirmation', () => {
   it('closes on the click and issues exactly one delete, without waiting to be told it worked', async () => {
-    // removeItem's mock never calls back. The confirm still has to go, because the
-    // failure signal is a toast raised from the rollback and a native <dialog>
-    // renders in the top layer - a toast raised behind this confirm would expire
-    // unseen.
+    // removeItem's mock never calls back. The confirm still goes: the delete is
+    // optimistic, and a confirm left over a list that already reflects it is in
+    // the way.
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Delete Tent' }))
@@ -626,10 +625,11 @@ describe('the inline new-category editor, concurrency', () => {
 })
 
 describe('create list from selection', () => {
-  it('reports a failure inside its own dialog, because a toast would be behind it', async () => {
+  it('reports a failure inside its own dialog, which stays open to retry', async () => {
     // This mutation is NOT optimistic - the case meta.errorToast exists for - but
-    // its dialog stays open on failure and is a native <dialog>, so the toast it
-    // used to raise expired behind the backdrop and the create failed silently.
+    // its dialog stays open on failure, so the error goes beside the form. (The
+    // toast it used to raise expired behind the backdrop, before toasts rendered
+    // over modals, and the create failed silently.)
     h.createListFromSelection.mockRejectedValue(new Error('nope'))
     renderPage()
 
@@ -721,10 +721,9 @@ describe('sessions ended by something other than their own close button', () => 
 
 describe("GearItemDialog's own create-category affordance", () => {
   it('reports a failed create inline, in the dialog, with create-safe advice', async () => {
-    // The third surface `addCategory` is reached from, and the one where a toast is
-    // provably useless: this runs with a native <dialog> open, so a toast would sit
-    // behind the backdrop. It is also a POST, so its copy has to match the other
-    // creates rather than say "try again".
+    // The third surface `addCategory` is reached from, and it runs inside a modal
+    // that stays open, so the error goes beside the form. It is also a POST, so its
+    // copy has to match the other creates rather than say "try again".
     h.createCategory.mockRejectedValue(new Error('nope'))
     renderPage()
 

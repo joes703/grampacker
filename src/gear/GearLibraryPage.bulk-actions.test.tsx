@@ -410,10 +410,9 @@ describe('GearLibraryPage bulk success handling', () => {
   })
 
   // The move is optimistic, so the rows have already moved when Move is clicked.
-  // The dialog closes on the CLICK: a modal still standing when a rollback lands
-  // would hide the failure toast behind the top layer (the rule in
-  // src/lib/mutation-error-handler.ts). Select mode survives until success, so a
-  // failed move leaves the selection in place to retry.
+  // The dialog closes on the CLICK: it has nothing left to show. Select mode
+  // survives until success, so a failed move leaves the selection in place to
+  // retry.
   it('closes the move dialog on the click, and keeps the selection until the move succeeds', async () => {
     h.bulkMoveMutate.mockImplementation(() => {})
     renderPage()
@@ -465,10 +464,8 @@ describe('GearLibraryPage category delete confirmation', () => {
     // inert in this suite, so the confirm has to be gone WITHOUT the mutation ever
     // settling - which is what makes this non-vacuous. The old assertion passed
     // against a mock that synchronously invoked onSuccess, so it could not tell
-    // close-on-click from close-on-success. The distinction is load-bearing: the
-    // failure toast is raised from the rollback, and a native <dialog> sits in the
-    // top layer, so a toast raised while this confirm was still up would never be
-    // seen.
+    // close-on-click from close-on-success, which is the behavior every delete
+    // confirm shares (see src/lib/mutation-error-handler.ts).
     expect(h.removeCategoryMutate).toHaveBeenCalledWith('c1')
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Delete category' })).not.toBeInTheDocument(),

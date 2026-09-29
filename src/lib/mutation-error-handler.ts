@@ -21,31 +21,37 @@ import { showToast } from './toast'
 //     row menu shares the mutation and is no more obvious.
 //   - the first-list/create-list placeholder.
 //
-// THE MODAL RULE, which outranks all of the above. src/components/Modal.tsx opens a
-// native <dialog> with showModal(), which puts it in the browser's TOP LAYER, above
-// all ordinary stacking. ToastViewport is an ordinary z-50 element, so a toast
-// raised while a MODAL is open sits behind the backdrop and expires there, unseen.
-// So: IF THE WRITE WAS ISSUED FROM A MODAL THAT IS STILL OPEN WHEN IT FAILS, the
-// error belongs inline, and a toast is not merely worse - it is nothing at all.
-// That is why GearItemDialog and CreateListFromSelectionDialog take a `saveError`
-// prop, why the dialog's "create category" affordance keeps its own
-// `categoryError`, and why the gear library's inline category editor holds its own
-// (that one is not a modal, but it stays open and can say it in place, which is
-// better than a toast). It applies to non-optimistic mutations too: a modal-bound
-// write gets inline feedback rather than meta.errorToast. A modal-bound write that
-// can outlive its modal being open (closed by another action, or unmounted)
-// reports through src/lib/report-failure.ts, which picks inline or toast by what
-// is on screen when the failure lands.
+// THE MODAL RULE, which outranks all of the above. IF THE WRITE WAS ISSUED FROM A
+// MODAL THAT IS STILL OPEN WHEN IT FAILS, the error belongs inline, beside the form,
+// where the user can correct it and retry without losing what they entered. That is
+// why GearItemDialog and CreateListFromSelectionDialog take a `saveError` prop, why
+// the dialog's "create category" affordance keeps its own `categoryError`, and why
+// the gear library's inline category editor holds its own (that one is not a modal,
+// but it stays open and can say it in place, which is better than a toast). It
+// applies to non-optimistic mutations too: a modal-bound write gets inline feedback
+// rather than meta.errorToast. A modal-bound write that can outlive its modal being
+// open (closed by another action, or unmounted) reports through
+// src/lib/report-failure.ts, which picks inline or toast by what is on screen when
+// the failure lands.
 //
-// This is narrower than "any visible surface". A non-modal surface that stays put -
-// the trip-length and meal controls on the list page, say - can perfectly well be
-// answered by a toast, and an in-place edit still needs nothing at all. The
-// constraint is the top layer, not visibility.
+// A toast raised while a modal is open IS seen: src/components/Modal.tsx opens a
+// native <dialog> with showModal(), which puts it in the browser's TOP LAYER and
+// makes the rest of the page inert, so ToastViewport renders inside the topmost open
+// Modal (src/lib/toast-host.ts). Until that existed a toast under a modal sat behind
+// the backdrop and expired unseen, and this rule was stated as "a toast there is
+// nothing at all"; the inline preference now rests on being next to the form. The
+// remaining hazard: a <dialog> opened with showModal() anywhere but Modal.tsx
+// registers no host and hides toasts again, so go through Modal.
 //
-// The corollary is what makes the delete confirms, the gear library's bulk
-// "Move to category" dialog, and mobile List options' Duplicate, Export CSV and
-// Delete list get out of the way on the CLICK rather than on success - a modal
-// still standing when the failure lands would swallow the toast that explains it.
+// A non-modal surface that stays put - the trip-length and meal controls on the list
+// page, say - can perfectly well be answered by a toast, and an in-place edit still
+// needs nothing at all.
+//
+// The delete confirms, the gear library's bulk "Move to category" dialog, and mobile
+// List options' Duplicate, Export CSV and Delete list close on the CLICK rather than
+// on success. That was required while a modal still standing when the failure
+// landed hid the toast explaining it; it is kept as their behavior, not re-decided
+// here.
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: { errorToast?: string }

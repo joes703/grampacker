@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle2, Info, TriangleAlert, X } from 'lucide-react'
 import {
   dismissToast,
@@ -7,6 +8,7 @@ import {
   type Toast as ToastModel,
   type ToastType,
 } from '../lib/toast'
+import { getToastHost, subscribeToastHost } from '../lib/toast-host'
 
 // Mounted once at the app root by App.tsx. Subscribes to the module store
 // in src/lib/toast.ts via useSyncExternalStore (the React-19 idiom for
@@ -16,15 +18,21 @@ import {
 // the MobileTabBar (h-14) plus its safe-area inset so toasts don't sit
 // under the fixed tab bar. The bottom calc mirrors AppShell's main pb-.
 //
+// While a Modal is open the region is portaled into it (src/lib/toast-host.ts):
+// rendered here, it would sit behind the modal's top-layer <dialog>, inert.
+//
 // role="status" announces new toasts to screen readers with polite
 // priority. aria-live="polite" so additive new toasts also announce
-// without interrupting the current SR output.
+// without interrupting the current SR output. The region is rendered even
+// when empty because a live region has to exist before its content changes
+// to be announced. That holds per host: switching host (a modal opening or
+// closing) replaces the region, so a toast already showing reappears as the new
+// region's initial content and may or may not be re-announced.
 export default function ToastViewport() {
   const toasts = useSyncExternalStore(subscribe, getToasts, getToasts)
+  const host = useSyncExternalStore(subscribeToastHost, getToastHost, getToastHost)
 
-  if (toasts.length === 0) return null
-
-  return (
+  const region = (
     <div
       role="status"
       aria-live="polite"
@@ -35,6 +43,7 @@ export default function ToastViewport() {
       ))}
     </div>
   )
+  return host ? createPortal(region, host) : region
 }
 
 function ToastCard({ toast }: { toast: ToastModel }) {

@@ -154,10 +154,13 @@ Each has cost an incident. When working near one, read its
   `isPending`. Gate write ACTIONS, not just the render, on the collection
   having resolved. Never gate the way out: Cancel, and actions with their own
   preflight, stay reachable.
-- **A failure the user cannot see is not reported.** Toasts render behind an
-  open `<dialog>`, so a modal reports inline. `src/lib/mutation-error-handler.ts`
-  owns which failures toast. Error copy claims only what it can prove
-  ("Couldn't confirm...", not "Couldn't delete...").
+- **A failure the user cannot see is not reported.** A `<dialog>` opened with
+  `showModal()` covers and inerts everything outside it, so open dialogs only
+  through `Modal`, which hosts the toast region while open
+  (`src/lib/toast-host.ts`). A modal still reports its own failures inline,
+  beside the form. `src/lib/mutation-error-handler.ts` owns which failures
+  toast. Error copy claims only what it can prove ("Couldn't confirm...", not
+  "Couldn't delete...").
 - **Every rejected promise has an owner.** An async handler called without
   `await`/`.catch` catches internally or becomes a promise the call site
   awaits. Non-mutation async actions report the error, then consume it,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { addToastHost, removeToastHost } from '../lib/toast-host'
 
 // Wrapper around the native <dialog> element opened with showModal(), which
 // gives us focus trap, top-layer rendering, scroll lock, and Escape-to-close
@@ -42,10 +43,17 @@ export default function Modal({
   preventDismiss = false,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
+  // Where ToastViewport renders while this dialog is open (src/lib/toast-host.ts):
+  // a toast outside an open modal dialog is painted behind it and inert. The
+  // host stack must follow the NATIVE dialog, which can close (Escape, backdrop)
+  // or reopen (preventDismiss) without `open` changing, so it is updated at
+  // every showModal()/close, not only when the prop flips.
+  const slotRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const dialog = ref.current
-    if (!dialog) return
+    const slot = slotRef.current
+    if (!dialog || !slot) return
     if (open && !dialog.open) {
       dialog.showModal()
       // Native showModal() auto-focuses the first sequentially focusable
@@ -59,6 +67,12 @@ export default function Modal({
       // view (it's already centered by showModal()).
       dialog.focus({ preventScroll: true })
     } else if (!open && dialog.open) dialog.close()
+    // The cleanup unregisters when `open` flips false (the native `close` event
+    // is queued, so handleClose alone would leave the host pointing into a
+    // hidden dialog until it lands), on unmount while open, and in StrictMode's
+    // replay, whose re-adds run in effect order and so keep showModal() order.
+    if (dialog.open) addToastHost(slot)
+    return () => removeToastHost(slot)
   }, [open])
 
   // Escape (and other user-agent dismissals) fire a cancelable `cancel`
@@ -74,8 +88,16 @@ export default function Modal({
   // Escape's cancel): reopen and swallow it rather than desync from the
   // parent, which still renders the dialog as open.
   function handleClose(e: React.SyntheticEvent<HTMLDialogElement>) {
+    const dialog = e.currentTarget
+    const slot = slotRef.current
+    // Checks the dialog, not the event: a close queued before a reopen arrives
+    // after it, and must not unregister the dialog that is open again.
+    if (slot && !dialog.open) removeToastHost(slot)
     if (preventDismiss) {
-      if (open && !e.currentTarget.open) e.currentTarget.showModal()
+      if (open && !dialog.open) {
+        dialog.showModal()
+        if (slot) addToastHost(slot)
+      }
       return
     }
     onClose()
@@ -121,6 +143,14 @@ export default function Modal({
       className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 focus:outline-none print:hidden ${className ?? ''}`}
     >
       {children}
+      {/* The toast region portaled in here is position: fixed and relies on the
+          VIEWPORT staying its containing block, so it sits where it does
+          outside a modal and the dialog's overflow does not clip it. Anything
+          that makes the dialog a containing block for fixed descendants breaks
+          that: transform, translate/scale/rotate, perspective, filter,
+          backdrop-filter, contain (layout/paint), or will-change naming one of
+          them - on the dialog, its className, or this slot. */}
+      <div ref={slotRef} />
     </dialog>
   )
 }
