@@ -82,12 +82,12 @@ describe('ListSettingsPanel worn grouping', () => {
   })
 })
 
-// On mobile the panel sits in a top-layer Modal, where a toast is never seen.
+// On mobile the panel sits in a Modal; Duplicate and Export close it on the click.
 describe('ListSettingsPanel actions that can fail', () => {
   it.each([
     ['Duplicate', () => actions.duplicateMutate],
     ['Export CSV', () => actions.exportCsv],
-  ])('%s closes the host before it acts, so its failure toast lands on the page', async (name, spy) => {
+  ])('%s closes the host before it acts', async (name, spy) => {
     const onClose = renderPanel()
     await userEvent.click(screen.getByRole('button', { name }))
 

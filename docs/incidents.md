@@ -173,10 +173,16 @@ The which-failures-earn-a-toast rule lives in
 toast. Supporting detail:
 
 - `Modal.tsx` opens a native `<dialog>` with `showModal()`, which puts it in
-  the browser's TOP LAYER; `ToastViewport` is an ordinary `z-50` element. A
-  toast raised while a modal is open sits behind the backdrop until it
-  expires. A write issued from a still-open modal MUST report inline
-  (`saveError`). Check the surface really stays put: an optimistic insert can
+  the browser's TOP LAYER and makes the rest of the page inert. While
+  `ToastViewport` was an ordinary `z-50` element, a toast raised under an open
+  modal sat behind the backdrop and expired unseen; several failures were
+  silent that way. `ToastViewport` now renders inside the topmost open Modal
+  (`src/lib/toast-host.ts`), which keeps the host stack in step with the
+  NATIVE dialog (Escape and backdrop close it without the `open` prop
+  changing, and the `close` event is queued). A `<dialog>` opened with
+  `showModal()` outside `Modal.tsx` would bring the bug back.
+- A write issued from a still-open modal reports inline (`saveError`), beside
+  the form. Check the surface really stays put: an optimistic insert can
   unmount the component holding the error state (`ListsEmptyState` stops
   rendering when the placeholder lands, so its inline error has no owner by
   the time a rejection arrives - it reports through `meta.errorToast`, and

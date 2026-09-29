@@ -158,9 +158,10 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
         <QuickAddItemModal
           onSubmit={(data) => {
             // Close FIRST, then hand off. This modal has no pending or
-            // inline-error surface, and a toast raised while a <dialog> is
-            // open renders behind it - so a failed create would report into a
-            // layer the user cannot see.
+            // inline-error surface, so the create reports on the page it
+            // returns to. (Closing first was also what once kept that toast
+            // from expiring behind the dialog, before toasts rendered over
+            // modals.)
             setCreating(false)
             onCreateNew(data)
           }}

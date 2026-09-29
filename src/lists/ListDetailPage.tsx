@@ -1266,8 +1266,8 @@ function ListDetailInner({
           // Close the drawer too, not just the modal. Below lg this panel
           // lives inside the sidebar drawer, whose 88vw content is z-50 -
           // the same layer as the toast, and painted after it. A failed
-          // create would report into a toast the drawer covers, which is the
-          // same class of bug as reporting behind an open <dialog>.
+          // create would report into a toast the drawer covers - the class of
+          // bug toasts had behind an open modal before they rendered inside it.
           setDrawerOpen(false)
           onAddNewItem(null, data)
         }}

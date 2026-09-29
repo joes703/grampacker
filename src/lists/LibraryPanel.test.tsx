@@ -144,11 +144,9 @@ describe('creating a new item from the picker', () => {
     )
   })
 
-  // The modal has no pending or inline-error surface, and a toast raised over
-  // an open <dialog> renders behind it - so a failed create would report into
-  // a layer the user cannot see. Closing first is what keeps the error
-  // visible.
-  it('closes the modal before handing off, so a failure can be seen', async () => {
+  // The modal has no pending or inline-error surface, so it closes and the
+  // create reports on the page it returns to.
+  it('closes the modal before handing off', async () => {
     const onCreateNew = vi.fn()
     const user = userEvent.setup()
     render(<LibraryPanel {...base} onCreateNew={onCreateNew} />)
