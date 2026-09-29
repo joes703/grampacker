@@ -1249,11 +1249,5 @@ describe('replacing the share link', () => {
 
   // The retry on a slug collision is unreachable from here - two 6-char base62
   // draws colliding is ~1-in-2^35 - so it is tested directly against
-  // withFreshSlug in server/repos/lists-slug.test.ts.
+  // withFreshSlug in server/repos/lists-slug.node.test.ts.
 })
-
-// The list <-> food-plan link (food-planning-design.md slice 3). A list points
-// AT a standalone plan via lists.food_plan_id - a live reference, not a copy -
-// and a plan backs AT MOST ONE list (one plan per trip, enforced by the
-// partial unique index lists_food_plan_id_unique; reuse is duplication).
-// Pack-state clearing on relink is exercised in food-pack.test.ts, not here.

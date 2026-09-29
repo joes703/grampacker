@@ -38,12 +38,4 @@ describe.each(helpers)('%s', (_name, next) => {
   it('starts at 0 for an empty collection', () => {
     expect(next([])).toBe(0)
   })
-
-  it('offsets for batched creates without recomputing the max', () => {
-    // The CSV import creates N rows in one gesture: each takes max+1+i so
-    // none of them recomputes against partially-inserted state.
-    expect(next(rows(4), 0)).toBe(5)
-    expect(next(rows(4), 1)).toBe(6)
-    expect(next(rows(4), 2)).toBe(7)
-  })
 })

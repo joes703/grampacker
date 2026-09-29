@@ -1,28 +1,17 @@
 import { describe, it, expect } from 'vitest'
+import { GEAR_STATUSES } from '../../shared/gear'
 import {
   DEFAULT_GEAR_STATUS,
   GEAR_STATUS_MENU_OPTIONS,
-  GEAR_STATUSES,
   gearStatusVisual,
 } from './gear-status'
 
-// These tests pin the CLIENT half of the GearStatus contract - the constant
-// list and the dialog's menu options - which must match the DB CHECK
-// constraint in migrations/0000_baseline.sql. They cannot see the constraint:
-// a value added here but not there fails as a CHECK error at write time,
-// and one added there but not here is rejected by the shared DTO
-// (server/routes/gear-items.test.ts, the validation case).
+// These tests pin the CLIENT half of the GearStatus contract - the badges and
+// the dialog's menu options - against GEAR_STATUSES in shared/gear.ts, the one
+// list of values. They cannot see the DB CHECK constraint in
+// migrations/0000_baseline.sql that the list mirrors.
 
-describe('GEAR_STATUSES', () => {
-  it('lists exactly the values the DB CHECK constraint allows', () => {
-    expect(GEAR_STATUSES.toSorted()).toEqual([
-      'active',
-      'loaned_out',
-      'need_to_buy',
-      'needs_repair',
-    ])
-  })
-
+describe('DEFAULT_GEAR_STATUS', () => {
   it('treats active as the default', () => {
     expect(DEFAULT_GEAR_STATUS).toBe('active')
   })

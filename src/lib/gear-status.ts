@@ -1,19 +1,18 @@
 import { CircleAlert, CircleCheck, ShoppingCart, Wrench, type LucideIcon } from 'lucide-react'
+import type { GearStatus } from '../../shared/gear'
 import {
   LOANED_OUT_BADGE_CLASS,
   NEEDS_REPAIR_BADGE_CLASS,
 } from './row-indicator-styles'
 
-// Inventory-level advisory metadata on gear_items.status. Values are pinned
-// to the DB CHECK constraint on `gear_items.status` (migrations/0000_baseline.sql)
-// - keep this list and the constraint in lockstep. 'active' is the default and renders no
+// Inventory-level advisory metadata on gear_items.status. The values are
+// GEAR_STATUSES in shared/gear.ts, pinned to the DB CHECK constraint on
+// `gear_items.status` (migrations/0000_baseline.sql). 'active' is the default and renders no
 // visible treatment; the remaining three surface a small badge in private
 // views only (gear library, gear picker, private list rows) and are
 // explicitly excluded from public share projections.
 
-export const GEAR_STATUSES = ['active', 'needs_repair', 'loaned_out', 'need_to_buy'] as const
-
-export type GearStatus = (typeof GEAR_STATUSES)[number]
+export type { GearStatus }
 
 export const DEFAULT_GEAR_STATUS: GearStatus = 'active'
 

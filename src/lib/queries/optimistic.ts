@@ -191,19 +191,16 @@ function makeSettled(opts: CommonOpts) {
 // when it resolves, the settled refetch replaces the temp row with the
 // server row (the temp id and the server id won't match, but the refetch
 // rewrites the whole array so the temp row drops out and the real row
-// takes its place).
+// takes its place). The placeholder is appended to the end of the array,
+// whatever its sortOrder.
 export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts: CommonOpts & {
   // Build the optimistic placeholder row from the mutation input. The id
   // should be a client-generated temp id (e.g. crypto.randomUUID()). The
   // settled refetch replaces it with the server row. Other fields should
   // match what the server will return so the UI doesn't flash on settle.
   optimistic: (input: TInput) => TList
-  // How the new row joins the array. Default: append. Correct for every
-  // sortOrder-asc cache in this app since the optimistic row's
-  // sortOrder is set to the current array length.
-  merge?: (current: TList[], next: TList) => TList[]
 }) {
-  const { qc, queryKey, optimistic, merge } = opts
+  const { qc, queryKey, optimistic } = opts
   return {
     onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
       await qc.cancelQueries({ queryKey })
@@ -220,7 +217,7 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
       // keeps first-list and first-packing-location feedback.
       qc.setQueryData<TList[]>(queryKey, (curr) => {
         if (!curr) return curr
-        return merge ? merge(curr, next) : [...curr, next]
+        return [...curr, next]
       })
       return { previous }
     },

@@ -137,11 +137,6 @@ type GroupPropsBase = {
   isBelowLg?: boolean
   packMode?: boolean
   collapsible?: boolean
-  /** Optional controlled collapse state. Packing-location sections use this
-   *  pair so their state can persist per list; category/share callers omit it
-   *  and retain the component's local state. */
-  collapsed?: boolean
-  onCollapsedChange?: (collapsed: boolean) => void
   /** Stable region id derivation + add-item context. null = uncategorized.
    *  undefined disables the chevron/region-id behavior (share view). */
   categoryId?: string | null
@@ -340,8 +335,6 @@ function CategoryGroup({
   isBelowLg = false,
   packMode = false,
   collapsible = true,
-  collapsed: controlledCollapsed,
-  onCollapsedChange,
   categoryId,
   regionKey,
   renderRows,
@@ -383,15 +376,13 @@ function CategoryGroup({
   // collapse control at all, so a section collapsed in List view and carried
   // into Pack cannot even be reopened.
   //
-  // Overriding the DERIVED value rather than the stored one leaves both the
-  // local state and any controlled value untouched, so the screen is exactly
-  // as the user left it once the print ends.
+  // Overriding the DERIVED value rather than the stored one leaves the local
+  // state untouched, so the screen is exactly as the user left it once the
+  // print ends.
   const isPrinting = useIsPrinting()
-  const collapsed = isPrinting ? false : (controlledCollapsed ?? localCollapsed)
+  const collapsed = isPrinting ? false : localCollapsed
   function toggleCollapsed() {
-    const next = !collapsed
-    if (onCollapsedChange) onCollapsedChange(next)
-    else setLocalCollapsed(next)
+    setLocalCollapsed(!collapsed)
   }
   // Stable id for the collapsible region so the header button can announce
   // aria-controls. Category sections derive it from categoryId; sections with

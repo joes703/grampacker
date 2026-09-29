@@ -91,24 +91,6 @@ describe('CategoryGroup region id', () => {
     expect(new Set(targets).size).toBe(3)
   })
 
-  it('supports controlled collapse for persisted packing-location state', () => {
-    const onCollapsedChange = vi.fn()
-    render(
-      <CategoryGroup
-        name="Main pack"
-        regionKey="loc-main"
-        items={[itemNamed('item-1', 'Tarp')]}
-        weightUnit="g"
-        collapsed
-        onCollapsedChange={onCollapsedChange}
-      />,
-    )
-
-    expect(screen.queryByText('Tarp')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Expand Main pack' }))
-    expect(onCollapsedChange).toHaveBeenCalledWith(false)
-  })
-
   // The share view (SharePage) passes collapsible={false} and NO categoryId
   // for every section, so every section - each category plus the trailing
   // Worn group - derived the same 'cat-region-uncategorized' id. Nothing
