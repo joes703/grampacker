@@ -27,7 +27,7 @@ function makeClient(initial: Row[]): { qc: QueryClient; key: readonly ['rows'] }
 }
 
 describe('makeOptimisticInsert', () => {
-  it('appends the optimistic row to the cached array (happy path, default merge)', async () => {
+  it('appends the optimistic row to the cached array (happy path)', async () => {
     const { qc, key } = makeClient([{ id: 'A', name: 'a', categoryId: null }])
     const helper = makeOptimisticInsert<Row, { name: string }>({
       qc,
@@ -52,21 +52,6 @@ describe('makeOptimisticInsert', () => {
     const ctx = await helper.onMutate({ name: 'b' })
     helper.onError(new Error('boom'), { name: 'b' }, ctx)
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
-  })
-
-  it('uses the caller-supplied merge function rather than appending', async () => {
-    const { qc, key } = makeClient([{ id: 'A', name: 'a', categoryId: null }])
-    const helper = makeOptimisticInsert<Row, { name: string }>({
-      qc,
-      queryKey: key,
-      optimistic: (input) => ({ id: 'temp-1', name: input.name, categoryId: null }),
-      merge: (current, next) => [next, ...current],
-    })
-    await helper.onMutate({ name: 'b' })
-    expect(qc.getQueryData<Row[]>(key)).toEqual([
-      { id: 'temp-1', name: 'b', categoryId: null },
-      { id: 'A', name: 'a', categoryId: null },
-    ])
   })
 
   // The two halves of the absent-vs-empty distinction. This helper used to

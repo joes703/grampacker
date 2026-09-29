@@ -18,7 +18,7 @@ document itself was never committed, so nothing in the tree cites it.
 | Node unit | `npm run test:unit` (Vitest, `environment: node`) | `scripts/**`, `shared/**`, `src/**` tests without a jsdom pragma, `server/**/*.node.test.ts` | Pure functions, DTO schemas, repo plumbing, server code with a mocked `Db` |
 | jsdom component | same command; file opens with `// @vitest-environment jsdom` | `src/**` tests that render or need a DOM API | Rendering, DOM APIs, `localStorage` |
 | workerd / D1 API | `npm run test:api` (`@cloudflare/vitest-plugin`) | every other `server/**/*.test.ts` | What the real Hono app, better-auth and D1 do on workerd: routes, middleware, authorization boundaries, constraints, triggers |
-| Migration preservation | `npm run test:migrations` | `migrations/**` | Every post-baseline migration, applied the way deploy applies it, preserves the rows that already existed and the trigger behaviors it probes |
+| Migration check | `npm run test:migrations` (static, no database) | `migrations/**` | Drizzle bookkeeping, snapshot matches `schema.ts`, no destructive statement in a new migration. Not that a migration preserves existing rows: nothing proves that before merge (section 7) |
 | Browser / end-to-end | none | none | Not needed today: the API tier drives the real app below the DOM and the jsdom tier covers rendering. Add one only for a cross-layer bug neither can express, in its own config |
 
 `vitest.config.ts` and `vitest.workers.config.ts` are the source of truth
@@ -117,10 +117,10 @@ the known way to lose rows, and D1 Time Travel is the undo for anything else
 
 **`scripts/check-migration-immutability.mjs`** (pull requests only) refuses
 any change to a migration `main` already holds, judged against the merge
-base, apart from appended journal entries. Its one exception, the
-2026-09-26 collapse, is pinned to that exact transition and cannot fire again.
-It depends on the "Protect main" ruleset making a pull request the only route
-to `main`.
+base, apart from appended journal entries. It has no exceptions: the one the
+2026-09-26 collapse needed was deleted once that collapse had merged, since it
+could never fire again. It depends on the "Protect main" ruleset making a pull
+request the only route to `main`.
 
 **Collapsing history again** (only if the directory grows unwieldy):
 1. Generate the baseline from production's `sqlite_master` (tables, then
@@ -129,7 +129,8 @@ to `main`.
    and a one-entry journal.
 3. Prove the baseline builds the same schema as the old files, and give
    `check-migration-immutability.mjs` a reviewed exception for exactly that
-   transition (see its `COLLAPSE`).
+   transition. The 2026-09-26 one (`COLLAPSE` and `collapseProblem` in
+   21499fb) is a template; delete it again after the collapse merges.
 4. Before merging, have the owner run
    `npx wrangler d1 execute grampacker --remote --command "INSERT INTO d1_migrations (name) VALUES ('NNNN_baseline.sql')"`.
 5. After merging, reset any local dev database (delete `.wrangler/state`).
@@ -139,6 +140,13 @@ to `main`.
 Runtime is bought by moving a test to a cheaper tier that proves the same
 thing, by not repeating a proof, or by removing setup a test never needed.
 A moved test keeps its assertions byte for byte; git shows a rename.
+
+Deleting a test for a reason other than speed has its own bar. A test may go
+when what it covers no longer exists (the code, option or contract was
+removed) or when another named test proves the same thing. The change that
+deletes it says, per test, which of the two applies: the protection lost and
+why that is acceptable, or where the protection remains. Speed alone is never
+the reason.
 
 ## 9. Measuring
 

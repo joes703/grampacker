@@ -7,11 +7,10 @@
 // Judged against the merge base with origin/main, so a migration the pull
 // request itself adds can change freely across pushes.
 //
-// One exception, for ONE transition: the 2026-09-26 collapse of the 30
-// migrations ending at COLLAPSE.lastShipped into COLLAPSE.baseline. It cannot
-// fire again once that has merged (the merge base no longer holds
-// lastShipped), so a later "collapse" cannot be used to slip a schema change
-// past this guard; another collapse needs its own reviewed exception.
+// No exceptions. Collapsing history into a new baseline deletes shipped files,
+// so it is refused here and needs its own reviewed, single-use exception
+// (docs/testing-and-ci.md section 7). The 2026-09-26 collapse carried one; it
+// was removed once that collapse had merged, since it could never fire again.
 //
 // Runs on pull_request only. The "Protect main" ruleset makes a pull request
 // the only route to main; a direct push would not be checked.
@@ -25,11 +24,6 @@ import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const JOURNAL = 'migrations/meta/_journal.json'
-
-export const COLLAPSE = {
-  lastShipped: '0029_better_auth_1_7_4_drop_account_issuer.sql',
-  baseline: '0000_baseline.sql',
-}
 
 /** @param {unknown} error */
 const describe = (error) => (error instanceof Error ? error.message : String(error))
@@ -69,44 +63,6 @@ export const journalProblem = (baseText, headText) => {
       return `existing entry ${i} changed`
     }
   }
-  return null
-}
-
-/**
- * Null when the change is the one sanctioned collapse (COLLAPSE): the merge
- * base still holds the old history, every .sql it holds is deleted, the only
- * .sql left is the new baseline, and the journal holds exactly that entry.
- * Otherwise a reason (unused by callers; it keeps the rule readable in tests).
- * @param {(args: string[]) => Buffer} git
- * @param {string} base
- * @param {string[]} changed paths that are not additions
- * @returns {string | null}
- */
-export const collapseProblem = (git, base, changed) => {
-  /** @param {string} ref */
-  const sqlAt = (ref) =>
-    git(['ls-tree', '--name-only', `${ref}:migrations`])
-      .toString('utf8')
-      .split('\n')
-      .filter((name) => name.endsWith('.sql'))
-  let before
-  let after
-  let journal
-  try {
-    before = sqlAt(base)
-    after = sqlAt('HEAD')
-    journal = JSON.parse(git(['show', `HEAD:${JOURNAL}`]).toString('utf8'))
-  } catch {
-    return 'git evidence unavailable'
-  }
-  if (!before.includes(COLLAPSE.lastShipped)) return 'not the 2026-09-26 history'
-  const [baseline, ...others] = after
-  if (baseline !== COLLAPSE.baseline || others.length > 0) return `not exactly ${COLLAPSE.baseline}`
-  if (before.includes(baseline)) return 'the baseline is not new'
-  const deleted = new Set(changed)
-  if (!before.every((name) => deleted.has(`migrations/${name}`))) return 'not every shipped migration was removed'
-  const entries = Array.isArray(journal?.entries) ? journal.entries : []
-  if (entries.length !== 1 || `${entries[0]?.tag}.sql` !== baseline) return 'the journal is not the single baseline entry'
   return null
 }
 
@@ -161,14 +117,6 @@ export const main = ({ argv, eventName, git, log }) => {
         'checkout (fetch-depth: 0) rather than the gate.',
     )
     return 1
-  }
-
-  if (changed.length > 0 && collapseProblem(git, base, changed) === null) {
-    log(
-      'migration immutability: OK (history collapsed into a baseline). Production\'s ' +
-        'd1_migrations ledger must record the baseline before this merges.',
-    )
-    return 0
   }
 
   const refused = changed.filter((path) => path !== JOURNAL)

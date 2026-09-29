@@ -66,7 +66,7 @@ describe('withFreshSlug', () => {
     for (const err of [
       new Error('D1_ERROR', {
         cause: new Error(
-          'UNIQUE constraint failed: lists.food_plan_id: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+          'UNIQUE constraint failed: lists.id, lists.user_id: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
         ),
       }),
       new Error('D1_ERROR', {

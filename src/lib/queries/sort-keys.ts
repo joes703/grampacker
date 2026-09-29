@@ -15,18 +15,12 @@ import type { Category, GearItem, List, ListItemWithGear } from '../types'
 // category was created) collides with an existing row. Reads order by
 // (sortOrder, name), so the collision either ties or rearranges
 // silently.
-//
-// `offset` is for batched callers (CSV import): pass 0 for the first
-// new category in a single client-side gesture, 1 for the next, etc.,
-// so they walk off the end of the existing max without recomputing it
-// against partially-inserted state.
 export function nextCategorySortOrder(
   existing: Pick<Category, 'sortOrder'>[],
-  offset = 0,
 ): number {
   let max = -1
   for (const c of existing) if (c.sortOrder > max) max = c.sortOrder
-  return max + 1 + offset
+  return max + 1
 }
 
 // Next sortOrder slot for a newly-created gear item. Same rationale as
@@ -34,15 +28,12 @@ export function nextCategorySortOrder(
 // compact, so the existing sequence is sparse after any delete, and
 // length-based slot picking ties with an existing row. The (sortOrder,
 // name) read order then silently reshuffles the user's gear library.
-// `offset` is for batched callers (CSV import): pass 0 for the first new
-// row, 1 for the next, etc.
 export function nextGearItemSortOrder(
   existing: Pick<GearItem, 'sortOrder'>[],
-  offset = 0,
 ): number {
   let max = -1
   for (const g of existing) if (g.sortOrder > max) max = g.sortOrder
-  return max + 1 + offset
+  return max + 1
 }
 
 // Next sortOrder slot for a newly-created list. Same sparse-order
@@ -54,11 +45,10 @@ export function nextGearItemSortOrder(
 // optimistic placeholder lands where the server row will.
 export function nextListSortOrder(
   existing: Pick<List, 'sortOrder'>[],
-  offset = 0,
 ): number {
   let max = -1
   for (const l of existing) if (l.sortOrder > max) max = l.sortOrder
-  return max + 1 + offset
+  return max + 1
 }
 
 // Next sortOrder slot for a newly-created list_item, scoped to its list.
@@ -67,9 +57,8 @@ export function nextListSortOrder(
 // placeholder rationale as nextListSortOrder.
 export function nextListItemSortOrder(
   existing: Pick<ListItemWithGear, 'sortOrder'>[],
-  offset = 0,
 ): number {
   let max = -1
   for (const li of existing) if (li.sortOrder > max) max = li.sortOrder
-  return max + 1 + offset
+  return max + 1
 }
