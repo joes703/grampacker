@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
 
-// The add/update/delete/quick-add list-item mutations were inline in
+// The add/update/move/delete/quick-add list-item mutations were inline in
 // ListDetailPage (which has no component test), so this locks the logic the
 // extraction exposed: the correct query helpers are called with the right args,
 // the optimistic helpers are wired to the ['list-items', listId] cache, addNewItem
@@ -267,6 +267,89 @@ describe('useListItemActions', () => {
       await waitFor(() =>
         expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1),
       )
+    })
+  })
+
+  describe('moveItem', () => {
+    // Field-scoped, like updateItem: the gear move used to go through
+    // makeOptimisticUpdate, whose rollback restores the whole array as it was
+    // when the move started - erasing a Packed tick that saved while the move
+    // was in flight. These run against a REAL cache for that reason.
+    function deferred() {
+      let resolve!: () => void
+      let reject!: (e: unknown) => void
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+    const rows = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
+    const row = (qc: QueryClient, id: string) => rows(qc).find((i) => i.id === id)!
+
+    it('sends only the location and writes location + rank optimistically, while the request is in flight', async () => {
+      const move = deferred()
+      h.updateListItem.mockReturnValueOnce(move.promise)
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a', sortOrder: 3 })])
+      const result = renderWith(qc)
+
+      result.current.moveItem.mutate({ itemId: 'a', locationId: 'bag', nextPackSortOrder: 7 })
+
+      await waitFor(() => expect(row(qc, 'a').packingLocationId).toBe('bag'))
+      expect(row(qc, 'a').packSortOrder).toBe(7)
+      expect(row(qc, 'a').sortOrder).toBe(3)
+      expect(h.updateListItem).toHaveBeenCalledWith(LIST_ID, 'a', { packingLocationId: 'bag' })
+      expect(result.current.moveItem.isPending).toBe(true)
+      await act(async () => {
+        move.resolve()
+      })
+    })
+
+    it("a failed move rewinds only the moved row's placement: a Packed tick saved mid-flight survives, on another row or the same one", async () => {
+      const move = deferred()
+      h.updateListItem
+        .mockReturnValueOnce(move.promise)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(
+        ['list-items', LIST_ID],
+        [item({ id: 'a', packingLocationId: 'pocket', packSortOrder: 2 }), item({ id: 'b', packSortOrder: 1 })],
+      )
+      const result = renderWith(qc)
+
+      await act(async () => {
+        result.current.moveItem.mutate({ itemId: 'a', locationId: 'bag', nextPackSortOrder: 9 })
+      })
+      await act(async () => {
+        await result.current.updateItem.mutateAsync({ itemId: 'b', patch: { isPacked: true } })
+        await result.current.updateItem.mutateAsync({ itemId: 'a', patch: { isPacked: true } })
+      })
+      expect(row(qc, 'b').isPacked).toBe(true)
+      expect(row(qc, 'a').packingLocationId).toBe('bag')
+
+      await act(async () => {
+        move.reject(new Error('network'))
+      })
+      await waitFor(() => expect(result.current.moveItem.isError).toBe(true))
+
+      expect(row(qc, 'a')).toMatchObject({ packingLocationId: 'pocket', packSortOrder: 2, isPacked: true })
+      expect(row(qc, 'b').isPacked).toBe(true)
+      expect(toast.showToast).toHaveBeenCalledWith("Couldn't move that item. Please try again.", { type: 'error' })
+    })
+
+    it('invalidates the list-items cache when it settles', async () => {
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a' })])
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+      const result = renderWith(qc)
+
+      await act(async () => {
+        await result.current.moveItem.mutateAsync({ itemId: 'a', locationId: 'bag', nextPackSortOrder: 0 })
+      })
+
+      expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1)
     })
   })
 

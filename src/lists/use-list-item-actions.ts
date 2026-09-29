@@ -11,21 +11,29 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
+import { showToast } from '../lib/toast'
 import { nextUnionPackRankFor } from './pack-rows'
 import type { FoodItemResponse } from '../../shared/food'
 import { randomTempId } from '../lib/random-temp-id'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { type AddItemData } from './use-quick-add-form'
 
+type MoveItemVars = {
+  itemId: string
+  locationId: string | null
+  nextPackSortOrder: number
+}
+
 // List-item write actions for ListDetailPage, lifted out of the page
-// following the GearLibraryPage precedent. These are the four ways the user
+// following the GearLibraryPage precedent. These are the ways the user
 // changes THIS list's contents:
 //   addItem     - add an EXISTING gear item to the list (LibraryPanel)
 //   addNewItem  - Quick Add: create a new gear_item + list_item atomically
 //   updateItem  - patch per-list-item fields (quantity/worn/consumable/packed/ready)
+//   moveItem    - move an item between packing locations
 //   deleteItem  - remove an item from the list
 //
-// All four return RAW useMutation objects so the page's memoized handler layer
+// All of them return RAW useMutation objects so the page's memoized handler layer
 // (sharedGroupProps, onLibraryAdd/Remove, onAddNewItem) can keep reading the
 // referentially-stable `.mutate` through the live binding with []-deps - the
 // mutation wrapper is fresh each render but `.mutate` is stable. Do NOT wrap
@@ -161,6 +169,64 @@ export function useListItemActions(
     },
   })
 
+  // Moving an item between packing locations: the write behind both a
+  // cross-location drag and the row menu's "Move to".
+  //
+  // Field-scoped like updateItem above and moveFood (use-list-food.ts): a failed
+  // move rewinds ONLY the moved row's location + rank, onto the CURRENT row.
+  // makeOptimisticUpdate would restore the whole array as it was when the move
+  // started, which also undoes any other write that landed in the meantime - a
+  // Packed tick on another row that the server has already saved disappears,
+  // and under "Unpacked only" the finished row comes back.
+  //
+  // nextPackSortOrder mirrors the rank the server assigns a move (repo
+  // `nextPackSortOrderInCohort`). Applying only the assignment would park the
+  // row at its OLD rank until the refetch landed, so it would appear at some
+  // arbitrary depth of its new location and then visibly jump to the bottom a
+  // moment later. The caller computes it, because the rank depends on every
+  // row in the destination. sortOrder is deliberately untouched: a move
+  // rearranges your pack, not your document.
+  const moveItem = useMutation({
+    mutationKey: mutationKeys.moveListItem(listId),
+    mutationFn: ({ itemId, locationId }: MoveItemVars) =>
+      updateListItem(listId, itemId, { packingLocationId: locationId }),
+    onMutate: async ({ itemId, locationId, nextPackSortOrder }: MoveItemVars) => {
+      await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
+      const row = qc
+        .getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
+        ?.find((i) => i.id === itemId)
+      if (!row) return undefined
+      const previousPlacement = {
+        packingLocationId: row.packingLocationId,
+        packSortOrder: row.packSortOrder,
+      }
+      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+        curr?.map((i) =>
+          i.id === itemId
+            ? { ...i, packingLocationId: locationId, packSortOrder: nextPackSortOrder }
+            : i,
+        ),
+      )
+      return { itemId, previousPlacement }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) {
+        qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
+          curr?.map((i) => (i.id === ctx.itemId ? { ...i, ...ctx.previousPlacement } : i)),
+        )
+      }
+      // Toasted for the reorder reason rather than the delete one (see the rule
+      // in src/lib/mutation-error-handler.ts): this is the write behind a DRAG,
+      // and a rollback that sends the row back where it came from is
+      // indistinguishable from the user having dragged it back themselves. The
+      // row-menu "Move to" path shares the mutation and is no more obvious.
+      showToast("Couldn't move that item. Please try again.", { type: 'error' })
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
+    },
+  })
+
   // invalidateKeys covers a cascade the client cannot see locally: a list item
   // can BACK a packing location, and packing_locations.container_list_item_id
   // is ON DELETE CASCADE, so deleting such a row deletes the location server-
@@ -211,5 +277,5 @@ export function useListItemActions(
     },
   })
 
-  return { addItem, updateItem, deleteItem, addNewItem }
+  return { addItem, updateItem, moveItem, deleteItem, addNewItem }
 }

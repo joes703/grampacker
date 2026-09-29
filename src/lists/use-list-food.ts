@@ -119,9 +119,9 @@ export function useListFood(listId: string) {
   })
 
   // Moving a food row between packing locations - the write behind both a
-  // cross-location drag of a food row and its row menu. Mirrors moveItemMut:
-  // the caller supplies the destination's next UNION rank so the optimistic
-  // row lands where the refetch will confirm it.
+  // cross-location drag of a food row and its row menu. Mirrors
+  // useListItemActions' moveItem: the caller supplies the destination's next
+  // UNION rank so the optimistic row lands where the refetch will confirm it.
   type MoveFoodVars = {
     foodId: string
     locationId: string | null
@@ -182,8 +182,9 @@ export function useListFood(listId: string) {
             : curr,
         )
       }
-      // Same toast rule as moveItemMut: this is the write behind a drag, and
-      // a silent rollback is indistinguishable from the user dragging back.
+      // Same toast rule as moveItem (use-list-item-actions.ts): this is the
+      // write behind a drag, and a silent rollback is indistinguishable from
+      // the user dragging back.
       showToast("Couldn't move that item. Please try again.", { type: 'error' })
     },
     onSettled: () => {
