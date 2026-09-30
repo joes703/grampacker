@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, waitFor, within } from '@testing-library/react'
+import { act, render, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
+import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
 
@@ -92,13 +93,14 @@ function renderFoodView() {
       mutations: { retry: false },
     },
   })
-  return import('./FoodView').then(({ default: FoodView }) =>
-    render(
+  return import('./FoodView').then(({ default: FoodView }) => ({
+    qc,
+    ...render(
       <QueryClientProvider client={qc}>
         <FoodView listId={listId} />
       </QueryClientProvider>,
     ),
-  )
+  }))
 }
 
 // Scoped to the day-grid's own "Day 1" region: once the add form is open its
@@ -332,6 +334,112 @@ describe('FoodView days-input destructive guards', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(h.setFoodDays).toHaveBeenCalledWith(listId, 3)
     confirmSpy.mockRestore()
+  })
+})
+
+// The day write is not optimistic, so the box holds a typed number the server
+// has not accepted. Once the write settles, either way, the box must show the
+// trip length the cache holds, not what was typed.
+describe('FoodView days-input after the write settles', () => {
+  async function commitDays(value: string) {
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, value)
+    await user.tab()
+    return input
+  }
+
+  it('returns to the saved length when the server rejects the change', async () => {
+    h.setFoodDays.mockRejectedValue(new ApiError(400, 'Bad request'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toHaveValue(3))
+  })
+
+  it('shows the refetched length, not a stale copy, when the rejected write saw it move', async () => {
+    // The write refetches first; here another tab has already made it 4 days.
+    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 4 })
+    h.setFoodDays.mockRejectedValue(new ApiError(400, 'Bad request'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toHaveValue(4))
+  })
+
+  it('shows the new length after a successful change', async () => {
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
+    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 5 })
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    await waitFor(() => expect(input).toBeEnabled())
+    expect(input).toHaveValue(5)
+  })
+
+  it('keeps the saved length when the read after a successful change fails', async () => {
+    // Initial read and the pre-write refetch say 3; the PUT succeeds with 5;
+    // the follow-up read fails. Invalidation swallows that failure, so the
+    // box must rely on the PUT's own answer, not fall back to the old 3.
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
+    h.fetchListFood
+      .mockResolvedValueOnce(food)
+      .mockResolvedValueOnce(food)
+      .mockRejectedValue(new Error('network'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(input).toBeEnabled())
+    expect(input).toHaveValue(5)
+  })
+
+  it('keeps the saved length when an older read lands after leaving the view', async () => {
+    // A focus refetch starts while a slow PUT is pending and reads the old 3
+    // days. The user leaves the view, so invalidation no longer cancels that
+    // inactive read. The PUT then answers 5, and the stale read lands last.
+    let resolvePut: (value: ListFoodResponse) => void = () => {}
+    let resolveLateRead: (value: ListFoodResponse) => void = () => {}
+    h.setFoodDays.mockReturnValue(new Promise((r) => { resolvePut = r }))
+    h.fetchListFood
+      .mockResolvedValueOnce(food)
+      .mockResolvedValueOnce(food)
+      .mockReturnValueOnce(new Promise((r) => { resolveLateRead = r }))
+      .mockResolvedValue({ ...food, dayCount: 5 })
+    const { qc, unmount } = await renderFoodView()
+    await commitDays('5')
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
+
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(3))
+    unmount()
+    focusManager.setFocused(undefined)
+
+    await act(async () => resolvePut({ ...food, dayCount: 5 }))
+    await act(async () => resolveLateRead(food))
+
+    await waitFor(() =>
+      expect(qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))?.dayCount).toBe(5),
+    )
+    // Settle: the stale read must not land after the check either.
+    await act(async () => {})
+    expect(qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))?.dayCount).toBe(5)
+  })
+
+  it('follows the server when a successful write is not what it reports afterwards', async () => {
+    // The write succeeded, but the follow-up read still says 3 days (another
+    // tab changed it back). The box must not keep claiming 5.
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
+    h.fetchListFood.mockResolvedValue(food)
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toBeEnabled())
+    await waitFor(() => expect(input).toHaveValue(3))
   })
 })
 

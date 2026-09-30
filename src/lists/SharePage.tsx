@@ -66,32 +66,41 @@ export default function SharePage() {
 
   // data is undefined while loading, null for "not a shared list" (the
   // fetcher maps ONLY the 404 to null), and the share otherwise. Real
-  // outages (network, 5xx) reject and land in isError below.
-  const { data: share, isLoading, isError } = useQuery<SharedListResponse | null>({
+  // outages (network, 5xx) reject and land in isLoadingError below.
+  const { data: share, isPending, isLoadingError } = useQuery<SharedListResponse | null>({
     queryKey: queryKeys.sharedList(slug),
     queryFn: () => fetchSharedList(slug!),
     enabled: Boolean(slug),
   })
   useDocumentTitle(share?.list.name ?? null)
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-sm text-gray-500">Loading…</p>
-      </div>
-    )
-  }
-
+  // Failure, then loading, then not-found (AGENTS.md), because "List not
+  // found" is a claim only a settled answer supports.
+  // isLoadingError, not isError: v5 sets isError after a failed BACKGROUND
+  // refetch too, while keeping the data, and that must not replace a
+  // rendered share with the error panel.
   // A real outage is distinct from a bad slug: showing "List not found"
   // for a transient error would mislead the viewer into thinking the
   // owner stopped sharing.
-  if (isError) {
+  if (isLoadingError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-base font-medium text-gray-700">Couldn't load list</p>
           <p className="mt-1 text-sm text-gray-500">Check your connection and try again.</p>
         </div>
+      </div>
+    )
+  }
+
+  // isPending, not isLoading: v5's isLoading is `isPending && isFetching`, and
+  // a fetch paused offline (or between retries in a hidden tab) has
+  // fetchStatus 'paused', so isLoading was false with no data and the page
+  // fell through to "List not found".
+  if (isPending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-500">Loading…</p>
       </div>
     )
   }

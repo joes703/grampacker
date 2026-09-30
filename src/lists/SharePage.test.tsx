@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { SharedListResponse } from '../lib/types'
 
@@ -15,7 +15,7 @@ vi.mock('../lib/queries', async (importOriginal) => ({
   fetchSharedList: vi.fn(),
 }))
 
-import { fetchSharedList } from '../lib/queries'
+import { fetchSharedList, queryKeys } from '../lib/queries'
 import SharePage from './SharePage'
 
 // jsdom has no matchMedia; SharePage -> useIsBelowLg() reads it during render.
@@ -36,6 +36,9 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
+  // onlineManager is module-global; the offline test would otherwise leave
+  // every later test's fetch paused.
+  onlineManager.setOnline(true)
 })
 
 function share(over: {
@@ -72,7 +75,7 @@ const tentItem: SharedListResponse['items'][number] = {
   },
 }
 
-function renderShareView() {
+function renderShareView(): QueryClient {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
@@ -83,6 +86,7 @@ function renderShareView() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return qc
 }
 
 describe('SharePage draft banner', () => {
@@ -274,6 +278,38 @@ describe('SharePage error and not-found states', () => {
     vi.mocked(fetchSharedList).mockResolvedValueOnce(null)
     renderShareView()
     expect(await screen.findByText('List not found')).toBeTruthy()
+  })
+
+  it('keeps loading, not "List not found", while the fetch is paused offline', async () => {
+    // v5's isLoading is isPending && isFetching. A fetch paused by
+    // onlineManager has fetchStatus 'paused', so isLoading is false with no
+    // data - which used to fall through to the not-found claim.
+    vi.mocked(fetchSharedList).mockResolvedValue(share())
+    onlineManager.setOnline(false)
+    renderShareView()
+
+    expect(await screen.findByText('Loading…')).toBeTruthy()
+    expect(screen.queryByText('List not found')).toBeNull()
+    expect(fetchSharedList).not.toHaveBeenCalled()
+
+    act(() => onlineManager.setOnline(true))
+    expect(await screen.findByText('Trip')).toBeTruthy()
+  })
+
+  it('keeps showing the list when a background refetch fails', async () => {
+    // v5 sets isError after a failed BACKGROUND refetch while keeping the
+    // data, so gating on isError would swap a rendered share for the error
+    // panel. Only a failed first load is "Couldn't load list".
+    vi.mocked(fetchSharedList).mockResolvedValueOnce(share())
+    const qc = renderShareView()
+    expect(await screen.findByText('Trip')).toBeTruthy()
+
+    vi.mocked(fetchSharedList).mockRejectedValueOnce(new Error('gateway timeout'))
+    await act(() => qc.refetchQueries())
+    await waitFor(() => expect(qc.getQueryState(queryKeys.sharedList('abc123'))?.status).toBe('error'))
+
+    expect(screen.getByText('Trip')).toBeTruthy()
+    expect(screen.queryByText("Couldn't load list")).toBeNull()
   })
 })
 

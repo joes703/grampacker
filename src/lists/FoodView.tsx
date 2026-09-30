@@ -77,7 +77,19 @@ export default function FoodView({ listId }: { listId: string }) {
       return setFoodDays(listId, days)
     },
     meta: { errorToast: "Couldn't change the trip length. Please try again." },
-    onSuccess: invalidateFood,
+    // The PUT answers with the whole validated food document, so it goes
+    // straight into the cache. The days box lets go of its typed draft when
+    // this settles, and must land on the new length even if the follow-up
+    // read fails or is paused offline - invalidation swallows both.
+    // Cancel first: a read that started before the PUT answered carries the
+    // old length, and once the view unmounts, invalidation no longer cancels
+    // it, so it would land after this write and silently undo it.
+    onSuccess: async (food) => {
+      const key = queryKeys.listFood(listId)
+      await qc.cancelQueries({ queryKey: key })
+      qc.setQueryData(key, food)
+      invalidateFood()
+    },
   })
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),
@@ -175,7 +187,7 @@ export default function FoodView({ listId }: { listId: string }) {
       food={listFoodQuery.data}
       weightUnit={weightUnit}
       busy={foodBusy}
-      onSetDays={(days) => foodDaysMut.mutate(days)}
+      onSetDays={(days, onSettled) => foodDaysMut.mutate(days, { onSettled })}
       onAddItem={(input, onSuccess) =>
         foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
       }
@@ -216,8 +228,8 @@ type FoodDocumentProps = {
   busy: boolean
   /** Called with the new length. The caller refetches before applying, so a
    *  shortening decided against a stale snapshot is narrowed to one round
-   *  trip. */
-  onSetDays: (days: number) => void
+   *  trip. `onSettled` runs once the write has succeeded or failed. */
+  onSetDays: (days: number, onSettled: () => void) => void
   onAddItem: (
     input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
     onSuccess: () => void,
@@ -246,14 +258,11 @@ function FoodDocument({
   onSetItemQuantity,
   onSetItemPerMeal,
 }: FoodDocumentProps) {
-  const [daysDraft, setDaysDraft] = useState(String(food.dayCount))
-  // Follow the server. Without this a rejected day change leaves the input
-  // showing a length the list does not have.
-  const [lastSeenDayCount, setLastSeenDayCount] = useState(food.dayCount)
-  if (food.dayCount !== lastSeenDayCount) {
-    setLastSeenDayCount(food.dayCount)
-    setDaysDraft(String(food.dayCount))
-  }
+  // What the user has typed into the days box, or null to show the server's
+  // length. The day write is not optimistic, so a typed number is only a
+  // request: it is dropped once the write settles, and on every revert, so
+  // the box never keeps showing a length the list does not have.
+  const [daysDraft, setDaysDraft] = useState<string | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const editingItem = food.items.find((item) => item.id === editingItemId) ?? null
 
@@ -343,10 +352,11 @@ function FoodDocument({
                   type="number"
                   min={0}
                   max={FOOD_DAY_CAP}
-                  value={daysDraft}
+                  value={daysDraft ?? String(food.dayCount)}
                   disabled={busy}
                   onChange={(e) => setDaysDraft(e.target.value)}
                   onBlur={() => {
+                    if (daysDraft === null) return
                     // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
                     // every slot and every placement on the list - so clearing the
                     // box to retype it would silently destroy the trip.
@@ -358,10 +368,13 @@ function FoodDocument({
                       next < 0 ||
                       next > FOOD_DAY_CAP
                     ) {
-                      setDaysDraft(String(food.dayCount))
+                      setDaysDraft(null)
                       return
                     }
-                    if (next === food.dayCount) return
+                    if (next === food.dayCount) {
+                      setDaysDraft(null)
+                      return
+                    }
                     // Shrinking throws away the slots beyond the new count, and
                     // with them their placements. Ask, but only when there is
                     // actually something to lose.
@@ -380,11 +393,11 @@ function FoodDocument({
                           'Your food items stay on the list. Continue?',
                       )
                       if (!ok) {
-                        setDaysDraft(String(food.dayCount))
+                        setDaysDraft(null)
                         return
                       }
                     }
-                    onSetDays(next)
+                    onSetDays(next, () => setDaysDraft(null))
                   }}
                   className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
                   aria-label="Trip length in days"
