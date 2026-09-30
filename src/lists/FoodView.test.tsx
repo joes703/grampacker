@@ -335,6 +335,60 @@ describe('FoodView days-input destructive guards', () => {
   })
 })
 
+// The day write is not optimistic, so the box holds a typed number the server
+// has not accepted. Once the write settles, either way, the box must show the
+// trip length the cache holds, not what was typed.
+describe('FoodView days-input after the write settles', () => {
+  async function commitDays(value: string) {
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, value)
+    await user.tab()
+    return input
+  }
+
+  it('returns to the saved length when the server rejects the change', async () => {
+    h.setFoodDays.mockRejectedValue(new ApiError(400, 'Bad request'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toHaveValue(3))
+  })
+
+  it('shows the refetched length, not a stale copy, when the rejected write saw it move', async () => {
+    // The write refetches first; here another tab has already made it 4 days.
+    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 4 })
+    h.setFoodDays.mockRejectedValue(new ApiError(400, 'Bad request'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toHaveValue(4))
+  })
+
+  it('shows the new length after a successful change', async () => {
+    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 5 })
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    await waitFor(() => expect(input).toBeEnabled())
+    expect(input).toHaveValue(5)
+  })
+
+  it('follows the server when a successful write is not what it reports afterwards', async () => {
+    // The write succeeded, but the follow-up read still says 3 days (another
+    // tab changed it back). The box must not keep claiming 5.
+    h.fetchListFood.mockResolvedValue(food)
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(input).toBeEnabled())
+    await waitFor(() => expect(input).toHaveValue(3))
+  })
+})
+
 describe('FoodView reschedule', () => {
   it('saves a reschedule with the new slot selection', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
