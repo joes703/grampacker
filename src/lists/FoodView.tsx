@@ -77,10 +77,14 @@ export default function FoodView({ listId }: { listId: string }) {
       return setFoodDays(listId, days)
     },
     meta: { errorToast: "Couldn't change the trip length. Please try again." },
-    // Returned, not fired and forgotten: the mutation stays pending until the
-    // refetch lands, so the days box (which lets go of its typed draft when
-    // this settles) goes straight to the new length without flashing the old.
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) }),
+    // The PUT answers with the whole validated food document, so it goes
+    // straight into the cache. The days box lets go of its typed draft when
+    // this settles, and must land on the new length even if the follow-up
+    // read fails or is paused offline - invalidation swallows both.
+    onSuccess: (food) => {
+      qc.setQueryData(queryKeys.listFood(listId), food)
+      invalidateFood()
+    },
   })
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),

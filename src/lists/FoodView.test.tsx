@@ -368,6 +368,7 @@ describe('FoodView days-input after the write settles', () => {
   })
 
   it('shows the new length after a successful change', async () => {
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
     h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 5 })
     await renderFoodView()
     const input = await commitDays('5')
@@ -376,9 +377,27 @@ describe('FoodView days-input after the write settles', () => {
     expect(input).toHaveValue(5)
   })
 
+  it('keeps the saved length when the read after a successful change fails', async () => {
+    // Initial read and the pre-write refetch say 3; the PUT succeeds with 5;
+    // the follow-up read fails. Invalidation swallows that failure, so the
+    // box must rely on the PUT's own answer, not fall back to the old 3.
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
+    h.fetchListFood
+      .mockResolvedValueOnce(food)
+      .mockResolvedValueOnce(food)
+      .mockRejectedValue(new Error('network'))
+    await renderFoodView()
+    const input = await commitDays('5')
+
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(input).toBeEnabled())
+    expect(input).toHaveValue(5)
+  })
+
   it('follows the server when a successful write is not what it reports afterwards', async () => {
     // The write succeeded, but the follow-up read still says 3 days (another
     // tab changed it back). The box must not keep claiming 5.
+    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
     h.fetchListFood.mockResolvedValue(food)
     await renderFoodView()
     const input = await commitDays('5')
