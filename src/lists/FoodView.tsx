@@ -81,8 +81,13 @@ export default function FoodView({ listId }: { listId: string }) {
     // straight into the cache. The days box lets go of its typed draft when
     // this settles, and must land on the new length even if the follow-up
     // read fails or is paused offline - invalidation swallows both.
-    onSuccess: (food) => {
-      qc.setQueryData(queryKeys.listFood(listId), food)
+    // Cancel first: a read that started before the PUT answered carries the
+    // old length, and once the view unmounts, invalidation no longer cancels
+    // it, so it would land after this write and silently undo it.
+    onSuccess: async (food) => {
+      const key = queryKeys.listFood(listId)
+      await qc.cancelQueries({ queryKey: key })
+      qc.setQueryData(key, food)
       invalidateFood()
     },
   })

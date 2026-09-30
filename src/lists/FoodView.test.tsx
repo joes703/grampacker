@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, waitFor, within } from '@testing-library/react'
+import { act, render, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
+import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
 
@@ -92,13 +93,14 @@ function renderFoodView() {
       mutations: { retry: false },
     },
   })
-  return import('./FoodView').then(({ default: FoodView }) =>
-    render(
+  return import('./FoodView').then(({ default: FoodView }) => ({
+    qc,
+    ...render(
       <QueryClientProvider client={qc}>
         <FoodView listId={listId} />
       </QueryClientProvider>,
     ),
-  )
+  }))
 }
 
 // Scoped to the day-grid's own "Day 1" region: once the add form is open its
@@ -392,6 +394,39 @@ describe('FoodView days-input after the write settles', () => {
     await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(3))
     await waitFor(() => expect(input).toBeEnabled())
     expect(input).toHaveValue(5)
+  })
+
+  it('keeps the saved length when an older read lands after leaving the view', async () => {
+    // A focus refetch starts while a slow PUT is pending and reads the old 3
+    // days. The user leaves the view, so invalidation no longer cancels that
+    // inactive read. The PUT then answers 5, and the stale read lands last.
+    let resolvePut: (value: ListFoodResponse) => void = () => {}
+    let resolveLateRead: (value: ListFoodResponse) => void = () => {}
+    h.setFoodDays.mockReturnValue(new Promise((r) => { resolvePut = r }))
+    h.fetchListFood
+      .mockResolvedValueOnce(food)
+      .mockResolvedValueOnce(food)
+      .mockReturnValueOnce(new Promise((r) => { resolveLateRead = r }))
+      .mockResolvedValue({ ...food, dayCount: 5 })
+    const { qc, unmount } = await renderFoodView()
+    await commitDays('5')
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
+
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(3))
+    unmount()
+    focusManager.setFocused(undefined)
+
+    await act(async () => resolvePut({ ...food, dayCount: 5 }))
+    await act(async () => resolveLateRead(food))
+
+    await waitFor(() =>
+      expect(qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))?.dayCount).toBe(5),
+    )
+    // Settle: the stale read must not land after the check either.
+    await act(async () => {})
+    expect(qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))?.dayCount).toBe(5)
   })
 
   it('follows the server when a successful write is not what it reports afterwards', async () => {
