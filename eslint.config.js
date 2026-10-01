@@ -83,7 +83,7 @@ export default tseslint.config(
     },
   },
   {
-    // Security-by-construction import boundary (REWRITE_PLAN.md section 5):
+    // Security-by-construction import boundary (SECURITY.md, "Authorization boundary"):
     // handlers receive user-scoped repositories from c.get('repos'),
     // attached by requireSession. They must not reach the DB, the schema,
     // or auth directly. Fail closed: the boundary covers ALL server code;

@@ -57,7 +57,7 @@ export type ListItemRow = {
 }
 
 // The joined shape the routes serialize: membership row + its gear row
-// (embedded gear_item response shape, REWRITE_PLAN.md section 5).
+// (the embedded gear_item response shape).
 export type ListItemWithGear = { item: ListItemRow; gear: GearItemRow }
 
 export type UpdateListItemPatch = {
@@ -321,7 +321,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     },
 
     // Parent-path consistency: the item must belong to THIS list AND
-    // this user, or the call 404s (REWRITE_PLAN.md section 6). The
+    // this user, or the call 404s (AGENTS.md Invariants). The
     // worn/consumable exclusivity is checked against the MERGED row in
     // code (explicit and testable); the DB CHECK stays as the backstop.
     async update(

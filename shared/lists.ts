@@ -104,7 +104,7 @@ export type CreateListFromSelectionRequest = z.infer<
 
 // ---------------------------------------------------------------- list items
 
-// Embedded gear_item response shape (REWRITE_PLAN.md section 5): the old
+// Embedded gear_item response shape: the old
 // SPA's ListItemWithGear carried the joined gear row, so cache keys and
 // invalidation port unchanged. gearItemId is kept alongside gearItem.id
 // for parity with the old row shape.

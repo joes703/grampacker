@@ -18,9 +18,9 @@ export type RateVerdict =
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 
-// Day-one abuse posture (REWRITE_PLAN.md section 13, decision 2): fixed-window
-// counters per scope+key in the rate_limits table. Plain SQLite, no
-// Cloudflare-only primitives - the WAF is hardening on top, not the mechanism.
+// Fixed-window counters per scope+key in the rate_limits table, for semantic
+// budgets only (things only the app can see). Volumetric limits belong at the
+// edge (SECURITY.md, "Abuse and rate limiting").
 //
 // This is now the ONLY rate limiting in the app, and that is easy to get wrong:
 // better-auth's own limiter is disabled (authOptions), and the magic-link plugin

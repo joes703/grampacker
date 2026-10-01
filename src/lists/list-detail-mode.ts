@@ -14,7 +14,7 @@
 // attached - what you carry, and which meals you eat it at - not a meal
 // planner. There are no dietary needs, preferences or restrictions here, and
 // an earlier version of this comment claimed all three; none of them has ever
-// existed in this build. See docs/food-view-design.md, a dated record.
+// existed in this build.
 export type ListDetailMode = 'edit' | 'pack' | 'food'
 
 // The human-facing names. NOTE: ListViewNav holds its own VIEWS array with
