@@ -581,10 +581,8 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         .returning({ id: packingLocations.id })
       // The DELETE goes last so the reassignments are computed and applied
       // while the relationship still resolves. Anything the read missed (an
-      // item added to this location between the read and the batch) still
-      // falls to Unassigned via the FK's SET NULL - keeping its old rank, and
-      // failing the unique index if that rank is taken, which again rolls the
-      // whole thing back rather than corrupting the cohort.
+      // item added to this location between the read and the batch) never
+      // reaches it: the census above counts it and rolls the whole batch back.
       const [first, ...rest] = [...reassign, census, censusCleanup, remove]
       if (!first) return 'not_found' // unreachable: `remove` is always present
       let results

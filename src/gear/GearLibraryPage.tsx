@@ -88,6 +88,7 @@ type DialogState =
   // (CSV import completion).
   | { type: 'add-category'; session: number; name: string; error: string | null; pending: boolean }
   | { type: 'bulk-move' }
+  | { type: 'bulk-delete' }
   | { type: 'import-explainer' }
   | { type: 'import-preview'; rows: GearCsvRow[] }
   | { type: 'import-error'; message: string }
@@ -346,8 +347,9 @@ export default function GearLibraryPage() {
   // in a dedicated hook; it owns the gear-specific bulk fan-out lifecycle and the
   // failure toast. The page keeps selection UI state (selectMode / selectedIds /
   // exitSelectMode); select mode is exited on success at the mutate call site,
-  // so the hook never touches selection state. The move dialog closes on the
-  // click, before the write settles, so its failure toast is not hidden.
+  // so the hook never touches selection state. The move dialog and the delete
+  // confirm close on the click, before the write settles, so a failure toast
+  // is not hidden.
   const { bulkDelete, bulkMove } = useGearBulkActions()
 
   // Create a list from the current selection. The server assigns the new
@@ -714,7 +716,7 @@ export default function GearLibraryPage() {
           onCreateList={() => setDialog({ type: 'create-list-from-selection', saveError: null })}
           busy={bulkDelete.isPending || bulkMove.isPending}
           onMoveToCategory={() => setDialog({ type: 'bulk-move' })}
-          onDelete={() => bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })}
+          onDelete={() => setDialog({ type: 'bulk-delete' })}
         />
       )}
 
@@ -930,6 +932,22 @@ export default function GearLibraryPage() {
             const target = dialog.item
             setDialog(null)
             removeItem.mutate(target.id)
+          }}
+        />
+      )}
+
+      {dialog?.type === 'bulk-delete' && (
+        <ConfirmDialog
+          title="Delete selected items"
+          message={`This will remove ${selectedIds.size} ${selectedIds.size === 1 ? 'item' : 'items'} from your inventory and from any list they appear on. This cannot be undone.`}
+          confirmLabel="Delete"
+          dangerous
+          onCancel={() => setDialog(null)}
+          // Close-then-mutate, as the single-item delete does. Select mode stays
+          // until success, so a failed delete leaves the selection to retry.
+          onConfirm={() => {
+            setDialog(null)
+            bulkDelete.mutate(Array.from(selectedIds), { onSuccess: exitSelectMode })
           }}
         />
       )}
