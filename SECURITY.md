@@ -33,8 +33,8 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 
 - better-auth cookie sessions: HttpOnly, SameSite=Strict, Secure in
   production (https baseURL), 30-day sliding expiry - a deliberate
-  convenience call for low-sensitivity data: nothing stored is sensitive, so
-  convenience wins.
+  convenience call: the gear and list content a session reaches is
+  low-sensitivity, so a long session wins over frequent sign-ins.
   No tokens in localStorage anywhere.
 - **Passwordless.** grampacker stores no password, and there is no reset,
   change, or verify flow to attack. There are exactly two ways to get a
