@@ -380,12 +380,13 @@ function FoodDocument({
                     // actually something to lose.
                     //
                     // KNOWN GAP, stated rather than papered over: this decides from
-                    // the client's cached food, which is up to 30 seconds stale and
-                    // does not refetch on focus. Another tab that schedules food onto
-                    // a later day inside that window would be silently trimmed. The
-                    // refetch below shrinks the window to the round trip; closing it
-                    // properly needs a revision check on the write, which is more
-                    // machinery than a single-user app has earned yet.
+                    // the client's cached food. It refetches on focus, but a tab that
+                    // stays focused keeps whatever it last read, and the write's
+                    // preflight refetch does not re-ask. Another tab or device that
+                    // schedules food onto a later day meanwhile would be silently
+                    // trimmed. Closing it properly needs a revision check on
+                    // the write, which is more machinery than a single-user app has
+                    // earned yet (SECURITY.md).
                     if (next < food.dayCount && losesWorkBelow(food, next)) {
                       const ok = window.confirm(
                         `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +

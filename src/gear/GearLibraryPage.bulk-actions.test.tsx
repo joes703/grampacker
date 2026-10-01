@@ -5,7 +5,7 @@
 // program for THIS file, so each matcher-using test stays self-typed.
 import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -382,11 +382,31 @@ describe('GearLibraryPage bulk success handling', () => {
     })
   })
 
-  it('exits select mode after a successful bulk delete', async () => {
+  it('asks before a bulk delete, and Cancel deletes nothing', async () => {
     renderPage()
     await selectOneItem()
 
     fireEvent.click(screen.getByRole('button', { name: 'Bulk delete' }))
+
+    expect(h.bulkDeleteMutate).not.toHaveBeenCalled()
+    const confirm = screen.getByRole('dialog', { name: 'Delete selected items' })
+    expect(within(confirm).getByText(/remove 1 item from your inventory/)).toBeInTheDocument()
+
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Delete selected items' })).not.toBeInTheDocument(),
+    )
+    expect(h.bulkDeleteMutate).not.toHaveBeenCalled()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
+
+  it('exits select mode after a confirmed bulk delete succeeds', async () => {
+    renderPage()
+    await selectOneItem()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     expect(h.bulkDeleteMutate).toHaveBeenCalledWith(['g1'], expect.objectContaining({ onSuccess: expect.any(Function) }))
     await waitFor(() => expect(screen.queryByText('1 selected')).not.toBeInTheDocument())
