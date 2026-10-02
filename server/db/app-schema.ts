@@ -17,13 +17,12 @@ import { user } from './auth-schema'
 // App-owned tables. Auth tables live in auth-schema.ts (CLI-generated,
 // never hand-edited); everything the app itself owns goes here.
 //
-// Conventions (SECURITY.md, REWRITE_PLAN.md section 6): every app table
-// carries user_id with ON DELETE CASCADE from user; child references are
-// composite same-owner FKs (ADR 12 continuity) anchored on UNIQUE(id,
-// user_id); timestamps are epoch-ms integers (repos convert to ISO at the
-// DTO edge); CHECKs mirror the old Postgres schema's bounds as the
-// backstop against programmer error - friendly validation lives in the
-// shared zod DTOs.
+// Conventions (SECURITY.md): every app table carries user_id with ON DELETE
+// CASCADE from user; child references are composite same-owner FKs anchored
+// on UNIQUE(id, user_id), so a child can never point at another user's row;
+// timestamps are epoch-ms integers (repos convert to ISO at the DTO edge);
+// CHECKs mirror the old Postgres schema's bounds as the backstop against
+// programmer error - friendly validation lives in the shared zod DTOs.
 
 // Fixed-window rate limit counters, one row per scope+client key
 // (e.g. "sign-in:203.0.113.10"). Plain SQLite, written through a single

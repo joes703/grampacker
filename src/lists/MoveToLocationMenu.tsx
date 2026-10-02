@@ -63,8 +63,8 @@ type BaseProps = {
    *  library, not to a packing checklist". That rule is deliberately
    *  overturned: a real trip showed that noticing a wrong weight while
    *  packing meant leaving the view, fixing it elsewhere and finding your
-   *  place again - which is exactly the shuffle the one-page work exists to
-   *  end (docs/one-page-list-design.md).
+   *  place again - which is exactly the shuffle the one-page work (PR #200)
+   *  exists to end.
    *
    *  Optional, and food rows pass none: food is authored in the Food view,
    *  the same reason they pass no onRemoveFromList. */

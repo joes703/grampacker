@@ -67,6 +67,7 @@ GitHub Actions secrets, never locally.
 
 A ground-up rewrite of
 [grampacker-supabase](https://github.com/joes703/grampacker-supabase), which is
-archived and read-only. The rewrite is finished;
-[REWRITE_PLAN.md](./REWRITE_PLAN.md) is kept as the record of what was decided
-and why. Deferred ideas live in [PARKED.md](./PARKED.md).
+archived and read-only. The rewrite is finished. Its plan, reviews and audits
+were removed from the tree on 2026-10-01 and remain in git history (for
+example `git show 89e4f1c:REWRITE_PLAN.md`). Deferred ideas live in
+[PARKED.md](./PARKED.md).

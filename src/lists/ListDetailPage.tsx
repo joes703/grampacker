@@ -1697,7 +1697,7 @@ function ListDetailInner({
 
             Pack used to hide this entirely so packing got the focus. A real
             trip retired that argument: adding or reweighing one item meant
-            leaving the view and coming back. See docs/one-page-list-design.md.
+            leaving the view and coming back.
 
             But Pack's aside starts at xl, not lg. At 1024px the shell's 32px
             padding leaves 992px; minus a 320px aside and the 16px gap the

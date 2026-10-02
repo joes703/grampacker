@@ -226,10 +226,11 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
 - **Reference, kept current but not policy:** `README.md`, `STACK.md`,
   `PARKED.md`.
 - **Dated records, never cited as authority and never updated:**
-  `REWRITE_PLAN.md`, `docs/superpowers/plans/`, `.planning/`, `docs/audits/`,
-  the review docs, and design docs marked shipped or superseded. Before
-  de-authorizing one, move any live gap it describes into `SECURITY.md`
-  (defects, accepted risks) or `PARKED.md` (deferred ideas).
+  `docs/passwordless-auth-design.md`, and any new plan, review or design doc
+  once it ships. Older plans, reviews and audits were removed on 2026-10-01
+  and live only in git history (last present at `89e4f1c`). Before
+  de-authorizing or deleting one, move any live gap it describes into
+  `SECURITY.md` (defects, accepted risks) or `PARKED.md` (deferred ideas).
 - Platform facts above (D1 limits, Hono, Drizzle, Tailwind) are specific on
   purpose; do not soften them, but re-verify one against the current
   dependency before relying on it in a new way.

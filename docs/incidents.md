@@ -48,7 +48,7 @@ failure of a large batch in prod as possibly THIS before debugging SQL. The
 worst-case list duplicate has grown since this was first measured; no
 maxed-out duplicate has been wire-verified in prod.
 
-Re-checked 2026-09-10 (audit F3), because a comment in
+Re-checked 2026-09-10 (the engineering audit), because a comment in
 `server/repos/pack-reorder.ts` had come to assert the opposite - that every
 batched statement counts - and the two readings drove opposite designs
 (per-row inserts in import/duplicate vs chunked multi-row writes in the pack
@@ -191,9 +191,10 @@ toast. Supporting detail:
   commit (the connection can drop after the write lands, and `apiFetch` also
   rejects when a 200 fails DTO validation). So "Couldn't confirm...", not
   "Couldn't delete...", and on a non-idempotent POST advise a refresh before
-  retrying. This is the standard for new and touched code: PR 4.6 applied it
-  to the gear and list-item paths and deliberately left list creation, list
-  duplication, Quick Add and food creation still saying "Please try again"
+  retrying. This is the standard for new and touched code: the 2026-08
+  remediation applied it to the gear and list-item paths and deliberately
+  left list creation, list duplication, Quick Add and food creation still
+  saying "Please try again"
   (`use-current-list-actions.ts`, `use-list-item-actions.ts`, and the food
   mutations in `ListDetailPage.tsx`). Sweeping those is unclaimed work; do not
   cite them as precedent.

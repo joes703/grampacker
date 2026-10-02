@@ -371,7 +371,7 @@ describe('creating a new item while packing', () => {
 // showed that costs more than it buys: adding or reweighing one item meant
 // leaving the view. The picker now sits beside Pack too - but at xl, not lg,
 // because at 1024px a 320px aside leaves 656px for a row dense enough to
-// truncate item names to ~113px rather than overflow (docs/one-page-list-design.md).
+// truncate item names to ~113px rather than overflow.
 describe('the gear picker beside Pack', () => {
   const listsPanel = () =>
     screen.queryByRole('button', { name: 'New list or import CSV' })

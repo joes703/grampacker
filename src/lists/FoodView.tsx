@@ -324,7 +324,7 @@ function FoodDocument({
     // and the day sections take the full flexible width from the top. Below
     // lg the grid collapses to a stack with that panel ABOVE the day
     // sections - the add action stays reachable without scrolling a long
-    // trip (D4 as revised 2026-08-07, docs/food-view-design.md). max-w-6xl
+    // trip. max-w-6xl
     // keeps ultra-wide monitors from stretching the day rows into a
     // corridor.
     <div className="mt-3 max-w-6xl">

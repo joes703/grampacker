@@ -33,8 +33,8 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 
 - better-auth cookie sessions: HttpOnly, SameSite=Strict, Secure in
   production (https baseURL), 30-day sliding expiry - a deliberate
-  convenience call for low-sensitivity data (decided at the rewrite; the
-  reasoning is in REWRITE_PLAN.md 13.2, which is history, not authority).
+  convenience call: the gear and list content a session reaches is
+  low-sensitivity, so a long session wins over frequent sign-ins.
   No tokens in localStorage anywhere.
 - **Passwordless.** grampacker stores no password, and there is no reset,
   change, or verify flow to attack. There are exactly two ways to get a
@@ -681,9 +681,10 @@ of it:
   revision only some writes touch cannot detect the concurrent create or
   reschedule this is meant to catch. Release B adds a guard table whose NOT
   NULL column takes a NULL on mismatch, which forces D1 to roll the whole
-  batch back, mapped to a 409 the client consumes as control flow. Full
-  design: `docs/review-remediation-plan.md` section N1 (dated record - verify
-  against the code before trusting any of it).
+  batch back, mapped to a 409 the client consumes as control flow, the same
+  NOT NULL trick `_pack_reorder_guard` uses. The full design (section N1) is
+  in git history: `git show 89e4f1c:docs/review-remediation-plan.md`. Verify
+  it against the code before trusting any of it.
 
   Trigger: a second person using the app, or any report of a meal plan losing
   entries. Until then the blast radius is one list, within one account, with
@@ -787,10 +788,9 @@ of it:
   that reason (2026-08-11).
 
   This is the semantic-versus-volumetric split stated under "Abuse and rate
-  limiting" above. It departs from a rule in `REWRITE_PLAN.md` that said the
-  WAF may never be the only control; that rule's justification was
-  portability to a Node target, which is retired, and `REWRITE_PLAN.md` is
-  history rather than authority.
+  limiting" above. The rewrite once ruled that the WAF may never be the only
+  control; that rule existed only for portability to a Node target, which is
+  retired.
 
   **Trigger for creating the rule:** any sign of scraping, or a share link
   being posted somewhere public. Until then, unmetered is the accepted
@@ -843,6 +843,26 @@ of it:
   paying every cost of the beacon and getting none of the data. Turning Web
   Analytics off at the zone remains the strictly safer option if the RUM data
   ever stops earning its keep.
+
+- **A parent deleted mid-write answers 500, not 4xx.** Gear create, update,
+  import and bulk move, list Quick Add and create-from-selection check
+  ownership of the category or gear first, then write. If another client
+  deletes that parent in between, the foreign key rejects the write and the
+  route answers 500 (`server/repos/gear-items.ts` `create`). Nothing is half
+  written: each write is one statement or one batch. Food, packing
+  locations, add-existing and list import already map this to a 4xx.
+  Separately, list-item `update` re-reads its gear row after committing, so a
+  gear delete landing between the two answers 500 for an update that saved
+  (`server/repos/list-items.ts`, "list item lost its gear row").
+  Trigger: a second concurrent client, or any such 500 in the logs.
+
+- **A list cache can show a deleted gear row.** The gear delete fan-out
+  (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches
+  that hold the gear when it starts. A list fetch already in flight that
+  returns the gear afterward is never invalidated, so the row shows until
+  the next refetch. Display only; the server is correct. The fix is to
+  invalidate the `['list-items']` prefix on settle. Trigger: anyone seeing a
+  deleted item reappear in a list.
 
 ## Not applicable by construction
 
