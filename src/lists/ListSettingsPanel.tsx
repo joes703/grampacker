@@ -8,6 +8,7 @@ import ToggleSwitch from '../components/ToggleSwitch'
 import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { reportFailure } from '../lib/report-failure'
+import { MAX_NAME_LENGTH } from '../lib/caps'
 import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
@@ -163,7 +164,7 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
                   if (e.key === 'Escape') commitOnce(cancelRename)
                 }}
                 onBlur={() => commitOnce(commitRename)}
-                maxLength={120}
+                maxLength={MAX_NAME_LENGTH}
                 aria-label="List name"
                 className={`w-full rounded border border-blue-400 px-2 py-1 text-sm ${INLINE_EDIT_FOCUS_RING}`}
               />

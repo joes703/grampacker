@@ -12,7 +12,8 @@ const idSchema = z.string().min(1).max(64)
 
 // Trip length ceiling. Enforced by the day_number CHECK on list_food_slots
 // rather than a row-count trigger: that table holds three rows per day, so a
-// count-based cap of 30 would silently mean ten days.
+// count-based cap of 30 would silently mean ten days. The SQL and Drizzle
+// copies are checked by scripts/quantity-bounds.test.ts.
 export const FOOD_DAY_CAP = 30
 
 // Carried food entries per list. Trigger-enforced in migration 0017, mirroring

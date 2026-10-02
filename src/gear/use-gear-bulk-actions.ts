@@ -38,7 +38,7 @@ export function useGearBulkActions() {
     mutationFn: (ids: string[]) => bulkDeleteGearItems(ids),
     ...makeOptimisticGearItemsBulkDelete({
       qc,
-      errorToast: "Couldn't delete the selected items. Please try again.",
+      errorToast: "Couldn't confirm the selected items were deleted. Refresh to check before trying again.",
     }),
   })
 
@@ -48,7 +48,7 @@ export function useGearBulkActions() {
       bulkMoveToCategoryGearItems(ids, categoryId),
     ...makeOptimisticGearItemsBulkCategoryMove({
       qc,
-      errorToast: "Couldn't move the selected items. Please try again.",
+      errorToast: "Couldn't confirm the selected items were moved. Try again, or refresh to check.",
     }),
   })
 
