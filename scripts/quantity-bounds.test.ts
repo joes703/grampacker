@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MAX_LIST_ITEM_QUANTITY } from '../shared/lists'
-import { FOOD_QUANTITY_MAX } from '../shared/food'
+import { FOOD_DAY_CAP, FOOD_QUANTITY_MAX } from '../shared/food'
 import { definitionOf } from './schema-sql'
 
 // The same mechanism as pack-rank-constants.test.ts, for the quantity CHECKs.
@@ -17,19 +17,22 @@ import { definitionOf } from './schema-sql'
 // passes every client check and every zod schema and then 500s on a
 // constraint.
 //
+// The trip-length ceiling (FOOD_DAY_CAP) is the same shape: the day_number
+// CHECK on list_food_slots copies it.
+//
 // server/db/app-schema.ts is checked too. It is the Drizzle source the
 // snapshots are generated from, so a divergence there is what a FUTURE
 // migration would carry into the database.
 
 const readRepoFile = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 
-// The `between 1 and N` belonging to a named quantity CHECK. Scans a window
+// The `between 1 and N` belonging to a named CHECK. Scans a window
 // AFTER each occurrence of the constraint name rather than the same line: the
 // Drizzle source splits `check('name', sql`...`)` across lines, so a
 // line-oriented match silently found nothing and the test passed vacuously
 // (caught by writing it and watching it fail on a schema that was correct).
 const WINDOW = 400
-const quantityUpperBounds = (text: string, constraintName: string): number[] => {
+const upperBounds = (text: string, constraintName: string): number[] => {
   const bounds: number[] = []
   let from = text.indexOf(constraintName)
   while (from !== -1) {
@@ -44,23 +47,35 @@ const quantityUpperBounds = (text: string, constraintName: string): number[] => 
 describe('quantity ceilings stay in step outside TypeScript', () => {
   it('the list_items table enforces the gear quantity ceiling shared/lists.ts declares', () => {
     const sql = definitionOf('list_items')
-    const bounds = quantityUpperBounds(sql, 'list_items_quantity_range')
+    const bounds = upperBounds(sql, 'list_items_quantity_range')
     expect(bounds).toEqual([MAX_LIST_ITEM_QUANTITY])
   })
 
   it('the list_food_items table enforces the food quantity ceiling shared/food.ts declares', () => {
     const sql = definitionOf('list_food_items')
-    const bounds = quantityUpperBounds(sql, 'list_food_items_quantity_range')
+    const bounds = upperBounds(sql, 'list_food_items_quantity_range')
     expect(bounds).toEqual([FOOD_QUANTITY_MAX])
   })
 
   it('the Drizzle schema declares the same two ceilings', () => {
     const schema = readRepoFile('server/db/app-schema.ts')
-    expect(quantityUpperBounds(schema, 'list_items_quantity_range')).toEqual([
+    expect(upperBounds(schema, 'list_items_quantity_range')).toEqual([
       MAX_LIST_ITEM_QUANTITY,
     ])
-    expect(quantityUpperBounds(schema, 'list_food_items_quantity_range')).toEqual([
+    expect(upperBounds(schema, 'list_food_items_quantity_range')).toEqual([
       FOOD_QUANTITY_MAX,
     ])
+  })
+})
+
+describe('the trip-length ceiling stays in step outside TypeScript', () => {
+  it('the list_food_slots table enforces the day ceiling shared/food.ts declares', () => {
+    const sql = definitionOf('list_food_slots')
+    expect(upperBounds(sql, 'list_food_slots_day_range')).toEqual([FOOD_DAY_CAP])
+  })
+
+  it('the Drizzle schema declares the same day ceiling', () => {
+    const schema = readRepoFile('server/db/app-schema.ts')
+    expect(upperBounds(schema, 'list_food_slots_day_range')).toEqual([FOOD_DAY_CAP])
   })
 })
