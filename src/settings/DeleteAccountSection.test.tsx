@@ -11,17 +11,30 @@ const h = vi.hoisted(() => ({
   deleteUser: vi.fn<(input: object) => Promise<{ error: unknown }>>(),
   signInPasskey: vi.fn<() => Promise<{ error: unknown } | undefined>>(),
   signInMagicLink: vi.fn<(input: { email: string }) => Promise<{ error: unknown }>>(),
+  listUserPasskeys: vi.fn<() => Promise<{ data: unknown[] | null; error: unknown }>>(),
+  // The signed-in account. A test changes it to model the session switching
+  // to another account mid-flow.
+  sessionUserId: 'user-a',
 }))
 
 vi.mock('../lib/auth-client', () => ({
   authClient: {
     deleteUser: h.deleteUser,
     signIn: { passkey: h.signInPasskey, magicLink: h.signInMagicLink },
-    useSession: () => ({ data: { user: { email: 'joe@example.com' } } }),
+    passkey: { listUserPasskeys: h.listUserPasskeys },
+    useSession: () => ({ data: { user: { id: h.sessionUserId, email: 'joe@example.com' } } }),
   },
+  passkeysSupported: () => true,
 }))
 
 import DeleteAccountSection from './DeleteAccountSection'
+import { DELETE_ACCOUNT_USER_HEADER } from '../../shared/auth'
+
+// What the component must send to delete `userId`: no password, and the
+// account it means named in the header.
+function deleteRequestFor(userId: string) {
+  return { fetchOptions: { headers: { [DELETE_ACCOUNT_USER_HEADER]: userId } } }
+}
 
 const originalLocation = window.location
 let assignMock: ReturnType<typeof vi.fn>
@@ -29,6 +42,8 @@ let assignMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  h.sessionUserId = 'user-a'
+  h.listUserPasskeys.mockResolvedValue({ data: [{ id: 'pk-1' }], error: null })
   assignMock = vi.fn()
   // The component only ever reads window.location.assign; a minimal stand-in is
   // enough and avoids jsdom's "Not implemented: navigation" noise.
@@ -88,16 +103,16 @@ describe('DeleteAccountSection gating', () => {
 })
 
 describe('DeleteAccountSection submission', () => {
-  it('deletes with NO password in the body and hard-reloads to /sign-in', async () => {
-    // The omission is the point: an empty body is what selects better-auth's
-    // freshness path. Sending a password would 400 (no credential account
-    // exists), so this assertion is load-bearing, not cosmetic.
+  it('deletes with NO password, naming the signed-in account, and hard-reloads to /sign-in', async () => {
+    // No password is what selects better-auth's freshness path. Sending one
+    // would 400 (no credential account exists). The header names the account
+    // the user confirmed; the server refuses a delete without it.
     h.deleteUser.mockResolvedValue({ error: null })
     render(<DeleteAccountSection />)
     typeConfirm('delete')
     fireEvent.click(button())
 
-    await waitFor(() => expect(h.deleteUser).toHaveBeenCalledWith({}))
+    await waitFor(() => expect(h.deleteUser).toHaveBeenCalledWith(deleteRequestFor('user-a')))
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
   })
 
@@ -138,7 +153,7 @@ describe('DeleteAccountSection submission', () => {
     fireEvent.click(button())
 
     expect(await screen.findByText(/Confirm it is you/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
     expect(assignMock).not.toHaveBeenCalled()
   })
@@ -159,6 +174,63 @@ describe('DeleteAccountSection submission', () => {
     await waitFor(() => expect(h.signInPasskey).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(h.deleteUser).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
+  })
+
+  it('replays the delete for the CONFIRMED account, even if the passkey signed in another', async () => {
+    // A passkey for a different account signs that account in. The replay
+    // must still name the account the user confirmed, so the server refuses
+    // instead of deleting the account the passkey belonged to.
+    h.deleteUser.mockResolvedValueOnce({
+      error: { status: 400, code: 'SESSION_EXPIRED' },
+    })
+    h.deleteUser.mockResolvedValueOnce({
+      error: {
+        status: 400,
+        code: 'DELETE_ACCOUNT_MISMATCH',
+        message:
+          'You are signed in to a different account than the one you chose to delete. Nothing was deleted.',
+      },
+    })
+    h.signInPasskey.mockImplementation(async () => {
+      h.sessionUserId = 'user-b'
+      return { error: null }
+    })
+    render(<DeleteAccountSection />)
+    typeConfirm('delete')
+    fireEvent.click(button())
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
+
+    await waitFor(() => expect(h.deleteUser).toHaveBeenCalledTimes(2))
+    expect(h.deleteUser).toHaveBeenLastCalledWith(deleteRequestFor('user-a'))
+    expect(await screen.findByText(/Nothing was deleted/)).toBeInTheDocument()
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('offers only the email link to an account with no passkey', async () => {
+    // With no passkey of its own, the browser could offer a passkey that
+    // belongs to another account. Email is the way back for this account.
+    h.listUserPasskeys.mockResolvedValue({ data: [], error: null })
+    h.deleteUser.mockResolvedValue({ error: { status: 400, code: 'SESSION_EXPIRED' } })
+    render(<DeleteAccountSection />)
+    typeConfirm('delete')
+    fireEvent.click(button())
+
+    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
+  })
+
+  it('offers only the email link when the passkey list fails to load', async () => {
+    h.listUserPasskeys.mockRejectedValue(new Error('network'))
+    h.deleteUser.mockResolvedValue({ error: { status: 400, code: 'SESSION_EXPIRED' } })
+    render(<DeleteAccountSection />)
+    typeConfirm('delete')
+    fireEvent.click(button())
+
+    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
   })
 
   it('falls back to an email link for an account with no passkey', async () => {
