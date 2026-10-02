@@ -344,7 +344,7 @@ describe('POST /api/auth/delete-user', () => {
     for (const table of APP_TABLES) {
       expect(after[table], `${table} still present`).toBeGreaterThan(0)
     }
-    // Refused before the purge, so nothing at all was written.
+    // Refused before the purge, so the verification rows are untouched too.
     expect(await verificationCount(userId, email)).toBe(2)
   })
 

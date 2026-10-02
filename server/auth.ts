@@ -175,8 +175,8 @@ export function authOptions(env: Env, incident?: AuthIncident) {
         // confirms (a passkey for another account picked during
         // re-authentication, or a sign-in in another tab). A missing header is
         // refused too, so a request that does not say whom it means deletes
-        // nothing. Runs after the freshness check and before anything is
-        // written.
+        // nothing. Runs after the freshness check and before the purge and
+        // the account delete.
         beforeDelete: async (
           deleted: { id: string; email: string },
           request?: Request,
