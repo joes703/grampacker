@@ -25,3 +25,11 @@ export const MAGIC_LINK_PATH = '/auth/magic'
 // 24h is better-auth's default, pinned explicitly so an upstream change cannot
 // move it silently. See docs/passwordless-auth-design.md section 8.2.
 export const FRESH_AGE_SECONDS = 60 * 60 * 24
+
+// Request header naming the account the user confirmed they want to delete.
+// The server deletes whoever the session cookie belongs to, and the cookie can
+// change after the user confirms: a passkey for another account picked during
+// re-authentication, or a sign-in in another tab. The delete-user hook in
+// server/auth.ts refuses unless this header equals the session's user id, so
+// the delete only ever removes the account the user saw and confirmed.
+export const DELETE_ACCOUNT_USER_HEADER = 'x-grampacker-delete-user-id'

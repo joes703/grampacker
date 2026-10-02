@@ -5,7 +5,7 @@ import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
 import app from './index'
 import { lastEmailTo } from './email/console'
-import { MAGIC_LINK_PATH } from '../shared/auth'
+import { DELETE_ACCOUNT_USER_HEADER, MAGIC_LINK_PATH } from '../shared/auth'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
 // deleteUser removes only the session/account/user rows itself - the user's
@@ -163,8 +163,16 @@ function tokenFromEmailTo(to: string): string {
 }
 
 // No password: its ABSENCE is what selects better-auth's freshness path.
-async function deleteAccount(cookie: string | null): Promise<Response> {
-  return apiRequest(cookie, 'POST', '/api/auth/delete-user', {})
+// `target` is the account the request names in its header, as the SPA names
+// the account the user confirmed; null sends no header.
+async function deleteAccount(
+  cookie: string | null,
+  target: string | null,
+): Promise<Response> {
+  const headers: Record<string, string> = target
+    ? { [DELETE_ACCOUNT_USER_HEADER]: target }
+    : {}
+  return apiRequest(cookie, 'POST', '/api/auth/delete-user', {}, headers)
 }
 
 describe('POST /api/auth/delete-user', () => {
@@ -212,7 +220,7 @@ describe('POST /api/auth/delete-user', () => {
 
     expect(await verificationCount(userId, email), 'seeded verification artifacts').toBe(2)
 
-    const res = await deleteAccount(cookie)
+    const res = await deleteAccount(cookie, userId)
     expect(res.status).toBe(200)
 
     const after = await rowCounts(userId)
@@ -277,7 +285,7 @@ describe('POST /api/auth/delete-user', () => {
       items.find((i) => i.id === bagged.id)?.packSortOrder,
     )
 
-    expect((await deleteAccount(cookie)).status).toBe(200)
+    expect((await deleteAccount(cookie, userId)).status).toBe(200)
     const left = await env.DB.prepare(
       'select count(*) as n from list_items where user_id = ?',
     )
@@ -288,7 +296,7 @@ describe('POST /api/auth/delete-user', () => {
 
   it('leaves every other user completely intact (blast radius is one account)', async () => {
     const otherBefore = await rowCounts(otherId)
-    const res = await deleteAccount(cookie)
+    const res = await deleteAccount(cookie, userId)
     expect(res.status).toBe(200)
     const otherAfter = await rowCounts(otherId)
     expect(otherAfter).toEqual(otherBefore)
@@ -307,7 +315,7 @@ describe('POST /api/auth/delete-user', () => {
     // the attacker would have to pass a passkey ceremony (or the mailbox).
     await makeSessionStale(cookie)
 
-    const res = await deleteAccount(cookie)
+    const res = await deleteAccount(cookie, userId)
     expect(res.ok).toBe(false)
     expect(((await res.json()) as { code?: string }).code).toBe('SESSION_EXPIRED')
 
@@ -319,11 +327,44 @@ describe('POST /api/auth/delete-user', () => {
   })
 
   it('rejects an anonymous request and deletes nothing', async () => {
-    const res = await deleteAccount(null)
+    const res = await deleteAccount(null, userId)
     expect(res.ok).toBe(false)
     expect([400, 401]).toContain(res.status)
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
+  })
+
+  it('refuses a delete that names no account, and deletes nothing', async () => {
+    const res = await deleteAccount(cookie, null)
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { code?: string }).code).toBe('DELETE_ACCOUNT_MISMATCH')
+
+    const after = await rowCounts(userId)
+    expect(after.user).toBe(1)
+    for (const table of APP_TABLES) {
+      expect(after[table], `${table} still present`).toBeGreaterThan(0)
+    }
+    // Refused before the purge, so nothing at all was written.
+    expect(await verificationCount(userId, email)).toBe(2)
+  })
+
+  it('refuses a delete that names a different account, and deletes neither', async () => {
+    // The session changed after the user confirmed: during re-authentication
+    // they picked a passkey for another account, or another tab signed in as
+    // someone else. The cookie is now that other account's. Deleting it would
+    // remove an account nobody asked to delete.
+    const res = await deleteAccount(cookie, otherId)
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { code?: string }).code).toBe('DELETE_ACCOUNT_MISMATCH')
+
+    for (const id of [userId, otherId]) {
+      const after = await rowCounts(id)
+      expect(after.user, `user ${id}`).toBe(1)
+      for (const table of APP_TABLES) {
+        expect(after[table], `${table} still present for ${id}`).toBeGreaterThan(0)
+      }
+    }
+    expect(await verificationCount(userId, email)).toBe(2)
   })
 
   it('purges a pending magic link requested in a different letter case', async () => {
@@ -361,7 +402,7 @@ describe('POST /api/auth/delete-user', () => {
     const stolenToken = tokenFromEmailTo(mixedCase)
     const bystanderToken = tokenFromEmailTo(similar)
 
-    expect((await deleteAccount(cookie)).status).toBe(200)
+    expect((await deleteAccount(cookie, userId)).status).toBe(200)
 
     const redeem = (token: string) =>
       app.request(

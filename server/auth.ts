@@ -21,7 +21,11 @@ import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
 // createAuth call, so it cannot cross requests.
 export type AuthIncident = { error?: unknown }
 import { createUsersRepo } from './repos/users'
-import { FRESH_AGE_SECONDS, MAGIC_LINK_PATH } from '../shared/auth'
+import {
+  DELETE_ACCOUNT_USER_HEADER,
+  FRESH_AGE_SECONDS,
+  MAGIC_LINK_PATH,
+} from '../shared/auth'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
 // domain (or a suffix of it): grampacker.app for the apex and any
@@ -165,7 +169,25 @@ export function authOptions(env: Env, incident?: AuthIncident) {
         // the response with artifacts still present (the afterDelete hazard).
         // Deleting these rows ahead of the user row is safe: verification has no
         // FK to user, so there is no ordering constraint.
-        beforeDelete: async (deleted: { id: string; email: string }) => {
+        //
+        // First, refuse unless the client named this exact account. The route
+        // deletes the session's user, and the session can change after the user
+        // confirms (a passkey for another account picked during
+        // re-authentication, or a sign-in in another tab). A missing header is
+        // refused too, so a request that does not say whom it means deletes
+        // nothing. Runs after the freshness check and before anything is
+        // written.
+        beforeDelete: async (
+          deleted: { id: string; email: string },
+          request?: Request,
+        ) => {
+          if (request?.headers.get(DELETE_ACCOUNT_USER_HEADER) !== deleted.id) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'DELETE_ACCOUNT_MISMATCH',
+              message:
+                'You are signed in to a different account than the one you chose to delete. Nothing was deleted.',
+            })
+          }
           await createUsersRepo(db, deleted.id).purgeVerificationArtifacts(
             deleted.email,
           )
