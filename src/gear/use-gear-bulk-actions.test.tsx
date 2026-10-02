@@ -66,7 +66,7 @@ describe('useGearBulkActions', () => {
       await waitFor(() => expect(h.bulkDeleteGearItems).toHaveBeenCalledWith(['g1', 'g2']))
       expect(h.makeOptimisticGearItemsBulkDelete).toHaveBeenCalledWith({
         qc,
-        errorToast: "Couldn't delete the selected items. Please try again.",
+        errorToast: "Couldn't confirm the selected items were deleted. Refresh to check before trying again.",
       })
     })
 
@@ -91,7 +91,7 @@ describe('useGearBulkActions', () => {
       )
       expect(h.makeOptimisticGearItemsBulkCategoryMove).toHaveBeenCalledWith({
         qc,
-        errorToast: "Couldn't move the selected items. Please try again.",
+        errorToast: "Couldn't confirm the selected items were moved. Try again, or refresh to check.",
       })
     })
 
