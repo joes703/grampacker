@@ -315,9 +315,79 @@ describe('FoodView days-input destructive guards', () => {
     await user.type(input, '2')
     await user.tab()
 
-    expect(confirmSpy).toHaveBeenCalled()
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
     expect(h.setFoodDays).not.toHaveBeenCalled()
     confirmSpy.mockRestore()
+  })
+
+  it('asks from the latest plan: food another device planned on a cut day counts', async () => {
+    // This tab read the plan with nothing on day 3. Since then another device
+    // scheduled Ramen there. Shortening to 2 days would delete that meal, so
+    // the question must come from a fresh read, not this tab's copy.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const unplanned = { ...guardFood, items: [{ ...guardFood.items[0]!, slotIds: [] }] }
+    h.fetchListFood.mockResolvedValueOnce(unplanned).mockResolvedValue(guardFood)
+    await renderFoodView()
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '2')
+    await user.tab()
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(h.setFoodDays).not.toHaveBeenCalled()
+    await waitFor(() => expect(input).toHaveValue(3))
+    confirmSpy.mockRestore()
+  })
+
+  it('does not ask when the latest plan has nothing on the cut days', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    const unplanned = { ...guardFood, items: [{ ...guardFood.items[0]!, slotIds: [] }] }
+    h.fetchListFood.mockResolvedValueOnce(guardFood).mockResolvedValue(unplanned)
+    await renderFoodView()
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '2')
+    await user.tab()
+
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 2))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('writes nothing, and says so, when the latest plan cannot be loaded', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    h.fetchListFood.mockResolvedValueOnce(guardFood).mockRejectedValue(new Error('offline'))
+    await renderFoodView()
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '2')
+    await user.tab()
+
+    await waitFor(() =>
+      expect(toastMock.showToast).toHaveBeenCalledWith(
+        "Couldn't load the latest food plan, so the trip length was not changed.",
+        { type: 'error' },
+      ),
+    )
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(h.setFoodDays).not.toHaveBeenCalled()
+    await waitFor(() => expect(input).toBeEnabled())
+    expect(input).toHaveValue(3)
+    confirmSpy.mockRestore()
+  })
+
+  it('writes nothing when the latest plan already has the typed length', async () => {
+    // Another device already made it 5 days.
+    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 5 })
+    await renderFoodView()
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '5')
+    await user.tab()
+
+    await waitFor(() => expect(input).toBeEnabled())
+    await waitFor(() => expect(input).toHaveValue(5))
+    expect(h.setFoodDays).not.toHaveBeenCalled()
   })
 
   it('shortens without asking when nothing would be lost', async () => {
@@ -331,8 +401,8 @@ describe('FoodView days-input destructive guards', () => {
     await user.type(input, '3')
     await user.tab()
 
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 3))
     expect(confirmSpy).not.toHaveBeenCalled()
-    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 3)
     confirmSpy.mockRestore()
   })
 })
@@ -354,7 +424,7 @@ describe('FoodView days-input after the write settles', () => {
     await renderFoodView()
     const input = await commitDays('5')
 
-    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
     await waitFor(() => expect(input).toHaveValue(3))
   })
 
@@ -365,7 +435,7 @@ describe('FoodView days-input after the write settles', () => {
     await renderFoodView()
     const input = await commitDays('5')
 
-    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
     await waitFor(() => expect(input).toHaveValue(4))
   })
 
@@ -437,7 +507,7 @@ describe('FoodView days-input after the write settles', () => {
     await renderFoodView()
     const input = await commitDays('5')
 
-    expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5)
+    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
     await waitFor(() => expect(input).toBeEnabled())
     await waitFor(() => expect(input).toHaveValue(3))
   })

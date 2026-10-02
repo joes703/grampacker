@@ -631,13 +631,14 @@ of it:
   while another client writes.
 
   This does NOT close the gap and must not be read as closing it. The window
-  between the refetch and the write is still wide open, and the day-trim path
-  additionally refetches AFTER its confirm decision and never re-evaluates it.
-  Only the revision guard below makes the write itself safe.
+  between the refetch and the write is still open. Only the revision guard
+  below makes the write itself safe.
 
-  - **Trimming the day count** drops every slot past the new end
-    (`src/lists/FoodView.tsx` carries the KNOWN GAP comment on the days
-    input's onBlur).
+  - **Trimming the day count** drops every slot past the new end. Since
+    2026-10-02 the trim reads the plan fresh, decides whether to warn from
+    that read, and writes nothing if the read fails (`changeDays` in
+    `src/lists/FoodView.tsx`). What remains is a write from elsewhere in
+    the one round trip between that read and the PUT.
   - **Rescheduling an item** is a full replace, not a merge: the picker opens
     from the cached `slotIds`, and the write deletes every placement for that
     item before inserting the submitted set (`server/repos/food.ts`). A stale
