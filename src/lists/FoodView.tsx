@@ -69,7 +69,9 @@ export default function FoodView({ listId }: { listId: string }) {
   const foodDaysMut = useMutation({
     mutationKey: mutationKeys.setFoodDays(listId),
     mutationFn: (days: number) => setFoodDays(listId, days),
-    meta: { errorToast: "Couldn't change the trip length. Please try again." },
+    // A lost response can follow a write that committed, so the copy does not
+    // claim the length is unchanged. onError refreshes the box to what is saved.
+    meta: { errorToast: "Couldn't confirm the trip length changed. Please check it and try again." },
     // The PUT answers with the whole validated food document, so it goes
     // straight into the cache. The days box lets go of its typed draft when
     // this settles, and must land on the new length even if the follow-up
@@ -83,6 +85,7 @@ export default function FoodView({ listId }: { listId: string }) {
       qc.setQueryData(key, food)
       invalidateFood()
     },
+    onError: invalidateFood,
   })
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),
@@ -154,6 +157,15 @@ export default function FoodView({ listId }: { listId: string }) {
   // So: read fresh, decide from that read, then write. If the read fails,
   // nothing is written.
   //
+  // The read calls the API directly, not through the query cache. A canceled
+  // cache fetch resolves with the OLD cached data (React Query's revert), and
+  // other food writes cancel this query, so a cached read could quietly
+  // decide from the stale plan again.
+  //
+  // This keeps going if the view unmounts mid-read (the user tabbed out of
+  // the box by leaving the view): they asked for the new length, and the
+  // confirm text says what it is about.
+  //
   // KNOWN GAP: a write from elsewhere between this read and our PUT is still
   // lost. Closing that needs a revision check on the write (SECURITY.md).
   const [checkingDays, setCheckingDays] = useState(false)
@@ -161,11 +173,7 @@ export default function FoodView({ listId }: { listId: string }) {
     setCheckingDays(true)
     let current: ListFoodResponse
     try {
-      current = await qc.fetchQuery({
-        queryKey: queryKeys.listFood(listId),
-        queryFn: () => fetchListFood(listId),
-        staleTime: 0,
-      })
+      current = await fetchListFood(listId)
     } catch {
       showToast("Couldn't load the latest food plan, so the trip length was not changed.", {
         type: 'error',
@@ -179,6 +187,8 @@ export default function FoodView({ listId }: { listId: string }) {
       days === current.dayCount ||
       (days < current.dayCount && losesWorkBelow(current, days) && !confirmTrim(days))
     ) {
+      // No write. The fresh read may differ from the cache, so refresh it.
+      invalidateFood()
       onSettled()
       return
     }

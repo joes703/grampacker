@@ -339,6 +339,34 @@ describe('FoodView days-input destructive guards', () => {
     confirmSpy.mockRestore()
   })
 
+  it('still asks from the latest plan when the food query is canceled mid-read', async () => {
+    // Other food writes cancel this query. A canceled cache fetch resolves
+    // with the OLD cached data, so a preflight that went through the cache
+    // would decide from the stale plan and skip the question.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const unplanned = { ...guardFood, items: [{ ...guardFood.items[0]!, slotIds: [] }] }
+    let resolveRead: (value: ListFoodResponse) => void = () => {}
+    h.fetchListFood
+      .mockResolvedValueOnce(unplanned)
+      .mockReturnValueOnce(new Promise((r) => { resolveRead = r }))
+      .mockResolvedValue(guardFood)
+    const { qc } = await renderFoodView()
+    const input = await screen.findByLabelText('Trip length in days')
+    await user.clear(input)
+    await user.type(input, '2')
+    await user.tab()
+    await waitFor(() => expect(h.fetchListFood).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
+    })
+    await act(async () => resolveRead(guardFood))
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(h.setFoodDays).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
   it('does not ask when the latest plan has nothing on the cut days', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm')
     const unplanned = { ...guardFood, items: [{ ...guardFood.items[0]!, slotIds: [] }] }
