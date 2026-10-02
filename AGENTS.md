@@ -67,9 +67,10 @@ may propose changing one; do not quietly retire one because its reason looks
 dated.
 
 - **Route handlers never touch the DB.** They receive user-scoped repositories
-  (`reposForUser`) from the session middleware. Lint blocks the imports and
-  cannot be waived inline, but it does not see `c.env.DB`; do not reach for
-  that either. If the rule blocks you, the design is wrong. One exception:
+  (`reposForUser`) from the session middleware. Lint blocks the DB imports
+  in `server/**` outside the exempt list in `eslint.config.js`, and cannot
+  be waived inline. It does not see `c.env.DB`; do not reach for that
+  either. If the rule blocks you, the design is wrong. One exception:
   `/api/health` in `server/index.ts` runs `select 1` to prove the D1
   binding answers. It reads no table and no user data.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous
@@ -228,9 +229,10 @@ agents. Write for them.
 - Short sentences and common words. No idioms or jokes.
 - No history: no PR numbers, review rounds, or "this used to...". Git has
   that. Point to a document or incident only when the reader needs it.
-- Keep every warning about a trap, an invariant, or a failure the code
-  prevents. Say it as briefly as it can be said and still be complete;
-  some code needs several lines.
+- Keep every warning about a trap, an invariant, a known gap, or a failure
+  the code prevents, and the document link that explains it. Say it as
+  briefly as it can be said and still be complete; some code needs several
+  lines.
 - Clean up old comments in the files you are already changing. Do not open
   a change only to rewrite comments: each rewrite can drop a warning, and
   a sweep needs a review of its own for no user-visible gain.
