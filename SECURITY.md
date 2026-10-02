@@ -391,6 +391,17 @@ tidier sentence, but tidiness is not a threat model.)
   lowercase, so the purge folds case on both sides
   (`server/repos/users.ts`, proven over HTTP in
   `server/auth-delete-user.test.ts`).
+- Deleting the account needs the request to name the account
+  (`x-grampacker-delete-user-id`, `shared/auth.ts`). The `beforeDelete`
+  hook refuses with 400 `DELETE_ACCOUNT_MISMATCH` when the header is
+  missing or is not the session's user id. better-auth deletes whoever
+  the cookie belongs to, and the cookie can change after the user
+  confirms: re-authenticating with a passkey that belongs to another
+  account signs that account in (the passkey plugin narrows the choice
+  to the user's own passkeys only when the user has some), and so does
+  a sign-in in another tab. Without the header, the replayed delete
+  removed the other account. The client also offers "Use a passkey"
+  only to an account that has one.
 
 WebAuthn user verification is REQUIRED, and enforced rather than
 requested. `authenticatorSelection.userVerification: 'required'` is only

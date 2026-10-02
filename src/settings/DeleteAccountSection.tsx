@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
-import { authClient } from '../lib/auth-client'
+import { useEffect, useRef, useState } from 'react'
+import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
 import { clearLastListPath } from '../lib/last-list-path'
 import FormLabel from '../components/FormLabel'
+import { DELETE_ACCOUNT_USER_HEADER } from '../../shared/auth'
 
 // The word the user must type to arm the delete. Compared case-insensitively
 // (trimmed) - the friction is in typing the word at all, not in matching case.
@@ -22,6 +23,11 @@ const CONFIRM_WORD = 'delete'
 //
 // So a stolen cookie from a long-lived session cannot delete the account, which
 // is the property the old password prompt was really buying.
+//
+// Every delete names the account the user confirmed (DELETE_ACCOUNT_USER_HEADER),
+// and the server refuses if the session now belongs to someone else. The
+// session can change under us: re-authenticating with a passkey for another
+// account signs that account in, and so does a sign-in in another tab.
 export default function DeleteAccountSection() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,14 +35,37 @@ export default function DeleteAccountSection() {
   // The delete is parked waiting for the user to prove it is them.
   const [needsReauth, setNeedsReauth] = useState(false)
   const [linkSent, setLinkSent] = useState(false)
+  // Whether to offer "Use a passkey". Only an account with a passkey can use
+  // one; for any other account the browser may offer a passkey that belongs to
+  // someone else.
+  const [canUsePasskey, setCanUsePasskey] = useState(false)
   // Synchronous in-flight guard: the button is disabled while busy, but a form
   // is still submittable via Enter, and busy is render-derived (lags a
   // synchronous double-submit). This blocks the second submit in the same tick
   // so deleteUser can't fire twice.
   const submitting = useRef(false)
+  // The account the user confirmed on submit. A replay after re-authentication
+  // sends this id, never the current session's, which may be another account.
+  const confirmedUserId = useRef<string | null>(null)
 
   const { data: session } = authClient.useSession()
   const confirmed = confirm.trim().toLowerCase() === CONFIRM_WORD
+
+  useEffect(() => {
+    if (!needsReauth || !passkeysSupported()) return
+    let canceled = false
+    authClient.passkey
+      .listUserPasskeys()
+      .then(({ data }) => {
+        if (!canceled) setCanUsePasskey((data ?? []).length > 0)
+      })
+      // A failed load only hides the passkey option. The email link below
+      // works for every account, so there is nothing to report.
+      .catch(() => {})
+    return () => {
+      canceled = true
+    }
+  }, [needsReauth])
 
   // Teardown for a deleted account. The hard reload discards in-memory
   // React Query cache and the session atom, but NOT localStorage, so clear
@@ -51,11 +80,13 @@ export default function DeleteAccountSection() {
 
   // Runs the delete. Returns 'reauth' when the server refuses for a stale
   // session, so the caller can prompt and replay.
-  async function runDelete(): Promise<'done' | 'reauth'> {
+  async function runDelete(userId: string): Promise<'done' | 'reauth'> {
     try {
       // No password in the body - that omission is what selects better-auth's
       // freshness path over its (now impossible) credential check.
-      const { error: deleteError } = await authClient.deleteUser({})
+      const { error: deleteError } = await authClient.deleteUser({
+        fetchOptions: { headers: { [DELETE_ACCOUNT_USER_HEADER]: userId } },
+      })
       if (deleteError) {
         // 400 SESSION_EXPIRED: the session is too old to authorize this.
         // (Distinct from the passkey gate's 403 SESSION_NOT_FRESH - better-auth
@@ -96,11 +127,17 @@ export default function DeleteAccountSection() {
     // Enter can submit even while the button is disabled; re-check the gate
     // here so a stray Enter can never fire an unconfirmed deletion.
     if (!confirmed) return
+    const userId = session?.user.id
+    if (!userId) {
+      setError("Couldn't tell which account is signed in. Reload the page and try again.")
+      return
+    }
 
+    confirmedUserId.current = userId
     submitting.current = true
     setBusy(true)
     try {
-      if ((await runDelete()) === 'reauth') setNeedsReauth(true)
+      if ((await runDelete(userId)) === 'reauth') setNeedsReauth(true)
     } finally {
       // Reached only when we did not navigate; a successful delete tears this
       // component down before this runs.
@@ -111,7 +148,8 @@ export default function DeleteAccountSection() {
 
   // Re-authenticate with a passkey, then replay the delete.
   async function reauthWithPasskey() {
-    if (submitting.current) return
+    const userId = confirmedUserId.current
+    if (!userId || submitting.current) return
     submitting.current = true
     setBusy(true)
     setError(null)
@@ -122,7 +160,10 @@ export default function DeleteAccountSection() {
         return
       }
       setNeedsReauth(false)
-      if ((await runDelete()) === 'reauth') setNeedsReauth(true)
+      // If the passkey belonged to another account, the server refuses and
+      // the error says nothing was deleted. SessionCacheGuard then reloads
+      // the app for the account that is now signed in.
+      if ((await runDelete(userId)) === 'reauth') setNeedsReauth(true)
     } catch {
       setError('Passkey confirmation was canceled or failed.')
     } finally {
@@ -188,14 +229,16 @@ export default function DeleteAccountSection() {
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                onClick={() => void reauthWithPasskey()}
-                disabled={busy}
-              >
-                {busy ? 'Confirming...' : 'Use a passkey'}
-              </button>
+              {canUsePasskey && (
+                <button
+                  type="button"
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  onClick={() => void reauthWithPasskey()}
+                  disabled={busy}
+                >
+                  {busy ? 'Confirming...' : 'Use a passkey'}
+                </button>
+              )}
               <button
                 type="button"
                 className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"

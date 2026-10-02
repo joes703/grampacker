@@ -11,10 +11,12 @@ export async function apiRequest(
   method: string,
   path: string,
   body?: unknown,
+  extraHeaders: Record<string, string> = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {
     Origin: ORIGIN,
     [CSRF_HEADER]: '1',
+    ...extraHeaders,
   }
   if (cookie) headers.Cookie = cookie
   if (body !== undefined) headers['Content-Type'] = 'application/json'

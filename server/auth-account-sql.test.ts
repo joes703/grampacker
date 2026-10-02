@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import app from './index'
 import { signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from './middleware/csrf'
+import { DELETE_ACCOUNT_USER_HEADER } from '../shared/auth'
 
 // `account.issuer` is gone, asserted ON THE WIRE.
 //
@@ -83,6 +84,7 @@ describe('the account model better-auth actually queries', () => {
           Origin: ORIGIN,
           'Content-Type': 'application/json',
           [CSRF_HEADER]: '1',
+          [DELETE_ACCOUNT_USER_HEADER]: userId,
           'cf-connecting-ip': '10.55.0.1',
         },
         body: JSON.stringify({}),
