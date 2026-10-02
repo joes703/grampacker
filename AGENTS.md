@@ -69,7 +69,9 @@ dated.
 - **Route handlers never touch the DB.** They receive user-scoped repositories
   (`reposForUser`) from the session middleware. Lint blocks the imports and
   cannot be waived inline, but it does not see `c.env.DB`; do not reach for
-  that either. If the rule blocks you, the design is wrong.
+  that either. If the rule blocks you, the design is wrong. One exception:
+  `/api/health` in `server/index.ts` runs `select 1` to prove the D1
+  binding answers. It reads no table and no user data.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous
   share read (gated on slug and `is_shared`) and system tables such as
   rate-limit buckets. Client-supplied ids never widen ownership: writes
@@ -216,6 +218,22 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   non-ASCII.
 - Finish what the change implies (all five call sites, not one), but do not
   expand scope beyond the task.
+
+## Comments
+
+Readers include people whose first language is not English, and other
+agents. Write for them.
+
+- Explain why, not what. Delete a comment that only repeats the code.
+- Short sentences and common words. No idioms or jokes.
+- No history: no PR numbers, review rounds, or "this used to...". Git has
+  that. Point to a document or incident only when the reader needs it.
+- Keep every warning about a trap, an invariant, or a failure the code
+  prevents. Say it as briefly as it can be said and still be complete;
+  some code needs several lines.
+- Clean up old comments in the files you are already changing. Do not open
+  a change only to rewrite comments: each rewrite can drop a warning, and
+  a sweep needs a review of its own for no user-visible gain.
 
 ## Documents and rules
 
