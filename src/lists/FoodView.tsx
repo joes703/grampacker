@@ -43,8 +43,8 @@ export default function FoodView({ listId }: { listId: string }) {
 
   // The ONE query in the app that refetches on window focus, against the
   // global default in src/App.tsx. Every destructive food action lives on this
-  // view - trimming the day count, rescheduling an item, removing one - and
-  // each decides from this cache. staleTime only
+  // view. Rescheduling and removing an item decide from this cache; trimming
+  // the day count reads fresh first (changeDays below). staleTime only
   // MARKS data stale; without this, nothing refetches it, so a tab left open
   // overnight would still be acting on yesterday's plan and would delete meals
   // another client had added since.
@@ -68,15 +68,10 @@ export default function FoodView({ listId }: { listId: string }) {
   }, [qc, listId])
   const foodDaysMut = useMutation({
     mutationKey: mutationKeys.setFoodDays(listId),
-    // Refetch first: FoodDocument decides whether to warn about losing planned
-    // meals from its cached snapshot, and that cache is up to 30s stale. This
-    // narrows the window to a single round trip. It does not close it - that
-    // needs a revision check on the write itself.
-    mutationFn: async (days: number) => {
-      await listFoodQuery.refetch()
-      return setFoodDays(listId, days)
-    },
-    meta: { errorToast: "Couldn't change the trip length. Please try again." },
+    mutationFn: (days: number) => setFoodDays(listId, days),
+    // A lost response can follow a write that committed, so the copy does not
+    // claim the length is unchanged. onError refreshes the box to what is saved.
+    meta: { errorToast: "Couldn't confirm the trip length changed. Please check it and try again." },
     // The PUT answers with the whole validated food document, so it goes
     // straight into the cache. The days box lets go of its typed draft when
     // this settles, and must land on the new length even if the follow-up
@@ -90,6 +85,7 @@ export default function FoodView({ listId }: { listId: string }) {
       qc.setQueryData(key, food)
       invalidateFood()
     },
+    onError: invalidateFood,
   })
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),
@@ -153,7 +149,54 @@ export default function FoodView({ listId }: { listId: string }) {
     meta: { errorToast: "Couldn't remove that food. Please try again." },
     onSuccess: invalidateFood,
   })
+
+  // Changing the trip length. Shortening deletes the later days and the meals
+  // planned on them, so the "you will lose planned meals" question must be
+  // answered from the server's current plan, not from this tab's cache: another
+  // tab or device may have planned food on those days since we last read.
+  // So: read fresh, decide from that read, then write. If the read fails,
+  // nothing is written.
+  //
+  // The read calls the API directly, not through the query cache. A canceled
+  // cache fetch resolves with the OLD cached data (React Query's revert), and
+  // other food writes cancel this query, so a cached read could quietly
+  // decide from the stale plan again.
+  //
+  // This keeps going if the view unmounts mid-read (the user tabbed out of
+  // the box by leaving the view): they asked for the new length, and the
+  // confirm text says what it is about.
+  //
+  // KNOWN GAP: a write from elsewhere between this read and our PUT is still
+  // lost. Closing that needs a revision check on the write (SECURITY.md).
+  const [checkingDays, setCheckingDays] = useState(false)
+  async function changeDays(days: number, onSettled: () => void) {
+    setCheckingDays(true)
+    let current: ListFoodResponse
+    try {
+      current = await fetchListFood(listId)
+    } catch {
+      showToast("Couldn't load the latest food plan, so the trip length was not changed.", {
+        type: 'error',
+      })
+      setCheckingDays(false)
+      onSettled()
+      return
+    }
+    setCheckingDays(false)
+    if (
+      days === current.dayCount ||
+      (days < current.dayCount && losesWorkBelow(current, days) && !confirmTrim(days))
+    ) {
+      // No write. The fresh read may differ from the cache, so refresh it.
+      invalidateFood()
+      onSettled()
+      return
+    }
+    foodDaysMut.mutate(days, { onSettled })
+  }
+
   const foodBusy =
+    checkingDays ||
     foodDaysMut.isPending ||
     foodItemCreateMut.isPending ||
     foodItemSlotsMut.isPending ||
@@ -187,7 +230,7 @@ export default function FoodView({ listId }: { listId: string }) {
       food={listFoodQuery.data}
       weightUnit={weightUnit}
       busy={foodBusy}
-      onSetDays={(days, onSettled) => foodDaysMut.mutate(days, { onSettled })}
+      onSetDays={(days, onSettled) => void changeDays(days, onSettled)}
       onAddItem={(input, onSuccess) =>
         foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
       }
@@ -200,6 +243,15 @@ export default function FoodView({ listId }: { listId: string }) {
         foodItemModeMut.mutate({ itemId, isPerMeal })
       }
     />
+  )
+}
+
+// Asks before a shortening that deletes planned meals.
+function confirmTrim(days: number): boolean {
+  return window.confirm(
+    `Shortening the trip to ${days} ${days === 1 ? 'day' : 'days'} removes ` +
+      'the later meals, including what you had planned for them. ' +
+      'Your food items stay on the list. Continue?',
   )
 }
 
@@ -226,9 +278,9 @@ type FoodDocumentProps = {
   food: ListFoodResponse
   weightUnit: WeightUnit
   busy: boolean
-  /** Called with the new length. The caller refetches before applying, so a
-   *  shortening decided against a stale snapshot is narrowed to one round
-   *  trip. `onSettled` runs once the write has succeeded or failed. */
+  /** Called with the new length. The caller reads the current plan, asks
+   *  before a shortening that loses planned meals, then writes. `onSettled`
+   *  runs once that is over, whether it wrote, failed, or was declined. */
   onSetDays: (days: number, onSettled: () => void) => void
   onAddItem: (
     input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
@@ -375,29 +427,8 @@ function FoodDocument({
                       setDaysDraft(null)
                       return
                     }
-                    // Shrinking throws away the slots beyond the new count, and
-                    // with them their placements. Ask, but only when there is
-                    // actually something to lose.
-                    //
-                    // KNOWN GAP, stated rather than papered over: this decides from
-                    // the client's cached food. It refetches on focus, but a tab that
-                    // stays focused keeps whatever it last read, and the write's
-                    // preflight refetch does not re-ask. Another tab or device that
-                    // schedules food onto a later day meanwhile would be silently
-                    // trimmed. Closing it properly needs a revision check on
-                    // the write, which is more machinery than a single-user app has
-                    // earned yet (SECURITY.md).
-                    if (next < food.dayCount && losesWorkBelow(food, next)) {
-                      const ok = window.confirm(
-                        `Shortening the trip to ${next} ${next === 1 ? 'day' : 'days'} removes ` +
-                          'the later meals, including what you had planned for them. ' +
-                          'Your food items stay on the list. Continue?',
-                      )
-                      if (!ok) {
-                        setDaysDraft(null)
-                        return
-                      }
-                    }
+                    // FoodView asks before a shortening that loses planned
+                    // meals, using a fresh read of the plan.
                     onSetDays(next, () => setDaysDraft(null))
                   }}
                   className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
