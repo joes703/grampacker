@@ -123,11 +123,12 @@ coverage in `server/routes/me.test.ts`):
   5/10min, default 30/10min. Single atomic upsert (no lost updates under
   concurrency - proven by a 60-way burst test), 429 + Retry-After. The same
   new-window trigger that sweeps `rate_limits` also sweeps EXPIRED
-  `verification` rows: nothing else does. better-auth's own cleanup lives in
-  `findVerificationValue`, and every flow here consumes through
-  `consumeVerificationValue`, which deletes only the row it was handed - so an
-  abandoned passkey challenge would otherwise expire in five minutes and then
-  persist forever.
+  `verification` rows. better-auth's own cleanup lives in
+  `findVerificationValue`, which only magic-link verify calls. Passkey
+  ceremonies consume through `consumeVerificationValue`, which deletes only
+  the row it was handed - so without our sweep, an abandoned passkey
+  challenge would expire in five minutes and then persist until someone
+  happened to redeem a magic link.
 - **The passkey ceremony has its own budget, deliberately looser than
   `sign-in`.** It shared `sign-in` (10/10min) until 2026-09-12, when the
   app owner was locked out of production by it. One ceremony costs TWO
