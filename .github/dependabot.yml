@@ -42,12 +42,18 @@ updates:
 
     # One layer, not a shield. The npm worm campaigns are usually detected and
     # the poisoned versions yanked within hours to days of publication, so a week
-    # on the registry avoids most of that exposure at no cost to us - we are not
-    # chasing features. It does nothing about a patient backdoor, and GitHub is
+    # on the registry avoids most of that exposure. We are not chasing
+    # features, so the wait costs little, as long as security fixes do not
+    # wait (below). It does nothing about a patient backdoor, and GitHub is
     # explicit that cooldown is one defense among several.
     #
-    # Scheduled updates only. Security updates ignore cooldown and open
-    # immediately, which is what we want when there is a real advisory.
+    # Scheduled updates only. A security fix never waits for this. Dependabot's
+    # security updates skip cooldown, but they fire only for advisories in
+    # GitHub's global advisory database, and `npm audit` reads the same
+    # database. An advisory that a project publishes only on its own repository
+    # reaches neither, so nothing in this file will raise it. The manual path
+    # for those is in AGENTS.md ("Git, dependencies, security"); the gap is in
+    # SECURITY.md ("Supply chain").
     cooldown:
       default-days: 7
 

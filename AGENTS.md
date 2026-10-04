@@ -196,6 +196,15 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   tracking their parent, never pins - Dependabot does not update them. Keep
   `.npmrc`'s `ignore-scripts` unless a clean `npm ci` + build proves nothing
   needs a postinstall.
+- **A security fix never waits for the cooldown.** The 7-day cooldown in
+  `.github/dependabot.yml` is for routine updates: poisoned releases are
+  usually pulled within days. When an advisory names a version we run, from
+  any source, update now, even if our config is not exploitable. Move the
+  sibling packages released with it, check the publisher and provenance
+  (`npm view <pkg>@<version> _npmUser dist.attestations`), read the lockfile
+  diff, and run the gates. Do not wait for Dependabot or `npm audit`: both see
+  only GitHub's global advisory database, and an advisory that exists only on
+  the project's own repository reaches neither.
 - Pin third-party Actions to a full commit SHA with the tag in a trailing
   comment. Use `pull_request`, never `pull_request_target`, for anything
   running fork code.

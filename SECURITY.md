@@ -436,6 +436,16 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
   `.npmrc`, exact pins, no core infra on beta/RC.
+- Routine updates wait 7 days on the registry (Dependabot `cooldown`), as a
+  defense against poisoned releases. Security fixes do not wait (AGENTS.md).
+  **Known gap:** Dependabot alerts, Dependabot security updates and
+  `npm audit` all read GitHub's global advisory database only. An advisory a
+  project publishes only on its own repository reaches none of them.
+  GHSA-965c-763c-88jm (better-auth, critical, published 2026-09-30) was one:
+  nothing raised it, and it was found by hand four days later. It did not
+  apply to our config. The mitigation is manual: the owner subscribes to
+  security alerts on the repositories of better-auth, hono and drizzle-orm.
+  Automating it is under "Deferred".
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
@@ -875,6 +885,14 @@ of it:
   the next refetch. Display only; the server is correct. The fix is to
   invalidate the `['list-items']` prefix on settle. Trigger: anyone seeing a
   deleted item reappear in a list.
+
+- **Advisories outside GitHub's global database are watched by hand.** See
+  "Supply chain". The automated version is a scheduled workflow that reads
+  the repository security advisories of our direct runtime dependencies and
+  opens an issue when one names a version we run. It needs a new workflow
+  file, which the owner pushes from the host. Trigger: a second missed
+  advisory, a direct runtime dependency added that the owner does not watch,
+  or the owner no longer reading those alerts.
 
 ## Not applicable by construction
 
