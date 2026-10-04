@@ -138,11 +138,18 @@ describe('main', () => {
     expect(lines.join('\n')).toContain('skipped')
   })
 
-  it('exits 1 on any argument', () => {
-    const git: Git = () => {
+  it('exits 1 on any argument, before touching git', () => {
+    // The exit code alone cannot tell the argument check from a git failure:
+    // both fail closed with 1. The message and the untouched git stub can.
+    const calls: string[][] = []
+    const git: Git = (args) => {
+      calls.push(args)
       throw new Error('should not be called')
     }
-    expect(run(git, 'pull_request', ['--dry-run']).code).toBe(1)
+    const { code, output } = run(git, 'pull_request', ['--dry-run'])
+    expect(code).toBe(1)
+    expect(output).toContain('takes no arguments (got: --dry-run)')
+    expect(calls).toEqual([])
   })
 })
 

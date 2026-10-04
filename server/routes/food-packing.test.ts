@@ -194,6 +194,10 @@ describe('food pack state on the item PATCH', () => {
       isPacked: true,
     })
     expect(res.status).toBe(404)
+    // A 404 alone would also come back from a write that ran before the
+    // ownership check: the owner's row must be unchanged.
+    const [row] = await getFoodItems(owner.cookie, list.id)
+    expect(row?.isPacked).toBe(false)
   })
 })
 
@@ -515,10 +519,10 @@ describe('index-safety validation heals degraded rank states', () => {
 
 describe('location deletion near the rank ceiling', () => {
   it('falls back to a dense renumber instead of wedging the delete', async () => {
-    // Legacy state the audit tolerates: an Unassigned gear row sitting AT
-    // 0019's floor. The append path would need ranks past PACK_RANK_MAX and
-    // 422 forever; the dense fallback renumbers the merged cohort and the
-    // delete succeeds.
+    // An Unassigned gear row near the rank ceiling: PUT pack-order accepts
+    // any free rank up to PACK_RANK_MAX. The append path would need ranks
+    // past PACK_RANK_MAX and 422 forever; the dense fallback renumbers the
+    // merged cohort and the delete succeeds.
     const { cookie } = await signUpVerifiedUser('ceil1@example.com', 'CL')
     const list = await createList(cookie, 'Trip')
     const location = await createLocation(cookie, list.id, 'Bag')
@@ -625,8 +629,12 @@ describe('location deletion returns food to Unassigned', () => {
     const [foodRow] = await getFoodItems(cookie, list.id)
     expect(foodRow?.packingLocationId).toBeNull()
     // The bag (gear at bag-rank 0, food after it) landed as a block after
-    // the Unassigned survivor - so food's final rank clears both.
-    expect(foodRow?.packSortOrder).toBeGreaterThan(stays.packSortOrder)
+    // the Unassigned survivor, in the bag's order: gear, then food.
+    const itemsRes = await apiRequest(cookie, 'GET', `/api/lists/${list.id}/items`)
+    const items = (await itemsRes.json()) as ItemBody[]
+    const movedGear = items.find((row) => row.id === bagGear.id)
+    expect(movedGear?.packSortOrder).toBeGreaterThan(stays.packSortOrder)
+    expect(foodRow?.packSortOrder).toBeGreaterThan(movedGear?.packSortOrder ?? Infinity)
   })
 })
 

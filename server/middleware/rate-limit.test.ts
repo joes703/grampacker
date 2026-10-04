@@ -577,14 +577,20 @@ describe('auth rate limiting', () => {
   })
 
   it('sensitive endpoints keep independent buckets from each other', async () => {
+    // Exhaust the LARGER budget first. The other order proves nothing: after
+    // 6 delete-user requests, one passkey request would stay under its budget
+    // of 30 even if the two shared one bucket.
     const ip = '203.0.113.22'
-    // Exhaust delete-user for this IP.
-    for (let i = 0; i <= DELETE_USER_LIMIT; i++) {
-      await authPost('/api/auth/delete-user', {}, ip)
+    for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
+      await signIn(ip)
+    }
+    expect((await signIn(ip)).status).toBe(429)
+    // delete-user on the SAME IP still has its whole budget, and is still
+    // metered: distinct scope, distinct bucket.
+    for (let i = 0; i < DELETE_USER_LIMIT; i++) {
+      expect((await authPost('/api/auth/delete-user', {}, ip)).status).not.toBe(429)
     }
     expect((await authPost('/api/auth/delete-user', {}, ip)).status).toBe(429)
-    // Sign-in on the SAME IP is untouched: distinct scope, distinct bucket.
-    expect((await signIn(ip)).status).not.toBe(429)
   })
 
   it('sensitive endpoints cut off well before the generic auth bucket would', async () => {
