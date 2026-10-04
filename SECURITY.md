@@ -439,8 +439,10 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 - Routine updates wait 7 days on the registry (Dependabot `cooldown`), as a
   defense against poisoned releases. Security fixes do not wait (AGENTS.md).
   **Known gap:** Dependabot alerts, Dependabot security updates and
-  `npm audit` all read GitHub's global advisory database only. An advisory a
-  project publishes only on its own repository reaches none of them.
+  `npm audit` all read GitHub's global advisory database only (Dependabot
+  only its GitHub-reviewed entries). An advisory a project publishes only on
+  its own repository reaches none of them until GitHub reviews it into that
+  database, which can take days.
   GHSA-965c-763c-88jm (better-auth, critical, published 2026-09-30) was one:
   nothing raised it, and it was found by hand four days later. It did not
   apply to our config. The mitigation is manual: the owner subscribes to

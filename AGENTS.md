@@ -200,11 +200,14 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   `.github/dependabot.yml` is for routine updates: poisoned releases are
   usually pulled within days. When an advisory names a version we run, from
   any source, update now, even if our config is not exploitable. Move the
-  sibling packages released with it, check the publisher and provenance
-  (`npm view <pkg>@<version> _npmUser dist.attestations`), read the lockfile
-  diff, and run the gates. Do not wait for Dependabot or `npm audit`: both see
-  only GitHub's global advisory database, and an advisory that exists only on
-  the project's own repository reaches neither.
+  sibling packages released with it, check who published it
+  (`npm view <pkg>@<version> _npmUser`), verify registry signatures and
+  provenance after the install (`npm audit signatures`; from a sandbox it
+  needs `tuf-repo-cdn.sigstore.dev`, so say if that is blocked), read the
+  lockfile diff, and run the gates. Do not wait for Dependabot or
+  `npm audit`: both act only on advisories GitHub has reviewed into its
+  global database, and one published only on the project's own repository
+  reaches neither until then, which can take days.
 - Pin third-party Actions to a full commit SHA with the tag in a trailing
   comment. Use `pull_request`, never `pull_request_target`, for anything
   running fork code.

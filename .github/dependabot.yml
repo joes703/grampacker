@@ -48,10 +48,11 @@ updates:
     # explicit that cooldown is one defense among several.
     #
     # Scheduled updates only. A security fix never waits for this. Dependabot's
-    # security updates skip cooldown, but they fire only for advisories in
-    # GitHub's global advisory database, and `npm audit` reads the same
-    # database. An advisory that a project publishes only on its own repository
-    # reaches neither, so nothing in this file will raise it. The manual path
+    # security updates skip cooldown, but they fire only for advisories GitHub
+    # has reviewed into its global advisory database, and `npm audit` reads the
+    # same database. An advisory that a project publishes only on its own
+    # repository reaches neither until that review, which can take days, so
+    # nothing in this file will raise it in that window. The manual path
     # for those is in AGENTS.md ("Git, dependencies, security"); the gap is in
     # SECURITY.md ("Supply chain").
     cooldown:
