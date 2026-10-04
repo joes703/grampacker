@@ -145,8 +145,12 @@ Deleting a test for a reason other than speed has its own bar. A test may go
 for one of three reasons:
 
 1. **What it covers no longer exists.** The code, option or contract was
-   removed, or its input can no longer occur: a schema constraint forbids
-   it, or no caller can produce it. Show the evidence.
+   removed, or its input can no longer occur. For an input, name the
+   constraint or trace every production entry point that rules it out, and
+   show this does not depend on the protection the test checks. A guard or
+   constraint we still keep is not a removed contract: a test of it stays
+   unless reason 2 applies. A test that only records that a removed
+   feature is absent may go under this reason.
 2. **Another named test proves the same thing.** Diff the two first. A
    different argument, input class, caller layer or request shape means the
    other test does not prove the same thing.
@@ -159,17 +163,19 @@ for one of three reasons:
    These do not show that a test proves nothing: it checks that something
    is absent, the code under it is simple, or two separate guards protect
    the behavior, so removing one guard leaves the test green. A behavior a
-   user can reach keeps its test unless reason 2 applies. A mutation the
-   test fails to catch is a reason to look closer, never proof alone.
+   user can reach keeps its test unless reason 2 applies, and so does an
+   absence check that enforces a current product or security rule. A
+   mutation the test fails to catch is a reason to look closer, never
+   proof alone.
 
    Reason 3 exists because a test that cannot fail still costs run and
    reading time, and makes an unguarded behavior look guarded.
 
 The change that deletes a test says, per test, which reason applies and its
 evidence: the protection lost and why that is acceptable, or where the
-protection remains. No behavior loses its only test: when another test
-takes over, it exists before or in the same change as the deletion. Speed
-alone is never the reason.
+protection remains. No behavior we still keep loses its only test: when
+another test takes over, it exists before or in the same change as the
+deletion. Speed alone is never the reason.
 
 ## 9. Measuring
 

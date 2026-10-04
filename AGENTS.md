@@ -51,12 +51,15 @@ a D1 equivalent, ask rather than assume.
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
 
-**Tests come first,** one at a time: red, then green, then refactor. A test
-that has never failed may not test anything. A new test of behavior that
-already exists must fail against a small, temporary break in the production
-code; say what you broke in the commit message, then revert it. A new test
-that fails against unchanged code has found a bug: stop and report it, and
-fix it in its own change.
+**Tests come first** for a behavior change, one at a time: write the test,
+see it fail for the reason you expect, then make it pass, then refactor. A
+test that has never failed may not test anything. A docs-only change needs
+no test; a config change needs one when it changes behavior. A new test of
+behavior that already exists must pass, then fail against a small,
+temporary break in the production code: restore the code before you
+commit, and say what you broke in the commit message. If such a test fails
+against unchanged code, check its setup and expectation first; if it has
+found a real bug outside the task, report it and fix it in its own change.
 
 **Before claiming done:** read the complete diff. Code change: `build` and
 `test:unit`. Anything under `server/`: also `test:api`. Migrations or schema:
