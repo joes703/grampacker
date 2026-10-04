@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
@@ -221,6 +221,10 @@ describe('saving list notes', () => {
     d.reject(new Error('offline'))
     await settle(d)
 
-    expect(screen.getByRole('button', { name: 'Edit notes' })).toBeEnabled()
+    // TanStack Query tells React the save is over from a setTimeout, which
+    // can run after settle() returns, so wait for the re-render.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit notes' })).toBeEnabled()
+    })
   })
 })
