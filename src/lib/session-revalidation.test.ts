@@ -37,6 +37,7 @@ type Harness = {
   revalidateSessionAfterUnauthorized: () => void
   settled: () => Promise<void>
   sessionData: () => unknown
+  session: () => { refetch: () => Promise<void> }
   requestedPaths: () => string[]
   timeoutMs: number
 }
@@ -81,6 +82,7 @@ async function harness(): Promise<Harness> {
     revalidateSessionAfterUnauthorized: mod.revalidateSessionAfterUnauthorized,
     settled: mod.sessionRevalidationSettled,
     sessionData: () => read().data,
+    session: read,
     requestedPaths: () =>
       fetchMock.mock.calls.map((call) => new URL(String(call[0])).pathname),
     timeoutMs: mod.SESSION_CHECK_TIMEOUT_MS,
@@ -114,12 +116,12 @@ describe('the bridge to better-auth', () => {
   })
 
   it('publishes the answer onto the session atom: established -> gone', async () => {
-    // The assertion that matters, and the one the first draft of this test got wrong.
     // The atom STARTS at data: null, so "a null response leaves data null" would pass
     // even if refetch() stopped applying its response entirely - which is exactly the
     // regression this test exists to catch. So: establish a real session first, and
     // assert the TRANSITION. Without it, SessionCacheGuard never sees the
-    // established -> null change it tears the document down on, and P1.5 is back.
+    // established -> null change it tears the document down on, and a revoked session
+    // keeps the signed-in screens up while every request fails.
     const h = await harness()
 
     h.fetchMock.mockResolvedValueOnce(jsonResponse(A_SESSION))
@@ -205,11 +207,11 @@ describe('coalescing', () => {
   })
 
   it('a check that never comes back does not wedge the module either', async () => {
-    // The hole the previous draft shipped with, and the reason for the bounded wait:
-    // `fetch` has no default timeout, so a response whose body never finishes would
-    // pin the coalescer forever. Every later 401 would set `trailing` and nothing
-    // would ever start the run that consumes it - P1.5 rebuilt inside its own fix.
-    // The earlier deferred tests cannot catch this: they all release the first check.
+    // The reason for the bounded wait: `fetch` has no default timeout, so a response
+    // whose body never finishes would pin the coalescer forever. Every later 401 would
+    // set `trailing` and nothing would ever start the run that consumes it, so a
+    // revoked session would never be noticed. The earlier deferred tests cannot catch
+    // this: they all release the first check.
     const h = await harness()
     // Fake timers BEFORE the check starts: the bound is scheduled inside run(), so
     // installing them afterwards would leave a real timer that no advance can move.
@@ -230,16 +232,19 @@ describe('coalescing', () => {
   })
 
   it('a failed check does not wedge the module against later 401s', async () => {
-    // The failure mode the first design shipped with: one bad check plus a suppression
-    // window meant nothing ever asked again. Here the next 401 always gets a check.
+    // A rejected fetch is not enough to test this: better-auth settles a failed
+    // /get-session onto the atom and resolves refetch() anyway. So the refetch
+    // itself rejects here, once. If run() let that rejection escape, `inFlight`
+    // would never clear and no later 401 would ask again.
     const h = await harness()
-    h.fetchMock.mockRejectedValueOnce(new Error('network down'))
+    vi.spyOn(h.session(), 'refetch').mockRejectedValueOnce(new Error('refetch failed'))
 
     h.revalidateSessionAfterUnauthorized()
     await h.settled()
+    expect(h.fetchMock).not.toHaveBeenCalled()
 
     h.revalidateSessionAfterUnauthorized()
     await h.settled()
-    expect(h.fetchMock).toHaveBeenCalledTimes(2)
+    expect(h.requestedPaths()).toEqual(['/api/auth/get-session'])
   })
 })

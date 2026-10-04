@@ -7,10 +7,8 @@ import {
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
 
-// computeListWeightBreakdown coverage (moved here from lists/WeightTable.test.ts,
-// which named the WeightTable component but only exercised this helper). The
-// component now has its own render test; this is the single home for the
-// weight-breakdown module's pure-function coverage.
+// Pure-function coverage for the weight-breakdown module. The WeightTable
+// component has its own render test.
 
 function listItem(overrides: {
   id: string
@@ -295,16 +293,18 @@ describe('food weight', () => {
     expect(after.consumableCatRows).toEqual(before.consumableCatRows)
   })
 
-  // The regression this whole contract exists for: the public share reported
-  // a lighter pack than the owner saw, because its call omitted food and
-  // nothing said the result was unfinished. Food is now a REQUIRED input, so
-  // the two surfaces cannot compute different totals from the same list
-  // without someone deliberately passing a different number.
+  // The regression this contract exists for: the public share reported a
+  // lighter pack than the owner saw, because its call omitted food and nothing
+  // said the result was unfinished. Food is a REQUIRED input, so the share and
+  // owner pages cannot compute different totals from the same list without
+  // someone deliberately passing a different number.
+  //
+  // The type check in `npm run build` is the assertion: if `food` became
+  // optional, this directive would be unused and the build would fail. The
+  // function is never called.
   it('cannot be computed without stating what food contributes', () => {
-    const owner = withFood(800)
-    const share = withFood(800)
-
-    expect(share.totalPackGrams).toBe(owner.totalPackGrams)
-    expect(share.consumableGrams).toBe(owner.consumableGrams)
+    // @ts-expect-error food is a required input
+    const omitFood = () => computeListWeightBreakdown({ gear: { items: [], categories: [] } })
+    void omitFood
   })
 })

@@ -180,13 +180,14 @@ describe('planGearImport', () => {
 
   it('never matches an existing item when the CSV row is in a brand-new category', () => {
     // Same name + weight as the existing Tent, but a NEW category -> the
-    // gearKey differs (new tempId), so it is a new item, not a skip.
-    const existingCategories = [makeCategory({ id: 'cat-shelter', name: 'Shelter' })]
+    // gearKey differs (new tempId), so it is a new item, not a skip. The
+    // existing Tent is uncategorized on purpose: if the new category
+    // contributed nothing to the key, the two keys would be equal.
     const existingGearItems = [
-      makeGearItem({ id: 'gear-tent', name: 'Tent', weightGrams: 1200, categoryId: 'cat-shelter' }),
+      makeGearItem({ id: 'gear-tent', name: 'Tent', weightGrams: 1200, categoryId: null }),
     ]
     const rows = [makeRow({ name: 'Tent', weightGrams: 1200, categoryName: 'Backpacking' })]
-    const plan = planGearImport(rows, existingCategories, existingGearItems, makeGenId())
+    const plan = planGearImport(rows, [], existingGearItems, makeGenId())
     expect(plan.skippedCount).toBe(0)
     expect(plan.newCategories).toEqual([{ tempId: 'id-1', name: 'Backpacking' }])
     expect(plan.newItems).toHaveLength(1)
@@ -256,15 +257,16 @@ describe('fractional weights and dedup identity', () => {
 
   it('treats a different tenth as a genuinely different item', () => {
     // The other half of the contract: dedup must not be so loose that it
-    // collapses two items that differ only in the fraction.
+    // collapses two items that differ only in the fraction. 12.1 and 12.4
+    // round to the same whole gram, so rounding in the key would merge them.
     const existingGearItems = [
-      makeGearItem({ id: 'gear-stake', name: 'Stake', weightGrams: 12.4, categoryId: null }),
+      makeGearItem({ id: 'gear-stake', name: 'Stake', weightGrams: 12.1, categoryId: null }),
     ]
-    const rows: GearCsvRow[] = [makeRow({ name: 'Stake', weightGrams: 12.5 })]
+    const rows: GearCsvRow[] = [makeRow({ name: 'Stake', weightGrams: 12.4 })]
     const plan = planGearImport(rows, [], existingGearItems, makeGenId())
 
     expect(plan.skippedCount).toBe(0)
-    expect(plan.newItems.map((i) => i.weightGrams)).toEqual([12.5])
+    expect(plan.newItems.map((i) => i.weightGrams)).toEqual([12.4])
   })
 })
 
@@ -441,8 +443,9 @@ describe('assertListImportWithinCaps', () => {
   })
 
   it('rejects when existing + new categories exceeds the per-user category cap', () => {
-    // The 0021 trigger caps categories per USER: the schema's per-file bound
-    // cannot see the existing library, so a valid file can still blow the cap.
+    // The categories_user_cap trigger caps categories per USER: the schema's
+    // per-file bound cannot see the existing library, so a valid file can
+    // still blow the cap.
     expect(() => assertListImportWithinCaps(planOf(2, 2, 2), 0, CATEGORY_CAP - 1)).toThrow(
       `This import would add 2 new categories to your ${CATEGORY_CAP - 1} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
     )
@@ -500,8 +503,8 @@ describe('assertGearImportWithinCaps', () => {
   })
 
   it('rejects when existing + new categories exceeds the category cap', () => {
-    // The dimension only the server used to know about: a gear import can
-    // create categories, and the 0021 trigger caps those independently.
+    // A gear import can create categories, and the categories_user_cap
+    // trigger caps those independently, so the gear path checks it too.
     expect(() =>
       assertGearImportWithinCaps(gearPlanOf(1, 2), 0, CATEGORY_CAP - 1),
     ).toThrow(/category limit/i)

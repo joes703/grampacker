@@ -13,9 +13,9 @@ import {
   updateList,
 } from './lists'
 
-// URL/method contract tests (review P2.2): every component and hook test
-// mocks these functions away, so until this file a wrong path or verb in any
-// of them was invisible to the entire suite. Same style as gear.test.ts:
+// URL/method contract tests: every component and hook test mocks these
+// functions away, so only this file sees a wrong path or verb. Same style as
+// gear.test.ts:
 // stub global fetch, pin URL, method, CSRF header on writes, and body.
 
 const LIST_ROW = {
@@ -181,7 +181,7 @@ describe('list queries hit the documented endpoints', () => {
     })
   })
 
-  it('fetchSharedList: GET /api/shares/v2/:slug, 404 maps to null', async () => {
+  it('fetchSharedList: GET /api/shares/v2/:slug, 404 maps to null, other errors reject', async () => {
     const fn = mockFetch(200, SHARED_ROW)
     expect(await fetchSharedList('abc123')).toEqual(SHARED_ROW)
     expect(requestOf(fn)).toMatchObject({
@@ -192,5 +192,10 @@ describe('list queries hit the documented endpoints', () => {
 
     mockFetch(404, { error: 'Not found' })
     expect(await fetchSharedList('zzzzzz')).toBeNull()
+
+    // An outage must not read as "not found": the share page shows a
+    // different message for each.
+    mockFetch(500, { error: 'Internal error' })
+    await expect(fetchSharedList('abc123')).rejects.toMatchObject({ status: 500 })
   })
 })
