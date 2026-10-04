@@ -196,18 +196,9 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   tracking their parent, never pins - Dependabot does not update them. Keep
   `.npmrc`'s `ignore-scripts` unless a clean `npm ci` + build proves nothing
   needs a postinstall.
-- **A security fix never waits for the cooldown.** The 7-day cooldown in
-  `.github/dependabot.yml` is for routine updates: poisoned releases are
-  usually pulled within days. When an advisory names a version we run, from
-  any source, update now, even if our config is not exploitable. Move the
-  sibling packages released with it, check who published it
-  (`npm view <pkg>@<version> _npmUser`), verify registry signatures and
-  provenance after the install (`npm audit signatures`; from a sandbox it
-  needs `tuf-repo-cdn.sigstore.dev`, so say if that is blocked), read the
-  lockfile diff, and run the gates. Do not wait for Dependabot or
-  `npm audit`: both act only on advisories GitHub has reviewed into its
-  global database, and one published only on the project's own repository
-  reaches neither until then, which can take days.
+- **Security fixes bypass routine waiting and receive prompt review;** a
+  "security" label does not make a release safe or approve a deploy. Before
+  applying one Dependabot did not raise, follow SECURITY.md "Supply chain".
 - Pin third-party Actions to a full commit SHA with the tag in a trailing
   comment. Use `pull_request`, never `pull_request_target`, for anything
   running fork code.

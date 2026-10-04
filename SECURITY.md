@@ -440,18 +440,42 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
   `.npmrc`, exact pins, no core infra on beta/RC.
-- Routine updates wait 7 days on the registry (Dependabot `cooldown`), as a
-  defense against poisoned releases. Security fixes do not wait (AGENTS.md).
-  **Known gap:** Dependabot alerts, Dependabot security updates and
-  `npm audit` all read GitHub's global advisory database only (Dependabot
-  only its GitHub-reviewed entries). An advisory a project publishes only on
-  its own repository reaches none of them until GitHub reviews it into that
-  database, which can take days.
-  GHSA-965c-763c-88jm (better-auth, critical, published 2026-09-30) was one:
-  nothing raised it, and it was found by hand four days later. It did not
-  apply to our config. The mitigation is manual: the owner subscribes to
-  security alerts on the repositories of better-auth, hono and drizzle-orm.
-  Automating it is under "Deferred".
+- **Routine updates wait; security fixes bypass routine waiting and receive
+  prompt review.** Neither path makes a release safe or approves a deploy.
+  - *Routine:* Dependabot version updates wait 7 days on the registry
+    (`cooldown` in `.github/dependabot.yml`). That reduces exposure to a newly
+    poisoned release, which is often pulled within days; it guarantees
+    nothing. `ignore-scripts` stops install scripts only - package code still
+    runs in our build, our tests and production - and green CI shows the code
+    works, not that it is harmless.
+  - *Dependabot security updates* already bypass the cooldown and the weekly
+    schedule. They need the dependency graph, Dependabot alerts and Dependabot
+    security updates all enabled in the repository's settings. The agent token
+    can confirm only the dependency graph (`/dependency-graph/sbom` answers);
+    the other two need admin read, so the owner checks them.
+  - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
+    advisory database (Dependabot only on GitHub-reviewed ones). An advisory a
+    project publishes on its own repository reaches them only after GitHub
+    reviews it. GHSA-965c-763c-88jm (better-auth, critical,
+    2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
+    still outside it on 2026-10-04.
+  - *Manual path,* for a credible announcement (the project's own advisory or
+    release notes) that Dependabot has not acted on: confirm the affected
+    versions against the lockfile and whether our config is exposed; choose
+    the smallest suitable fix, usually the patched release plus the sibling
+    packages released with it; review the lockfile diff and the release's
+    provenance (`npm view <pkg>@<version> _npmUser`, then
+    `npm audit signatures`, which from a sandbox needs
+    `tuf-repo-cdn.sigstore.dev`); run the gates for what changed. Then the
+    normal PR, review and merge approval. If our config is not exposed, still
+    take the fix, without the urgency.
+  - *Hearing about it:* Watch → Custom → Security alerts on someone else's
+    repository does not deliver the advisories it publishes, so it is not a
+    subscription. The owner watches Releases on `better-auth/better-auth`,
+    `honojs/hono` and `drizzle-team/drizzle-orm`. None of the three documents
+    a separate announcement channel (their `SECURITY.md` files, read
+    2026-10-04); better-auth links its advisories from the fixing release's
+    notes.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
@@ -891,14 +915,6 @@ of it:
   the next refetch. Display only; the server is correct. The fix is to
   invalidate the `['list-items']` prefix on settle. Trigger: anyone seeing a
   deleted item reappear in a list.
-
-- **Advisories outside GitHub's global database are watched by hand.** See
-  "Supply chain". The automated version is a scheduled workflow that reads
-  the repository security advisories of our direct runtime dependencies and
-  opens an issue when one names a version we run. It needs a new workflow
-  file, which the owner pushes from the host. Trigger: a second missed
-  advisory, a direct runtime dependency added that the owner does not watch,
-  or the owner no longer reading those alerts.
 
 ## Not applicable by construction
 
