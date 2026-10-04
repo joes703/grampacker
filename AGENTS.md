@@ -196,6 +196,9 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   tracking their parent, never pins - Dependabot does not update them. Keep
   `.npmrc`'s `ignore-scripts` unless a clean `npm ci` + build proves nothing
   needs a postinstall.
+- **Security fixes bypass routine waiting and receive prompt review;** a
+  "security" label does not make a release safe or approve a deploy. Before
+  applying one Dependabot did not raise, follow SECURITY.md "Supply chain".
 - Pin third-party Actions to a full commit SHA with the tag in a trailing
   comment. Use `pull_request`, never `pull_request_target`, for anything
   running fork code.
