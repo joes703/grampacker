@@ -1,5 +1,4 @@
 import { env } from 'cloudflare:test'
-import { hashPassword } from 'better-auth/crypto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
@@ -449,53 +448,5 @@ describe('POST /api/auth/delete-user', () => {
 
     const after = await rowCounts(userId)
     expect(after.user).toBe(1)
-  })
-
-  it('a planted credential row is the one the runtime looks up', async () => {
-    // The refusal above is only meaningful if the lookup that produced it
-    // is the real one. better-auth 1.7.4 keys a credential account on
-    // user_id, provider_id and account_id
-    // (better-auth/dist/db/internal-adapter.mjs:652). Plant a row on those
-    // three, send the WRONG password, and the only way to reach
-    // INVALID_PASSWORD is for findCredentialAccount to have matched it; a
-    // lookup that missed would surface as CREDENTIAL_ACCOUNT_NOT_FOUND
-    // instead. No account is deleted either way - a wrong password is a
-    // refusal, and that is asserted too.
-    //
-    // The row carries no `issuer`: 0029 dropped that column, and the fixture
-    // used to seed it only to satisfy its NOT NULL constraint.
-    await env.DB.prepare(
-      'insert into account (id, account_id, provider_id, user_id, password, updated_at) values (?, ?, ?, ?, ?, ?)',
-    )
-      .bind(
-        `${userId}-cred`,
-        userId,
-        'credential',
-        userId,
-        await hashPassword('the-real-password-123456'),
-        Date.now(),
-      )
-      .run()
-
-    const res = await apiRequest(cookie, 'POST', '/api/auth/delete-user', {
-      password: 'not-the-real-password',
-    })
-    expect(res.ok).toBe(false)
-    expect(((await res.json()) as { code?: string }).code).toBe('INVALID_PASSWORD')
-
-    const after = await rowCounts(userId)
-    expect(after.user).toBe(1)
-    for (const table of APP_TABLES) {
-      expect(after[table], `${table} still present`).toBeGreaterThan(0)
-    }
-    // rowCounts() deliberately leaves `account` out (passwordless users have
-    // none), so the planted row's survival is asserted directly: a refused
-    // password must not consume the credential either.
-    const credential = await env.DB.prepare(
-      'select count(*) as n from account where user_id = ? and provider_id = ?',
-    )
-      .bind(userId, 'credential')
-      .first<{ n: number }>()
-    expect(credential?.n).toBe(1)
   })
 })

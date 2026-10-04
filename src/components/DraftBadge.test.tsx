@@ -8,11 +8,6 @@ afterEach(() => {
 })
 
 describe('DraftBadge', () => {
-  it('renders the Draft label', () => {
-    render(<DraftBadge />)
-    expect(screen.getByText('Draft')).toBeTruthy()
-  })
-
   it('merges a passed className', () => {
     render(<DraftBadge className="ml-2" />)
     expect(screen.getByText('Draft').className).toContain('ml-2')

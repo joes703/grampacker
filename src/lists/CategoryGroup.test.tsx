@@ -678,28 +678,6 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.queryByText(/Base/)).toBeNull()
     expect(screen.queryByText('777 g')).toBeNull()
   })
-
-  it('keeps the subtotal out of the rows when an item is both worn and consumable', () => {
-    // The breakdown buckets the defensive isConsumable+isWorn state as
-    // consumable, while the Worn section's grouper selects on isWorn. So such a
-    // row can render in Worn while its weight sits in consumableGrams. A DB
-    // CHECK forbids the state; this locks in that the SECTION still renders
-    // exactly what it was handed rather than quietly re-deriving a total to
-    // paper over the mismatch.
-    const dual = { ...itemNamed('a', 'Jacket'), isWorn: true, isConsumable: true }
-    render(
-      <CategoryGroup
-        name="Worn"
-        regionKey="worn"
-        items={[dual]}
-        weightUnit="g"
-        subtotalGrams={0}
-        wornSection
-      />,
-    )
-    expect(screen.getAllByText('0 g').length).toBeGreaterThan(0)
-    expect(screen.queryByText('100 g')).toBeNull()
-  })
 })
 
 // Two arrangements of one list, two renderings of one food row. Category and

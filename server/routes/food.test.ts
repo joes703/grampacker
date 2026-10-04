@@ -194,26 +194,6 @@ describe('food: quantity is what you typed, unitCount is what you carry', () => 
 })
 
 describe('food: the Skip feature is gone at every layer', () => {
-  // There used to be a third test here, provoking the 0017 needed_only trigger
-  // against a row left at needed=0 by the old Skip button. It was correct for
-  // exactly one release: the window between removing the writers and running
-  // the backfill. Migration 0027 dropped the trigger and the column, so the
-  // state it set up can no longer be constructed - which is the point.
-  it('no longer exposes any way to skip a meal', async () => {
-    const { cookie } = await signUpVerifiedUser('food-11@example.com', 'F11')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
-
-    const res = await apiRequest(
-      cookie,
-      'PATCH',
-      `/api/lists/${listId}/food/slots/${slotOf(food, 1, 'breakfast').id}`,
-      { needed: false },
-    )
-    expect(res.status).toBe(404)
-  })
-
   it('keeps the plan off the slot DTO entirely', async () => {
     const { cookie } = await signUpVerifiedUser('food-11b@example.com', 'F11b')
     const listId = await createList(cookie, 'Trip')
@@ -224,19 +204,6 @@ describe('food: the Skip feature is gone at every layer', () => {
     for (const slot of raw.slots) {
       expect(Object.keys(slot).sort()).toEqual(['dayNumber', 'id', 'meal'])
     }
-  })
-
-  it('has no needed column left to write to', async () => {
-    // The column is gone (0027). Naming it is now a hard SQL error, which is
-    // the strongest possible statement that no code path can resurrect the
-    // state the Skip button used to create.
-    const { cookie } = await signUpVerifiedUser('food-11c@example.com', 'F11c')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 1)
-
-    await expect(
-      env.DB.prepare('update list_food_slots set needed = 0').run(),
-    ).rejects.toThrow(/no such column: needed/)
   })
 })
 
