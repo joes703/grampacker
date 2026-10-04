@@ -43,40 +43,7 @@ describe('mutationErrorHandler', () => {
     mutationErrorHandler(new Error('permission denied'), undefined, undefined, fakeMutation(undefined, ['gear-items', 'create']))
     expect(warnSpy).toHaveBeenCalledWith('[gear-items/create] failed', {
       error: 'permission denied',
-      code: undefined,
       mutationKey: ['gear-items', 'create'],
-    })
-  })
-
-  it('extracts the code property from a plain (non-Error) object payload', () => {
-    // Plain objects don't go through the `error.message` branch - they're
-    // stringified via String(error), which produces '[object Object]'. The
-    // code property is still extracted via the typeguard. This shape is
-    // unusual in practice (Supabase's PostgrestError extends Error) but
-    // locks the typeguard's positive case for any future caller that
-    // throws a literal object.
-    const pgErrorObject = { message: 'permission denied', code: '42501' }
-    mutationErrorHandler(pgErrorObject, undefined, undefined, fakeMutation(undefined, ['list-items', 'add']))
-    expect(warnSpy).toHaveBeenCalledWith('[list-items/add] failed', {
-      error: '[object Object]',
-      code: '42501',
-      mutationKey: ['list-items', 'add'],
-    })
-  })
-
-  it('extracts code from an Error subclass that also carries a code property', () => {
-    class PgError extends Error {
-      code: string
-      constructor(message: string, code: string) {
-        super(message)
-        this.code = code
-      }
-    }
-    mutationErrorHandler(new PgError('row violates RLS', '42501'), undefined, undefined, fakeMutation(undefined, ['categories', 'delete']))
-    expect(warnSpy).toHaveBeenCalledWith('[categories/delete] failed', {
-      error: 'row violates RLS',
-      code: '42501',
-      mutationKey: ['categories', 'delete'],
     })
   })
 
@@ -84,7 +51,6 @@ describe('mutationErrorHandler', () => {
     mutationErrorHandler('plain string error', undefined, undefined, fakeMutation(undefined, ['lists', 'reorder']))
     expect(warnSpy).toHaveBeenCalledWith('[lists/reorder] failed', {
       error: 'plain string error',
-      code: undefined,
       mutationKey: ['lists', 'reorder'],
     })
   })
@@ -93,7 +59,6 @@ describe('mutationErrorHandler', () => {
     mutationErrorHandler(new Error('boom'), undefined, undefined, fakeMutation(undefined, undefined))
     expect(warnSpy).toHaveBeenCalledWith('[mutation] failed', {
       error: 'boom',
-      code: undefined,
       mutationKey: undefined,
     })
   })
@@ -110,7 +75,6 @@ describe('mutationErrorHandler', () => {
     )
     expect(warnSpy).toHaveBeenCalledWith('[update-list-item/list-1] failed', {
       error: 'Internal Server Error',
-      code: undefined,
       correlationId: 'c0ffee00-dead-4bee-8888-feedfacecafe',
       mutationKey: ['update-list-item', 'list-1'],
     })
@@ -126,7 +90,6 @@ describe('mutationErrorHandler', () => {
     )
     expect(warnSpy).toHaveBeenCalledWith('[reorder-pack-items/list-1] failed', {
       error: 'Conflict',
-      code: undefined,
       correlationId: undefined,
       mutationKey: ['reorder-pack-items', 'list-1'],
     })
