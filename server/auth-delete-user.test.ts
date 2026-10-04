@@ -124,7 +124,9 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
 // all. This is the shape that would survive a user-id-keyed purge - and it is
 // not inert. Redeeming it after the delete would sign the address straight back
 // up (magic-link verify creates the user when none matches), so the account the
-// owner just deleted would reappear on their next stale click.
+// owner just deleted would reappear on their next stale click. The identifier
+// carries the plugin's `magic-link:` purpose prefix; the purge reads only
+// `value`, so the prefix does not affect what it finds.
 async function seedPendingMagicLink(email: string): Promise<void> {
   const token = crypto.randomUUID().replace(/-/g, '')
   await env.DB.prepare(
@@ -132,8 +134,8 @@ async function seedPendingMagicLink(email: string): Promise<void> {
   )
     .bind(
       `ml-${token}`,
-      token,
-      JSON.stringify({ email, name: '' }),
+      `magic-link:${token}`,
+      JSON.stringify({ type: 'magic-link', email, name: '' }),
       Date.now() + 300_000,
     )
     .run()
