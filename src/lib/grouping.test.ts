@@ -106,9 +106,7 @@ describe('groupListItemsByCategory', () => {
 // unchanged, and the prior TOP-LEVEL array when every group was reused - has
 // one live caller: useGroupedListItems, which reaches it through `groupBy`
 // with exactly the options below (use-grouped-list-items.ts, buildGroups).
-// These tests used to drive it through a `prior` parameter on
-// groupListItemsByCategory that no production code passed; they now drive
-// the path the app runs. The top-level identity invariant is load-bearing
+// These tests drive that path. The top-level identity invariant is load-bearing
 // for the hook's setState-during-render loop guard.
 describe('groupBy stability (the useGroupedListItems path)', () => {
   function stableListGroups(
@@ -170,57 +168,38 @@ describe('groupBy stability (the useGroupedListItems path)', () => {
     expect(second[0]!.items).toBe(first[0]!.items) // items array reused
   })
 
-  it('rebuilds when gearItem.description changes (regression: must be in comparator)', () => {
-    const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', description: 'old' })]
-    const first = stableListGroups(items1, [shelter])
+  // One row per field listItemsArrayEqual compares. Each field is rendered
+  // (or orders a section), so a field missing from the comparator lets a
+  // render reuse the old group and show stale data until an unrelated change.
+  // gearItem.status is an example: GearStatusBadge on every ItemRow reads it,
+  // and a status-only update from the gear closet would leave the badge stuck.
+  // packingLocationId matters here because under CATEGORY grouping it does
+  // not move the item to another group.
+  const base = listItem({ id: 'a', categoryId: 'cat-shelter' })
+  it.each<[string, (item: ListItemWithGear) => ListItemWithGear]>([
+    ['id', (i) => ({ ...i, id: 'b' })],
+    ['sortOrder', (i) => ({ ...i, sortOrder: i.sortOrder + 1 })],
+    ['packSortOrder', (i) => ({ ...i, packSortOrder: i.packSortOrder + 1 })],
+    ['quantity', (i) => ({ ...i, quantity: i.quantity + 1 })],
+    ['isPacked', (i) => ({ ...i, isPacked: !i.isPacked })],
+    ['isReady', (i) => ({ ...i, isReady: !i.isReady })],
+    ['isWorn', (i) => ({ ...i, isWorn: !i.isWorn })],
+    ['isConsumable', (i) => ({ ...i, isConsumable: !i.isConsumable })],
+    ['packingLocationId', (i) => ({ ...i, packingLocationId: mainPack.id })],
+    ['gearItem.id', (i) => ({ ...i, gearItem: { ...i.gearItem, id: 'g-other' } })],
+    ['gearItem.weightGrams', (i) => ({ ...i, gearItem: { ...i.gearItem, weightGrams: i.gearItem.weightGrams + 1 } })],
+    ['gearItem.name', (i) => ({ ...i, gearItem: { ...i.gearItem, name: 'new name' } })],
+    ['gearItem.description', (i) => ({ ...i, gearItem: { ...i.gearItem, description: 'new' } })],
+    ['gearItem.status', (i) => ({ ...i, gearItem: { ...i.gearItem, status: 'need_to_buy' } })],
+  ])('rebuilds when only %s changes', (_field, change) => {
+    const first = stableListGroups([base], [shelter])
 
-    const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', description: 'new' })]
-    const second = stableListGroups(items2, [shelter], first)
-
-    expect(second).not.toBe(first)
-    expect(second[0]!.items).not.toBe(first[0]!.items)
-    expect(second[0]!.items[0]!.gearItem.description).toBe('new')
-  })
-
-  it('rebuilds when gearItem.name changes', () => {
-    const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', name: 'old name' })]
-    const first = stableListGroups(items1, [shelter])
-
-    const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', name: 'new name' })]
-    const second = stableListGroups(items2, [shelter], first)
-
-    expect(second).not.toBe(first)
-    expect(second[0]!.items).not.toBe(first[0]!.items)
-  })
-
-  it('rebuilds when gearItem.status changes (regression: ItemRow renders GearStatusBadge from status)', () => {
-    // Regression: listItemsArrayEqual previously omitted gearItem.status
-    // even though status is in GEAR_ITEM_AUTH_SELECT and rendered by
-    // GearStatusBadge on every ItemRow. A status-only fanout update from
-    // the gear closet would leave the badge visually stuck until another
-    // invalidation hit the cache.
-    const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', status: 'active' })]
-    const first = stableListGroups(items1, [shelter])
-
-    const items2 = [listItem({ id: 'a', categoryId: 'cat-shelter', status: 'need_to_buy' })]
-    const second = stableListGroups(items2, [shelter], first)
+    const changed = change(base)
+    const second = stableListGroups([changed], [shelter], first)
 
     expect(second).not.toBe(first)
     expect(second[0]!.items).not.toBe(first[0]!.items)
-    expect(second[0]!.items[0]!.gearItem.status).toBe('need_to_buy')
-  })
-
-  it('rebuilds when only packingLocationId changes', () => {
-    const items1 = [listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: null })]
-    const first = stableListGroups(items1, [shelter])
-
-    const items2 = [
-      listItem({ id: 'a', categoryId: 'cat-shelter', packingLocationId: mainPack.id }),
-    ]
-    const second = stableListGroups(items2, [shelter], first)
-
-    expect(second).not.toBe(first)
-    expect(second[0]!.items).not.toBe(first[0]!.items)
+    expect(second[0]!.items[0]).toBe(changed)
   })
 })
 
@@ -416,7 +395,8 @@ describe('groupByCategory (generic)', () => {
     // Positive branch: at least one item has categoryId: null →
     // uncategorized group IS emitted, and appears LAST. Without this
     // half, a regression where the helper's `raw === null` bucketing
-    // branch broke under orphanPolicy: 'drop' would still pass C3.
+    // branch broke under orphanPolicy: 'drop' would still pass the
+    // negative branch above.
     const withNull = groupByCategory(
       [
         { id: '1', categoryId: 'cat-shelter' },

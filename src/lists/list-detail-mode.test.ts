@@ -24,7 +24,6 @@ describe('deriveListMode', () => {
     // derivation must agree or these URLs render the wrong view.
     [`/lists/${LIST_ID}/FOOD`, 'food'],
     [`/lists/${LIST_ID}/food/`, 'food'],
-    [`/lists/${LIST_ID}/PACK`, 'pack'],
     [`/lists/${LIST_ID}/pack/`, 'pack'],
     // The retired spellings get the same tolerance as the live ones.
     [`/lists/${LIST_ID}/organize/`, 'pack'],
@@ -32,6 +31,12 @@ describe('deriveListMode', () => {
     [`/lists/${LIST_ID}/pack/organize/`, 'pack'],
   ] as const)('%s -> %s', (pathname, expected) => {
     expect(deriveListMode(pathname, LIST_ID)).toBe(expected)
+  })
+
+  // The router takes the list id from the URL as typed, so an upper-case URL
+  // arrives with an upper-case id. The id must be case-folded too.
+  it('/LISTS/LIST-1/PACK, with the id the router reads from it -> pack', () => {
+    expect(deriveListMode('/LISTS/LIST-1/PACK', 'LIST-1')).toBe('pack')
   })
 })
 

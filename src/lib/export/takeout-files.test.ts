@@ -137,10 +137,12 @@ describe('buildTakeoutFiles', () => {
     expect(listFiles).toEqual(['lists/list.csv', 'lists/list-2.csv'])
   })
 
-  it('emits a header-only CSV for a list with no items', () => {
+  it('emits an empty (0-byte) CSV file for a list with no items', () => {
+    // The file still exists so the export names every list. A header row
+    // would add nothing: import treats header-only and empty files the same.
     const lists = [makeList({ id: 'l-1', name: 'Empty' })]
     const files = buildTakeoutFiles({ categories, gearItems, lists, allItems: [], ...noPacking })
-    expect(files['lists/empty.csv']).toBe(listItemsToCsv([], categories))
+    expect(files['lists/empty.csv']).toBe('')
   })
 
   it('emits a self-contained packing snapshot with empty and duplicate-named locations', () => {

@@ -129,7 +129,7 @@ describe('makeOptimisticUpdate', () => {
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  it('preserves caller-supplied fields like updatedAt via apply (M-2 contract)', async () => {
+  it('preserves caller-supplied fields like updatedAt via apply', async () => {
     type RowWithTimestamp = Row & { updatedAt: string }
     const qc = new QueryClient()
     const key = ['rows'] as const
@@ -526,10 +526,12 @@ describe('makeOptimisticReorder', () => {
       ]
       const { qc, key } = makeSortableClient(initial)
       const helper = makeOptimisticReorder<SortableRow>(qc, key)
+      // A written A=30 would move A below B, so an unchanged cache proves
+      // no write happened.
       expect(() =>
         helper.onMutate([
-          { id: 'A', sortOrder: 20 },
           { id: 'A', sortOrder: 10 },
+          { id: 'A', sortOrder: 30 },
         ]),
       ).toThrow()
       expect(qc.getQueryData<SortableRow[]>(key)).toEqual(initial)
@@ -560,11 +562,14 @@ describe('makeOptimisticReorder', () => {
       const helper = makeOptimisticReorder<SortableRow>(qc, key)
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
+      // The duplicate id is the invalid part. Its last value (A=30) would
+      // move A below B if it were written, so an unchanged cache proves no
+      // write happened.
       let caught: unknown
       try {
         helper.onMutate([
-          { id: 'A', sortOrder: 20 },
           { id: 'A', sortOrder: 10 },
+          { id: 'A', sortOrder: 30 },
         ])
       } catch (e) {
         caught = e
@@ -626,8 +631,8 @@ describe('makeOptimisticReorder', () => {
   })
 })
 
-// The union pack-reorder lifecycle (0022: one drag permutes gear and food
-// ranks together, so the helper spans BOTH caches). Only the divergent
+// The union pack-reorder lifecycle (one drag permutes gear and food ranks
+// together, so the helper spans BOTH caches). Only the divergent
 // behavior is pinned - shared machinery (cancel semantics, snapshot
 // plumbing) is makeOptimisticReorder's suite above. What these hold: the
 // apply writes ONLY packSortOrder into each cache and never re-sorts

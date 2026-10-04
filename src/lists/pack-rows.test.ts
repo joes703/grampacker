@@ -70,12 +70,19 @@ describe('unionPackRows', () => {
   })
 
   it('breaks a cross-table rank tie gear-first, then by id', () => {
-    // Per-table unique indexes cannot rule ties out ACROSS tables (0022's
-    // backfill even guarantees them on day one), so display order must be
-    // deterministic: rank, then gear before food, then id.
-    const rows = unionPackRows([gear('g', 0)], [food('f', 0)])
-    expect(ids(rows)).toEqual(['g', 'f'])
-    expect(comparePackRows(rows[0]!, rows[1]!)).toBeLessThan(0)
+    // Per-table unique indexes cannot rule ties out ACROSS tables, so display
+    // order must be deterministic: rank, then gear before food, then id.
+    // Those indexes stop rows of one kind tying within one list and location,
+    // but a section can mix locations: the Pack food fallback shows every
+    // food row while the locations query has no data. The same-kind pairs
+    // arrive in reverse id order, so only the id tiebreak can put them right
+    // (sort is stable).
+    const rows = unionPackRows(
+      [gear('h', 0), gear('g', 0)],
+      [food('f', 0), food('e', 0)],
+    )
+    expect(ids(rows)).toEqual(['g', 'h', 'e', 'f'])
+    expect(comparePackRows(rows[0]!, rows[2]!)).toBeLessThan(0)
   })
 })
 
