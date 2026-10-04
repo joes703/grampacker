@@ -467,8 +467,6 @@ describe('rewriting retired list URLs', () => {
     `/lists/${listId}/organize/`,
     `/lists/${listId}/ORGANIZE`,
     `/lists/${listId}/pack/organize/`,
-    `/lists/${listId}/?mode=pack`,
-    `/lists/${listId}?mode=pack`,
   ])('replaces %s with the canonical /pack URL', async (path) => {
     await renderAtRetiredRoute(path)
     await waitFor(() =>
@@ -476,30 +474,18 @@ describe('rewriting retired list URLs', () => {
     )
   })
 
-  // Whatever else a retired link carried arrives intact; only the consumed
-  // mode=pack entry is gone, because /pack now says what it said.
-  it.each([
-    [`/lists/${listId}/organize/?keep=1#row-3`, `/lists/${listId}/pack?keep=1#row-3`],
-    [`/lists/${listId}/?mode=pack&keep=1#row-3`, `/lists/${listId}/pack?keep=1#row-3`],
-    [`/lists/${listId}/pack/organize?mode=PACK`, `/lists/${listId}/pack?mode=PACK`],
-    // Survivors arrive byte-for-byte: escapes, bare keys and duplicates.
-    [
-      `/lists/${listId}/?mode=pack&q=a%20b&flag&x=%2f&q=c#row-3`,
-      `/lists/${listId}/pack?q=a%20b&flag&x=%2f&q=c#row-3`,
-    ],
-    // A key beginning with `?` is not the consumed one.
-    [`/lists/${listId}/organize?mode=pack&?mode=pack`, `/lists/${listId}/pack??mode=pack`],
-  ])('carries the query and fragment of %s to %s', async (path, expected) => {
-    await renderAtRetiredRoute(path)
+  it('carries the query and fragment of a retired URL to /pack', async () => {
+    await renderAtRetiredRoute(`/lists/${listId}/organize/?keep=1#row-3`)
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${expected}|REPLACE`),
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `/lists/${listId}/pack?keep=1#row-3|REPLACE`,
+      ),
     )
   })
 
   it.each([
     `/lists/${listId}/pack`,
     `/lists/${listId}/pack?keep=1#row-3`,
-    `/lists/${listId}/pack/?mode=pack`,
   ])('leaves the canonical %s untouched', async (path) => {
     await renderAtRetiredRoute(path)
     // A rewrite would have flipped the navigation type to REPLACE during the

@@ -101,7 +101,6 @@ import {
   isLegacyListPath,
   listDocumentTitle,
   persistedListPath,
-  searchAfterLegacyRedirect,
   type ListDetailMode,
 } from './list-detail-mode'
 import { selectPackGroupingState } from './packing-grouping'
@@ -276,16 +275,16 @@ function ListDetailInner({
   const ownerId = session?.user.id ?? null
   // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
   // refresh-stable, and back/forward navigable. The retired spellings - the
-  // legacy ?mode=pack query and the two /organize paths from before Organize
-  // merged into Pack - derive to Pack AND get rewritten to /pack below, so old
-  // bookmarks and home-screen shortcuts land in the view that replaced them
-  // rather than on a dead route. Both facts come from the same predicate in
-  // list-detail-mode.ts: this page used to keep exact-match copies of the
-  // checks, and /lists/<id>/organize/ then rendered Pack without the rewrite.
+  // two /organize paths from before Organize merged into Pack - derive to
+  // Pack AND get rewritten to /pack below, so old bookmarks and home-screen
+  // shortcuts land in the view that replaced them rather than on a dead
+  // route. Both facts come from the same predicate in list-detail-mode.ts:
+  // this page used to keep exact-match copies of the checks, and
+  // /lists/<id>/organize/ then rendered Pack without the rewrite.
   const location = useLocation()
   const navigate = useNavigate()
-  const isLegacyPath = isLegacyListPath(location.pathname, location.search, listId)
-  const mode: ListDetailMode = deriveListMode(location.pathname, location.search, listId)
+  const isLegacyPath = isLegacyListPath(location.pathname, listId)
+  const mode: ListDetailMode = deriveListMode(location.pathname, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
@@ -355,16 +354,14 @@ function ListDetailInner({
   // the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
 
-  // Only the path changes. The search string and hash travel with the URL,
-  // minus the `mode=pack` entry the /pack destination now stands for - a
-  // returning link keeps whatever else it carried. (The rewrite used to
-  // navigate to a bare path and drop both.)
+  // Only the path changes. The search string and hash travel with the URL
+  // unchanged.
   useEffect(() => {
     if (isLegacyPath) {
       void navigate(
         {
           pathname: persistedListPath(listId, 'pack'),
-          search: searchAfterLegacyRedirect(location.search),
+          search: location.search,
           hash: location.hash,
         },
         { replace: true },
