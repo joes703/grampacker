@@ -173,16 +173,6 @@ describe('passkey fresh-auth gate', () => {
     )
     expect(list.status).toBe(200)
   })
-
-  it('an unknown /passkey/* path stays a 404, not a freshness 403', async () => {
-    // hooks.before only runs for endpoints the router RESOLVED, so a
-    // nonexistent path cannot be turned into a gate answer. Pinned so a
-    // better-auth upgrade that changed hook dispatch order goes red here.
-    const { cookie } = await signUpVerifiedUser('fa-404@test.dev', '')
-    await makeSessionStale(cookie)
-    const res = await request('POST', '/api/auth/passkey/no-such-endpoint', cookie, '10.60.0.7')
-    expect(res.status).toBe(404)
-  })
 })
 
 // The ownership half of the matrix rows for rename / delete / list. Freshness

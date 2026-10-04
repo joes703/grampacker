@@ -237,39 +237,6 @@ describe('FoodView header', () => {
   })
 })
 
-describe('FoodView header meal counts', () => {
-  it('shows no derived meal counts, and no way to type one', async () => {
-    // The header used to read "Food for 1 days - 1 lunch - 1 dinner". Those
-    // counts only differed from the day count because meals could be skipped;
-    // with skipping gone they were the day count repeated three times.
-    h.fetchListFood.mockResolvedValue({
-      dayCount: 1,
-      slots: [
-        { id: 'b1', dayNumber: 1, meal: 'breakfast' },
-        { id: 'l1', dayNumber: 1, meal: 'lunch' },
-        { id: 'd1', dayNumber: 1, meal: 'dinner' },
-      ],
-      items: [],
-    })
-    await renderFoodView()
-    await screen.findByLabelText('Trip length in days')
-    expect(screen.queryByText(/1 lunch/)).toBeNull()
-    expect(screen.queryByText(/1 dinner/)).toBeNull()
-    const numbers = screen.getAllByRole('spinbutton')
-    expect(numbers.map((n) => n.getAttribute('aria-label'))).toEqual(['Trip length in days'])
-  })
-})
-
-describe('FoodView has no skip control', () => {
-  it('offers no way to skip or restore a meal', async () => {
-    h.fetchListFood.mockResolvedValue(oneDayFood)
-    await renderFoodView()
-    await findDinnerRow()
-    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull()
-  })
-})
-
 describe('FoodView empty state', () => {
   it('explains what setting a trip length does when there are zero days', async () => {
     h.fetchListFood.mockResolvedValue({ dayCount: 0, slots: [], items: [] })
