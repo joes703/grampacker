@@ -320,12 +320,13 @@ async function charge(
   if (row.count === 1) {
     await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
     // ...and expired `verification` rows, on the same trigger. better-auth
-    // sweeps them inside findVerificationValue, but only magic-link verify
-    // calls that. Passkey ceremonies consume through consumeVerificationValue,
-    // which deletes only the row it was handed. So an ABANDONED challenge -
-    // the user who opens the passkey picker and cancels - leaves a row that
-    // expires in five minutes and then lives until a magic link happens to be
-    // redeemed. Cleanup must not depend on magic-link traffic.
+    // sweeps them only inside findVerificationValue, which magic-link verify
+    // and the still-mounted GET /reset-password/:token call. Passkey
+    // ceremonies consume through consumeVerificationValue, which deletes only
+    // rows with the consumed challenge's identifier. So an ABANDONED challenge
+    // - the user who opens the passkey picker and cancels - leaves a row that
+    // expires in five minutes and then lives until one of those unrelated
+    // requests happens to arrive. Cleanup must not depend on them.
     //
     // That leak predates this sweep, but the passkey budget (30/5min, raised
     // from an effective 10/10min on 2026-09-12) raises its ceiling sixfold, to

@@ -890,13 +890,15 @@ describe('auth rate limiting', () => {
     expect(await passkeyBucketCount(ip)).toBe(1)
   })
 
-  // The other end of the same table. better-auth's cleanup lives in
-  // findVerificationValue, which only magic-link verify calls; passkey flows
-  // consume through consumeVerificationValue, which deletes only the row it
-  // was handed. An ABANDONED passkey challenge therefore expires in five
-  // minutes and then lives until a magic link happens to be redeemed - a leak
-  // the raised passkey budget would otherwise accelerate sixfold. charge()
-  // sweeps it on the same new-window trigger it already uses for rate_limits.
+  // The other end of the same table. better-auth sweeps expired rows only
+  // inside findVerificationValue (magic-link verify, GET
+  // /reset-password/:token); passkey flows consume through
+  // consumeVerificationValue, which deletes only rows with the consumed
+  // challenge's identifier. An ABANDONED passkey challenge therefore expires
+  // in five minutes and then lives until one of those unrelated requests
+  // arrives - a leak the raised passkey budget would otherwise accelerate
+  // sixfold. charge() sweeps it on the same new-window trigger it already
+  // uses for rate_limits.
   it('a new window also sweeps verification rows that have expired', async () => {
     const ip = '203.0.113.64'
     // An abandoned challenge: options written, never consumed.
