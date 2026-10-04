@@ -42,12 +42,14 @@ updates:
 
     # One layer, not a shield. The npm worm campaigns are usually detected and
     # the poisoned versions yanked within hours to days of publication, so a week
-    # on the registry avoids most of that exposure at no cost to us - we are not
-    # chasing features. It does nothing about a patient backdoor, and GitHub is
-    # explicit that cooldown is one defense among several.
+    # on the registry reduces that exposure; it does not guarantee a release is
+    # safe, and does nothing about a patient backdoor.
     #
-    # Scheduled updates only. Security updates ignore cooldown and open
-    # immediately, which is what we want when there is a real advisory.
+    # Version updates only. Dependabot security-update PRs bypass this cooldown
+    # and the schedule, if the dependency graph, Dependabot alerts and
+    # Dependabot security updates are enabled in repository settings (this file
+    # cannot turn them on). Advisories Dependabot has not seen, and what to do
+    # about them: SECURITY.md "Supply chain".
     cooldown:
       default-days: 7
 
