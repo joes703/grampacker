@@ -79,7 +79,7 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 //
 // The cost this rate actually buys is bounded elsewhere, not hand-waved: the
 // `verification` rows these challenges write are swept in charge() below,
-// because nothing else sweeps them. Read that comment before raising this.
+// because no passkey flow sweeps them. Read that comment before raising this.
 const PASSKEY_SIGN_IN: Rule = {
   scope: 'passkey-sign-in',
   limit: 30,
@@ -319,13 +319,15 @@ async function charge(
   // the table small, while an index would tax every upsert.
   if (row.count === 1) {
     await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
-    // ...and expired `verification` rows, on the same trigger, because NOTHING
-    // ELSE DOES. better-auth sweeps them inside findVerificationValue, but
-    // every flow this app runs consumes tokens through consumeVerificationValue
-    // instead (passkey index.mjs:343,459; magic-link index.mjs:156), which
-    // deletes only the row it was handed. So an ABANDONED challenge - the user
-    // who opens the passkey picker and cancels - leaves a row that expires in
-    // five minutes and then lives forever.
+    // ...and expired `verification` rows, on the same trigger. better-auth
+    // sweeps them only as a side effect of findVerificationValue, which
+    // several unrelated routes call (magic-link verify, the reset-password
+    // callback, the OAuth callback's state check, among others). Passkey
+    // ceremonies consume through consumeVerificationValue, which deletes only
+    // rows with the consumed challenge's identifier. So an ABANDONED challenge
+    // - the user who opens the passkey picker and cancels - leaves a row that
+    // expires in five minutes and then lives until some unrelated request
+    // happens to arrive. Cleanup must not depend on that traffic.
     //
     // That leak predates this sweep, but the passkey budget (30/5min, raised
     // from an effective 10/10min on 2026-09-12) raises its ceiling sixfold, to
