@@ -454,9 +454,10 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     can confirm only the dependency graph (`/dependency-graph/sbom` answers);
     the other two need admin read, so the owner checks them.
   - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
-    advisory database (Dependabot only on GitHub-reviewed ones). An advisory a
-    project publishes on its own repository reaches them only after GitHub
-    reviews it. GHSA-965c-763c-88jm (better-auth, critical,
+    advisory database, and Dependabot raises vulnerability alerts and
+    security updates only from GitHub-reviewed entries (its malware alerts
+    are a separate, unreviewed feed). A vulnerability a project publishes on
+    its own repository reaches them only after GitHub reviews it. GHSA-965c-763c-88jm (better-auth, critical,
     2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
     still outside it on 2026-10-04.
   - *Manual path,* for a credible announcement (the project's own advisory or
@@ -466,16 +467,16 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     packages released with it; review the lockfile diff and the release's
     provenance (`npm view <pkg>@<version> _npmUser`, then
     `npm audit signatures`, which from a sandbox needs
-    `tuf-repo-cdn.sigstore.dev`); run the gates for what changed. Then the
-    normal PR, review and merge approval. If our config is not exposed, still
-    take the fix, without the urgency.
+    `tuf-repo-cdn.sigstore.dev`; if it cannot run, say so in the PR); run the
+    gates for what changed. Then the normal PR, review and merge approval.
+    Take the fix promptly even if our config is not exposed.
   - *Hearing about it:* Watch → Custom → Security alerts on someone else's
-    repository does not deliver the advisories it publishes, so it is not a
-    subscription. The owner watches Releases on `better-auth/better-auth`,
-    `honojs/hono` and `drizzle-team/drizzle-orm`. None of the three documents
-    a separate announcement channel (their `SECURITY.md` files, read
-    2026-10-04); better-auth links its advisories from the fixing release's
-    notes.
+    repository is not a reliable advisory subscription. The owner watches
+    Releases on `better-auth/better-auth`, `honojs/hono` and
+    `drizzle-team/drizzle-orm`. As of 2026-10-04 none documents a separate
+    announcement channel: better-auth's and drizzle-orm's `SECURITY.md` cover
+    reporting only, and hono has none. The better-auth 1.7.7 and hono 4.13.11
+    release notes both named their advisories.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
