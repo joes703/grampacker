@@ -170,6 +170,23 @@ describe('saving list notes', () => {
     expect(h.updateList).toHaveBeenCalledWith(listId, { description: 'Permit pickup at Lone Pine' })
   })
 
+  it('keeps text typed while the save was in flight', async () => {
+    const d = deferred()
+    h.updateList.mockReturnValue(d.promise)
+    const textarea = await openNotesEditor()
+
+    fireEvent.change(textarea, { target: { value: 'Permit pickup at Lone Pine' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.change(textarea, { target: { value: 'Permit pickup at Lone Pine, before 10 am' } })
+    d.resolve({ ...list, description: 'Permit pickup at Lone Pine' })
+    await settle(d)
+
+    expect(screen.getByPlaceholderText(/Add notes about this packing list/)).toHaveValue(
+      'Permit pickup at Lone Pine, before 10 am',
+    )
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+
   it('reports by toast when the user canceled before the save failed', async () => {
     const d = deferred()
     h.updateList.mockReturnValue(d.promise)
@@ -186,5 +203,24 @@ describe('saving list notes', () => {
       { type: 'error' },
     )
     expect(screen.queryByPlaceholderText(/Add notes about this packing list/)).toBeNull()
+  })
+
+  it('does not reopen the editor until a canceled save has settled', async () => {
+    // A second save would take over the first one's callbacks, and the
+    // first one's failure would go unreported.
+    const d = deferred()
+    h.updateList.mockReturnValue(d.promise)
+    const textarea = await openNotesEditor()
+
+    fireEvent.change(textarea, { target: { value: 'Permit pickup at Lone Pine' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByRole('button', { name: 'Edit notes' })).toBeDisabled()
+
+    d.reject(new Error('offline'))
+    await settle(d)
+
+    expect(screen.getByRole('button', { name: 'Edit notes' })).toBeEnabled()
   })
 })

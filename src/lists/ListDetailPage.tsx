@@ -1831,12 +1831,16 @@ function ListDetailInner({
                     title="Notes"
                     headerAction={
                       !notesEditing && (
+                        // Waits for a save the user canceled mid-flight: a
+                        // second save would take over its callbacks, and its
+                        // failure would go unreported.
                         <button
                           type="button"
                           onClick={() => setNotesEditing(true)}
+                          disabled={notesMut.isPending}
                           aria-label="Edit notes"
                           title="Edit notes"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
                         >
                           <Pencil size={13} />
                         </button>

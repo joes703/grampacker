@@ -86,6 +86,8 @@ function NotesEdit({
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState(initial)
+  // The draft as it is now, for a save that settles later.
+  const draftRef = useRef(initial)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -114,9 +116,11 @@ function NotesEdit({
     setSaving(true)
     onSave(next, {
       onSuccess: () => {
-        // Close only this editor. If the user canceled while the save was in
-        // flight and has opened the editor again since, that is a new editor.
-        if (rootRef.current?.isConnected) onSaved()
+        // Nothing to close if the user canceled while it was in flight.
+        if (!rootRef.current?.isConnected) return
+        // Text typed while the save was in flight was not sent: stay open.
+        if (draftRef.current.trim() === next) onSaved()
+        else setSaving(false)
       },
       onError: () => {
         setSaving(false)
@@ -137,7 +141,10 @@ function NotesEdit({
         value={draft}
         maxLength={MAX_DESC_LENGTH}
         placeholder="Add notes about this packing list. Markdown supported."
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          draftRef.current = e.target.value
+          setDraft(e.target.value)
+        }}
         className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-500 ${INLINE_EDIT_FOCUS_RING}`}
       />
       {saveError && (
