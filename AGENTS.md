@@ -49,7 +49,14 @@ a D1 equivalent, ask rather than assume.
 | Dev server | `npm run dev` | SPA + `/api/*` + local D1. |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
-`docs/testing-and-ci.md` section 2.
+`docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
+
+**Tests come first,** one at a time: red, then green, then refactor. A test
+that has never failed may not test anything. A new test of behavior that
+already exists must fail against a small, temporary break in the production
+code; say what you broke in the commit message, then revert it. A new test
+that fails against unchanged code has found a bug: stop and report it, and
+fix it in its own change.
 
 **Before claiming done:** read the complete diff. Code change: `build` and
 `test:unit`. Anything under `server/`: also `test:api`. Migrations or schema:

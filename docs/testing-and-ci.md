@@ -142,11 +142,34 @@ thing, by not repeating a proof, or by removing setup a test never needed.
 A moved test keeps its assertions byte for byte; git shows a rename.
 
 Deleting a test for a reason other than speed has its own bar. A test may go
-when what it covers no longer exists (the code, option or contract was
-removed) or when another named test proves the same thing. The change that
-deletes it says, per test, which of the two applies: the protection lost and
-why that is acceptable, or where the protection remains. Speed alone is never
-the reason.
+for one of three reasons:
+
+1. **What it covers no longer exists.** The code, option or contract was
+   removed, or its input can no longer occur: a schema constraint forbids
+   it, or no caller can produce it. Show the evidence.
+2. **Another named test proves the same thing.** Diff the two first. A
+   different argument, input class, caller layer or request shape means the
+   other test does not prove the same thing.
+3. **It proves nothing.** An argument about the behavior shows that no
+   realistic production bug can make it fail: the behavior cannot be
+   reached, the type system or a library alone enforces it, or the
+   assertion only repeats a constant or a mock. Library behavior counts
+   only when it is not our own configuration or wiring.
+
+   These do not show that a test proves nothing: it checks that something
+   is absent, the code under it is simple, or two separate guards protect
+   the behavior, so removing one guard leaves the test green. A behavior a
+   user can reach keeps its test unless reason 2 applies. A mutation the
+   test fails to catch is a reason to look closer, never proof alone.
+
+   Reason 3 exists because a test that cannot fail still costs run and
+   reading time, and makes an unguarded behavior look guarded.
+
+The change that deletes a test says, per test, which reason applies and its
+evidence: the protection lost and why that is acceptable, or where the
+protection remains. No behavior loses its only test: when another test
+takes over, it exists before or in the same change as the deletion. Speed
+alone is never the reason.
 
 ## 9. Measuring
 
