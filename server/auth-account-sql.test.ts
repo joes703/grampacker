@@ -5,22 +5,17 @@ import { signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from './middleware/csrf'
 import { DELETE_ACCOUNT_USER_HEADER } from '../shared/auth'
 
-// `account.issuer` is gone, asserted ON THE WIRE.
+// The account model better-auth queries must match the physical table,
+// asserted ON THE WIRE.
 //
-// Migration 0028 added that column NOT NULL with a unique index for
-// better-auth 1.7.0-1.7.2. 1.7.3 reverted it and turned schema validation on
-// by default, so from 1.7.4 the validator rejected it before every
-// /api/auth/* dispatch. #241 stopped the adapter reading it (an issuer-free
-// model while the column stayed); 0029 dropped the column one release later,
-// which is the gap deploy.yml's migrate-then-swap ordering requires.
-//
-// Why this outlived the two-model wiring it was written for: the schema files
-// no longer mention `issuer`, but the SQL is what actually reaches D1, and
-// `db.select()` with no projection expands EVERY column of whatever model the
-// adapter resolved. A regenerated schema, a hand-edit, or a revived migration
-// putting the column back would show up here as different SQL and nowhere
-// else - the physical table would accept it and every test asserting on rows
-// would stay green.
+// The schema files and the migrations are written separately, and only the
+// SQL that reaches D1 shows whether they agree. `db.select()` with no
+// projection expands EVERY column of whatever model the adapter resolved. A
+// regenerated schema or a hand-edit naming a column the table lacks can show
+// up here and nowhere else, because D1 does not reject it. SQLite reads a
+// double-quoted name that matches no column as a string literal, so
+// `select "issuer"` on a table without that column succeeds and returns the
+// text 'issuer'. Every test asserting on rows stays green.
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -59,10 +54,10 @@ describe('the account model better-auth actually queries', () => {
   // skipped every account-row delete hook. There is no observable symptom at
   // the HTTP layer at all. That is precisely why this is asserted in SQL.
   //
-  // What this proves: the deletion path exercised here emits no statement
-  // naming the column. It does NOT prove that of every account query, of the
-  // relational (`db.query`) path, or of any RETURNING clause.
-  it('never names issuer in the SQL a user deletion emits', async () => {
+  // What this proves: every name the account statements of this deletion
+  // path use is a real column of the table. It does NOT prove that of every
+  // account query, or of the relational (`db.query`) path.
+  it('names only real account columns in the SQL a user deletion emits', async () => {
     const email = `acct-sql-${crypto.randomUUID()}@example.com`
     const { cookie } = await signUpVerifiedUser(email, '')
 
@@ -93,22 +88,39 @@ describe('the account model better-auth actually queries', () => {
     expect(res.status, await res.text()).toBe(200)
 
     // The recorder saw the request at all. Without this a proxy that silently
-    // stopped intercepting would make the issuer assertion below vacuous.
+    // stopped intercepting would make the column assertion below vacuous.
     expect(seen.length).toBeGreaterThan(0)
 
-    // The account read really happened - otherwise "no statement names issuer"
+    // The account read really happened - otherwise "every name is a column"
     // would be true for the boring reason that nothing queried `account`.
     const accountReads = seen.filter(
       (q) => /\bfrom\s+("account"|account)(\s|$)/i.test(q) && /^\s*select/i.test(q),
     )
     expect(accountReads, seen.join('\n')).not.toHaveLength(0)
 
-    // The actual assertion. Checked across EVERY statement, not just the
-    // account reads: a delete or a RETURNING clause naming the column would be
-    // just as wrong. Post-0029 the column does not exist, so a statement
-    // naming it would not merely be wrong - it would fail at D1.
-    const naming = seen.filter((q) => /issuer/i.test(q))
-    expect(naming, `statements naming issuer:\n${naming.join('\n')}`).toEqual([])
+    // The actual assertion, over every statement on `account`, reads and
+    // deletes alike: a WHERE on a wrong name matches no row, as quietly as a
+    // wrong name in a select list. Drizzle double-quotes every identifier, so
+    // each quoted name must be the table or one of its physical columns.
+    const columns = new Set(
+      (
+        await env.DB.prepare("select name from pragma_table_info('account')").all<{
+          name: string
+        }>()
+      ).results.map((column) => column.name),
+    )
+    // The column list was really read, so an empty set cannot pass everything.
+    expect(columns.has('user_id')).toBe(true)
+    const accountStatements = seen.filter((q) =>
+      /\b(from|into|update)\s+"account"(\s|$)/i.test(q),
+    )
+    const unknown = accountStatements.flatMap((q) =>
+      [...q.matchAll(/"([^"]+)"/g)]
+        .map((match) => match[1] ?? '')
+        .filter((name) => name !== 'account' && !columns.has(name))
+        .map((name) => `${name} in: ${q}`),
+    )
+    expect(unknown, 'names that are not account columns').toEqual([])
 
     // And the deletion was real, so the SQL above is the SQL of a working
     // delete rather than of a request that bailed out early.

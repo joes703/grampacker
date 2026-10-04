@@ -44,7 +44,11 @@ describe('asset caching', () => {
   it('an UNHASHED path under /assets/ is not immutable', async () => {
     // Only a content hash makes a name safe to freeze: a plain name could be
     // replaced in place, and a year of immutable caching would be unfixable.
+    // The fixture file exists, so this is the real PNG and not the SPA
+    // fallback, which the content-type guard would refuse for another reason.
     const res = await app.request('/assets/logo.png', {}, env)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type') ?? '').toContain('image/png')
     expect(cacheControl(res)).not.toContain('immutable')
   })
 
@@ -106,9 +110,10 @@ describe('asset caching', () => {
     // the shell is the one thing that must stay fresh.
     const shell = await app.request('/', {}, env)
     const etag = shell.headers.get('etag')
-    if (etag) {
-      const revalidated = await app.request('/', { headers: { 'If-None-Match': etag } }, env)
-      expect(revalidated.status).toBe(304)
-    }
+    // Asserted, not branched on: without an etag there is no conditional
+    // request to leave alone, and the test would pass without checking.
+    expect(etag).toBeTruthy()
+    const revalidated = await app.request('/', { headers: { 'If-None-Match': etag! } }, env)
+    expect(revalidated.status).toBe(304)
   })
 })

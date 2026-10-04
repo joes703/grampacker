@@ -83,16 +83,24 @@ describe('food: day grid', () => {
   })
 
   it('repairs a hole rather than reading only the highest day', async () => {
+    // A hole can form: setDayCount reads the slots outside its batch, so a
+    // grow racing a shrink can leave middle days missing. The race is cut
+    // here in D1 directly: day 3 goes, days 4 and 5 stay.
     const { cookie } = await signUpVerifiedUser('food-3@example.com', 'F3')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 5)
-    await setDays(cookie, listId, 2)
-    await setDays(cookie, listId, 5)
+    await env.DB.prepare('delete from list_food_slots where list_id = ? and day_number = 3')
+      .bind(listId)
+      .run()
+    expect((await getFood(cookie, listId)).slots).toHaveLength(12)
+
+    expect((await setDays(cookie, listId, 5)).status).toBe(200)
 
     const food = await getFood(cookie, listId)
     expect(food.slots).toHaveLength(15)
-    // Days 3-5 came back.
-    expect(slotOf(food, 4, 'dinner')).toBeDefined()
+    for (const meal of ['breakfast', 'lunch', 'dinner']) {
+      expect(slotOf(food, 3, meal), meal).toBeDefined()
+    }
   })
 
   it('trims beyond the new count', async () => {
@@ -486,6 +494,17 @@ describe('food: item updates', () => {
         slotIds: [slotOf(food, 1, 'lunch').id],
       })
     ).json()) as FoodItemResponse
+    // The links go by FK cascade. GET reads links only through items, so an
+    // orphaned link would never show in the response: count the rows.
+    const linkCount = async () =>
+      (
+        await env.DB.prepare(
+          'select count(*) as n from list_food_item_slots where food_item_id = ?',
+        )
+          .bind(created.id)
+          .first<{ n: number }>()
+      )?.n
+    expect(await linkCount()).toBe(1)
 
     const res = await apiRequest(
       cookie,
@@ -494,6 +513,7 @@ describe('food: item updates', () => {
     )
     expect(res.status).toBe(204)
     expect((await getFood(cookie, listId)).items).toHaveLength(0)
+    expect(await linkCount()).toBe(0)
   })
 })
 
