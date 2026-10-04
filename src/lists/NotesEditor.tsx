@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { INLINE_EDIT_FOCUS_RING, PANEL_EMPTY_TEXT } from '../components/flat-table-styles'
 import { MAX_DESC_LENGTH } from '../lib/caps'
+import { reportFailure } from '../lib/report-failure'
 
 // react-markdown + remark-gfm is ~46 KB gzip. Owner Notes panels rarely
 // switch into render-with-content state on first paint (often empty for
@@ -8,9 +9,13 @@ import { MAX_DESC_LENGTH } from '../lib/caps'
 // public share view already lazy-loads the same component the same way.
 const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
+export type SaveCallbacks = { onSuccess: () => void; onError: () => void }
+
 type Props = {
   initial: string
-  onSave: (description: string) => void
+  /** Starts the write; calls back when it settles. TanStack skips the
+   *  callbacks if the page has unmounted, and then nothing is left to tell. */
+  onSave: (description: string, callbacks: SaveCallbacks) => void
   /** Controlled edit mode. Lifted to the parent so the panel's header
    *  pencil affordance (mounted in PanelCard.headerAction) can show
    *  in read mode and hide in edit mode without lifting the textarea
@@ -24,7 +29,10 @@ type Props = {
 //     matching the public share view. Empty state shows a muted
 //     "No notes" placeholder so the panel still has visible content.
 //   - Edit: raw markdown textarea with explicit Save / Cancel. No
-//     blur-save - the user has to commit the change.
+//     blur-save - the user has to commit the change. The editor stays open
+//     until the save is confirmed: the textarea is the only copy of what the
+//     user typed, so a failed save reports beside it and keeps the text
+//     (the inline rule in src/lib/mutation-error-handler.ts).
 //
 // Edit mode is its own component so the draft state seeds from `initial`
 // at mount (useState initializer) rather than via setState-in-effect on
@@ -43,10 +51,8 @@ export default function NotesEditor({
     return (
       <NotesEdit
         initial={initial}
-        onSave={(v) => {
-          onSave(v)
-          onEditingChange(false)
-        }}
+        onSave={onSave}
+        onSaved={() => onEditingChange(false)}
         onCancel={() => onEditingChange(false)}
       />
     )
@@ -71,13 +77,18 @@ function NotesRead({ initial }: { initial: string }) {
 function NotesEdit({
   initial,
   onSave,
+  onSaved,
   onCancel,
 }: {
   initial: string
-  onSave: (description: string) => void
+  onSave: (description: string, callbacks: SaveCallbacks) => void
+  onSaved: () => void
   onCancel: () => void
 }) {
   const [draft, setDraft] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Selection-at-end on mount is friendlier than select-all for longer
@@ -95,12 +106,32 @@ function NotesEdit({
 
   function commit() {
     const next = draft.trim()
-    if (next !== initial.trim()) onSave(next)
-    else onCancel()
+    if (next === initial.trim()) {
+      onCancel()
+      return
+    }
+    setSaveError(null)
+    setSaving(true)
+    onSave(next, {
+      onSuccess: () => {
+        // Close only this editor. If the user canceled while the save was in
+        // flight and has opened the editor again since, that is a new editor.
+        if (rootRef.current?.isConnected) onSaved()
+      },
+      onError: () => {
+        setSaving(false)
+        // A toast if the user already canceled: the editor is gone.
+        reportFailure(
+          rootRef.current,
+          "Couldn't confirm your notes were saved. Please try again.",
+          setSaveError,
+        )
+      },
+    })
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div ref={rootRef} className="flex flex-1 flex-col">
       <textarea
         ref={textareaRef}
         value={draft}
@@ -109,6 +140,11 @@ function NotesEdit({
         onChange={(e) => setDraft(e.target.value)}
         className={`flex-1 min-h-[8rem] w-full resize-none px-3 py-2 text-sm text-gray-700 placeholder:text-gray-500 ${INLINE_EDIT_FOCUS_RING}`}
       />
+      {saveError && (
+        <p role="alert" className="px-3 py-1 text-xs text-red-600">
+          {saveError}
+        </p>
+      )}
       <div className="flex justify-end gap-2 border-t border-gray-100 px-3 py-2">
         <button
           type="button"
@@ -120,6 +156,7 @@ function NotesEdit({
         <button
           type="button"
           onClick={commit}
+          disabled={saving}
           className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
         >
           Save

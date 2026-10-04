@@ -1846,7 +1846,7 @@ function ListDetailInner({
                     <NotesEditor
                       key={list.id}
                       initial={list.description ?? ''}
-                      onSave={(v) => notesMut.mutate(v)}
+                      onSave={(v, callbacks) => notesMut.mutate(v, callbacks)}
                       editing={notesEditing}
                       onEditingChange={setNotesEditing}
                     />
