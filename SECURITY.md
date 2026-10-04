@@ -440,6 +440,43 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
   `.npmrc`, exact pins, no core infra on beta/RC.
+- **Routine updates wait; security fixes bypass routine waiting and receive
+  prompt review.** Neither path makes a release safe or approves a deploy.
+  - *Routine:* Dependabot version updates wait 7 days on the registry
+    (`cooldown` in `.github/dependabot.yml`). That reduces exposure to a newly
+    poisoned release, which is often pulled within days; it guarantees
+    nothing. `ignore-scripts` stops install scripts only - package code still
+    runs in our build, our tests and production - and green CI shows the code
+    works, not that it is harmless.
+  - *Dependabot security updates* already bypass the cooldown and the weekly
+    schedule. They need the dependency graph, Dependabot alerts and Dependabot
+    security updates all enabled in the repository's settings. The agent token
+    can confirm only the dependency graph (`/dependency-graph/sbom` answers);
+    the other two need admin read, so the owner checks them.
+  - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
+    advisory database, and Dependabot raises vulnerability alerts and
+    security updates only from GitHub-reviewed entries. A vulnerability a
+    project publishes on its own repository reaches them only after GitHub
+    reviews it. GHSA-965c-763c-88jm (better-auth, critical,
+    2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
+    still outside it on 2026-10-04.
+  - *Manual path,* for a credible announcement (the project's own advisory or
+    release notes) that Dependabot has not acted on: confirm the affected
+    versions against the lockfile and whether our config is exposed; choose
+    the smallest suitable fix, usually the patched release plus the sibling
+    packages released with it; review the lockfile diff and the release's
+    provenance (`npm view <pkg>@<version> _npmUser`, then
+    `npm audit signatures`, which from a sandbox needs
+    `tuf-repo-cdn.sigstore.dev`; if it cannot run, say so in the PR); run the
+    gates for what changed. Then the normal PR, review and merge approval.
+    Take the fix promptly even if our config is not exposed.
+  - *Hearing about it:* Watch → Custom → Security alerts on someone else's
+    repository is not a reliable advisory subscription. The owner watches
+    Releases on `better-auth/better-auth`, `honojs/hono` and
+    `drizzle-team/drizzle-orm`. As of 2026-10-04, neither better-auth's nor
+    drizzle-orm's `SECURITY.md` names a separate announcement channel, and
+    hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
+    named their advisories.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.

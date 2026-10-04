@@ -49,7 +49,17 @@ a D1 equivalent, ask rather than assume.
 | Dev server | `npm run dev` | SPA + `/api/*` + local D1. |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
-`docs/testing-and-ci.md` section 2.
+`docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
+
+**Tests come first** for a behavior change, one at a time: write the test,
+see it fail for the reason you expect, then make it pass, then refactor. A
+test that has never failed may not test anything. A docs-only change needs
+no test; a config change needs one when it changes behavior. A new test of
+behavior that already exists must pass, then fail against a small,
+temporary break in the production code: restore the code before you
+commit, and say what you broke in the commit message. If such a test fails
+against unchanged code, check its setup and expectation first; if it has
+found a real bug outside the task, report it and fix it in its own change.
 
 **Before claiming done:** read the complete diff. Code change: `build` and
 `test:unit`. Anything under `server/`: also `test:api`. Migrations or schema:
@@ -196,6 +206,9 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   tracking their parent, never pins - Dependabot does not update them. Keep
   `.npmrc`'s `ignore-scripts` unless a clean `npm ci` + build proves nothing
   needs a postinstall.
+- **Security fixes bypass routine waiting and receive prompt review;** a
+  "security" label does not make a release safe or approve a deploy. Before
+  applying one Dependabot did not raise, follow SECURITY.md "Supply chain".
 - Pin third-party Actions to a full commit SHA with the tag in a trailing
   comment. Use `pull_request`, never `pull_request_target`, for anything
   running fork code.
