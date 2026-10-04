@@ -455,9 +455,9 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     the other two need admin read, so the owner checks them.
   - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
     advisory database, and Dependabot raises vulnerability alerts and
-    security updates only from GitHub-reviewed entries (its malware alerts
-    are a separate, unreviewed feed). A vulnerability a project publishes on
-    its own repository reaches them only after GitHub reviews it. GHSA-965c-763c-88jm (better-auth, critical,
+    security updates only from GitHub-reviewed entries. A vulnerability a
+    project publishes on its own repository reaches them only after GitHub
+    reviews it. GHSA-965c-763c-88jm (better-auth, critical,
     2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
     still outside it on 2026-10-04.
   - *Manual path,* for a credible announcement (the project's own advisory or
@@ -473,10 +473,10 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   - *Hearing about it:* Watch → Custom → Security alerts on someone else's
     repository is not a reliable advisory subscription. The owner watches
     Releases on `better-auth/better-auth`, `honojs/hono` and
-    `drizzle-team/drizzle-orm`. As of 2026-10-04 none documents a separate
-    announcement channel: better-auth's and drizzle-orm's `SECURITY.md` cover
-    reporting only, and hono has none. The better-auth 1.7.7 and hono 4.13.11
-    release notes both named their advisories.
+    `drizzle-team/drizzle-orm`. As of 2026-10-04, neither better-auth's nor
+    drizzle-orm's `SECURITY.md` names a separate announcement channel, and
+    hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
+    named their advisories.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
   and `push` to main - never `pull_request_target` (which would run
   workflows with secrets against fork code); private repo.
