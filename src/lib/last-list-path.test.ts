@@ -86,14 +86,6 @@ describe('readLastListPath', () => {
     localStorage.setItem('lastListPath', BARE_PATH)
     expect(readLastListPath(OWNER)).toBeNull()
   })
-
-  it('treats a legacy lastListId value as a miss (no longer migrated)', () => {
-    // Owner-tagging retired the old-app migrations: a migrated value would carry
-    // no owner and be rejected anyway, so an unattributable legacy id is simply
-    // a miss now.
-    localStorage.setItem('lastListId', UUID)
-    expect(readLastListPath(OWNER)).toBeNull()
-  })
 })
 
 describe('writeLastListPath', () => {

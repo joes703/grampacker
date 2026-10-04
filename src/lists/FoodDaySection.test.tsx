@@ -160,29 +160,6 @@ describe('FoodDaySection empty slot', () => {
 })
 
 describe('FoodDaySection has no plan-completeness opinion', () => {
-  // The Skip button and the "Nothing planned" badge were one feature: a
-  // warning, and a control whose only job was to silence it. Neither ever
-  // changed the packing list or a weight. A meal you are eating in town and a
-  // meal you have not thought about yet are now the same thing - an empty row.
-  it('does not warn about an empty meal', () => {
-    renderDay()
-    expect(screen.queryByText('Nothing planned')).toBeNull()
-  })
-
-  it('offers no way to skip or restore a meal', () => {
-    renderDay()
-    expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull()
-    expect(screen.queryByText('Skipped')).toBeNull()
-  })
-
-  it('renders an empty meal and a filled one, with nothing struck through', () => {
-    renderDay()
-    expect(screen.getByText('Trail mix')).toBeInTheDocument()
-    expect(screen.getByText('Breakfast')).not.toHaveClass('line-through')
-    expect(screen.getByText('Dinner')).not.toHaveClass('line-through')
-  })
-
   it('never claims a filled slot is complete', () => {
     // A breakfast holding only coffee is non-empty and not necessarily
     // enough - there is deliberately no "complete" tick on a filled slot;

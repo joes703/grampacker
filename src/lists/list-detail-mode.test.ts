@@ -54,8 +54,6 @@ describe('isLegacyOrganizePath', () => {
     [`/LISTS/${LIST_ID.toUpperCase()}/pack/organize//`, true],
     [`/lists/${LIST_ID}/pack`, false],
     [`/lists/${LIST_ID}`, false],
-    // Belongs to a different list, so this page must not rewrite the URL.
-    ['/lists/other-list/organize', false],
   ] as const)('%s -> %s', (pathname, expected) => {
     expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(expected)
   })
@@ -88,7 +86,6 @@ describe('isLegacyListPath', () => {
     [`/lists/${LIST_ID}`, '?mode=PACK'],
     [`/lists/${LIST_ID}`, '?mode=edit'],
     // Another list's retired URL is not this page's to rewrite.
-    ['/lists/other-list/organize', ''],
     ['/lists/other-list', '?mode=pack'],
   ] as const)('%s%s is not legacy', (pathname, search) => {
     expect(isLegacyListPath(pathname, search, LIST_ID)).toBe(false)

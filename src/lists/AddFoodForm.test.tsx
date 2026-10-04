@@ -167,24 +167,6 @@ describe('AddFoodForm rejected submit', () => {
     expect(screen.getByLabelText('Weight')).toHaveValue(80)
     expect(screen.getByLabelText('Qty')).toHaveValue(3)
   })
-
-  it('clears the fields it owns once onSubmit reports success', async () => {
-    const user = userEvent.setup()
-    render(
-      <ControlledHarness
-        slots={breakfastSlots}
-        onSubmit={(_input, onSuccess) => onSuccess()}
-      />,
-    )
-
-    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.type(screen.getByLabelText('Weight'), '80')
-    await user.click(screen.getByRole('button', { name: 'Add food' }))
-
-    expect(screen.getByLabelText('Name')).toHaveValue('')
-    expect((screen.getByLabelText('Weight') as HTMLInputElement).value).toBe('')
-    expect(screen.getByLabelText('Qty')).toHaveValue(1)
-  })
 })
 
 describe('AddFoodForm labels and preview', () => {

@@ -61,8 +61,7 @@ describe('the account model better-auth actually queries', () => {
   //
   // What this proves: the deletion path exercised here emits no statement
   // naming the column. It does NOT prove that of every account query, of the
-  // relational (`db.query`) path, or of any RETURNING clause. The credential
-  // lookup in auth-delete-user.test.ts stays as separate coverage.
+  // relational (`db.query`) path, or of any RETURNING clause.
   it('never names issuer in the SQL a user deletion emits', async () => {
     const email = `acct-sql-${crypto.randomUUID()}@example.com`
     const { cookie } = await signUpVerifiedUser(email, '')

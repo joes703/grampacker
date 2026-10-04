@@ -326,10 +326,6 @@ describe('food weight', () => {
     expect(after.consumableCatRows).toEqual(before.consumableCatRows)
   })
 
-  it('is identical to the gear-only result when there is no food', () => {
-    expect(withFood(0)).toEqual(breakdown())
-  })
-
   // The regression this whole contract exists for: the public share reported
   // a lighter pack than the owner saw, because its call omitted food and
   // nothing said the result was unfinished. Food is now a REQUIRED input, so

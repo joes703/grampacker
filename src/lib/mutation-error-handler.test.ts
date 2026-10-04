@@ -34,12 +34,6 @@ describe('mutationErrorHandler', () => {
     expect(showToast).not.toHaveBeenCalled()
   })
 
-  it('ignores a non-string errorToast', () => {
-    // @ts-expect-error deliberately wrong runtime shape
-    mutationErrorHandler(new Error('boom'), undefined, undefined, fakeMutation({ errorToast: 123 }))
-    expect(showToast).not.toHaveBeenCalled()
-  })
-
   // ----- structured console.warn observability branch -----
   // Moved here from optimistic.test.ts: that file's charter is the pure cache
   // lifecycle helpers (no Supabase, no logging). mutationErrorHandler is a

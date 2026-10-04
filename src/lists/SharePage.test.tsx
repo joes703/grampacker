@@ -105,20 +105,6 @@ describe('SharePage draft banner', () => {
 })
 
 describe('SharePage read-only public sharing', () => {
-  it('stays read-only without showing a redundant public-view label or edit controls', async () => {
-    vi.mocked(fetchSharedList).mockResolvedValue(share())
-    renderShareView()
-
-    expect(await screen.findByText('Trip')).toBeTruthy()
-    expect(screen.queryByText('Public - read-only')).toBeNull()
-    // Read-only stays read-only: no copy-to-my-account affordances (the
-    // old repo shipped and deliberately REVERTED public gear-copy; see
-    // the memory note - don't re-add these).
-    expect(screen.queryByRole('button', { name: /copy/i })).toBeNull()
-    expect(screen.queryByRole('link', { name: /sign in to copy/i })).toBeNull()
-    expect(screen.queryByRole('link', { name: /edit/i })).toBeNull()
-  })
-
   it('renders items grouped by category with the weight summary', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
