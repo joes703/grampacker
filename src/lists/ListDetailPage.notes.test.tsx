@@ -1,14 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import type { ReactNode } from 'react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import type { List } from '../lib/types'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 import { showToast } from '../lib/toast'
+import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 // Notes can be long, and the editor is the only copy of what the user typed.
 // So a save that fails must leave the editor open with the text in it, and
@@ -59,8 +55,8 @@ const h = vi.hoisted(() => ({
   updateList: vi.fn<(id: string, patch: unknown) => Promise<unknown>>(),
 }))
 
-// See ListDetailPage.edit-gear.test.tsx: a real better-auth session atom
-// outlives the jsdom environment and fails CI after the tests pass.
+// See test/list-detail-harness.tsx: a real better-auth session atom outlives
+// the jsdom environment and fails CI after the tests pass.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -72,46 +68,8 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function openNotesEditor(): Promise<HTMLTextAreaElement> {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
   fireEvent.click(await screen.findByRole('button', { name: 'Edit notes' }))
   return screen.getByPlaceholderText(/Add notes about this packing list/) as HTMLTextAreaElement
 }

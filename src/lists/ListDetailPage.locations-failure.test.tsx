@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import { makeDnDId } from '../lib/dnd-ids'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
-import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import {
+  emptyFood,
+  list,
+  listId,
+  renderListDetailPage,
+  stubViewport,
+} from './test/list-detail-harness'
 
 // What a FAILED packing-locations query is allowed to do to the page.
 //
@@ -26,17 +28,6 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 // pack reorder whose planner assumes a single Unassigned cohort. The
 // location-free list is the control: a SUCCESSFUL [] is resolved, and must keep
 // working exactly as before.
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
 
 const gear = {
   id: 'gear-1',
@@ -70,8 +61,6 @@ const secondItem = {
   packSortOrder: 1,
 } as unknown as ListItemWithGear
 
-const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
-
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
@@ -83,13 +72,9 @@ const h = vi.hoisted(() => ({
   reorderListItems: vi.fn(),
 }))
 
-// The page calls authClient.useSession(), which mounts better-auth's nanostores
-// session atom. Nanostores keeps an unmounted store alive on a ~1s timer, and
-// when that timer fires AFTER vitest has torn down this file's jsdom
-// environment, better-auth's cleanupBroadcastSetup touches `window` and throws
-// an unhandled ReferenceError - failing CI with every test still passing.
-// Mocking the client means the atom never mounts. The session is read here only
-// for the last-list pointer's owner id, which no test in this file asserts on.
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why). The session is read here only for the last-list pointer's
+// owner id, which no test in this file asserts on.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -138,53 +123,12 @@ vi.mock('@dnd-kit/sortable', async () => {
   }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderDetail(path: string) {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
-  // Anchors on content that only exists past the detail loading gate. Food
-  // used to render inline in Pack and was a convenient anchor for that; food
-  // now has its own route and no longer renders inline here. The packing
-  // location create form is unconditional in Pack mode (not gated on items
-  // or on the packing-locations query this file exercises), so it survives
-  // every scenario below, including the zero-items one.
+  await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack'])
+  // Anchors on content that only exists past the detail loading gate. The
+  // packing location create form is unconditional in Pack mode (not gated on
+  // items or on the packing-locations query this file exercises), so it
+  // survives every scenario below, including the zero-items one.
   await screen.findByLabelText('New packing location')
 }
 
@@ -406,16 +350,7 @@ describe('a list-items query that failed to load', () => {
   // every row would read as not-yet-added and adding one re-adds gear the list
   // already holds.
   it('stops the gear picker offering to add gear it cannot check', async () => {
-    const { default: ListDetailPage } = await import('./ListDetailPage')
-    render(
-      <Providers>
-        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-          <Routes>
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </Providers>,
-    )
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
 
     expect(await screen.findByText("Couldn't load this list's items.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Cooking pot/ })).not.toBeInTheDocument()

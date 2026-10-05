@@ -1,35 +1,24 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { cleanup, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
-import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import {
+  emptyFood,
+  list,
+  listId,
+  renderListDetailPage,
+  stubViewport,
+} from './test/list-detail-harness'
 
 // What a category footer SHOWS, rendered through the real page. A section
 // must not compute its own subtotal (src/lib/weight-breakdown.ts explains
-// why: it used to, and consumables and worn gear landed in "base"), so the
+// why: a summed section puts consumables and worn gear in "base"), so the
 // page hands every section - categorized and Uncategorized alike - the
-// canonical base and consumable figures. This used to be pinned by a test
-// that grepped ListDetailPage.tsx for four JSX substrings, which passed on
-// dead code and proved nothing about what a user sees. This renders the page
-// and reads the footers: the consumable and worn rows are the discriminators
-// against a section summing its own rows.
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+// canonical base and consumable figures. This renders the page and reads the
+// footers: the consumable and worn rows are the discriminators against a
+// section summing its own rows.
 
 const categories = [
   { id: 'cat-a', name: 'Shelter', sortOrder: 0 },
@@ -84,8 +73,6 @@ const listItems = [
   row('li-6', bars, 5, { isConsumable: true }),
 ]
 
-const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
-
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
@@ -95,9 +82,9 @@ const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
 }))
 
-// Same reasons as ListDetailPage.locations-failure.test.tsx: the session
-// atom must not mount in jsdom, and dnd-kit cannot be driven here - the
-// contexts are pass-throughs because nothing is dragged.
+// The session atom must not mount in jsdom (test/list-detail-harness.tsx
+// explains why). dnd-kit cannot be driven here; the contexts are
+// pass-throughs because nothing is dragged.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -126,35 +113,6 @@ vi.mock('@dnd-kit/sortable', async () => {
   }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 beforeEach(() => {
   stubViewport(1280)
   h.fetchLists.mockResolvedValue([list])
@@ -181,16 +139,7 @@ function regionText(sectionKey: string): string {
 
 describe('category footers show the canonical per-section figures', () => {
   it('base excludes consumable and worn rows; consumable is its own figure', async () => {
-    const { default: ListDetailPage } = await import('./ListDetailPage')
-    render(
-      <Providers>
-        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-          <Routes>
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </Providers>,
-    )
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
     // Past the detail loading gate: a category section has rendered.
     await screen.findAllByText('Shelter')
 
