@@ -57,6 +57,10 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
   permitted (`server/middleware/csrf.ts`). The header is the actual control;
   Origin is defense in depth.
 - Session-gated routes 401 without a cookie (`server/middleware/session.ts`).
+  `server/routes/session-gate.test.ts` reads every route from the app's
+  router and proves the 401 on each one outside the public allowlist (the
+  `/api/auth/*` handler, the share read, health), so a new route is covered
+  without being listed.
 - Handlers receive user-scoped repositories only; ownership is fixed
   server-side and never read from the client.
 

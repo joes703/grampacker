@@ -14,7 +14,6 @@ vi.mock('../lib/auth-client', () => ({
   passkeysSupported: () => h.supported,
 }))
 
-vi.mock('./DefaultTargetsSection', () => ({ default: () => null }))
 vi.mock('./DownloadAllData', () => ({ default: () => null }))
 vi.mock('./DeleteAccountSection', () => ({ default: () => null }))
 

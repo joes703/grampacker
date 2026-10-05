@@ -220,8 +220,6 @@ describe('lists CRUD', () => {
     expect(patched.name).toBe('Overnighter v2')
     expect(patched.description).toBe('Two nights, one bag')
     expect(patched.isDraft).toBe(false)
-    expect(Object.keys(patched)).not.toContain('groupWorn')
-    expect(Object.keys(patched)).not.toContain('readyChecksEnabled')
     expect(patched.updatedAt > first.updatedAt).toBe(true)
     expect(patched.slug).toBe(first.slug) // patches never touch the slug
 

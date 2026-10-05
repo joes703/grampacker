@@ -13,6 +13,7 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  PACK_ROW_WEIGHT_CELL,
   PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import PackModeCheckbox from './PackModeCheckbox'
@@ -135,7 +136,7 @@ export default function SortableFoodRow({
       <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.unitCount}
       </span>
-      {/* Same component and the same layout utilities as the gear pack row:
+      {/* Same component and the same PACK_ROW_WEIGHT_CELL as the gear pack row:
           a bag holds gear and food in one cohort, so a cell on one and not
           the other misaligns every column to its right in a mixed section.
 
@@ -147,7 +148,7 @@ export default function SortableFoodRow({
         grams={food.weightGrams}
         unit={weightUnit}
         itemName={food.name}
-        className="hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden"
+        className={PACK_ROW_WEIGHT_CELL}
       />
       {rowAction}
     </div>

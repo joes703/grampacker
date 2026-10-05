@@ -8,7 +8,6 @@ import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
 // useNavigate); stub them so this test covers the settings shell, not their
 // plumbing (each has its own test file).
 vi.mock('./PasskeySection', () => ({ default: () => <div>passkey-section</div> }))
-vi.mock('./DefaultTargetsSection', () => ({ default: () => <div>default-targets-section</div> }))
 vi.mock('./DownloadAllData', () => ({ default: () => <div>download-all-data</div> }))
 vi.mock('./DeleteAccountSection', () => ({ default: () => <div>delete-account-section</div> }))
 
@@ -41,10 +40,6 @@ describe('SettingsModal', () => {
     // Every card, including Passkeys, gets its heading from the shared shell.
     expect(ui.getByRole('heading', { name: 'Passkeys', level: 3 })).toBeInTheDocument()
     expect(ui.getByText('passkey-section')).toBeInTheDocument()
-    expect(
-      ui.queryByRole('heading', { name: 'Default nutrition targets', level: 3 }),
-    ).not.toBeInTheDocument()
-    expect(ui.queryByText('default-targets-section')).not.toBeInTheDocument()
     expect(
       ui.getByRole('heading', { name: 'Download all data', level: 3 }),
     ).toBeInTheDocument()

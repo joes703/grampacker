@@ -330,25 +330,10 @@ describe('food: the matrix cells a status alone would not prove', () => {
   })
 })
 
-// The table-driven auth matrix the other four route files already have. Food
-// was the odd one out (a single ad-hoc GET 401), which mattered doubly once
-// the session gate moved to ONE hoisted api.use('/lists/*') in
-// server/index.ts: this loop is what proves the hoist did not silently
-// un-gate the food sub-app.
+// Food is gated by the ONE hoisted api.use('/lists/*') in server/index.ts.
+// session-gate.test.ts proves the anonymous 401 on every food route; these
+// prove the CSRF layer still answers first.
 describe('/api/lists/:id/food authorization', () => {
-  it('returns 401 without a session on every route shape', async () => {
-    for (const [method, path, body] of [
-      ['GET', '/api/lists/list/food', undefined],
-      ['PUT', '/api/lists/list/food/days', { days: 2 }],
-      ['POST', '/api/lists/list/food/items', { name: 'X', weightGrams: 1, quantity: 1, slotIds: [] }],
-      ['PATCH', '/api/lists/list/food/items/item', { name: 'X' }],
-      ['DELETE', '/api/lists/list/food/items/item', undefined],
-    ] as const) {
-      const res = await apiRequest(null, method, path, body)
-      expect(res.status, `${method} ${path}`).toBe(401)
-    }
-  })
-
   it('allows GET without the CSRF header but rejects every write with 403', async () => {
     // 403-before-401 layering: CSRF is checked ahead of the session, so these
     // run WITH a valid session and still 403 - proving the hoisted session

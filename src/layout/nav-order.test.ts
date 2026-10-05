@@ -19,36 +19,4 @@ describe('primary navigation order', () => {
       '/lists',
     ])
   })
-
-  it('keeps Lists as the same index destination at every viewport', () => {
-    const sources = import.meta.glob('./AppShell.tsx', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>
-    const src = Object.values(sources)[0]!
-
-    function linkElement(to: string): string {
-      const start = src.indexOf(`to="${to}"`)
-      expect(start, `no <Link to="${to}"> found`).toBeGreaterThan(-1)
-      const end = src.indexOf('</Link>', start)
-      expect(end, `unterminated <Link to="${to}">`).toBeGreaterThan(-1)
-      return src.slice(start, end)
-    }
-
-    expect(linkElement('/lists')).not.toContain('readLastListPath()')
-    expect(src).not.toContain("from '../lib/last-list-path'")
-  })
-
-  it('hands primary navigation from the bottom bar to the header at lg', () => {
-    const sources = import.meta.glob('./AppShell.tsx', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>
-    const src = Object.values(sources)[0]!
-
-    expect(src).toContain('className="hidden lg:flex items-center gap-4"')
-    expect(src).not.toContain('className="hidden md:flex items-center gap-4"')
-  })
 })

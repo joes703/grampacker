@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { createElement } from 'react'
+import { MemoryRouter } from 'react-router'
+import ListViewNav from './ListViewNav'
 import {
   deriveListMode,
   isLegacyListPath,
@@ -25,10 +30,11 @@ describe('deriveListMode', () => {
     [`/lists/${LIST_ID}/FOOD`, 'food'],
     [`/lists/${LIST_ID}/food/`, 'food'],
     [`/lists/${LIST_ID}/pack/`, 'pack'],
-    // The retired spellings get the same tolerance as the live ones.
+    // The retired spellings get the same tolerance as the live ones,
+    // including more than one trailing slash.
     [`/lists/${LIST_ID}/organize/`, 'pack'],
     [`/lists/${LIST_ID}/ORGANIZE`, 'pack'],
-    [`/lists/${LIST_ID}/pack/organize/`, 'pack'],
+    [`/LISTS/${LIST_ID.toUpperCase()}/pack/organize//`, 'pack'],
   ] as const)('%s -> %s', (pathname, expected) => {
     expect(deriveListMode(pathname, LIST_ID)).toBe(expected)
   })
@@ -41,13 +47,12 @@ describe('deriveListMode', () => {
 })
 
 // The plain spellings are proven through deriveListMode above, which answers
-// 'pack' for a retired URL only through this predicate. These rows add the
-// router's case and slash tolerance: an exact match would render Pack without
-// the address-bar rewrite.
+// 'pack' for a retired URL only through this predicate. This row adds the
+// router's case tolerance: an exact match would render Pack without the
+// address-bar rewrite.
 describe('isLegacyOrganizePath', () => {
   it.each([
     [`/lists/${LIST_ID}/ORGANIZE`, true],
-    [`/LISTS/${LIST_ID.toUpperCase()}/pack/organize//`, true],
   ] as const)('%s -> %s', (pathname, expected) => {
     expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(expected)
   })
@@ -98,14 +103,18 @@ describe('persistedListPath', () => {
 })
 
 describe('listDocumentTitle', () => {
-  it.each([
-    ['edit', 'Weekend Trip - Category'],
-    ['pack', 'Weekend Trip - Pack'],
-  ] as const)('names the %s browser view', (mode, expected) => {
-    expect(listDocumentTitle('Weekend Trip', mode)).toBe(expected)
-  })
+  afterEach(cleanup)
 
-  it('titles the food view', () => {
-    expect(listDocumentTitle('JMT', 'food')).toBe('JMT - Food')
+  // ListViewNav keeps its own copy of the view names. The title must use the
+  // word on the tab the user is looking at.
+  it('names every view the way its tab does', () => {
+    for (const mode of ['edit', 'pack', 'food'] as const) {
+      render(
+        createElement(MemoryRouter, null, createElement(ListViewNav, { listId: LIST_ID, mode })),
+      )
+      const tab = screen.getByRole('link', { current: 'page' })
+      expect(listDocumentTitle('Weekend Trip', mode)).toBe(`Weekend Trip - ${tab.textContent}`)
+      cleanup()
+    }
   })
 })

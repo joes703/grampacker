@@ -23,11 +23,13 @@ describe('toGrams', () => {
 
   it('converts pound aliases (lb / pound / pounds)', () => {
     expect(toGrams('1', 'lb')).toBe(453.6) // 453.592
+    expect(toGrams('1', 'pound')).toBe(453.6)
     expect(toGrams('2', 'pounds')).toBe(907.2) // 907.184
   })
 
   it('converts kilogram aliases (kg / kilogram / kilograms)', () => {
     expect(toGrams('1.5', 'kg')).toBe(1500)
+    expect(toGrams('1.5', 'kilogram')).toBe(1500)
     expect(toGrams('0.5', 'kilograms')).toBe(500)
   })
 

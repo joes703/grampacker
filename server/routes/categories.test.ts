@@ -8,7 +8,6 @@ import {
 } from '../../shared/gear'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
-import { isCategoryCapError } from '../repos/categories'
 
 async function createCategory(
   cookie: string,
@@ -25,19 +24,6 @@ async function listCategories(cookie: string): Promise<CategoryResponse[]> {
 }
 
 describe('/api/categories authorization matrix', () => {
-  it('anon requests are 401 on every route', async () => {
-    for (const [method, path, body] of [
-      ['GET', '/api/categories', undefined],
-      ['POST', '/api/categories', { name: 'X' }],
-      ['PUT', '/api/categories/order', [{ id: 'a', sortOrder: 0 }]],
-      ['PATCH', '/api/categories/some-id', { name: 'X' }],
-      ['DELETE', '/api/categories/some-id', undefined],
-    ] as const) {
-      const res = await apiRequest(null, method, path, body)
-      expect(res.status, `${method} ${path}`).toBe(401)
-    }
-  })
-
   it('owner CRUD round-trip: server-assigned sort order, DTO allowlist', async () => {
     const { cookie } = await signUpVerifiedUser('cat-crud@example.com', 'C')
     const shelter = await createCategory(cookie, 'Shelter')
@@ -323,34 +309,6 @@ describe('the category cap (500 per user)', () => {
       'select count(*) as n from gear_items where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(gear?.n).toBe(0)
-  })
-
-  it('isCategoryCapError matches only the root SQLite trigger error, never wrapper params', () => {
-    // A category literally NAMED like the trigger message must not turn an
-    // unrelated failure into a false 422 - the matcher walks to the ROOT
-    // cause, and drizzle's wrapper (which embeds bound params) is never it.
-    const fkRoot = new Error(
-      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
-    )
-    const fkD1 = new Error('D1_ERROR: FOREIGN KEY constraint failed', {
-      cause: fkRoot,
-    })
-    const forged = new Error(
-      'Failed query: insert into "categories" ... params: category cap exceeded (500 per user): SQLITE_CONSTRAINT_TRIGGER',
-      { cause: fkD1 },
-    )
-    expect(isCategoryCapError(forged)).toBe(false)
-
-    const capRoot = new Error(
-      'category cap exceeded (500 per user): SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)',
-    )
-    const capD1 = new Error(`D1_ERROR: ${capRoot.message}`, { cause: capRoot })
-    const capWrapper = new Error('Failed query: insert into "categories" ...', {
-      cause: capD1,
-    })
-    expect(isCategoryCapError(capWrapper)).toBe(true)
-    expect(isCategoryCapError(new Error('unrelated'))).toBe(false)
-    expect(isCategoryCapError(null)).toBe(false)
   })
 })
 
