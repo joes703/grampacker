@@ -15,25 +15,32 @@ const PUBLIC_ROUTES = [
 ]
 
 // Middleware and the catch-all fallbacks register with method 'ALL' on a
-// wildcard path. Any other wildcard here is a new .all() endpoint that this
-// test cannot probe, so it fails until someone decides whether it is gated.
-const MIDDLEWARE_PATHS = [
-  '/*',
-  '/api/*',
-  '/api/auth/*',
-  '/api/lists/*',
-  '/api/me/*',
-  '/api/categories/*',
-  '/api/gear-items/*',
-  '/api/shares/*',
+// wildcard path, and this test cannot probe a wildcard. So every such
+// registration is listed, once per registration (server/index.ts and the
+// route files). A new one, even on a path already listed, fails here until
+// someone has checked whether it is middleware or an endpoint that needs the
+// session gate.
+const WILDCARD_REGISTRATIONS = [
+  '/*', // securityHeaders
+  '/*', // assetCache
+  '/*', // the static-asset fallback
+  '/api/*', // apiBodyLimit
+  '/api/*', // csrfProtection
+  '/api/*', // the JSON 404 fallback
+  '/api/auth/*', // authRateLimit
+  '/api/lists/*', // requireSession, hoisted
+  '/api/me/*', // requireSession
+  '/api/categories/*', // requireSession
+  '/api/gear-items/*', // requireSession
+  '/api/shares/*', // attachPublicShares
 ]
 
 describe('session gate', () => {
   it('answers 401 to an anonymous caller on every non-public API route', async () => {
-    const wildcards = new Set(
-      app.routes.filter((r) => r.method === 'ALL' && r.path.endsWith('*')).map((r) => r.path),
-    )
-    expect([...wildcards].sort()).toEqual([...MIDDLEWARE_PATHS].sort())
+    const wildcards = app.routes
+      .filter((r) => r.method === 'ALL' && r.path.endsWith('*'))
+      .map((r) => r.path)
+    expect(wildcards.sort()).toEqual([...WILDCARD_REGISTRATIONS].sort())
 
     // An .all() endpoint on a plain path is a route like any other; GET
     // reaches it.

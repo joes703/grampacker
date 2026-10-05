@@ -60,8 +60,9 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
   `server/routes/session-gate.test.ts` reads every route from the app's
   router and proves the 401 on each one outside the public allowlist (the
   `/api/auth/*` handler, the share read, health), so a new route is covered
-  without being listed. A new wildcard `.all()` registration fails that test
-  until it is added to its list of known middleware paths.
+  without being listed. A wildcard registration (middleware, or an `.all()`
+  endpoint on a `*` path) cannot be probed that way, so the test lists every
+  one; a new one fails it until someone checks whether it needs the gate.
 - Handlers receive user-scoped repositories only; ownership is fixed
   server-side and never read from the client.
 
