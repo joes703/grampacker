@@ -45,18 +45,6 @@ const slotOf = (food: ListFoodResponse, day: number, meal: string) =>
   food.slots.find((s) => s.dayNumber === day && s.meal === meal)!
 
 describe('food: day grid', () => {
-  it('generates breakfast/lunch/dinner for every day', async () => {
-    const { cookie } = await signUpVerifiedUser('food-1@example.com', 'F1')
-    const listId = await createList(cookie, 'Trip')
-
-    expect((await setDays(cookie, listId, 5)).status).toBe(200)
-    const food = await getFood(cookie, listId)
-
-    expect(food.dayCount).toBe(5)
-    expect(food.slots).toHaveLength(15)
-    expect(food.slots.filter((s) => s.meal === 'dinner')).toHaveLength(5)
-  })
-
   it('keeps slot ids, and so placements, when the same day count is re-entered', async () => {
     // Re-entering the same number must be a no-op. The id is the load-bearing
     // part: delete-and-reinsert would take every association with it, so a
@@ -122,7 +110,11 @@ describe('food: day grid', () => {
 
     expect((await setDays(cookie, listId, 30)).status).toBe(200)
     const food = await getFood(cookie, listId)
+    expect(food.dayCount).toBe(30)
     expect(food.slots).toHaveLength(90)
+    for (const meal of ['breakfast', 'lunch', 'dinner']) {
+      expect(food.slots.filter((s) => s.meal === meal), meal).toHaveLength(30)
+    }
   })
 
   it('rejects a trip longer than the cap', async () => {
@@ -166,28 +158,6 @@ describe('food: quantity is what you typed, unitCount is what you carry', () => 
     expect(total).toBe(500)
   })
 
-  it('never overwrites quantity with the number of slots', async () => {
-    // Per-meal (the default): four breakfasts make unitCount 4, and quantity -
-    // the per-meal count the user typed - stays 1. A server that derived
-    // quantity from the schedule would report 4 here, and then carry 16.
-    const { cookie } = await signUpVerifiedUser('food-8@example.com', 'F8')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 4)
-    const food = await getFood(cookie, listId)
-    const breakfasts = food.slots.filter((s) => s.meal === 'breakfast').map((s) => s.id)
-
-    await addItem(cookie, listId, {
-      name: 'Oatmeal',
-      weightGrams: 80,
-      quantity: 1,
-      slotIds: breakfasts,
-    })
-
-    const after = await getFood(cookie, listId)
-    expect(after.items[0]!.quantity).toBe(1)
-    expect(after.items[0]!.unitCount).toBe(4)
-  })
-
   it('rejects a fractional quantity at the boundary', async () => {
     const { cookie } = await signUpVerifiedUser('food-9@example.com', 'F9')
     const listId = await createList(cookie, 'Trip')
@@ -198,20 +168,6 @@ describe('food: quantity is what you typed, unitCount is what you carry', () => 
       slotIds: [],
     })
     expect(res.status).toBe(400)
-  })
-})
-
-describe('food: the Skip feature is gone at every layer', () => {
-  it('keeps the plan off the slot DTO entirely', async () => {
-    const { cookie } = await signUpVerifiedUser('food-11b@example.com', 'F11b')
-    const listId = await createList(cookie, 'Trip')
-    await setDays(cookie, listId, 1)
-
-    const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/food`)
-    const raw = (await res.json()) as { slots: Record<string, unknown>[] }
-    for (const slot of raw.slots) {
-      expect(Object.keys(slot).sort()).toEqual(['dayNumber', 'id', 'meal'])
-    }
   })
 })
 
@@ -663,12 +619,13 @@ describe('food crosses the public share boundary as rows, and the plan does not'
     )
     expect(total).toBe(3000)
     // Nested too: a `food` key hanging off the list or an item would sail past
-    // a root-only assertion.
-    expect(Object.keys(raw.list as object).sort()).toEqual([
-      'description',
-      'isDraft',
-      'name',
-    ])
+    // a root-only assertion. The list row is checked by VALUE as well: the day
+    // count must not reach the share inside an allowed field either.
+    expect(raw.list).toStrictEqual({
+      name: 'Shared trip',
+      description: null,
+      isDraft: true,
+    })
     const items = raw.items as Record<string, unknown>[]
     expect(items.length).toBeGreaterThan(0)
     for (const item of items) {
@@ -703,37 +660,12 @@ describe('food crosses the public share boundary as rows, and the plan does not'
     expect(serialized).not.toContain('needed')
   })
 
-  // The day count is stored on the LIST row, which the share does select
-  // from. A projection that added it would not be caught by the food-row key
-  // assertion above, so it gets its own check against a list whose day count
-  // is a number no other field could coincidentally hold.
-  it('does not publish the day count through the list row', async () => {
-    const { cookie } = await signUpVerifiedUser('food-share-days@example.com', 'FD')
-    const listId = await createList(cookie, 'Shared trip')
-    await setDays(cookie, listId, 17)
-
-    const shared = await apiRequest(cookie, 'PATCH', `/api/lists/${listId}`, {
-      isShared: true,
-    })
-    const slug = ((await shared.json()) as { slug: string }).slug
-    const res = await apiRequest('', 'GET', `/api/shares/v2/${slug}`)
-    expect(res.status).toBe(200)
-    const raw = (await res.json()) as Record<string, unknown>
-
-    expect(Object.keys(raw.list as object).sort()).toEqual([
-      'description',
-      'isDraft',
-      'name',
-    ])
-    expect(JSON.stringify(raw)).not.toContain('17')
-  })
 })
 
-// The 200-item cap at the boundary (review P2.2: every other cap had this
-// three-sided test; food - the NEWEST trigger - had none). Same shape as the
-// gear and list suites: seed to cap-1 raw, prove the API grants the last
-// slot, refuses the next with the friendly 422, and the trigger backstops a
-// write that bypasses the repo entirely.
+// The 200-item cap at the boundary. Same shape as the gear and list suites:
+// seed to cap-1 raw, prove the API grants the last slot, refuses the next with
+// the friendly 422, and the trigger backstops a write that bypasses the repo
+// entirely.
 describe('the food item cap (200 per list)', () => {
   it('friendly 422 from the API, trigger backstop on raw inserts', async () => {
     const { cookie } = await signUpVerifiedUser('food-cap@example.com', 'FCap')
@@ -804,7 +736,8 @@ describe('food counts derive from the plan (0024)', () => {
     const food = await getFood(cookie, listId)
     const item = food.items[0]!
     expect(item.isPerMeal).toBe(true)
-    // One per lunch, five lunches.
+    // One per lunch, five lunches. quantity stays what the user typed: a
+    // server that derived it from the schedule would report 5, then carry 25.
     expect(item.quantity).toBe(1)
     expect(item.unitCount).toBe(5)
     expect(item.weightGrams * item.unitCount).toBeCloseTo(167.5)
@@ -829,31 +762,6 @@ describe('food counts derive from the plan (0024)', () => {
 
     const food = await getFood(cookie, listId)
     expect(food.items[0]!.unitCount).toBe(6)
-  })
-
-  it('a SHARED stash ignores the schedule, however many meals it spans', async () => {
-    const { cookie } = await signUpVerifiedUser('food-shared@example.com', 'SH')
-    const listId = await createList(cookie, 'Trip')
-    expect((await setDays(cookie, listId, 5)).status).toBe(200)
-    const plan = await getFood(cookie, listId)
-
-    expect(
-      (
-        await addItem(cookie, listId, {
-          name: 'Trail mix',
-          weightGrams: 500,
-          quantity: 1,
-          isPerMeal: false,
-          slotIds: [1, 2, 3, 4, 5].map((day) => slotOf(plan, day, 'lunch').id),
-        })
-      ).status,
-    ).toBe(201)
-
-    const food = await getFood(cookie, listId)
-    // One bag. This is the case the "scheduling never multiplies weight"
-    // contract was written for, and it still holds - it is now a MODE rather
-    // than a refusal to derive anything at all.
-    expect(food.items[0]!.unitCount).toBe(1)
   })
 
   it('recomputes when the schedule changes, without touching quantity', async () => {

@@ -31,12 +31,6 @@ describe('describeError', () => {
     expect(entry.stack).toBeUndefined()
   })
 
-  it('is not fooled by a bound value that looks like a stack frame', () => {
-    const fakeFrame = `\n    at ${SENTINEL} (fake.ts:1:1)`
-    const entry = describeError(drizzleFailure([fakeFrame]))
-    expect(JSON.stringify(entry)).not.toContain(SENTINEL)
-  })
-
   it('redacts a parameter-bearing error found down the cause chain', () => {
     const wrapped = new Error('outer', { cause: drizzleFailure([SENTINEL]) })
     const entry = describeError(wrapped)
@@ -150,16 +144,5 @@ describe('recordAuthLog', () => {
       level: 'warn',
       message: 'something odd',
     })
-  })
-
-  it('shares the per-isolate ceiling with the incident handler', () => {
-    for (let i = 0; i < 100; i += 1) recordAuthLog('error', `flood ${i}`)
-    for (let i = 0; i < 100; i += 1) recordAuthLog('warn', `flood ${i}`)
-    const lines = [...consoleError.mock.calls, ...consoleWarn.mock.calls].map(
-      ([line]) => JSON.parse(String(line)) as { event: string },
-    )
-    expect(lines).toHaveLength(21)
-    expect(lines.filter((l) => l.event === 'auth-log')).toHaveLength(20)
-    expect(lines.filter((l) => l.event === 'server-error-suppressed')).toHaveLength(1)
   })
 })

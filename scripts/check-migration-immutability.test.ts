@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { journalProblem, main } from './check-migration-immutability.mjs'
+import { main } from './check-migration-immutability.mjs'
 
 const SHA = 'a'.repeat(40)
 const JOURNAL = 'migrations/meta/_journal.json'
@@ -54,7 +54,8 @@ const run = (git: Git, eventName: string | undefined = 'pull_request', argv: str
 describe('main', () => {
   it('permits a pull request that only adds files (additions never reach the diff)', () => {
     // --diff-filter=a excludes additions, so an added migration and its
-    // snapshot produce no output at all.
+    // snapshot produce no output at all. No journals are supplied, so the stub
+    // also proves the journal is not read when it did not change.
     const { code, output } = run(gitWith(Buffer.alloc(0)))
     expect(code).toBe(0)
     expect(output).toMatch(/OK/)
@@ -81,8 +82,14 @@ describe('main', () => {
   })
 
   it('permits a journal that only gained entries', () => {
-    const git = gitWith(z(JOURNAL), { base: journal('0027_a'), head: journal('0027_a', '0028_b') })
-    expect(run(git).code).toBe(0)
+    // Unchanged and a two-entry append, too: a rule that wants exactly one new
+    // entry, or any new entry at all, refuses one of them.
+    const base = journal('0027_a')
+    for (const head of [base, journal('0027_a', '0028_b'), journal('0027_a', '0028_b', '0029_c')]) {
+      const { code, output } = run(gitWith(z(JOURNAL), { base, head }))
+      expect(code, head).toBe(0)
+      expect(output, head).toMatch(/OK/)
+    }
   })
 
   it('refuses a rewritten journal', () => {
@@ -99,11 +106,6 @@ describe('main', () => {
       expect(code, name).toBe(1)
       expect(output, name).toContain('changed beyond appending')
     }
-  })
-
-  it('does not read the journal when the journal did not change', () => {
-    // No journals supplied: the stub throws if `git show` is called at all.
-    expect(run(gitWith(Buffer.alloc(0))).code).toBe(0)
   })
 
   it('fails closed when git evidence cannot be obtained', () => {
@@ -150,19 +152,5 @@ describe('main', () => {
     expect(code).toBe(1)
     expect(output).toContain('takes no arguments (got: --dry-run)')
     expect(calls).toEqual([])
-  })
-})
-
-describe('journalProblem', () => {
-  it('accepts an unchanged journal and any pure append', () => {
-    const base = journal('0027_a')
-    expect(journalProblem(base, base)).toBeNull()
-    expect(journalProblem(base, journal('0027_a', '0028_b', '0029_c'))).toBeNull()
-  })
-
-  it('does not judge what the appended entries say - the harness does that', () => {
-    // A tag naming no .sql file is the harness's failure to report, not this
-    // guard's. Keeping the rule in one place is the point.
-    expect(journalProblem(journal('0027_a'), journal('0027_a', 'nonexistent'))).toBeNull()
   })
 })

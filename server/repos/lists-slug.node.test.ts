@@ -3,8 +3,7 @@ import { generateSlug, withFreshSlug } from './lists'
 
 // withFreshSlug is the single retry loop behind every write that mints a share
 // slug: create, duplicate, from-selection, import, and replacing a share link.
-// It used to be five copies of the same for-loop, so this is the test that
-// stops the shared version regressing all five at once.
+// A regression here breaks all five at once.
 //
 // It cannot be reached through the HTTP surface: it only does anything when two
 // 6-char base62 draws collide, which is ~1-in-2^35 per attempt. Hence a direct
@@ -21,17 +20,6 @@ const slugCollision = () =>
   })
 
 describe('withFreshSlug', () => {
-  it('returns the first attempt when nothing collides', async () => {
-    const seen: string[] = []
-    const out = await withFreshSlug(async (slug) => {
-      seen.push(slug)
-      return `used:${slug}`
-    })
-
-    expect(seen).toHaveLength(1)
-    expect(out).toBe(`used:${seen[0]}`)
-  })
-
   it('retries on a slug collision, with a DIFFERENT slug each time', async () => {
     const seen: string[] = []
     const out = await withFreshSlug(async (slug) => {

@@ -8,9 +8,9 @@ import {
   isUniqueViolation,
 } from './db-errors'
 
-// Root-cause-only matching (Codex finding, PR #14): the drizzle wrapper
-// message embeds bound params, so user-controlled text that LOOKS like a
-// trigger/constraint message must never classify an unrelated failure.
+// Root-cause-only matching: the drizzle wrapper message embeds bound params,
+// so user-controlled text that LOOKS like a trigger/constraint message must
+// never classify an unrelated failure.
 // The live route tests pin the real workerd error shapes; these pin the
 // matcher logic itself.
 
@@ -80,11 +80,11 @@ describe('isUniqueViolation', () => {
   })
 })
 
-// The four matchers below had no direct tests (review P2.2), and two of them
-// are the SOLE discriminators for user-facing statuses: isAnyUniqueViolation
-// and isPackGuardViolation together decide the pack-order 409, and
-// isForeignKeyViolation opens the precheck-race recovery path. Same
-// discipline as above: real root shapes match, wrapper forgeries do not.
+// The matchers below decide user-facing statuses with no other check behind
+// them: isAnyUniqueViolation and isPackGuardViolation together decide the
+// pack-order 409, and isForeignKeyViolation opens the precheck-race recovery
+// path. Same discipline as above: real root shapes match, wrapper forgeries
+// do not.
 
 describe('isAnyUniqueViolation', () => {
   it('matches a unique violation on ANY column at the root', () => {

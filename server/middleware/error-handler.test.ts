@@ -375,13 +375,23 @@ describe('bound parameters never reach the log', () => {
   })
 
   it('counts better-auth log lines against the same ceiling as incidents', async () => {
-    const thrower = appThatThrows(new Error('flood'))
-    for (let i = 0; i < 15; i += 1) await thrower.request('/api/boom', {}, prodEnv)
-    for (let i = 0; i < 15; i += 1) recordAuthLog('error', `auth flood ${i}`)
-    const entries = logLines(consoleError)
-    expect(entries).toHaveLength(21)
-    expect(entries.filter((e) => e.event === 'server-error')).toHaveLength(15)
-    expect(entries.filter((e) => e.event === 'auth-log')).toHaveLength(5)
-    expect(entries.filter((e) => e.event === 'server-error-suppressed')).toHaveLength(1)
+    // Warnings go to console.warn, but they spend the same budget, and they
+    // stay silent once it is spent.
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const thrower = appThatThrows(new Error('flood'))
+      for (let i = 0; i < 15; i += 1) await thrower.request('/api/boom', {}, prodEnv)
+      for (let i = 0; i < 3; i += 1) recordAuthLog('warn', `auth warning ${i}`)
+      for (let i = 0; i < 15; i += 1) recordAuthLog('error', `auth flood ${i}`)
+      for (let i = 0; i < 5; i += 1) recordAuthLog('warn', `late warning ${i}`)
+      const entries = [...logLines(consoleError), ...logLines(consoleWarn)]
+      expect(entries).toHaveLength(21)
+      expect(entries.filter((e) => e.event === 'server-error')).toHaveLength(15)
+      expect(entries.filter((e) => e.event === 'auth-log')).toHaveLength(5)
+      expect(logLines(consoleWarn)).toHaveLength(3)
+      expect(entries.filter((e) => e.event === 'server-error-suppressed')).toHaveLength(1)
+    } finally {
+      consoleWarn.mockRestore()
+    }
   })
 })
