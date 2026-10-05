@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { apiRequest } from '../test/api-helpers'
 
-// The routes an anonymous caller may reach. Everything else under /api is
-// session-gated, in one of two ways (server/index.ts): /me, /categories and
+// The routes an anonymous caller may reach. Every other route is
+// session-gated, today in one of two ways (server/index.ts): /me, /categories and
 // /gear-items gate themselves, and one hoisted gate covers everything under
 // /lists, food included. The routes are read from the app's own router, so a
 // route added later is probed without anyone listing it here.
@@ -42,10 +42,12 @@ describe('session gate', () => {
       .map((r) => r.path)
     expect(wildcards.sort()).toEqual([...WILDCARD_REGISTRATIONS].sort())
 
-    // An .all() endpoint on a plain path is a route like any other; GET
-    // reaches it.
+    // Every other registration is probed, whatever its path: /api itself
+    // and any route outside /api need the gate as much as /api/... does. An
+    // .all() endpoint on a plain path is a route like any other; GET reaches
+    // it.
     const routes = app.routes
-      .filter((r) => r.path.startsWith('/api/') && !(r.method === 'ALL' && r.path.endsWith('*')))
+      .filter((r) => !(r.method === 'ALL' && r.path.endsWith('*')))
       .map((r) => `${r.method === 'ALL' ? 'GET' : r.method} ${r.path}`)
     expect(routes.filter((r) => PUBLIC_ROUTES.includes(r))).toEqual(PUBLIC_ROUTES)
 
