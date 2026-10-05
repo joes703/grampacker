@@ -7,7 +7,7 @@ import {
   deferred,
   renderHookWithClient,
   testQueryClient,
-  toastMessages,
+  shownToasts,
 } from '../test/mutation-hook-harness'
 
 // The add/rename/delete category mutations were inline in GearLibraryPage
@@ -101,7 +101,7 @@ describe('useGearCategoryActions', () => {
 
       await waitFor(() => expect(result.current.addCategory.isError).toBe(true))
       expect(cachedCategories(qc)).toEqual([existing])
-      expect(toastMessages()).toEqual([])
+      expect(shownToasts()).toEqual([])
     })
   })
 
@@ -162,12 +162,12 @@ describe('useGearCategoryActions', () => {
       result.current.renameCategory.mutate({ id: 'c1', name: 'Shelter v2' })
       await waitFor(() => expect(result.current.renameCategory.isError).toBe(true))
       expect(cachedCategories(qc)).toEqual([existing])
-      expect(toastMessages()).toEqual([])
+      expect(shownToasts()).toEqual([])
 
       result.current.removeCategory.mutate('c1')
       await waitFor(() => expect(result.current.removeCategory.isError).toBe(true))
       expect(cachedCategories(qc)).toEqual([existing])
-      expect(toastMessages()).toEqual([DELETE_TOAST])
+      expect(shownToasts()).toEqual([{ message: DELETE_TOAST, type: 'error' }])
     })
   })
 })

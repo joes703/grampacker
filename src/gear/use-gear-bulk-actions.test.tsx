@@ -7,7 +7,7 @@ import {
   deferred,
   renderHookWithClient,
   testQueryClient,
-  toastMessages,
+  shownToasts,
 } from '../test/mutation-hook-harness'
 
 // The bulk delete/move mutations were inline in GearLibraryPage (which has no
@@ -92,8 +92,12 @@ describe('useGearBulkActions', () => {
       await waitFor(() => expect(result.current.bulkDelete.isError).toBe(true))
       expect(cachedGear(qc)).toEqual(GEAR)
       expect(cachedList(qc)).toEqual(GEAR.map(listItem))
-      expect(toastMessages()).toEqual([
-        "Couldn't confirm the selected items were deleted. Refresh to check before trying again.",
+      expect(shownToasts()).toEqual([
+        {
+          message:
+            "Couldn't confirm the selected items were deleted. Refresh to check before trying again.",
+          type: 'error',
+        },
       ])
     })
 
@@ -127,8 +131,12 @@ describe('useGearBulkActions', () => {
       await waitFor(() => expect(result.current.bulkMove.isError).toBe(true))
       expect(cachedGear(qc)).toEqual(GEAR)
       expect(cachedList(qc)).toEqual(GEAR.map(listItem))
-      expect(toastMessages()).toEqual([
-        "Couldn't confirm the selected items were moved. Try again, or refresh to check.",
+      expect(shownToasts()).toEqual([
+        {
+          message:
+            "Couldn't confirm the selected items were moved. Try again, or refresh to check.",
+          type: 'error',
+        },
       ])
     })
 

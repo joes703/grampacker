@@ -7,7 +7,7 @@ import {
   deferred,
   renderHookWithClient,
   testQueryClient,
-  toastMessages,
+  shownToasts,
 } from '../test/mutation-hook-harness'
 
 // The gear/category write mutations were inline in ListDetailPage (which has no
@@ -111,7 +111,7 @@ describe('useListGearActions', () => {
         listItem('list-1', OTHER),
       ])
       expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([listItem('list-2', gear())])
-      expect(toastMessages()).toEqual([])
+      expect(shownToasts()).toEqual([])
     })
   })
 
@@ -144,8 +144,12 @@ describe('useListGearActions', () => {
         listItem('list-1', OTHER),
       ])
       expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([listItem('list-2', gear())])
-      expect(toastMessages()).toEqual([
-        "Couldn't confirm that item was deleted. Refresh to check before trying again.",
+      expect(shownToasts()).toEqual([
+        {
+          message:
+            "Couldn't confirm that item was deleted. Refresh to check before trying again.",
+          type: 'error',
+        },
       ])
     })
   })
@@ -161,7 +165,8 @@ describe('useListGearActions', () => {
     })
 
     it('shows a placeholder with temp id, name, sort slot, and a timestamp in the categories cache', async () => {
-      h.createCategory.mockReturnValueOnce(deferred<unknown>().promise)
+      const create = deferred<unknown>()
+      h.createCategory.mockReturnValueOnce(create.promise)
       const categories = [cat({ id: 'c1', sortOrder: 2 }), cat({ id: 'c2', sortOrder: 6 })]
       const { qc, result } = setup(categories)
 
@@ -178,6 +183,9 @@ describe('useListGearActions', () => {
       })
       expect(typeof placeholder?.createdAt).toBe('string')
       expect(placeholder?.createdAt).toMatch(/\dT\d/)
+
+      create.resolve({ id: 'cat-new' })
+      await waitFor(() => expect(result.current.addCategory.isSuccess).toBe(true))
     })
   })
 

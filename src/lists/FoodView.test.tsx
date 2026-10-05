@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
-import { clearToasts, toastMessages } from '../test/mutation-hook-harness'
+import { clearToasts, shownToasts } from '../test/mutation-hook-harness'
 
 // FoodView owns the food query's own three-state gate (AGENTS.md), separate
 // from ListDetailPage's detail-data composite. This file pins that gate in
@@ -356,8 +356,12 @@ describe('FoodView days-input destructive guards', () => {
     await user.tab()
 
     await waitFor(() =>
-      expect(toastMessages()).toEqual([
-        "Couldn't load the latest food plan, so the trip length was not changed.",
+      expect(shownToasts()).toEqual([
+        {
+          message:
+            "Couldn't load the latest food plan, so the trip length was not changed.",
+          type: 'error',
+        },
       ]),
     )
     expect(confirmSpy).not.toHaveBeenCalled()
@@ -555,7 +559,9 @@ describe('FoodView add food', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     await waitFor(() =>
-      expect(toastMessages()).toEqual([`Food item limit reached (${FOOD_ITEM_CAP} per list).`]),
+      expect(shownToasts()).toEqual([
+        { message: `Food item limit reached (${FOOD_ITEM_CAP} per list).`, type: 'error' },
+      ]),
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
     expect(screen.getByLabelText('Weight')).toHaveValue(80)
@@ -571,8 +577,12 @@ describe('FoodView add food', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     await waitFor(() =>
-      expect(toastMessages()).toEqual([
-        "Couldn't add that food - check the name, weight and meals and try again.",
+      expect(shownToasts()).toEqual([
+        {
+          message:
+            "Couldn't add that food - check the name, weight and meals and try again.",
+          type: 'error',
+        },
       ]),
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')

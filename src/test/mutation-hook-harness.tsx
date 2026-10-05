@@ -42,6 +42,7 @@ export function clearToasts(): void {
   for (const toast of getToasts()) dismissToast(toast.id)
 }
 
-export function toastMessages(): string[] {
-  return getToasts().map((t) => t.message)
+// Message and type of every toast on screen, oldest first.
+export function shownToasts(): { message: string; type: string }[] {
+  return getToasts().map(({ message, type }) => ({ message, type }))
 }

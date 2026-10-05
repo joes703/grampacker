@@ -5,6 +5,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import type { ReactNode } from 'react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
+import { deferred } from '../test/mutation-hook-harness'
 
 // The add/update/move/delete/quick-add list-item mutations were inline in
 // ListDetailPage (which has no component test), so this locks the logic the
@@ -109,7 +110,8 @@ afterEach(() => vi.clearAllMocks())
 describe('useListItemActions', () => {
   describe('addItem', () => {
     it('adds the gear item to the list and shows it in the list-items cache while it is pending', async () => {
-      h.addListItem.mockReturnValueOnce(new Promise(() => {}))
+      const add = deferred<unknown>()
+      h.addListItem.mockReturnValueOnce(add.promise)
       const existing = item({ id: 'a', gearItemId: 'g0' })
       const { qc, result } = setup([existing])
 
@@ -119,10 +121,14 @@ describe('useListItemActions', () => {
       await waitFor(() => expect(cachedItems(qc)).toHaveLength(2))
       expect(cachedItems(qc)?.[0]).toBe(existing)
       expect(cachedItems(qc)?.[1]).toMatchObject({ id: 'temp-tmp-id', gearItemId: 'g1' })
+
+      add.resolve({ id: 'li-new' })
+      await waitFor(() => expect(result.current.addItem.isSuccess).toBe(true))
     })
 
     it('builds an optimistic placeholder preserving the embedded gearItem, default flags, temp id, and sort order', async () => {
-      h.addListItem.mockReturnValueOnce(new Promise(() => {}))
+      const add = deferred<unknown>()
+      h.addListItem.mockReturnValueOnce(add.promise)
       const { qc, result } = setup([item({ id: 'a', gearItemId: 'g0', sortOrder: 4 })])
       const g = gear({ id: 'g1', name: 'Tent', description: 'palace', weightGrams: 1200, categoryId: 'c1', status: 'active' })
 
@@ -138,6 +144,9 @@ describe('useListItemActions', () => {
       // The new DTO embeds the FULL gear response; the placeholder embeds
       // the passed gear as-is (same reference, whole shape).
       expect(placeholder.gearItem).toBe(g)
+
+      add.resolve({ id: 'li-new' })
+      await waitFor(() => expect(result.current.addItem.isSuccess).toBe(true))
     })
   })
 
@@ -271,15 +280,6 @@ describe('useListItemActions', () => {
     // makeOptimisticUpdate, whose rollback restores the whole array as it was
     // when the move started - erasing a Packed tick that saved while the move
     // was in flight. These run against a REAL cache for that reason.
-    function deferred() {
-      let resolve!: () => void
-      let reject!: (e: unknown) => void
-      const promise = new Promise<void>((res, rej) => {
-        resolve = res
-        reject = rej
-      })
-      return { promise, resolve, reject }
-    }
     const rows = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
     const row = (qc: QueryClient, id: string) => rows(qc).find((i) => i.id === id)!
 
@@ -351,7 +351,8 @@ describe('useListItemActions', () => {
 
   describe('deleteItem', () => {
     it('deletes the list item by parent path + id and removes it from the list-items cache', async () => {
-      h.deleteListItem.mockReturnValueOnce(new Promise(() => {}))
+      const remove = deferred()
+      h.deleteListItem.mockReturnValueOnce(remove.promise)
       const keep = item({ id: 'b' })
       const { qc, result } = setup([item({ id: 'a' }), keep])
 
@@ -359,6 +360,9 @@ describe('useListItemActions', () => {
 
       await waitFor(() => expect(h.deleteListItem).toHaveBeenCalledWith(LIST_ID, 'a'))
       await waitFor(() => expect(cachedItems(qc)).toEqual([keep]))
+
+      remove.resolve()
+      await waitFor(() => expect(result.current.deleteItem.isSuccess).toBe(true))
     })
 
     it('also invalidates packing locations and food, which the delete can cascade', async () => {

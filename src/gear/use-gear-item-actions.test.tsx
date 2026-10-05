@@ -7,7 +7,7 @@ import {
   deferred,
   renderHookWithClient,
   testQueryClient,
-  toastMessages,
+  shownToasts,
 } from '../test/mutation-hook-harness'
 
 // The add/edit/delete gear-item mutations were inline in GearLibraryPage
@@ -110,7 +110,8 @@ describe('useGearItemActions', () => {
     })
 
     it('builds an optimistic placeholder with a temp id and the next sort slot', async () => {
-      h.createGearItem.mockReturnValueOnce(deferred<unknown>().promise)
+      const create = deferred<unknown>()
+      h.createGearItem.mockReturnValueOnce(create.promise)
       const { qc, result } = setup([gear({ id: 'g0', sortOrder: 6 })])
 
       result.current.addItem.mutate({
@@ -127,6 +128,9 @@ describe('useGearItemActions', () => {
         categoryId: 'c2', weightGrams: 90, cost: 80, purchaseDate: '2026-01-01',
         status: 'active', sortOrder: 7,
       })
+
+      create.resolve({ id: 'g-new' })
+      await waitFor(() => expect(result.current.addItem.isSuccess).toBe(true))
     })
   })
 
@@ -154,7 +158,7 @@ describe('useGearItemActions', () => {
       await waitFor(() => expect(result.current.editItem.isError).toBe(true))
       expect(cachedGear(qc)).toEqual(before)
       expect(cachedList(qc)).toEqual(before.map(listItem))
-      expect(toastMessages()).toEqual([])
+      expect(shownToasts()).toEqual([])
     })
 
     it('forwards a status-only patch unchanged (the inline quick-status path)', async () => {
@@ -190,7 +194,7 @@ describe('useGearItemActions', () => {
       await waitFor(() => expect(result.current.removeItem.isError).toBe(true))
       expect(cachedGear(qc)).toEqual(before)
       expect(cachedList(qc)).toEqual(before.map(listItem))
-      expect(toastMessages()).toEqual([DELETE_TOAST])
+      expect(shownToasts()).toEqual([{ message: DELETE_TOAST, type: 'error' }])
     })
   })
 })
