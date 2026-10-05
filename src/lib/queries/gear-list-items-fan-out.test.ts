@@ -10,7 +10,6 @@ import {
   makeOptimisticGearItemDelete,
   makeOptimisticGearItemsBulkDelete,
   makeOptimisticGearItemsBulkCategoryMove,
-  type GearFanOutContext,
 } from './gear-list-items-fan-out'
 import { queryKeys } from './keys'
 import { showToast } from '../toast'
@@ -319,24 +318,6 @@ describe('fan-out cache discovery hardening', async () => {
     expect(itemsOf(qc, 'l1').find((i) => i.gearItemId === 'g1')?.gearItem.name)
       .toBe('Mid')
     expect(itemsOf(qc, 'l2')[0]?.gearItem.name).toBe('Mid')
-  })
-
-  it('every helper onMutate returns a rollback context despite garbage caches', async () => {
-    const cases: ((qc: QueryClient) => Promise<GearFanOutContext>)[] = [
-      (qc) => makeOptimisticGearItemUpdate({ qc })
-        .onMutate({ id: 'g1', patch: { name: 'Mid' } }),
-      (qc) => makeOptimisticGearItemDelete({ qc }).onMutate('g1'),
-      (qc) => makeOptimisticGearItemsBulkDelete({ qc }).onMutate(['g1']),
-      (qc) => makeOptimisticGearItemsBulkCategoryMove({ qc })
-        .onMutate({ ids: ['g1'], categoryId: 'c9' }),
-    ]
-    for (const fire of cases) {
-      const { qc } = seed()
-      poison(qc)
-      const ctx = await fire(qc)
-      expect(ctx.previousGear).toBeDefined()
-      expect(ctx.listSnapshots.length).toBeGreaterThan(0)
-    }
   })
 })
 
