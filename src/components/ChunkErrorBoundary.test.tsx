@@ -37,16 +37,9 @@ const chunkError = new TypeError(
 )
 
 describe('ChunkErrorBoundary', () => {
-  it('renders its children when nothing is wrong', () => {
-    render(
-      <ChunkErrorBoundary>
-        <p>the app</p>
-      </ChunkErrorBoundary>,
-    )
-    expect(screen.getByText('the app')).toBeInTheDocument()
-  })
-
   it('reloads once on a stale-chunk error, to fetch a fresh index.html', () => {
+    // Boom throws only once rendered, so this also proves the boundary
+    // renders its children when nothing is wrong yet.
     render(
       <ChunkErrorBoundary>
         <Boom error={chunkError} />

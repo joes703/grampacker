@@ -420,11 +420,10 @@ describe('the gear picker beside Pack', () => {
 })
 
 // Retired URL spellings the router still resolves. The page must rewrite the
-// address bar, not only render Pack: until the page and deriveListMode shared
-// one predicate, /lists/<id>/organize/ (trailing slash) rendered Pack under the
-// retired address because the page's own exact-match check missed it. The
-// probe reports the navigation type as well as the path, so "left alone" is
-// distinguishable from "replaced with itself".
+// address bar, not only render Pack: a page with its own exact-match check
+// would render Pack under /lists/<id>/organize/ (trailing slash) and leave the
+// retired address in place. The probe reports the navigation type as well as
+// the path, so "left alone" is distinguishable from "replaced with itself".
 describe('rewriting retired list URLs', () => {
   function LocationProbe() {
     const location = useLocation()

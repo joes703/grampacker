@@ -101,6 +101,12 @@ describe('click-to-place slots', () => {
     // Stove is the middle of three rows, so four visual slots exist and the
     // two touching it are suppressed. What remains is "to the top" and "to
     // the bottom" - the only two moves that change anything.
+    //
+    // This also proves the mode survives the render that opens it. The
+    // auto-cancel guard is a TRANSITION to zero rows, not a zero LEVEL,
+    // because the count is still 0 on that commit; a level test would close
+    // the mode at once. The trailing slot names the bag so its label stands
+    // alone.
     const user = userEvent.setup()
     render(<Harness onCommit={vi.fn()} />)
     await user.click(startButton())
@@ -109,15 +115,6 @@ describe('click-to-place slots', () => {
       'Place Stove before Tarp',
       'Place Stove at the end of Main pack',
     ])
-  })
-
-  it('names the bag on the trailing slot so the label stands alone', async () => {
-    const user = userEvent.setup()
-    render(<Harness onCommit={vi.fn()} startId="a" />)
-    await user.click(startButton())
-    expect(
-      screen.getByRole('button', { name: 'Place Tarp at the end of Main pack' }),
-    ).toBeInTheDocument()
   })
 
   it('hands the planner its own rendered array and the mapped index', async () => {
@@ -395,16 +392,6 @@ describe('the mode closes when its slots go away', () => {
     await user.click(screen.getByRole('button', { name: 'rehome' }))
     expect(screen.getByTestId('state')).toHaveTextContent('idle')
     expect(slots()).toHaveLength(0)
-  })
-
-  it('does not cancel the mode on the render that opens it', async () => {
-    // The guard is a TRANSITION to zero, not a zero LEVEL, precisely because
-    // the count is still 0 on the commit that opens the mode. A level test
-    // would close it instantly and the feature would appear to do nothing.
-    const user = userEvent.setup()
-    render(<Harness onCommit={vi.fn()} />)
-    await user.click(startButton())
-    expect(slots()).toHaveLength(2)
   })
 })
 

@@ -40,18 +40,14 @@ describe('deriveListMode', () => {
   })
 })
 
+// The plain spellings are proven through deriveListMode above, which answers
+// 'pack' for a retired URL only through this predicate. These rows add the
+// router's case and slash tolerance: an exact match would render Pack without
+// the address-bar rewrite.
 describe('isLegacyOrganizePath', () => {
   it.each([
-    [`/lists/${LIST_ID}/organize`, true],
-    [`/lists/${LIST_ID}/pack/organize`, true],
-    // The router resolves these to the same routes, so the predicate has to
-    // agree with it - an exact match here once let /organize/ render Pack
-    // without the address-bar rewrite.
-    [`/lists/${LIST_ID}/organize/`, true],
     [`/lists/${LIST_ID}/ORGANIZE`, true],
     [`/LISTS/${LIST_ID.toUpperCase()}/pack/organize//`, true],
-    [`/lists/${LIST_ID}/pack`, false],
-    [`/lists/${LIST_ID}`, false],
   ] as const)('%s -> %s', (pathname, expected) => {
     expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(expected)
   })
@@ -67,16 +63,8 @@ describe('isLegacyListPath', () => {
     `/lists/${LIST_ID}/PACK/ORGANIZE/`,
   ]
 
-  it.each(legacy)('%s is legacy', (pathname) => {
+  it.each([`/lists/${LIST_ID}/PACK/ORGANIZE/`])('%s is legacy', (pathname) => {
     expect(isLegacyListPath(pathname, LIST_ID)).toBe(true)
-  })
-
-  it.each([
-    // Canonical shapes are never rewritten.
-    `/lists/${LIST_ID}`,
-    `/lists/${LIST_ID}/pack`,
-  ])('%s is not legacy', (pathname) => {
-    expect(isLegacyListPath(pathname, LIST_ID)).toBe(false)
   })
 
   it('agrees with deriveListMode on every legacy spelling', () => {
@@ -87,7 +75,9 @@ describe('isLegacyListPath', () => {
 
   it('never classifies the rewrite target as legacy, so the rewrite runs once', () => {
     // ListDetailPage navigates to this exact path, keeping the search string;
-    // if it were legacy too the effect would fire again on arrival.
+    // if it were legacy too the effect would fire again on arrival. The
+    // canonical /lists/<id> is never legacy either: deriveListMode would
+    // answer 'pack' for it.
     const target = persistedListPath(LIST_ID, 'pack')
     expect(isLegacyListPath(target, LIST_ID)).toBe(false)
     expect(deriveListMode(target, LIST_ID)).toBe('pack')

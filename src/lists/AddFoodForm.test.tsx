@@ -60,6 +60,8 @@ describe('AddFoodForm submit payload', () => {
 
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.type(screen.getByLabelText('Weight'), '80')
+    // Weight is the unit-aware WeightInput, not a bare grams field.
+    expect(screen.getByRole('button', { name: /entering grams/i })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Every breakfast' }))
 
     expect(screen.getByLabelText('Qty')).toHaveValue(1)
@@ -169,31 +171,7 @@ describe('AddFoodForm rejected submit', () => {
   })
 })
 
-describe('AddFoodForm labels and preview', () => {
-  it('labels every field and shows the unit toggle', () => {
-    render(<ControlledHarness slots={breakfastSlots} />)
-    expect(screen.getByLabelText('Name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Weight')).toBeInTheDocument()
-    expect(screen.getByLabelText('Qty')).toBeInTheDocument()
-    // WeightInput's unit toggle: "Entering grams, switch to ounces"
-    expect(screen.getByRole('button', { name: /entering grams/i })).toBeInTheDocument()
-  })
-
-  it('assembles the live preview as fields fill', async () => {
-    const user = userEvent.setup()
-    render(<ControlledHarness slots={breakfastSlots} />)
-    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.type(screen.getByLabelText('Weight'), '80')
-    expect(screen.getByText(/Adding: Oatmeal/)).toBeInTheDocument()
-  })
-})
-
 describe('AddFoodForm controlled slot selection', () => {
-  it('reflects the controlled slot selection', () => {
-    render(<ControlledHarness slots={breakfastSlots} selectedSlotIds={['b2']} />)
-    expect(screen.getByRole('button', { name: 'Breakfast day 2' })).toHaveAttribute('aria-pressed', 'true')
-  })
-
   it('reports selection changes instead of owning them', async () => {
     const user = userEvent.setup()
     const onSelectedSlotIdsChange = vi.fn()
@@ -210,10 +188,10 @@ describe('AddFoodForm controlled slot selection', () => {
 })
 
 describe('AddFoodForm weight clamp coupling', () => {
-  // The comment above (line 46-47) claims WeightInput's client clamp equals
-  // the server's foodWeightSchema max. Nothing enforces that but a comment -
-  // pin it so a change to either constant fails a test instead of silently
-  // drifting.
+  // AddFoodForm's comment on its weight field claims WeightInput's client
+  // clamp equals the server's foodWeightSchema max. Nothing enforces that but
+  // a comment - pin it so a change to either constant fails a test instead of
+  // silently drifting.
   it('pins MAX_ITEM_WEIGHT_GRAMS to the foodWeightSchema max', () => {
     expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS).success).toBe(true)
     expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS + 1).success).toBe(false)

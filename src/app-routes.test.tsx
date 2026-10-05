@@ -142,6 +142,10 @@ describe('the session gate', () => {
   })
 })
 
+// The static paths sit beside a "/*" splat, the one route shape that could
+// swallow its siblings if react-router ever ranked by source order instead of
+// specificity. Every test that renders sign-in or a share link for a
+// signed-out visitor would then fail.
 describe('the public paths', () => {
   it('serves a share link to a signed-out visitor, with no app chrome', async () => {
     renderAt('/r/my-kit', SIGNED_OUT)
@@ -167,14 +171,5 @@ describe('the public paths', () => {
     // home would silently burn the token they just clicked.
     renderAt(MAGIC_LINK_PATH, SIGNED_IN)
     expect(await screen.findByTestId('magic-link')).toBeInTheDocument()
-  })
-
-  // A splat route is the one shape that can silently swallow its siblings if
-  // react-router ever ranked by source order instead of specificity. It does
-  // not - and this is what would catch it if that ever changed.
-  it('does not let the "/*" splat shadow the static public paths', async () => {
-    renderAt('/sign-in', SIGNED_OUT)
-    expect(await screen.findByTestId('sign-in')).toBeInTheDocument()
-    expect(screen.queryByTestId('shell')).not.toBeInTheDocument()
   })
 })

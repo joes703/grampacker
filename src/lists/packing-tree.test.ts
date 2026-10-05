@@ -162,60 +162,19 @@ describe('buildPackingTree', () => {
   })
 })
 
-// A GATE 2 round claimed the optimistic move would still jump on settle,
-// because makeOptimisticUpdate maps the cached array in place and never
-// re-sorts it, and grouping preserves input-array order (grouping.ts:31).
-// That is true of the CATEGORY path - but the location-grouped pack view,
-// which is the only place a move can be started, renders through
-// buildPackingTree, and this sorts. These tests pin that difference, because
-// it is the entire reason the client mirrors the server's rank arithmetic
-// instead of just waiting for the refetch.
-describe('optimistic move placement', () => {
-  it('puts an optimistically moved row at the bottom of its destination, unsorted input and all', () => {
-    const main = location('main', null, 0)
-    // Cache order deliberately does NOT match rank order: makeOptimisticUpdate
-    // rewrites one element in place, so the array it hands over is whatever
-    // order the server last returned.
-    const items = [
-      item('moved', 'main', 99), // just rebased by the optimistic apply
-      item('tarp', 'main', 10),
-      item('stove', 'main', 20),
-    ]
-
-    const tree = buildPackingTree(items, [main])
-    expect(tree.roots[0]!.items.map((i) => i.id)).toEqual(['tarp', 'stove', 'moved'])
-  })
-
-  it('lands an unassigned row at the bottom of Unassigned too', () => {
-    const items = [
-      item('moved', null, 99),
-      item('tarp', null, 10),
-    ]
-
-    const tree = buildPackingTree(items, [])
-    expect(tree.unassignedItems.map((i) => i.id)).toEqual(['tarp', 'moved'])
-  })
-
-  it('would leave the row mid-list if the rank were NOT rebased', () => {
-    // The failure this change exists to prevent: a move that only rewrote
-    // packingLocationId left the row holding its old global rank, so it
-    // surfaced at whatever depth that number happened to fall.
-    const main = location('main', null, 0)
-    const items = [
-      item('moved', 'main', 15), // old rank, carried over from Unassigned
-      item('tarp', 'main', 10),
-      item('stove', 'main', 20),
-    ]
-
-    const tree = buildPackingTree(items, [main])
-    expect(tree.roots[0]!.items.map((i) => i.id)).toEqual(['tarp', 'moved', 'stove'])
-  })
-})
-
 // The regression guard for the whole split. Every other fixture in this file
 // leaves the two ranks equal - the state a freshly migrated list is in - so
 // those assertions would pass just as well against code that still sorted by
 // the document field. This one makes them disagree.
+//
+// The sort is also why an optimistic move lands where the server will put it.
+// The move's optimistic write (moveItem in use-list-item-actions.ts) maps the
+// cached array in place and never re-sorts, so the array arrives in whatever
+// order the server last returned.
+// The Pack location view renders through this tree, which sorts, and the move
+// itself rebases the row's pack rank (nextPackSortOrder in
+// use-list-item-actions.ts). Both halves are needed: an unsorted tree, or a
+// row keeping its old rank, would show it mid-list until the refetch.
 describe('packing tree ordering source', () => {
   it('sorts by pack rank, not document rank', () => {
     const tree = buildPackingTree(

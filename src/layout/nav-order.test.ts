@@ -8,15 +8,12 @@ import { buildMobileDestinationItems } from './mobile-nav-destinations'
 const EXPECTED = ['Gear', 'Lists']
 
 describe('primary navigation order', () => {
-  it('orders the mobile destination slots Gear, Lists', () => {
+  it('keeps each slot pointing at its own route after the reorder', () => {
+    // The label order is pinned on the rendered bar (mobile-action-bars.test.tsx).
+    // A reorder that swapped labels but not targets would still pass that, so
+    // pin the pairing too.
     const items = buildMobileDestinationItems('/gear')
     expect(items.map((i) => i.label)).toEqual(EXPECTED)
-  })
-
-  it('keeps each slot pointing at its own route after the reorder', () => {
-    // A reorder that swapped labels but not targets would still pass the
-    // ordering assertion above, so pin the pairing too.
-    const items = buildMobileDestinationItems('/gear')
     expect(items.map((i) => (i.type === 'link' ? i.to : null))).toEqual([
       '/gear',
       '/lists',

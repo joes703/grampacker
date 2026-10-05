@@ -46,12 +46,6 @@ describe('PackingProgress', () => {
     expect(screen.queryByRole('switch', { name: 'Add ready checks' })).toBeNull()
   })
 
-  it('offers one filter switch per metric', () => {
-    renderProgress()
-    expect(screen.getByRole('switch', { name: 'Show unpacked only' })).toBeTruthy()
-    expect(screen.getByRole('switch', { name: 'Show un-ready only' })).toBeTruthy()
-  })
-
   it('reflects each filter switch independently', () => {
     // The two are separate view state, not a single tri-state mode: one on
     // must not imply anything about the other.

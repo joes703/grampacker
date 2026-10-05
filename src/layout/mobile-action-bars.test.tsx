@@ -46,17 +46,18 @@ function labels(name: string): string[] {
 
 describe('mobile action-bar contracts', () => {
   it('shows only working destinations on routes without page actions', () => {
-    render(<MobilePrimaryNav />, { wrapper: wrapper('/settings') })
+    // Nothing registers a page bar here, as on a list-detail terminal state
+    // (list not found) that mounts no rich bar. The labels and their order
+    // come from buildMobileDestinationItems; the pathname only marks one active.
+    render(<MobilePrimaryNav />, { wrapper: wrapper('/lists/missing-list') })
     expect(labels('Primary navigation')).toEqual(['Gear', 'Lists'])
     expect(screen.queryByLabelText(/no action/i)).toBeNull()
   })
 
-  // Organize used to be a third mode here with only the stable destinations
-  // (no Add, no Options). It merged into Pack, which keeps Add.
-  //
   // Food gets destinations only: it has no drawer registration (nothing to
   // add gear to there), so an Add would render permanently disabled, and
-  // list admin is not a food-view concern.
+  // list admin is not a food-view concern. The exact label list fails for any
+  // Add, labeled or empty.
   it.each([
     ['edit', ['Gear', 'Lists', 'Add', 'Options']],
     ['pack', ['Gear', 'Lists', 'Add']],
@@ -66,12 +67,5 @@ describe('mobile action-bar contracts', () => {
       wrapper: wrapper(`/lists/${list.id}`),
     })
     expect(labels('List navigation and actions')).toEqual(expected)
-  })
-
-  it('never renders a disabled Add in Food mode', () => {
-    render(<MobileListActionBar list={list} mode="food" />, {
-      wrapper: wrapper(`/lists/${list.id}`),
-    })
-    expect(screen.queryByLabelText('Add gear to list')).toBeNull()
   })
 })

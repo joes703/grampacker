@@ -133,6 +133,8 @@ describe('DeleteAccountSection submission', () => {
   })
 
   it('clears the persisted last-list path on the indeterminate throw path', async () => {
+    // A throw is indeterminate: the deletion may have committed. So it
+    // hard-reloads to /sign-in like a success, after clearing the pointer.
     localStorage.setItem('lastListPath', '/lists/abc')
     h.deleteUser.mockRejectedValue(new Error('network'))
     render(<DeleteAccountSection />)
@@ -274,15 +276,6 @@ describe('DeleteAccountSection submission', () => {
 
     expect(h.deleteUser).toHaveBeenCalledTimes(1)
     resolve({ error: null })
-    await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
-  })
-
-  it('hard-reloads to /sign-in when the delete throws (the deletion may have committed)', async () => {
-    h.deleteUser.mockRejectedValue(new Error('network'))
-    render(<DeleteAccountSection />)
-    typeConfirm('delete')
-    fireEvent.click(button())
-
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith('/sign-in'))
   })
 })

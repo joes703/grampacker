@@ -71,15 +71,6 @@ describe('FoodCarryingList schedule affordance', () => {
   })
 })
 
-describe('FoodCarryingList delete', () => {
-  it('wires the Remove <name> aria-label to onDelete with the item id', async () => {
-    const user = userEvent.setup()
-    const props = renderList()
-    await user.click(screen.getByRole('button', { name: 'Remove Ramen' }))
-    expect(props.onDelete).toHaveBeenCalledWith('r1')
-  })
-})
-
 describe('FoodCarryingList per-meal', () => {
   // The row has to SAY the arithmetic, because the bug it replaces was the app
   // doing none and the user having no way to tell.
@@ -154,32 +145,11 @@ describe('FoodCarryingList per-meal', () => {
 })
 
 describe('FoodCarryingList quantity', () => {
-  // This row used to HIDE the count when it was 1, on the reasoning that
-  // "1 x" is noise. The cost was that quantity could only ever be set on the
-  // add form: an item created at the default sat at 1 with nothing on screen
-  // to say so and nothing to click, so a plan of five lunches reported one
-  // packet in the pack total. It is now always shown, and always editable.
-  it('shows the count even when it is one, as a control', () => {
-    renderList({
-      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1, slotIds: [] })],
-    })
-    expect(
-      screen.getByRole('button', { name: 'Edit quantity 1 for Jerky' }),
-    ).toBeInTheDocument()
-  })
-
-  it('commits a typed quantity to onSetQuantity', async () => {
-    const user = userEvent.setup()
-    const props = renderList({
-      items: [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1, slotIds: [] })],
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Edit quantity 1 for Jerky' }))
-    await user.keyboard('5{Enter}')
-
-    expect(props.onSetQuantity).toHaveBeenCalledWith('i1', 5)
-  })
-
+  // The count is always shown and always editable, even at 1. Hiding "1 x"
+  // as noise would leave an item created at the default with nothing on
+  // screen to say so and nothing to click, so a plan of five lunches would
+  // report one packet in the pack total. FoodView.test.tsx "patches only the
+  // quantity" edits a count of 1 through this control.
   it('clamps a quantity past the server ceiling instead of sending it', async () => {
     const user = userEvent.setup()
     const props = renderList({

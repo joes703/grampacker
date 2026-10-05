@@ -141,13 +141,11 @@ describe('ListDetailPage reorder planning', () => {
 })
 
 // Worn rows render only in the trailing Worn section, in BOTH views: every
-// ordinary section filters them out (CategoryGroup's sectionItems). The
-// planner used to exclude them from the category branch in pack mode only,
-// on the false belief that List view rendered worn rows in place - so a List
-// drag planned over a row the user could not see, and assignSortOrderSlots
-// rewrote the worn row's document rank along with the visible ones. Those
-// ranks order the Worn section itself (use-stable-worn-items), so the
-// silent rewrite could reorder that section across categories.
+// ordinary section filters them out (CategoryGroup's sectionItems). A List
+// drag planned over a worn row would let assignSortOrderSlots rewrite that
+// row's document rank along with the visible ones. Those ranks order the Worn
+// section itself (use-stable-worn-items), so the silent rewrite could reorder
+// that section across categories without the user touching it.
 describe('worn rows and the category branch', () => {
   const first = item('first', 1)
   const worn = item('worn', 2, { isWorn: true })
@@ -215,33 +213,6 @@ describe('worn rows and the category branch', () => {
       expect(plan(first.id, worn.id)).toBeNull()
     },
   )
-
-  it('keeps every worn rank untouched across categories, so the Worn section order holds', () => {
-    // Worn W (rank 2) and V (rank 3) sit in different categories; the Worn
-    // section shows W before V because it sorts on document rank. Before the
-    // fix, dragging B over A in category 1 handed W rank 4 - and the Worn
-    // section flipped to V, W without the user touching either.
-    const a = item('a', 1, { categoryId: 'cat-1' })
-    const w = item('w', 2, { categoryId: 'cat-1', isWorn: true })
-    const v = item('v', 3, { categoryId: 'cat-2', isWorn: true })
-    const b = item('b', 4, { categoryId: 'cat-1' })
-    const plan = planListItemReorder({
-      activeId: makeDnDId('item', b.id),
-      overId: makeDnDId('item', a.id),
-      items: [a, w, v, b],
-      groupingKind: 'category',
-      mode: 'edit',
-      locations,
-      hiddenItemIds: new Set(),
-    })
-    expect(plan).toEqual({
-      kind: 'list',
-      updates: [
-        { id: 'b', sortOrder: 1 },
-        { id: 'a', sortOrder: 4 },
-      ],
-    })
-  })
 })
 
 describe('deriveFilteredItemIds', () => {

@@ -32,31 +32,6 @@ describe('FoodSlotPicker', () => {
     expect(dayOneBreakfast).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('toggles a single slot on and off', () => {
-    const slots = [slot('b1', 1, 'breakfast')]
-    const selected: string[] = []
-    let currentSelected = selected
-    const onChange = (next: string[]) => {
-      currentSelected = next
-    }
-    const { rerender } = render(
-      <FoodSlotPicker slots={slots} selected={currentSelected} onChange={onChange} />
-    )
-
-    const button = screen.getByRole('button', { name: 'Breakfast day 1' })
-    expect(button).toHaveAttribute('aria-pressed', 'false')
-
-    fireEvent.click(button)
-    expect(currentSelected).toEqual(['b1'])
-
-    // Rerender with updated selected
-    rerender(<FoodSlotPicker slots={slots} selected={currentSelected} onChange={onChange} />)
-    expect(button).toHaveAttribute('aria-pressed', 'true')
-
-    fireEvent.click(button)
-    expect(currentSelected).toEqual([])
-  })
-
   it('toggles whole meal: all slots of that meal on and off', () => {
     const slots = [
       slot('b1', 1, 'breakfast'),
@@ -80,28 +55,12 @@ describe('FoodSlotPicker', () => {
     // Rerender
     rerender(<FoodSlotPicker slots={slots} selected={currentSelected} onChange={onChange} />)
     expect(everyBreakfastBtn).toHaveAttribute('aria-pressed', 'true')
+    // Each day's chip shows as on too, so one can be switched off on its own.
+    expect(screen.getByRole('button', { name: 'Breakfast day 1' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Breakfast day 2' })).toHaveAttribute('aria-pressed', 'true')
 
     // Click again to deselect all breakfast
     fireEvent.click(everyBreakfastBtn)
     expect(currentSelected).toEqual([])
-  })
-
-  it('deselects individual slot when whole-meal is on', () => {
-    const slots = [
-      slot('b1', 1, 'breakfast'),
-      slot('b2', 2, 'breakfast'),
-    ]
-    const selected = ['b1', 'b2']
-    render(<FoodSlotPicker slots={slots} selected={selected} onChange={() => {}} />)
-
-    const dayOneBreakfast = screen.getByRole('button', { name: 'Breakfast day 1' })
-    const dayTwoBreakfast = screen.getByRole('button', { name: 'Breakfast day 2' })
-
-    expect(dayOneBreakfast).toHaveAttribute('aria-pressed', 'true')
-    expect(dayTwoBreakfast).toHaveAttribute('aria-pressed', 'true')
-
-    // The whole-meal button should also be on
-    const everyBreakfastBtn = screen.getByRole('button', { name: 'Every breakfast' })
-    expect(everyBreakfastBtn).toHaveAttribute('aria-pressed', 'true')
   })
 })

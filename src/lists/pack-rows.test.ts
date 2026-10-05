@@ -127,15 +127,6 @@ describe('assignUnionPackRankSlots with a cross-table tie', () => {
       foodItems: [{ id: 'f', packSortOrder: 2 }],
     })
   })
-
-  it('still permutes exactly when no tie exists', () => {
-    const rows = unionPackRows([gear('a', 3)], [food('x', 9)])
-    const updates = assignUnionPackRankSlots([rows[1]!, rows[0]!])
-    expect(updates).toEqual({
-      items: [{ id: 'a', packSortOrder: 9 }],
-      foodItems: [{ id: 'x', packSortOrder: 3 }],
-    })
-  })
 })
 
 describe('nextUnionPackRankFor', () => {

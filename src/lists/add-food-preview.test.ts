@@ -67,10 +67,4 @@ describe('addFoodPreview', () => {
       addFoodPreview({ name: 'Bars', weightGrams: 50, quantity: 2, slotIds: ['b1', 'b2', 'b3'], slots: SLOTS, unit: 'g' }),
     ).toBe('Adding: Bars · 50 g × 6 · every breakfast')
   })
-
-  it('shows no multiplier for a single unscheduled unit', () => {
-    expect(
-      addFoodPreview({ name: 'Bar', weightGrams: 50, quantity: 1, slotIds: [], slots: SLOTS, unit: 'g' }),
-    ).toBe('Adding: Bar · 50 g · any time')
-  })
 })

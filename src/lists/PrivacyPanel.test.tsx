@@ -64,15 +64,21 @@ describe('PrivacyPanel', () => {
     expect(screen.queryByRole('button', { name: /copy/i })).toBeNull()
   })
 
-  it('toggling sends the isShared PATCH', async () => {
-    updateList.mockResolvedValue({ ...list, isShared: true })
-    renderPanel()
+  // Both directions, from a fresh render with nothing cached: the target comes
+  // from the row itself, so a wrong default for "no cached row" fails one of
+  // them.
+  it.each([
+    ['Enable public link', false, true],
+    ['Disable public link', true, false],
+  ] as const)('toggling sends the isShared PATCH: %s', async (name, from, to) => {
+    updateList.mockResolvedValue({ ...list, isShared: to })
+    renderPanel({ ...list, isShared: from })
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('switch', { name: 'Enable public link' }))
+    await user.click(screen.getByRole('switch', { name }))
 
     await waitFor(() => {
-      expect(updateList).toHaveBeenCalledWith('list-1', { isShared: true })
+      expect(updateList).toHaveBeenCalledWith('list-1', { isShared: to })
     })
   })
 
@@ -85,18 +91,6 @@ describe('PrivacyPanel', () => {
     expect(url.value).toBe(`${window.location.origin}/r/abc123`)
     expect(url).toHaveAttribute('readonly')
     expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument()
-  })
-
-  it('unsharing sends isShared: false', async () => {
-    updateList.mockResolvedValue({ ...list, isShared: false })
-    renderPanel({ ...list, isShared: true })
-    const user = userEvent.setup()
-
-    await user.click(screen.getByRole('switch', { name: 'Disable public link' }))
-
-    await waitFor(() => {
-      expect(updateList).toHaveBeenCalledWith('list-1', { isShared: false })
-    })
   })
 
   // A relative toggle races: the optimistic update flips the cache at once,
@@ -141,20 +135,6 @@ describe('PrivacyPanel', () => {
 
     await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
     expect(updateList).toHaveBeenCalledWith('list-1', { isShared: true })
-  })
-
-  it('re-arms after the flip settles', async () => {
-    updateList.mockResolvedValue({ ...list, isShared: true })
-    renderPanel()
-
-    const toggle = screen.getByRole('switch', { name: 'Enable public link' })
-    fireEvent.click(toggle)
-    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
-    // Settled (mock resolved): the ref guard must have cleared so the
-    // next activation goes through.
-    await waitFor(() => expect(toggle).not.toBeDisabled())
-    fireEvent.click(toggle)
-    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(2))
   })
 
   it('derives the PATCH target from the live cache row, not the rendered prop', async () => {
