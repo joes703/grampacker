@@ -182,7 +182,7 @@ describe('ListSettingsPanel delete, through the real hook', () => {
 })
 
 describe('ListSettingsPanel rename, through the real hook', () => {
-  it('reports a failed rename inline while the mobile Modal keeps the panel mounted', async () => {
+  it('reports a failed rename inline while the mobile Modal keeps the panel mounted, and clears it on the next attempt', async () => {
     q.updateList.mockRejectedValueOnce(new Error('nope'))
     q.fetchLists.mockResolvedValue([LIST])
     renderAt(`/lists/${LIST.id}`)
@@ -195,7 +195,11 @@ describe('ListSettingsPanel rename, through the real hook', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Couldn't confirm the new name was saved. Please try again.",
     )
+    expect(q.updateList).toHaveBeenCalledWith(LIST.id, { name: 'Summit' })
     expect(showToast).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('toasts a rename failure that lands after Export closed the Modal', async () => {

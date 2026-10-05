@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
+import { clearToasts, toastMessages } from '../test/mutation-hook-harness'
 
 // FoodView owns the food query's own three-state gate (AGENTS.md), separate
 // from ListDetailPage's detail-data composite. This file pins that gate in
@@ -30,13 +31,11 @@ const h = vi.hoisted(() => ({
   updateFoodItem: vi.fn(),
   deleteFoodItem: vi.fn(),
 }))
-const toastMock = vi.hoisted(() => ({ showToast: vi.fn() }))
 
 vi.mock('../lib/queries/food', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries/food')>()
   return { ...actual, ...h }
 })
-vi.mock('../lib/toast', () => toastMock)
 
 const listId = 'list-1'
 const user = userEvent.setup()
@@ -135,6 +134,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  clearToasts()
 })
 
 describe('FoodView quantity', () => {
@@ -356,10 +356,9 @@ describe('FoodView days-input destructive guards', () => {
     await user.tab()
 
     await waitFor(() =>
-      expect(toastMock.showToast).toHaveBeenCalledWith(
+      expect(toastMessages()).toEqual([
         "Couldn't load the latest food plan, so the trip length was not changed.",
-        { type: 'error' },
-      ),
+      ]),
     )
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(h.setFoodDays).not.toHaveBeenCalled()
@@ -550,15 +549,17 @@ describe('FoodView add food', () => {
     await renderFoodView()
     await user.click(await screen.findByRole('button', { name: 'Add food' }))
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
+    await user.type(screen.getByLabelText('Weight'), '80')
+    await user.clear(screen.getByLabelText('Qty'))
+    await user.type(screen.getByLabelText('Qty'), '3')
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     await waitFor(() =>
-      expect(toastMock.showToast).toHaveBeenCalledWith(
-        `Food item limit reached (${FOOD_ITEM_CAP} per list).`,
-        { type: 'error' },
-      ),
+      expect(toastMessages()).toEqual([`Food item limit reached (${FOOD_ITEM_CAP} per list).`]),
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
+    expect(screen.getByLabelText('Weight')).toHaveValue(80)
+    expect(screen.getByLabelText('Qty')).toHaveValue(3)
   })
 
   it('raises the check-the-fields toast on a 400, not the generic message', async () => {
@@ -570,10 +571,9 @@ describe('FoodView add food', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     await waitFor(() =>
-      expect(toastMock.showToast).toHaveBeenCalledWith(
+      expect(toastMessages()).toEqual([
         "Couldn't add that food - check the name, weight and meals and try again.",
-        { type: 'error' },
-      ),
+      ]),
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
   })

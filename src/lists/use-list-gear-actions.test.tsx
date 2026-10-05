@@ -1,107 +1,117 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
-import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
-import type { Category } from '../lib/types'
-import { mutationErrorHandler } from '../lib/mutation-error-handler'
+import { waitFor } from '@testing-library/react'
+import type { Category, GearItem, ListItemWithGear } from '../lib/types'
+import {
+  clearToasts,
+  deferred,
+  renderHookWithClient,
+  testQueryClient,
+  toastMessages,
+} from '../test/mutation-hook-harness'
 
 // The gear/category write mutations were inline in ListDetailPage (which has no
-// component test), so this locks the logic the extraction exposed: the gear
-// writes call the right query helpers, they wire the gear-specific fan-out
-// helpers (NOT the generic optimistic helpers), the delete-gear error toast is
-// configured on the fan-out helper (whose rollback shows it - pinned in
-// gear-list-items-fan-out.test.ts), and addCategory maps to createCategory
-// with the right optimistic placeholder. The fan-out cache internals are
-// owned/tested by gear-list-items-fan-out.test.ts; here we mock those helpers
-// and assert wiring, not internals.
+// component test), so this locks what the extraction exposed. Only the network
+// functions are mocked; the optimistic helpers, the cache and the toast store
+// are real.
+// - A gear edit or delete from a list writes the shared inventory, so it must
+//   reach the gear library cache AND every list cache that embeds the gear,
+//   not only the list the user is looking at.
+// - The delete's rollback toasts; the edit's does not.
+// - addCategory shows a placeholder in the categories cache.
 
-type Lifecycle = { onMutate: () => unknown; onError: () => void; onSettled: () => void }
-type InsertOpts = { queryKey: unknown; optimistic: (name: string) => unknown }
+const h = vi.hoisted(() => ({
+  createCategory: vi.fn<(name: string) => Promise<unknown>>(),
+  updateGearItem: vi.fn<(id: string, patch: unknown) => Promise<void>>(),
+  deleteGearItem: vi.fn<(id: string) => Promise<void>>(),
+}))
 
-const h = vi.hoisted(() => {
-  const updateLifecycle = { onMutate: vi.fn(), onError: vi.fn(), onSettled: vi.fn() }
-  const deleteLifecycle = { onMutate: vi.fn(), onError: vi.fn(), onSettled: vi.fn() }
-  return {
-    updateLifecycle,
-    deleteLifecycle,
-    queryKeys: {
-      categories: () => ['categories'] as const,
-      gearItems: () => ['gear-items'] as const,
-    },
-    createCategory: vi.fn<(name: string) => Promise<unknown>>(),
-    nextCategorySortOrder: vi.fn<(cats: unknown[]) => number>(),
-    updateGearItem: vi.fn<(id: string, patch: unknown) => Promise<void>>(),
-    deleteGearItem: vi.fn<(id: string) => Promise<void>>(),
-    makeOptimisticInsert: vi.fn<(opts: InsertOpts) => Lifecycle>(),
-    // Generic optimistic helpers exist on the barrel; the gear paths must NOT
-    // use them (they'd skip the cross-cache fan-out). Present here only so the
-    // tests can assert they stay untouched.
-    makeOptimisticUpdate: vi.fn(),
-    makeOptimisticDelete: vi.fn(),
-    // Gear fan-out helpers (barrel re-exports) - stable lifecycle objects so
-    // the wiring (and the delete rollback) is observable.
-    makeOptimisticGearItemUpdate: vi.fn(() => updateLifecycle),
-    makeOptimisticGearItemDelete: vi.fn(() => deleteLifecycle),
-  }
-})
-
-const toast = vi.hoisted(() => ({ showToast: vi.fn<(message: string, options?: unknown) => number>() }))
-
-vi.mock('../lib/queries', () => h)
+vi.mock('../lib/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/queries')>()),
+  ...h,
+}))
 vi.mock('../lib/random-temp-id', () => ({ randomTempId: () => 'tmp-id' }))
-vi.mock('../lib/toast', () => toast)
 
 import { useListGearActions } from './use-list-gear-actions'
 
-const lifecycle = (): Lifecycle => ({ onMutate: vi.fn(), onError: vi.fn(), onSettled: vi.fn() })
+const NOW = '2026-01-01T00:00:00.000Z'
 
 function cat(over: Partial<Category> = {}): Category {
   return {
     id: 'c1', name: 'Shelter', sortOrder: 0,
-    createdAt: '2026-01-01T00:00:00.000Z', ...over,
+    createdAt: NOW, ...over,
   }
 }
 
+function gear(over: Partial<GearItem> = {}): GearItem {
+  return {
+    id: 'g1', categoryId: 'c1', name: 'Tarp', description: null,
+    weightGrams: 300, cost: null, purchaseDate: null, status: 'active',
+    sortOrder: 0, createdAt: NOW, updatedAt: NOW, ...over,
+  }
+}
+
+function listItem(listId: string, g: GearItem): ListItemWithGear {
+  return {
+    id: `${listId}-${g.id}`, listId, gearItemId: g.id, gearItem: g,
+    quantity: 1, isWorn: false, isConsumable: false, isPacked: false, isReady: false,
+    packingLocationId: null,
+    sortOrder: 0, packSortOrder: 0, createdAt: NOW, updatedAt: NOW,
+  }
+}
+
+const OTHER = gear({ id: 'g2', name: 'Stove' })
+
+// Two open lists embed g1: the one on screen and another the user opened
+// earlier. The gear library holds g1 and g2.
 function setup(categories: Category[] = []) {
-  const qc = new QueryClient({
-    mutationCache: new MutationCache({ onError: mutationErrorHandler }),
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  )
-  const { result } = renderHook(() => useListGearActions(categories), { wrapper })
+  const qc = testQueryClient()
+  qc.setQueryData<Category[]>(['categories'], categories)
+  qc.setQueryData<GearItem[]>(['gear-items'], [gear(), OTHER])
+  qc.setQueryData<ListItemWithGear[]>(['list-items', 'list-1'], [listItem('list-1', gear()), listItem('list-1', OTHER)])
+  qc.setQueryData<ListItemWithGear[]>(['list-items', 'list-2'], [listItem('list-2', gear())])
+  const result = renderHookWithClient(qc, () => useListGearActions(categories))
   return { qc, result }
 }
 
 beforeEach(() => {
-  h.makeOptimisticInsert.mockReturnValue(lifecycle())
-  h.nextCategorySortOrder.mockReturnValue(7)
   h.createCategory.mockResolvedValue({ id: 'cat-new' })
   h.updateGearItem.mockResolvedValue(undefined)
   h.deleteGearItem.mockResolvedValue(undefined)
-  toast.showToast.mockReturnValue(0)
 })
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.clearAllMocks()
+  clearToasts()
+})
 
 describe('useListGearActions', () => {
   describe('updateGearItem', () => {
-    it('patches the gear item by id', async () => {
-      const { result } = setup()
+    it('patches the gear item by id in the gear library and in every list that embeds it, and a failure restores them without a toast', async () => {
+      const edit = deferred()
+      h.updateGearItem.mockReturnValueOnce(edit.promise)
+      const { qc, result } = setup()
 
       result.current.updateGearItem.mutate({ id: 'g1', patch: { name: 'Tent' } })
 
       await waitFor(() => expect(h.updateGearItem).toHaveBeenCalledWith('g1', { name: 'Tent' }))
-    })
+      const renamed = gear({ name: 'Tent' })
+      await waitFor(() => expect(qc.getQueryData(['gear-items'])).toEqual([renamed, OTHER]))
+      expect(qc.getQueryData(['list-items', 'list-1'])).toEqual([
+        listItem('list-1', renamed),
+        listItem('list-1', OTHER),
+      ])
+      expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([listItem('list-2', renamed)])
 
-    it('wires the gear-specific fan-out update helper, not the generic optimistic helpers', () => {
-      const { qc } = setup()
-
-      expect(h.makeOptimisticGearItemUpdate).toHaveBeenCalledWith({ qc })
-      expect(h.makeOptimisticUpdate).not.toHaveBeenCalled()
-      expect(h.makeOptimisticDelete).not.toHaveBeenCalled()
+      edit.reject(new Error('boom'))
+      await waitFor(() => expect(result.current.updateGearItem.isError).toBe(true))
+      expect(qc.getQueryData(['gear-items'])).toEqual([gear(), OTHER])
+      expect(qc.getQueryData(['list-items', 'list-1'])).toEqual([
+        listItem('list-1', gear()),
+        listItem('list-1', OTHER),
+      ])
+      expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([listItem('list-2', gear())])
+      expect(toastMessages()).toEqual([])
     })
   })
 
@@ -114,23 +124,29 @@ describe('useListGearActions', () => {
       await waitFor(() => expect(h.deleteGearItem).toHaveBeenCalledWith('g9'))
     })
 
-    it('wires the fan-out delete helper with the preserved error toast copy', () => {
-      const { qc } = setup()
+    it('removes the gear from the library and every list, and a failure restores them all with the preserved error toast copy', async () => {
+      const remove = deferred()
+      h.deleteGearItem.mockReturnValueOnce(remove.promise)
+      const { qc, result } = setup()
 
-      expect(h.makeOptimisticGearItemDelete).toHaveBeenCalledWith({
-        qc,
-        errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
-      })
-      expect(h.makeOptimisticDelete).not.toHaveBeenCalled()
-    })
+      result.current.deleteGearItem.mutate('g1')
 
-    it('on failure runs the fan-out rollback lifecycle', async () => {
-      h.deleteGearItem.mockRejectedValueOnce(new Error('boom'))
-      const { result } = setup()
+      // The server cascades list_items on gear delete; the cache mirrors it.
+      await waitFor(() => expect(qc.getQueryData(['gear-items'])).toEqual([OTHER]))
+      expect(qc.getQueryData(['list-items', 'list-1'])).toEqual([listItem('list-1', OTHER)])
+      expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([])
 
-      result.current.deleteGearItem.mutate('g9')
-
-      await waitFor(() => expect(h.deleteLifecycle.onError).toHaveBeenCalled())
+      remove.reject(new Error('boom'))
+      await waitFor(() => expect(result.current.deleteGearItem.isError).toBe(true))
+      expect(qc.getQueryData(['gear-items'])).toEqual([gear(), OTHER])
+      expect(qc.getQueryData(['list-items', 'list-1'])).toEqual([
+        listItem('list-1', gear()),
+        listItem('list-1', OTHER),
+      ])
+      expect(qc.getQueryData(['list-items', 'list-2'])).toEqual([listItem('list-2', gear())])
+      expect(toastMessages()).toEqual([
+        "Couldn't confirm that item was deleted. Refresh to check before trying again.",
+      ])
     })
   })
 
@@ -144,23 +160,24 @@ describe('useListGearActions', () => {
       await waitFor(() => expect(h.createCategory).toHaveBeenCalledWith('Cookware'))
     })
 
-    it('builds an optimistic placeholder with temp id, name, sort slot, and a timestamp', () => {
-      const categories = [cat({ id: 'c1' }), cat({ id: 'c2' })]
-      setup(categories)
-      const opts = h.makeOptimisticInsert.mock.calls[0]![0]
-      expect(opts.queryKey).toEqual(['categories'])
+    it('shows a placeholder with temp id, name, sort slot, and a timestamp in the categories cache', async () => {
+      h.createCategory.mockReturnValueOnce(deferred<unknown>().promise)
+      const categories = [cat({ id: 'c1', sortOrder: 2 }), cat({ id: 'c2', sortOrder: 6 })]
+      const { qc, result } = setup(categories)
 
-      const placeholder = opts.optimistic('Cookware') as Category
+      result.current.addCategory.mutate('Cookware')
+
+      // The slot is the next one after the passed cache rows (only the
+      // placeholder uses it; the server assigns the real one).
+      await waitFor(() => expect(qc.getQueryData<Category[]>(['categories'])).toHaveLength(3))
+      const placeholder = qc.getQueryData<Category[]>(['categories'])?.[2]
       expect(placeholder).toMatchObject({
         id: 'temp-tmp-id',
         name: 'Cookware',
         sortOrder: 7,
       })
-      // The slot comes from nextCategorySortOrder over the passed cache rows
-      // (only the placeholder consumes it; the server assigns the real one).
-      expect(h.nextCategorySortOrder).toHaveBeenCalledWith(categories)
-      expect(typeof placeholder.createdAt).toBe('string')
-      expect(placeholder.createdAt).toMatch(/\dT\d/)
+      expect(typeof placeholder?.createdAt).toBe('string')
+      expect(placeholder?.createdAt).toMatch(/\dT\d/)
     })
   })
 

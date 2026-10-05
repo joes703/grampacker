@@ -1,67 +1,44 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
-import type { Category } from '../lib/types'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { waitFor } from '@testing-library/react'
+import type { Category, GearItem, ListItemWithGear } from '../lib/types'
+import {
+  clearToasts,
+  deferred,
+  renderHookWithClient,
+  testQueryClient,
+  toastMessages,
+} from '../test/mutation-hook-harness'
 
-// The add/rename/delete category mutations were inline in GearLibraryPage (which
-// has no component test), so this locks the logic the extraction exposed: add
-// goes through createCategory with the right optimistic placeholder (the SERVER
-// assigns the real sort slot; the placeholder computes the same value), rename
-// goes through renameCategory with an optimistic name patch, and delete goes
-// through deleteCategory while invalidating the gear-items cache (the server
-// uncategorizes the category's gear in the same transaction). These compose the
-// GENERIC optimistic helpers (makeOptimisticInsert/Update/Delete), whose cache
-// lifecycle (rollback, invalidation) is owned and tested by optimistic.test.ts;
-// here we mock those helpers and assert only that the hook wires the correct
-// path + options.
-
-type Lifecycle = { onMutate: () => unknown; onError: () => void; onSettled: () => void }
-type InsertOpts = {
-  qc: unknown
-  queryKey: unknown
-  optimistic: (name: string) => Category
-  errorToast?: string
-}
-type RenameInput = { id: string; name: string }
-type UpdateOpts = {
-  qc: unknown
-  queryKey: unknown
-  id: (input: RenameInput) => string
-  apply: (item: Category, input: RenameInput) => Category
-  errorToast?: string
-}
-type DeleteOpts = {
-  qc: unknown
-  queryKey: unknown
-  invalidateKeys: unknown[]
-  id: (input: string) => string
-  errorToast?: string
-}
+// The add/rename/delete category mutations were inline in GearLibraryPage
+// (which has no component test), so this locks what the extraction exposed.
+// Only the network functions are mocked; the optimistic helpers, the cache
+// and the toast store are real. So each test checks what the user sees:
+// - add: a placeholder row in the categories cache while the create is
+//   pending, in the sort slot the server will assign.
+// - rename: only the name changes.
+// - delete: the row goes, and the gear caches are refreshed, because the
+//   server uncategorizes the category's gear in the same transaction.
+// - which failures toast.
 
 const h = vi.hoisted(() => ({
-  queryKeys: {
-    categories: () => ['categories'] as const,
-    gearItems: () => ['gear-items'] as const,
-    listItemsAll: () => ['list-items'] as const,
-  },
   createCategory: vi.fn<(name: string) => Promise<unknown>>(),
   renameCategory: vi.fn<(id: string, name: string) => Promise<void>>(),
   deleteCategory: vi.fn<(id: string) => Promise<void>>(),
-  nextCategorySortOrder: vi.fn<(cats: unknown[]) => number>(),
-  makeOptimisticInsert: vi.fn<(opts: InsertOpts) => Lifecycle>(),
-  makeOptimisticUpdate: vi.fn<(opts: UpdateOpts) => Lifecycle>(),
-  makeOptimisticDelete: vi.fn<(opts: DeleteOpts) => Lifecycle>(),
 }))
 
-vi.mock('../lib/queries', () => h)
+vi.mock('../lib/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/queries')>()),
+  ...h,
+}))
 // Deterministic temp id so the optimistic placeholder is exact-matchable.
 vi.mock('../lib/random-temp-id', () => ({ randomTempId: () => 'tmp-id' }))
 
 import { useGearCategoryActions } from './use-gear-category-actions'
 
 const NOW = '2026-01-01T00:00:00.000Z'
+const DELETE_TOAST =
+  "Couldn't confirm that category was deleted. Refresh to check before trying again."
 
 function category(over: Partial<Category> = {}): Category {
   return {
@@ -69,120 +46,128 @@ function category(over: Partial<Category> = {}): Category {
   }
 }
 
-function lifecycle(): Lifecycle {
-  return { onMutate: vi.fn(), onError: vi.fn(), onSettled: vi.fn() }
+// Seeds the categories cache with the same rows the page passes to the hook.
+function setup(categories: Category[] = [category()]) {
+  const qc = testQueryClient()
+  qc.setQueryData<Category[]>(['categories'], categories)
+  const result = renderHookWithClient(qc, () => useGearCategoryActions(categories))
+  return { qc, result }
 }
 
-function setup(categories: Category[] = []) {
-  const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-  )
-  const { result } = renderHook(() => useGearCategoryActions(categories), { wrapper })
-  return { result }
-}
+const cachedCategories = (qc: ReturnType<typeof testQueryClient>) =>
+  qc.getQueryData<Category[]>(['categories'])
 
-beforeEach(() => {
-  h.makeOptimisticInsert.mockReturnValue(lifecycle())
-  h.makeOptimisticUpdate.mockReturnValue(lifecycle())
-  h.makeOptimisticDelete.mockReturnValue(lifecycle())
-  h.nextCategorySortOrder.mockReturnValue(5)
-  h.createCategory.mockResolvedValue({ id: 'c-new' })
-  h.renameCategory.mockResolvedValue(undefined)
-  h.deleteCategory.mockResolvedValue(undefined)
+afterEach(() => {
+  vi.clearAllMocks()
+  clearToasts()
 })
-
-afterEach(() => vi.clearAllMocks())
 
 describe('useGearCategoryActions', () => {
   describe('addCategory', () => {
-    it('creates a category by name and targets the categories cache', async () => {
-      const { result } = setup([category({ id: 'c0', sortOrder: 2 })])
+    it('creates a category by name and shows a placeholder in the next sort slot while it is pending', async () => {
+      const create = deferred<unknown>()
+      h.createCategory.mockReturnValueOnce(create.promise)
+      const existing = category({ id: 'c0', sortOrder: 2 })
+      const { qc, result } = setup([existing])
 
       result.current.addCategory.mutate('Cooking')
 
       // The server assigns the real sortOrder (max+1); the client sends
       // only the name.
       await waitFor(() => expect(h.createCategory).toHaveBeenCalledWith('Cooking'))
-      // Optimistic insert wired to ['categories'] - the cache it settles/invalidates.
-      expect(h.makeOptimisticInsert).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['categories'] }),
-      )
+      // The placeholder's sortOrder is what the server will assign, so the
+      // row lands in place before the settled refetch replaces it.
+      await waitFor(() => expect(cachedCategories(qc)).toHaveLength(2))
+      expect(cachedCategories(qc)).toEqual([
+        existing,
+        expect.objectContaining({ id: 'temp-tmp-id', name: 'Cooking', sortOrder: 3 }),
+      ])
+
+      create.resolve({ id: 'c-new' })
+      await waitFor(() => expect(result.current.addCategory.isSuccess).toBe(true))
     })
 
-    it('carries no rollback toast, because both its call sites surface failures inline', () => {
+    it('carries no rollback toast, because both its call sites surface failures inline', async () => {
       // Load-bearing absence. `addCategory` is fired from two places: the gear
       // library's inline toolbar editor, which keeps its own error, and
       // GearItemDialog's "create category" affordance, which keeps `categoryError`.
       // A toast as well would say the same thing twice. See the modal rule in
       // src/lib/mutation-error-handler.ts.
-      setup([])
-      expect(h.makeOptimisticInsert.mock.calls[0]![0].errorToast).toBeUndefined()
-    })
+      h.createCategory.mockRejectedValueOnce(new Error('boom'))
+      const existing = category()
+      const { qc, result } = setup([existing])
 
-    it('builds an optimistic placeholder with a temp id and the next sort slot', () => {
-      setup([])
-      const opts = h.makeOptimisticInsert.mock.calls[0]![0]
-      const placeholder = opts.optimistic('Cooking')
-      // The placeholder's sortOrder mirrors what the server will assign
-      // (nextCategorySortOrder over the cached rows) so the row lands in
-      // place before the settled refetch reconciles it.
-      expect(placeholder).toMatchObject({
-        id: 'temp-tmp-id', name: 'Cooking', sortOrder: 5,
-      })
+      result.current.addCategory.mutate('Cooking')
+
+      await waitFor(() => expect(result.current.addCategory.isError).toBe(true))
+      expect(cachedCategories(qc)).toEqual([existing])
+      expect(toastMessages()).toEqual([])
     })
   })
 
   describe('renameCategory', () => {
-    it('updates the name by id and preserves the optimistic rename', async () => {
-      const { result } = setup()
+    it('sends the new name by id and changes only that name in the cache', async () => {
+      const rename = deferred()
+      h.renameCategory.mockReturnValueOnce(rename.promise)
+      const target = category({ id: 'c1', name: 'Shelter', sortOrder: 4 })
+      const other = category({ id: 'c2', name: 'Kitchen', sortOrder: 5 })
+      const { qc, result } = setup([target, other])
 
       result.current.renameCategory.mutate({ id: 'c1', name: 'Shelter v2' })
 
       await waitFor(() => expect(h.renameCategory).toHaveBeenCalledWith('c1', 'Shelter v2'))
-      const opts = h.makeOptimisticUpdate.mock.calls[0]![0]
-      expect(opts.queryKey).toEqual(['categories'])
-      // The optimistic config keys by id and applies only the name (id untouched).
-      expect(opts.id({ id: 'c9', name: 'x' })).toBe('c9')
-      expect(opts.apply(category({ id: 'c1', name: 'old' }), { id: 'c1', name: 'new' })).toMatchObject({
-        id: 'c1', name: 'new',
-      })
+      await waitFor(() =>
+        expect(cachedCategories(qc)).toEqual([{ ...target, name: 'Shelter v2' }, other]),
+      )
+      rename.resolve()
+      await waitFor(() => expect(result.current.renameCategory.isSuccess).toBe(true))
     })
   })
 
   describe('removeCategory', () => {
-    it('deletes the category by id', async () => {
-      const { result } = setup()
+    it('deletes by id and refreshes the gear-items and list-items caches so uncategorized items re-render after the server-side uncategorize', async () => {
+      const remove = deferred()
+      h.deleteCategory.mockReturnValueOnce(remove.promise)
+      const keep = category({ id: 'c2', sortOrder: 1 })
+      const { qc, result } = setup([category({ id: 'c1' }), keep])
+      // The server sets gear_items.categoryId to NULL in the same transaction
+      // (it does NOT delete gear). Refreshing the gear cache shows the
+      // now-uncategorized items, and the ['list-items'] prefix covers every
+      // per-list cache embedding the same gear DTO through list_items.gearItem.
+      qc.setQueryData<GearItem[]>(['gear-items'], [])
+      qc.setQueryData<ListItemWithGear[]>(['list-items', 'list-1'], [])
 
       result.current.removeCategory.mutate('c1')
 
       await waitFor(() => expect(h.deleteCategory).toHaveBeenCalledWith('c1'))
+      await waitFor(() => expect(cachedCategories(qc)).toEqual([keep]))
+      expect(qc.getQueryState(['gear-items'])?.isInvalidated).toBe(false)
+
+      remove.resolve()
+      await waitFor(() => expect(result.current.removeCategory.isSuccess).toBe(true))
+      expect(qc.getQueryState(['gear-items'])?.isInvalidated).toBe(true)
+      expect(qc.getQueryState(['list-items', 'list-1'])?.isInvalidated).toBe(true)
     })
 
-    it('invalidates the gear-items and list-items caches so uncategorized items re-render after the server-side uncategorize', () => {
-      setup()
-      const opts = h.makeOptimisticDelete.mock.calls[0]![0]
-      // The delete removes only the category row from ['categories']; the
-      // server sets gear_items.categoryId to NULL in the same transaction
-      // (it does NOT delete gear). Invalidating the gear cache refreshes
-      // the now-uncategorized items, and the ['list-items'] prefix covers
-      // every per-list cache embedding the same gear DTO through
-      // list_items.gearItem.
-      expect(opts.queryKey).toEqual(['categories'])
-      expect(opts.invalidateKeys).toEqual([['gear-items'], ['list-items']])
-      expect(opts.id('c1')).toBe('c1')
-    })
-
-    it('asks for a rollback toast, unlike the in-place rename', () => {
+    it('asks for a rollback toast, unlike the in-place rename', async () => {
       // The rule in src/lib/mutation-error-handler.ts, pinned at both call sites
       // in one test so the contrast is the assertion: a category SECTION
       // disappearing and returning after the confirm has closed needs saying out
       // loud, a rename reverting in the field under the cursor does not.
-      setup()
-      expect(h.makeOptimisticDelete.mock.calls[0]![0].errorToast).toBe(
-        "Couldn't confirm that category was deleted. Refresh to check before trying again.",
-      )
-      expect(h.makeOptimisticUpdate.mock.calls[0]![0].errorToast).toBeUndefined()
+      h.renameCategory.mockRejectedValueOnce(new Error('boom'))
+      h.deleteCategory.mockRejectedValueOnce(new Error('boom'))
+      const existing = category({ id: 'c1', name: 'Shelter' })
+      const { qc, result } = setup([existing])
+
+      result.current.renameCategory.mutate({ id: 'c1', name: 'Shelter v2' })
+      await waitFor(() => expect(result.current.renameCategory.isError).toBe(true))
+      expect(cachedCategories(qc)).toEqual([existing])
+      expect(toastMessages()).toEqual([])
+
+      result.current.removeCategory.mutate('c1')
+      await waitFor(() => expect(result.current.removeCategory.isError).toBe(true))
+      expect(cachedCategories(qc)).toEqual([existing])
+      expect(toastMessages()).toEqual([DELETE_TOAST])
     })
   })
 })

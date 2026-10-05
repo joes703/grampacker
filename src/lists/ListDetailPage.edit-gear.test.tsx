@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { Category, GearItem, List, ListItemWithGear } from '../lib/types'
 import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
 
@@ -112,27 +112,20 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-// The row surface reduced to its one entry point here. Driving the real kebab would
-// test the kebab; the subject is what the page does after Save.
-vi.mock('./CategoryGroup', () => ({
-  default: (props: { items: ListItemWithGear[]; onEditGearItem: (gearId: string) => void }) => (
-    <div>
-      {props.items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => props.onEditGearItem(item.gearItem.id)}
-        >
-          {`Edit ${item.gearItem.name}`}
-        </button>
-      ))}
-    </div>
-  ),
-}))
-
 async function renderDetail() {
   await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
-  return screen.findByRole('button', { name: 'Edit Tent' })
+  await screen.findByRole('button', { name: 'Item options' })
+}
+
+// The real row's kebab menu (the desktop row; the viewport is 1280px wide).
+function chooseRowAction(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Item options' }))
+  const menu = screen.getByRole('group', { name: 'Item actions' })
+  fireEvent.click(within(menu).getByRole('button', { name }))
+}
+
+function openEditor() {
+  chooseRowAction('Edit')
 }
 
 function nameField(): HTMLInputElement {
@@ -163,7 +156,8 @@ describe('the edit-gear dialog save', () => {
   it('reports an unconfirmed gear write inline, keeps the draft, and does not go on to the list write', async () => {
     const d = deferred()
     h.updateGearItem.mockReturnValue(d.promise)
-    fireEvent.click(await renderDetail())
+    await renderDetail()
+    openEditor()
 
     fireEvent.change(nameField(), { target: { value: 'Tarp' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -186,7 +180,8 @@ describe('the edit-gear dialog save', () => {
     // distinction is the whole reason this is a two-stage save rather than one call.
     const d = deferred()
     h.updateListItem.mockReturnValue(d.promise)
-    fireEvent.click(await renderDetail())
+    await renderDetail()
+    openEditor()
 
     fireEvent.change(screen.getByLabelText(/^Quantity/), { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -200,7 +195,8 @@ describe('the edit-gear dialog save', () => {
   })
 
   it('closes on a clean save', async () => {
-    fireEvent.click(await renderDetail())
+    await renderDetail()
+    openEditor()
 
     fireEvent.change(nameField(), { target: { value: 'Tarp' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -216,7 +212,8 @@ describe('the edit-gear dialog save', () => {
     // error is inviting the user to retry.
     const d = deferred()
     h.updateGearItem.mockReturnValue(d.promise)
-    fireEvent.click(await renderDetail())
+    await renderDetail()
+    openEditor()
 
     fireEvent.change(nameField(), { target: { value: 'Tarp' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -233,11 +230,12 @@ describe('the edit-gear dialog save', () => {
   it('a success arriving after the dialog was reopened does not close the new one', async () => {
     const d = deferred()
     h.updateGearItem.mockReturnValue(d.promise)
-    fireEvent.click(await renderDetail())
+    await renderDetail()
+    openEditor()
 
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Tent' }))
+    openEditor()
 
     d.resolve()
     await settle(d)
@@ -249,19 +247,17 @@ describe('the edit-gear dialog save', () => {
     // `updateGearItem` and `updateListItem` are shared with the inline row handlers,
     // so `isPending` is not this dialog's business - and now that `saving` freezes
     // the form, reading it would disable a dialog the user is typing in for a write
-    // that has nothing to do with it.
-    //
-    // The outstanding write here is an ABANDONED earlier save rather than a row edit,
-    // because the row surface is stubbed in this file. Same mutation, same shared
-    // `isPending`, so it pins the isolation - it does not additionally prove the row
-    // handlers' wiring.
+    // that has nothing to do with it. The outstanding write here is the row's own
+    // quick status change, still pending when the user opens the editor.
     const d = deferred()
     h.updateGearItem.mockReturnValue(d.promise)
-    fireEvent.click(await renderDetail())
+    await renderDetail()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Tent' }))
+    chooseRowAction('Loaned out')
+    await waitFor(() =>
+      expect(h.updateGearItem).toHaveBeenCalledWith('g1', { status: 'loaned_out' }),
+    )
+    openEditor()
 
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Saving…' })).not.toBeInTheDocument()

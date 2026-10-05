@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
@@ -108,25 +108,5 @@ describe('ListSettingsPanel actions that can fail', () => {
 
     expect(actions.deleteMutate).toHaveBeenCalledWith('list-1')
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/lists$/)
-  })
-
-  it('reports a failed rename inline, and clears it on the next attempt', async () => {
-    renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
-    const input = screen.getByRole('textbox', { name: 'List name' })
-    await userEvent.clear(input)
-    await userEvent.type(input, 'Summit{Enter}')
-
-    expect(actions.renameMutate).toHaveBeenCalledTimes(1)
-    const [vars, options] = actions.renameMutate.mock.calls[0]!
-    expect(vars).toEqual({ id: 'list-1', name: 'Summit' })
-    act(() => { options.onError(new Error('nope')) })
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      "Couldn't confirm the new name was saved. Please try again.",
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
