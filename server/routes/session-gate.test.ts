@@ -64,6 +64,13 @@ describe('session gate', () => {
       ]),
     )
 
+    // The probe fills each :param with 'some-id'. Any other pattern (a regex
+    // constraint such as :id{[0-9]+}, an optional param, a wildcard) would be
+    // probed at a URL its handler may never match, and the 401 would come
+    // from somewhere else. Such a pattern fails here until this test can
+    // build a URL for it.
+    expect(gated.filter((route) => !/^[A-Z]+ (\/[A-Za-z0-9_-]*|\/:[A-Za-z]+)+$/.test(route))).toEqual([])
+
     const answers: string[] = []
     for (const route of gated) {
       const [method = '', pattern = ''] = route.split(' ')
