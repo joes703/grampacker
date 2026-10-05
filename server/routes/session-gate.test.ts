@@ -14,12 +14,32 @@ const PUBLIC_ROUTES = [
   'GET /api/health',
 ]
 
+// Middleware and the catch-all fallbacks register with method 'ALL' on a
+// wildcard path. Any other wildcard here is a new .all() endpoint that this
+// test cannot probe, so it fails until someone decides whether it is gated.
+const MIDDLEWARE_PATHS = [
+  '/*',
+  '/api/*',
+  '/api/auth/*',
+  '/api/lists/*',
+  '/api/me/*',
+  '/api/categories/*',
+  '/api/gear-items/*',
+  '/api/shares/*',
+]
+
 describe('session gate', () => {
   it('answers 401 to an anonymous caller on every non-public API route', async () => {
-    // Method 'ALL' entries are middleware and the 404 fallback, not routes.
+    const wildcards = new Set(
+      app.routes.filter((r) => r.method === 'ALL' && r.path.endsWith('*')).map((r) => r.path),
+    )
+    expect([...wildcards].sort()).toEqual([...MIDDLEWARE_PATHS].sort())
+
+    // An .all() endpoint on a plain path is a route like any other; GET
+    // reaches it.
     const routes = app.routes
-      .filter((r) => r.method !== 'ALL' && r.path.startsWith('/api/'))
-      .map((r) => `${r.method} ${r.path}`)
+      .filter((r) => r.path.startsWith('/api/') && !(r.method === 'ALL' && r.path.endsWith('*')))
+      .map((r) => `${r.method === 'ALL' ? 'GET' : r.method} ${r.path}`)
     expect(routes.filter((r) => PUBLIC_ROUTES.includes(r))).toEqual(PUBLIC_ROUTES)
 
     const gated = routes.filter((r) => !PUBLIC_ROUTES.includes(r))

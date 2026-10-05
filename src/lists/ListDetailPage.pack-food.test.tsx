@@ -149,6 +149,11 @@ describe('food rows in Pack mode', () => {
     await screen.findByLabelText('300 g')
     expect(cellClasses('300 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
     expect(cellClasses('210 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
+    // What the token must keep: one fixed column width, shown from lg up only
+    // (a w-24 cell at 375px would crush the name), never printed.
+    for (const cls of ['shrink-0', 'w-24', 'hidden', 'lg:inline-block', 'print:hidden']) {
+      expect(PACK_ROW_WEIGHT_CELL.split(' ')).toContain(cls)
+    }
   })
 
   // Gear rows reach the gear editor from this menu. Food does not: food is

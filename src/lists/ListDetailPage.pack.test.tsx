@@ -63,18 +63,23 @@ const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
   deleteListItem: vi.fn(),
   quickAddListItem: vi.fn(),
-  collisionDetections: [] as (CollisionDetection | undefined)[],
+  // The latest collision detector each mounted DndContext was given.
+  collisionDetections: new Map<string, CollisionDetection | undefined>(),
 }))
 
 // DndContext still runs for real. The wrapper records which collision
-// detector the page hands it, for the wiring test at the end.
+// detector the page hands it, for the wiring test at the end. The page has
+// more than one DndContext (the desktop lists panel has its own), so the
+// record is per mounted instance and always holds its latest render.
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
-  const { createElement } = await import('react')
+  const { createElement, useEffect, useId } = await import('react')
   return {
     ...actual,
     DndContext: (props: ComponentProps<typeof actual.DndContext>) => {
-      h.collisionDetections.push(props.collisionDetection)
+      const id = useId()
+      h.collisionDetections.set(id, props.collisionDetection)
+      useEffect(() => () => void h.collisionDetections.delete(id), [id])
       return createElement(actual.DndContext, props)
     },
   }
@@ -135,7 +140,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
-  h.collisionDetections.length = 0
+  h.collisionDetections.clear()
 })
 
 describe('adding gear from Pack view', () => {
@@ -448,8 +453,10 @@ describe('pack collision wiring', () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
 
-    const detect = h.collisionDetections.find((d) => d !== closestCenter)
-    if (!detect) throw new Error('Pack never handed DndContext its own collision detector')
+    const filters = [...h.collisionDetections.values()].filter((d) => d !== closestCenter)
+    expect(filters).toHaveLength(1)
+    const [detect] = filters
+    if (!detect) throw new Error('unreachable: length checked above')
     const rect = { top: 0, left: 0, width: 10, height: 10, bottom: 10, right: 10 }
     const target = (id: string) => ({
       id, key: id, data: { current: undefined }, disabled: false,
@@ -465,8 +472,8 @@ describe('pack collision wiring', () => {
     expect(hits.map((hit) => hit.id)).toEqual(['packing-location:loc-b'])
 
     cleanup()
-    h.collisionDetections.length = 0
     await renderDetail(`/lists/${listId}`)
-    expect(new Set(h.collisionDetections)).toEqual(new Set([closestCenter]))
+    expect(h.collisionDetections.size).toBeGreaterThan(0)
+    expect(new Set(h.collisionDetections.values())).toEqual(new Set([closestCenter]))
   })
 })

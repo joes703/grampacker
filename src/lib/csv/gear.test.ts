@@ -416,13 +416,14 @@ describe('gear csv with cost and purchaseDate', () => {
 })
 
 describe('parseGearCsv unit conversion and column handling', () => {
-  // The alias table belongs to toGrams (units.test.ts). One non-gram row
-  // proves this parser reads the unit column at all.
+  // The alias table belongs to toGrams (units.test.ts): this parser hands it
+  // the cell as written. One non-gram row proves the parser reads the unit
+  // column, and a blank cell in that column still means grams.
   it('converts the weight by the unit column', () => {
-    const csv = ['name,weight,unit', 'Item A,3,ounce'].join('\r\n')
+    const csv = ['name,weight,unit', 'Item A,3,ounce', 'Item B,50,'].join('\r\n')
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
-    expect(parsed[0]?.weightGrams).toBe(85)
+    expect(parsed.map((r) => r.weightGrams)).toEqual([85, 50])
   })
 
   it('resolves the "name" / "Item Name" and "weight" / "weight_grams" aliases', () => {

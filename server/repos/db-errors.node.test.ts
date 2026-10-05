@@ -138,6 +138,7 @@ describe('isPackRankRangeError', () => {
 // failure, and the matcher's own text sits only in the wrapper's bound params
 // (a user can name an item anything). Each row first proves the text matches
 // at the root, so a matcher that never matches cannot pass the second half.
+// Non-errors and unrelated errors never match either.
 // isCapError and isCategoryCapError are one-line isTriggerAbort calls in the
 // repos; their rows prove each still matches only the root.
 const FK_ROOT = 'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)'
@@ -159,5 +160,7 @@ describe('wrapper params never classify an error', () => {
   ])('$name ignores its text in wrapper params', ({ match, text, other }) => {
     expect(match(wrapped(text, 'Failed query: ...'))).toBe(true)
     expect(match(wrapped(other, `Failed query: insert ... params: abc,${text},0`))).toBe(false)
+    expect(match(null)).toBe(false)
+    expect(match(new Error('unrelated'))).toBe(false)
   })
 })
