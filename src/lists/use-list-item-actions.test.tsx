@@ -5,6 +5,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import type { ReactNode } from 'react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
+import { deferred } from '../test/mutation-hook-harness'
 
 // The add/update/move/delete/quick-add list-item mutations were inline in
 // ListDetailPage (which has no component test), so this locks the logic the
@@ -16,40 +17,28 @@ import { mutationErrorHandler } from '../lib/mutation-error-handler'
 // patch restores ONLY its own fields, never a sibling's optimistic write) and
 // the last-one-out invalidation gate (no refetch while siblings are pending;
 // exactly one after the final settle, which is what re-converges the cache
-// with server truth after external races). add/delete's optimistic cache
-// lifecycle is owned/tested by optimistic.ts; those helpers stay mocked and
-// we assert wiring. updateItem's lifecycle is bespoke, so it runs against a
-// REAL QueryClient cache here.
+// with server truth after external races). Only the network functions and
+// the toast are mocked: add and delete run the real optimistic helpers, so
+// their tests read the cache the user sees.
 
 const LIST_ID = 'list-1'
 
-type Lifecycle = { onMutate: () => unknown; onError: () => void; onSettled: () => void }
-type InsertOpts = { qc: unknown; queryKey: unknown; optimistic: (item: GearItem) => ListItemWithGear }
-
 const h = vi.hoisted(() => ({
-  queryKeys: {
-    gearItems: () => ['gear-items'] as const,
-    listItems: (id: string) => ['list-items', id] as const,
-    packingLocations: (id: string) => ['packing-locations', id] as const,
-    listFood: (id: string) => ['list-food', id] as const,
-  },
   addListItem: vi.fn<(listId: string, gearItemId: string) => Promise<unknown>>(),
   quickAddListItem: vi.fn<(listId: string, input: Record<string, unknown>) => Promise<void>>(),
   updateListItem: vi.fn<(listId: string, itemId: string, patch: unknown) => Promise<void>>(),
   deleteListItem: vi.fn<(listId: string, itemId: string) => Promise<void>>(),
-  nextListItemSortOrder: vi.fn<(items: unknown[]) => number>(),
-  makeOptimisticInsert: vi.fn<(opts: InsertOpts) => Lifecycle>(),
-  makeOptimisticDelete: vi.fn<(opts: { queryKey: unknown }) => Lifecycle>(),
 }))
 const toast = vi.hoisted(() => ({ showToast: vi.fn<(message: string, options?: unknown) => number>() }))
 
-vi.mock('../lib/queries', () => h)
+vi.mock('../lib/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/queries')>()),
+  ...h,
+}))
 vi.mock('../lib/random-temp-id', () => ({ randomTempId: () => 'tmp-id' }))
 vi.mock('../lib/toast', () => toast)
 
 import { useListItemActions } from './use-list-item-actions'
-
-const lifecycle = (): Lifecycle => ({ onMutate: vi.fn(), onError: vi.fn(), onSettled: vi.fn() })
 
 function gear(over: Partial<GearItem> = {}): GearItem {
   const now = '2026-01-01T00:00:00.000Z'
@@ -92,10 +81,15 @@ function renderWith(qc: QueryClient, listItems: ListItemWithGear[] = []) {
   ).result
 }
 
+// Seeds the list-items cache with the rows the page passes to the hook.
 function setup(listItems: ListItemWithGear[] = []) {
   const qc = makeQc()
+  qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], listItems)
   return { qc, result: renderWith(qc, listItems) }
 }
+
+const cachedItems = (qc: QueryClient) =>
+  qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])
 
 const invalidationsFor = (spy: ReturnType<typeof vi.spyOn>, key: readonly unknown[]) =>
   spy.mock.calls.filter((call: unknown[]) => {
@@ -104,9 +98,6 @@ const invalidationsFor = (spy: ReturnType<typeof vi.spyOn>, key: readonly unknow
   }).length
 
 beforeEach(() => {
-  h.makeOptimisticInsert.mockReturnValue(lifecycle())
-  h.makeOptimisticDelete.mockReturnValue(lifecycle())
-  h.nextListItemSortOrder.mockReturnValue(5)
   h.addListItem.mockResolvedValue({ id: 'li-new' })
   h.quickAddListItem.mockResolvedValue(undefined)
   h.updateListItem.mockResolvedValue(undefined)
@@ -118,22 +109,33 @@ afterEach(() => vi.clearAllMocks())
 
 describe('useListItemActions', () => {
   describe('addItem', () => {
-    it('adds the gear item to the list and targets the list-items cache', async () => {
-      const { result } = setup()
+    it('adds the gear item to the list and shows it in the list-items cache while it is pending', async () => {
+      const add = deferred<unknown>()
+      h.addListItem.mockReturnValueOnce(add.promise)
+      const existing = item({ id: 'a', gearItemId: 'g0' })
+      const { qc, result } = setup([existing])
 
       result.current.addItem.mutate(gear({ id: 'g1' }))
 
       await waitFor(() => expect(h.addListItem).toHaveBeenCalledWith(LIST_ID, 'g1'))
-      expect(h.makeOptimisticInsert).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['list-items', LIST_ID] }),
-      )
+      await waitFor(() => expect(cachedItems(qc)).toHaveLength(2))
+      expect(cachedItems(qc)?.[0]).toBe(existing)
+      expect(cachedItems(qc)?.[1]).toMatchObject({ id: 'temp-tmp-id', gearItemId: 'g1' })
+
+      add.resolve({ id: 'li-new' })
+      await waitFor(() => expect(result.current.addItem.isSuccess).toBe(true))
     })
 
-    it('builds an optimistic placeholder preserving the embedded gearItem, default flags, temp id, and sort order', () => {
-      setup()
-      const opts = h.makeOptimisticInsert.mock.calls[0]![0]
+    it('builds an optimistic placeholder preserving the embedded gearItem, default flags, temp id, and sort order', async () => {
+      const add = deferred<unknown>()
+      h.addListItem.mockReturnValueOnce(add.promise)
+      const { qc, result } = setup([item({ id: 'a', gearItemId: 'g0', sortOrder: 4 })])
       const g = gear({ id: 'g1', name: 'Tent', description: 'palace', weightGrams: 1200, categoryId: 'c1', status: 'active' })
-      const placeholder = opts.optimistic(g)
+
+      result.current.addItem.mutate(g)
+
+      await waitFor(() => expect(cachedItems(qc)).toHaveLength(2))
+      const placeholder = cachedItems(qc)![1]!
       expect(placeholder).toMatchObject({
         id: 'temp-tmp-id', listId: LIST_ID, gearItemId: 'g1',
         quantity: 1, isWorn: false, isConsumable: false, isPacked: false, isReady: false,
@@ -142,6 +144,9 @@ describe('useListItemActions', () => {
       // The new DTO embeds the FULL gear response; the placeholder embeds
       // the passed gear as-is (same reference, whole shape).
       expect(placeholder.gearItem).toBe(g)
+
+      add.resolve({ id: 'li-new' })
+      await waitFor(() => expect(result.current.addItem.isSuccess).toBe(true))
     })
   })
 
@@ -275,15 +280,6 @@ describe('useListItemActions', () => {
     // makeOptimisticUpdate, whose rollback restores the whole array as it was
     // when the move started - erasing a Packed tick that saved while the move
     // was in flight. These run against a REAL cache for that reason.
-    function deferred() {
-      let resolve!: () => void
-      let reject!: (e: unknown) => void
-      const promise = new Promise<void>((res, rej) => {
-        resolve = res
-        reject = rej
-      })
-      return { promise, resolve, reject }
-    }
     const rows = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
     const row = (qc: QueryClient, id: string) => rows(qc).find((i) => i.id === id)!
 
@@ -354,15 +350,19 @@ describe('useListItemActions', () => {
   })
 
   describe('deleteItem', () => {
-    it('deletes the list item by parent path + id and targets the list-items cache', async () => {
-      const { result } = setup()
+    it('deletes the list item by parent path + id and removes it from the list-items cache', async () => {
+      const remove = deferred()
+      h.deleteListItem.mockReturnValueOnce(remove.promise)
+      const keep = item({ id: 'b' })
+      const { qc, result } = setup([item({ id: 'a' }), keep])
 
       result.current.deleteItem.mutate('a')
 
       await waitFor(() => expect(h.deleteListItem).toHaveBeenCalledWith(LIST_ID, 'a'))
-      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ['list-items', LIST_ID] }),
-      )
+      await waitFor(() => expect(cachedItems(qc)).toEqual([keep]))
+
+      remove.resolve()
+      await waitFor(() => expect(result.current.deleteItem.isSuccess).toBe(true))
     })
 
     it('also invalidates packing locations and food, which the delete can cascade', async () => {
@@ -371,27 +371,34 @@ describe('useListItemActions', () => {
       // touched - and since 0022 that location's SET NULL + rerank cascade
       // moves FOOD rows too. Without these keys the pack view kept
       // rendering stale sections and stale food placement.
-      setup()
+      const { qc, result } = setup([item({ id: 'a' })])
+      qc.setQueryData(['packing-locations', LIST_ID], [])
+      qc.setQueryData(['list-food', LIST_ID], { dayCount: 1, slots: [], items: [] })
 
-      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
-        expect.objectContaining({
-          invalidateKeys: [['packing-locations', LIST_ID], ['list-food', LIST_ID]],
-        }),
-      )
+      result.current.deleteItem.mutate('a')
+
+      await waitFor(() => expect(result.current.deleteItem.isSuccess).toBe(true))
+      expect(qc.getQueryState(['packing-locations', LIST_ID])?.isInvalidated).toBe(true)
+      expect(qc.getQueryState(['list-food', LIST_ID])?.isInvalidated).toBe(true)
     })
 
-    it('asks for a rollback toast, because neither removal route leaves one visible', () => {
+    it('restores the row and toasts on failure, because neither removal route leaves one visible', async () => {
       // The rule in src/lib/mutation-error-handler.ts. Both ways in are easy to
       // miss: the confirm closes before mutating, and a pristine item is removed
       // with no confirm at all - so without this the only evidence of failure is a
-      // row quietly returning to a long list. That the option actually toasts is
-      // the helper's own test (queries/optimistic.test.ts).
-      setup()
+      // row quietly returning to a long list.
+      h.deleteListItem.mockRejectedValueOnce(new Error('boom'))
+      const rows = [item({ id: 'a' }), item({ id: 'b' })]
+      const { qc, result } = setup(rows)
 
-      expect(h.makeOptimisticDelete).toHaveBeenCalledWith(
-        expect.objectContaining({
-          errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
-        }),
+      result.current.deleteItem.mutate('a')
+
+      await waitFor(() => expect(result.current.deleteItem.isError).toBe(true))
+      expect(cachedItems(qc)).toEqual(rows)
+      expect(toast.showToast).toHaveBeenCalledTimes(1)
+      expect(toast.showToast).toHaveBeenCalledWith(
+        "Couldn't confirm that item was removed. Refresh to check before trying again.",
+        { type: 'error' },
       )
     })
   })

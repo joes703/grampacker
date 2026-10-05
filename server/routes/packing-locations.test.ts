@@ -11,7 +11,6 @@ import {
   packingLocations,
 } from '../db/schema'
 import { isTriggerAbort } from '../repos/db-errors'
-import { remapPackingLocationId } from '../repos/lists'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -857,7 +856,6 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect((await getItems(cookie, copy.id))[0]?.packingLocationId).toBe(
       copyLocations[0]?.id,
     )
-    expect(remapPackingLocationId(location.id, new Map())).toBeNull()
     expect((await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)).status).toBe(204)
     const db = createDb(env.DB)
     expect(

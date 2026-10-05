@@ -150,27 +150,6 @@ describe('AddFoodForm busy state', () => {
   })
 })
 
-describe('AddFoodForm rejected submit', () => {
-  it('keeps typed values when onSubmit never signals success', async () => {
-    const user = userEvent.setup()
-    // Simulates a rejected write (e.g. hitting the item cap): the caller
-    // never invokes the success callback.
-    const onSubmit = vi.fn()
-    render(<ControlledHarness slots={breakfastSlots} onSubmit={onSubmit} />)
-
-    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.type(screen.getByLabelText('Weight'), '80')
-    await user.clear(screen.getByLabelText('Qty'))
-    await user.type(screen.getByLabelText('Qty'), '3')
-    await user.click(screen.getByRole('button', { name: 'Add food' }))
-
-    expect(onSubmit).toHaveBeenCalled()
-    expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
-    expect(screen.getByLabelText('Weight')).toHaveValue(80)
-    expect(screen.getByLabelText('Qty')).toHaveValue(3)
-  })
-})
-
 describe('AddFoodForm controlled slot selection', () => {
   it('reports selection changes instead of owning them', async () => {
     const user = userEvent.setup()

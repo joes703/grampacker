@@ -548,6 +548,38 @@ describe('list CSV import loses a race', () => {
   })
 })
 
+describe('packing location create loses a race', () => {
+  // The container precheck reads the list item, then the insert runs. A
+  // delete of that item in between leaves the same-list trigger as the only
+  // guard, and it aborts the insert. That abort is a lost race on the
+  // client's input, not a 500.
+  it('container item deleted after the precheck -> invalid_container_item', async () => {
+    const { cookie, userId } = await newUser('pl1')
+    const listId = await createList(cookie, 'Trip')
+    const gearId = await createGear(cookie, 'Pack')
+    const add = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
+      gearItemId: gearId,
+    })
+    if (add.status !== 201) throw new Error(`add item: ${add.status}`)
+    const itemId = ((await add.json()) as { id: string }).id
+
+    const repo = createPackingLocationsRepo(
+      sabotaged(raw(), 'batch', async () => {
+        await env.DB.prepare('delete from list_items where id = ?')
+          .bind(itemId)
+          .run()
+      }),
+      userId,
+    )
+    const result = await repo.create(listId, { containerListItemId: itemId })
+    expect(result).toEqual({ ok: false, reason: 'invalid_container_item' })
+    const locations = await env.DB.prepare(
+      'select count(*) as c from packing_locations where list_id = ?',
+    ).bind(listId).first<{ c: number }>()
+    expect(locations?.c).toBe(0)
+  })
+})
+
 describe('update() rank collision', () => {
   // The colliding state cannot exist in a serialized database - the rank is
   // computed by a subquery inside the UPDATE - so the branch is exercised by
