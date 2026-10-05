@@ -114,10 +114,12 @@ describe('DesktopListsPanel delete navigation', () => {
   })
 
   it('stays put when deleting a list that is not the open one', async () => {
-    renderPanel([makeList('a', 0), makeList('b', 1)], 'a')
-    await deleteRow(1)
+    // Three lists, so the deleted list's neighbor (b) is not the open list:
+    // treating c as the open list would land on /lists/b.
+    renderPanel([makeList('a', 0), makeList('b', 1), makeList('c', 2)], 'a')
+    await deleteRow(2)
 
-    expect(deleteMutate).toHaveBeenCalledWith('b')
+    expect(deleteMutate).toHaveBeenCalledWith('c')
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/lists\/a$/)
   })
 })

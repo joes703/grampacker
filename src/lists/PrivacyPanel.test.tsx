@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { List } from '../lib/types'
 import { showToast } from '../lib/toast'
 
@@ -99,12 +99,11 @@ describe('PrivacyPanel', () => {
     })
   })
 
-  // Regression (Codex PR #29 review): a relative toggle raced - the
-  // optimistic update flipped the cache immediately, but the PATCH body
-  // closed over the stale rendered prop, so a rapid double-toggle sent
-  // the SAME body twice and could leave the list public while the UI
-  // said private. The fix is an absolute target + a disabled toggle
-  // while the flip is in flight.
+  // A relative toggle races: the optimistic update flips the cache at once,
+  // but a PATCH body built from the stale rendered prop sends the SAME body
+  // twice on a rapid double-toggle, and can leave the list public while the
+  // UI says private. Hence an absolute target and a disabled toggle while
+  // the flip is in flight.
   it('ignores a second activation while the first flip is in flight', async () => {
     let resolveFirst!: (v: List) => void
     updateList.mockImplementation(
@@ -124,13 +123,12 @@ describe('PrivacyPanel', () => {
     await waitFor(() => expect(toggle).not.toBeDisabled())
   })
 
-  // Regression (Codex PR #29 re-review): isPending and the disabled
-  // attribute are render-derived, so two activations inside the same
-  // commit window both passed the old guard - and since the optimistic
-  // write flips the cache synchronously, the second derived the OPPOSITE
-  // target, putting {true} then {false} on the wire where out-of-order
-  // resolution ends public. The ref guard is synchronous; the second
-  // same-tick activation must be a complete no-op.
+  // isPending and the disabled attribute are render-derived, so two
+  // activations inside the same commit window both get past them. The
+  // optimistic write flips the cache synchronously, so the second would
+  // derive the OPPOSITE target, putting {true} then {false} on the wire,
+  // where out-of-order resolution ends public. The ref guard is synchronous;
+  // the second same-tick activation must be a complete no-op.
   it('ignores a second activation in the same commit window (before React re-renders)', async () => {
     updateList.mockResolvedValue({ ...list, isShared: true })
     renderPanel()
@@ -231,22 +229,35 @@ describe('PrivacyPanel - replacing the share link', () => {
   })
 
   it('shows the new URL once the replacement lands', async () => {
-    rotateShareLink.mockResolvedValue({ ...shared, slug: 'xyz789' })
-    const qc = renderPanel(shared, [shared])
+    // The panel renders whatever the parent passes, and the parent reads the
+    // lists cache. So the new slug reaches the screen only if the replace
+    // refreshes that cache.
+    let serverLists: List[] = [shared]
+    rotateShareLink.mockImplementation(async () => {
+      serverLists = [{ ...shared, slug: 'xyz789' }]
+      return serverLists[0]
+    })
+    function CacheReadingParent() {
+      const { data } = useQuery({ queryKey: ['lists'], queryFn: async () => serverLists })
+      const row = data?.find((l) => l.id === shared.id)
+      return row ? <PrivacyPanel list={row} /> : null
+    }
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={qc}>
+        <CacheReadingParent />
+      </QueryClientProvider>,
+    )
     const user = userEvent.setup()
 
-    expect(screen.getByDisplayValue(/\/r\/abc123$/)).toBeInTheDocument()
+    expect(await screen.findByDisplayValue(/\/r\/abc123$/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /replace link/i }))
     await user.click(screen.getByRole('button', { name: /^replace$/i }))
-    await waitFor(() => expect(rotateShareLink).toHaveBeenCalled())
 
-    // The panel renders whatever the parent passes; the parent reads the lists
-    // cache, so the invalidate is what carries the new slug to the screen.
-    qc.setQueryData(['lists'], [{ ...shared, slug: 'xyz789' }])
-    cleanup()
-    renderPanel({ ...shared, slug: 'xyz789' })
-    expect(screen.getByDisplayValue(/\/r\/xyz789$/)).toBeInTheDocument()
+    expect(await screen.findByDisplayValue(/\/r\/xyz789$/)).toBeInTheDocument()
   })
 
   it('does not fire twice on a double-click of Replace', async () => {
@@ -255,10 +266,16 @@ describe('PrivacyPanel - replacing the share link', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: /replace link/i }))
     const confirm = screen.getByRole('button', { name: /^replace$/i })
-    fireEvent.click(confirm)
-    fireEvent.click(confirm)
+    // Both clicks in one act(), so React does not re-render between them and
+    // the button is still enabled for the second. Only the ref can stop it.
+    act(() => {
+      confirm.click()
+      confirm.click()
+    })
 
-    await waitFor(() => expect(rotateShareLink).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(rotateShareLink).toHaveBeenCalled())
+    await act(async () => {})
+    expect(rotateShareLink).toHaveBeenCalledTimes(1)
   })
 })
 

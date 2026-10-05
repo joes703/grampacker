@@ -12,9 +12,8 @@ import { ApiError } from '../lib/api'
 // isolation - ListDetailPage.food.test.tsx pins where FoodView is mounted
 // and that a sibling detail-query failure does not reach it.
 //
-// It also owns every food mutation (Task 12: the old flat food layout
-// retired, its state and JSX moved here as FoodDocument, composed from
-// FoodDaySection, AddFoodForm, FoodCarryingList and FoodSlotPicker).
+// It also owns every food mutation. Its FoodDocument is composed from
+// FoodDaySection, AddFoodForm, FoodCarryingList and FoodSlotPicker.
 // Rendering detail already covered at the component level - slot three-states
 // and weight totals
 // (FoodDaySection.test.tsx), the carrying list and its schedule affordance
@@ -60,7 +59,7 @@ const oneDayFood: ListFoodResponse = {
   items: [],
 }
 
-// The old destructive-guards fixture, carried over: day 1 breakfast
+// The destructive-guards fixture: day 1 breakfast
 // is empty (untouched, no work to lose), day 3 lunch holds Ramen (the one
 // slot a shortening below day 3 would actually cost).
 const guardFood: ListFoodResponse = {
@@ -229,8 +228,8 @@ describe('FoodView header', () => {
     expect(rail).not.toBeNull()
     expect(within(rail).getByRole('button', { name: 'Add food' })).toBeInTheDocument()
     expect(within(rail).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
-    // The explainer line was removed 2026-08-07 (Joe: the header card is
-    // compact rail chrome now, not a place for onboarding copy).
+    // No explainer line: the header card is compact rail chrome, not a place
+    // for onboarding copy.
     expect(
       screen.queryByText("Skip meals you'll eat in town or on the road."),
     ).not.toBeInTheDocument()
@@ -250,7 +249,9 @@ describe('FoodView empty state', () => {
 describe('FoodView days-input destructive guards', () => {
   it('treats an emptied day field as a typo, not as zero days', async () => {
     // Number('') is 0, and 0 days deletes every slot on the list. Clearing the
-    // box to retype it must not wipe the trip.
+    // box to retype it must not wipe the trip. The confirm answers yes, so
+    // only the empty-field guard stands between the blur and the write.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     h.fetchListFood.mockResolvedValue(guardFood)
     await renderFoodView()
     const input = await screen.findByLabelText('Trip length in days')
@@ -259,6 +260,7 @@ describe('FoodView days-input destructive guards', () => {
 
     expect(h.setFoodDays).not.toHaveBeenCalled()
     expect(input).toHaveValue(3)
+    confirmSpy.mockRestore()
   })
 
   it('reverts an out-of-range value instead of committing it', async () => {
@@ -615,10 +617,8 @@ describe('FoodView add food', () => {
 })
 
 describe('FoodView stale slot ids', () => {
-  // GATE 2 finding, and it outlived the feature that first exposed it.
   // FoodView owns selectedSlotIds while the picker renders only slots that
-  // currently exist. A selected slot used to vanish by being SKIPPED; skipping
-  // is gone, but TRIMMING the trip still removes slots out from under an open
+  // currently exist. TRIMMING the trip removes slots out from under an open
   // add form. The id would survive in state, reach the server and 400 on a
   // slot that no longer exists. activeSelectedSlotIds must keep it out of both
   // the picker and the submit, without touching the typed name.

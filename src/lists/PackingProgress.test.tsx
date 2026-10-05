@@ -22,27 +22,24 @@ function renderProgress(overrides: Partial<React.ComponentProps<typeof PackingPr
 }
 
 describe('PackingProgress', () => {
-  it('counts packed against the combined total but ready against gear only', () => {
-    // 3 gear + 2 packable foods folded into the packed bar (design 8:
-    // total = listItems.length + packableTotal). Ready checks are a
-    // gear-only feature, so the ready bar keeps its own denominator - under
-    // the old shared `total` this would read "3 / 5 ready" and never
-    // complete.
+  it('judges each bar on its own count: all ready does not mean all packed', () => {
+    // The page passes the same gear-plus-food total to both bars. Each bar
+    // must still finish on its own count: everything ready with packing half
+    // done is the normal state the night before a trip.
     renderProgress({
       total: 5,
       packed: 2,
-      readyChecks: { ready: 3, total: 3, onResetReady: () => {} },
+      readyChecks: { ready: 5, total: 5, onResetReady: () => {} },
     })
     expect(screen.getByText('2 / 5 packed')).toBeTruthy()
-    expect(screen.getByText('3 / 3 ready')).toBeTruthy()
+    expect(screen.getByText('5 / 5 ready')).toBeTruthy()
     expect(screen.getByText('All ready!')).toBeTruthy()
+    expect(screen.queryByText('All packed!')).toBeNull()
   })
 
-  // Ready checks used to be a per-list opt-in whose switch lived at the top of
-  // this panel, so the ready bar rendered only when the list had opted in.
-  // They are unconditional now. Both halves are pinned: the bar always shows,
-  // and the switch is gone rather than merely defaulted on - a defaulted-on
-  // switch would still let a stray tap take the ready column away.
+  // Ready checks are unconditional. Both halves are pinned: the bar always
+  // shows, and there is no opt-in switch, not even one defaulted on - such a
+  // switch would let a stray tap take the ready column away.
   it('shows the ready bar without any opt-in', () => {
     renderProgress()
     expect(screen.getByText('0 / 3 ready')).toBeTruthy()

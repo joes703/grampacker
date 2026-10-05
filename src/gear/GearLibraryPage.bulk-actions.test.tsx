@@ -308,8 +308,8 @@ describe('GearLibraryPage bulk success handling', () => {
 
     expect(await screen.findByText("Couldn't load your gear")).toBeInTheDocument()
     expect(screen.queryByText('No gear yet')).not.toBeInTheDocument()
-    // /lists has offered a retry for the same failure since PR 4.1; telling a
-    // gear user to "refresh the page" was the odd one out.
+    // /lists offers a retry for the same failure; telling a gear user to
+    // "refresh the page" instead would be the odd one out.
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
@@ -348,19 +348,32 @@ describe('GearLibraryPage bulk success handling', () => {
       await expectActionsDisabled()
     })
 
+    // The failure tests wait for the failure panel first. The actions are
+    // also disabled on the first render, while gear is pending, so checking
+    // before the load settles would pass for the wrong reason.
     it('disables them after a gear load failure', async () => {
       h.fetchGearItems.mockRejectedValue(new Error('offline'))
       renderPage()
+      expect(await screen.findByText("Couldn't load your gear")).toBeInTheDocument()
       await expectActionsDisabled()
     })
 
-    // Categories failing alone is the case the old `canExport` missed: gear is
-    // in hand, so Export looked safe, but gearItemsToCsv resolves category
-    // NAMES out of the categories array and would have written a blank cell
-    // for every row.
+    // Categories failing alone is the easy case to miss: gear is in hand, so
+    // Export looks safe, but gearItemsToCsv resolves category NAMES out of the
+    // categories array and would write a blank cell for every row.
     it('disables them when only the categories failed', async () => {
+      let gearLoaded = false
+      h.fetchGearItems.mockImplementation(async () => {
+        gearLoaded = true
+        return [gear()]
+      })
       h.reorderableFailed.mockReturnValue(true)
       renderPage()
+      expect(await screen.findByText("Couldn't load your gear")).toBeInTheDocument()
+      // The panel shows as soon as categories fail, so also let the gear
+      // read resolve and render before checking.
+      await waitFor(() => expect(gearLoaded).toBe(true))
+      await act(async () => {})
       await expectActionsDisabled()
     })
 
@@ -413,22 +426,6 @@ describe('GearLibraryPage bulk success handling', () => {
     expect(screen.getByRole('button', { name: 'Select' })).toBeInTheDocument()
   })
 
-  it('exits select mode and closes the move dialog after a successful bulk move', async () => {
-    renderPage()
-    await selectOneItem()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Move selected' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Move to uncategorized' }))
-
-    expect(h.bulkMoveMutate).toHaveBeenCalledWith(
-      { ids: ['g1'], categoryId: null },
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
-    )
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Move selected' })).not.toBeInTheDocument())
-    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Select' })).toBeInTheDocument()
-  })
-
   // The move is optimistic, so the rows have already moved when Move is clicked.
   // The dialog closes on the CLICK: it has nothing left to show. Select mode
   // survives until success, so a failed move leaves the selection in place to
@@ -441,12 +438,18 @@ describe('GearLibraryPage bulk success handling', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Move selected' }))
     fireEvent.click(screen.getByRole('button', { name: 'Move to uncategorized' }))
 
+    expect(h.bulkMoveMutate).toHaveBeenCalledWith(
+      { ids: ['g1'], categoryId: null },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
     expect(screen.queryByRole('dialog', { name: 'Move selected' })).not.toBeInTheDocument()
     expect(screen.getByText('1 selected')).toBeInTheDocument()
 
     const options = h.bulkMoveMutate.mock.calls[0]?.[1]
     act(() => options?.onSuccess?.())
     expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Move selected' })).not.toBeInTheDocument()
   })
 
   // Each bulk write rolls back by restoring a whole-cache snapshot, so a second
@@ -482,10 +485,10 @@ describe('GearLibraryPage category delete confirmation', () => {
 
     // Close-then-mutate: the id alone, no onSuccess. `removeCategoryMutate` is
     // inert in this suite, so the confirm has to be gone WITHOUT the mutation ever
-    // settling - which is what makes this non-vacuous. The old assertion passed
-    // against a mock that synchronously invoked onSuccess, so it could not tell
-    // close-on-click from close-on-success, which is the behavior every delete
-    // confirm shares (see src/lib/mutation-error-handler.ts).
+    // settling - which is what makes this non-vacuous. A mock that called
+    // onSuccess synchronously could not tell close-on-click from
+    // close-on-success. Close-on-click is the behavior every delete confirm
+    // shares (see src/lib/mutation-error-handler.ts).
     expect(h.removeCategoryMutate).toHaveBeenCalledWith('c1')
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Delete category' })).not.toBeInTheDocument(),
