@@ -63,7 +63,9 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
   route is covered without being listed. A wildcard registration
   (middleware, or an `.all()` endpoint on a `*` path) cannot be probed that
   way, so the test lists every one; a new one fails it until someone checks
-  whether it needs the gate. A gated route whose path is anything other than
+  whether it needs the gate. Each route is probed at a URL built from its
+  pattern, with a fresh random value for every `:param`, so a literal route
+  cannot answer in its place. A gated route whose path is anything other than
   plain segments and `:param`s (a regex constraint, an optional param) also
   fails it, because the test cannot build a URL that surely reaches it.
 - Handlers receive user-scoped repositories only; ownership is fixed

@@ -64,17 +64,18 @@ describe('session gate', () => {
       ]),
     )
 
-    // The probe fills each :param with 'some-id'. Any other pattern (a regex
-    // constraint such as :id{[0-9]+}, an optional param, a wildcard) would be
-    // probed at a URL its handler may never match, and the 401 would come
-    // from somewhere else. Such a pattern fails here until this test can
-    // build a URL for it.
+    // The probe fills each :param with a fresh random value, so no literal
+    // route can match a probe URL ahead of the route under test. Any other
+    // pattern (a regex constraint such as :id{[0-9]+}, an optional param, a
+    // wildcard) would be probed at a URL its handler may never match, and the
+    // 401 would come from somewhere else. Such a pattern fails here until
+    // this test can build a URL for it.
     expect(gated.filter((route) => !/^[A-Z]+ (\/[A-Za-z0-9_-]*|\/:[A-Za-z]+)+$/.test(route))).toEqual([])
 
     const answers: string[] = []
     for (const route of gated) {
       const [method = '', pattern = ''] = route.split(' ')
-      const path = pattern.replace(/:[A-Za-z]+/g, 'some-id')
+      const path = pattern.replace(/:[A-Za-z]+/g, () => `p${crypto.randomUUID()}`)
       // No body: the gate must answer before any body validation does.
       const res = await apiRequest(null, method, path)
       answers.push(`${route} -> ${res.status}`)
