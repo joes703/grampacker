@@ -224,24 +224,6 @@ describe('food ready state on the item PATCH', () => {
 })
 
 describe('the union pack-order permutation', () => {
-  it('accepts the legacy bare-array shape (gear only)', async () => {
-    const { cookie } = await signUpVerifiedUser('up1@example.com', 'UP')
-    const list = await createList(cookie, 'Trip')
-    const a = await createGearOnList(cookie, list.id, 'Stove')
-    const b = await createGearOnList(cookie, list.id, 'Pot')
-
-    const res = await apiRequest(
-      cookie,
-      'PUT',
-      `/api/lists/${list.id}/items/pack-order`,
-      [
-        { id: a.id, packSortOrder: b.packSortOrder },
-        { id: b.id, packSortOrder: a.packSortOrder },
-      ],
-    )
-    expect(res.status).toBe(204)
-  })
-
   it('permutes ranks ACROSS gear and food in one write', async () => {
     const { cookie } = await signUpVerifiedUser('up2@example.com', 'UP')
     const list = await createList(cookie, 'Trip')

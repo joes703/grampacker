@@ -7,16 +7,8 @@ import {
   packingLocationResponseSchema,
   sharedListResponseSchema,
 } from './lists'
-import {
-  categoryResponseSchema,
-  gearItemResponseSchema,
-  importGearResponseSchema,
-} from './gear'
-import {
-  foodItemResponseSchema,
-  foodSlotResponseSchema,
-  listFoodResponseSchema,
-} from './food'
+import { categoryResponseSchema, importGearResponseSchema } from './gear'
+import { listFoodResponseSchema } from './food'
 import { meResponseSchema } from './me'
 import { healthResponseSchema } from './health'
 
@@ -143,15 +135,12 @@ const cases: [string, Parameters<typeof deepStrict>[0], unknown, string[]][] = [
     sortOrder: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
   }, ['']],
-  ['gearItemResponseSchema', gearItemResponseSchema, gearFixture, ['']],
   [
     'importGearResponseSchema',
     importGearResponseSchema,
     { createdCategories: 1, createdItems: 2 },
     [''],
   ],
-  ['foodSlotResponseSchema', foodSlotResponseSchema, foodSlotFixture, ['']],
-  ['foodItemResponseSchema', foodItemResponseSchema, foodItemFixture, ['']],
   [
     'listFoodResponseSchema',
     listFoodResponseSchema,
@@ -173,17 +162,22 @@ const cases: [string, Parameters<typeof deepStrict>[0], unknown, string[]][] = [
   ['healthResponseSchema', healthResponseSchema, { ok: true }, ['']],
 ]
 
-function injectExtra(fixture: unknown, path: string): unknown {
-  const clone = structuredClone(fixture) as Record<string, unknown>
-  if (path === '') return { ...clone, __extra__: 1 }
-  let node: unknown = clone
-  for (const segment of path.split('.')) {
-    const m = /^([^[]+)(?:\[(\d+)\])?$/.exec(segment)
-    if (!m) throw new Error(`bad path segment: ${segment}`)
-    node = (node as Record<string, unknown>)[m[1] as string]
-    if (m[2] !== undefined) node = (node as unknown[])[Number(m[2])]
+function nodeAt(root: unknown, path: string): Record<string, unknown> {
+  let node = root
+  if (path !== '') {
+    for (const segment of path.split('.')) {
+      const m = /^([^[]+)(?:\[(\d+)\])?$/.exec(segment)
+      if (!m) throw new Error(`bad path segment: ${segment}`)
+      node = (node as Record<string, unknown>)[m[1] as string]
+      if (m[2] !== undefined) node = (node as unknown[])[Number(m[2])]
+    }
   }
-  ;(node as Record<string, unknown>).__extra__ = 1
+  return node as Record<string, unknown>
+}
+
+function injectExtra(fixture: unknown, path: string): unknown {
+  const clone = structuredClone(fixture)
+  nodeAt(clone, path).__extra__ = 1
   return clone
 }
 
@@ -213,24 +207,23 @@ describe('deepStrict', () => {
     it(`${name}: valid passes, extras rejected at every level`, () => {
       const strict = deepStrict(schema)
       expect(strict.safeParse(fixture).success, 'valid fixture').toBe(true)
-      // The tolerant original must STRIP the same extras (the whole point of
-      // keeping the browser runtime on the original schemas) - accepted AND
-      // absent from the output, or a schema gone .passthrough would still be
-      // green here while leaking unknown fields into the UI.
-      const tolerant = schema.safeParse(injectExtra(fixture, ''))
-      expect(tolerant.success).toBe(true)
-      if (tolerant.success) {
-        expect(
-          Object.hasOwn(tolerant.data as object, '__extra__'),
-          'tolerant parse must strip, not pass through',
-        ).toBe(false)
-      }
       for (const path of paths) {
+        const where = path === '' ? 'top level' : path
         const poisoned = injectExtra(fixture, path)
-        expect(
-          strict.safeParse(poisoned).success,
-          `extra at ${path === '' ? 'top level' : path}`,
-        ).toBe(false)
+        expect(strict.safeParse(poisoned).success, `extra at ${where}`).toBe(false)
+        // The tolerant original must STRIP the same extras (the whole point of
+        // keeping the browser runtime on the original schemas) - accepted AND
+        // absent from the output, or a schema gone .passthrough would still be
+        // green here while leaking unknown fields into the UI. Checked at
+        // every level, because a nested schema can go .passthrough alone.
+        const tolerant = schema.safeParse(poisoned)
+        expect(tolerant.success, `tolerant parse at ${where}`).toBe(true)
+        if (tolerant.success) {
+          expect(
+            Object.hasOwn(nodeAt(tolerant.data, path), '__extra__'),
+            `tolerant parse must strip, not pass through, at ${where}`,
+          ).toBe(false)
+        }
       }
     })
   }

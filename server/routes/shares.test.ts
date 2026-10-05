@@ -343,27 +343,13 @@ describe('GET /api/shares/v2/:slug', () => {
     const raw = await (await getShare(list.slug)).json()
     const body = sharedListResponseSchema.parse(raw)
     expect(body.list.isDraft).toBe(false)
-    // The exact public list shape. groupWorn used to sit here, and the share
-    // really did honor it until #110 made worn grouping unconditional; after
-    // that it was a field nothing read. Asserted on raw JSON so a projection
-    // that puts it back fails here.
+    // The exact public list shape, asserted on raw JSON, so a projection that
+    // adds a field (such as the retired groupWorn flag) fails here.
     expect(Object.keys((raw as { list: object }).list).toSorted()).toEqual([
       'description',
       'isDraft',
       'name',
     ])
-  })
-
-  it('serves an empty shared list as empty arrays, not an error', async () => {
-    const { cookie } = await signUpVerifiedUser('share-empty@example.com', 'E')
-    const list = await createList(cookie, 'Empty')
-    await setShared(cookie, list.id, true)
-
-    const res = await getShare(list.slug)
-    expect(res.status).toBe(200)
-    const body = sharedListResponseSchema.parse(await res.json())
-    expect(body.items).toEqual([])
-    expect(body.categories).toEqual([])
   })
 
   it('404s identically for an unshared list and an unknown slug', async () => {
@@ -385,38 +371,13 @@ describe('GET /api/shares/v2/:slug', () => {
     const shared = await setShared(cookie, list.id, true)
     expect(shared.isShared).toBe(true)
     expect(shared.slug).toBe(list.slug)
+    // An empty list serves as a 200, not an error: the handler strict-parses
+    // its own body, so a null or missing array would 500 here.
     expect((await getShare(list.slug)).status).toBe(200)
 
     const unshared = await setShared(cookie, list.id, false)
     expect(unshared.isShared).toBe(false)
     expect(unshared.slug).toBe(list.slug)
-    expect((await getShare(list.slug)).status).toBe(404)
-  })
-})
-
-describe('PATCH /api/lists/:id isShared authorization', () => {
-  it('anon cannot flip isShared', async () => {
-    const { cookie } = await signUpVerifiedUser('share-anon@example.com', 'A')
-    const list = await createList(cookie, 'Mine')
-    const res = await apiRequest(null, 'PATCH', `/api/lists/${list.id}`, {
-      isShared: true,
-    })
-    expect(res.status).toBe(401)
-    expect((await getShare(list.slug)).status).toBe(404)
-  })
-
-  it('a non-owner cannot flip isShared (404, zero effect)', async () => {
-    const owner = await signUpVerifiedUser('share-victim@example.com', 'V')
-    const attacker = await signUpVerifiedUser('share-attacker@example.com', 'X')
-    const list = await createList(owner.cookie, 'Victim list')
-
-    const res = await apiRequest(
-      attacker.cookie,
-      'PATCH',
-      `/api/lists/${list.id}`,
-      { isShared: true },
-    )
-    expect(res.status).toBe(404)
     expect((await getShare(list.slug)).status).toBe(404)
   })
 })

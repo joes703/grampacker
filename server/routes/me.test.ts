@@ -4,10 +4,9 @@ import app from '../index'
 import { meResponseSchema } from '../../shared/me'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
-// /api/me is GET-only: the former PUT existed solely to update the display
-// name, and grampacker no longer collects or stores one (data-minimization
-// call, 2026-07-09). The cross-cutting CSRF tests that used that PUT as
-// their vehicle live in server/middleware/csrf.test.ts now.
+// /api/me is GET-only: grampacker does not collect or store a display name
+// (data minimization), so there is nothing to update. The cross-cutting CSRF
+// tests live in server/middleware/csrf.test.ts.
 
 describe('/api/me authorization matrix', () => {
   it('anon GET is 401', async () => {
@@ -30,18 +29,6 @@ describe('/api/me authorization matrix', () => {
     expect(Object.keys(body).sort()).toEqual(
       ['createdAt', 'email', 'emailVerified', 'id', 'passkeyCount'].sort(),
     )
-  })
-
-  it('reports passkeyCount 0 for an account that has only ever used email', async () => {
-    // This is the whole "account not fully set up" signal. It is DERIVED, not a
-    // stored flag: a column would drift the moment a passkey was deleted
-    // out-of-band. Zero here is what makes the client nag for enrollment - and a
-    // zero-passkey account is legitimate (email-only), so it is a prompt, never
-    // a gate.
-    const { cookie } = await signUpVerifiedUser('me-nopasskey@example.com', 'NoKey')
-    const res = await app.request('/api/me', { headers: { Cookie: cookie } }, env)
-    const body = meResponseSchema.parse(await res.json())
-    expect(body.passkeyCount).toBe(0)
   })
 
   it('counts only the caller OWN passkeys', async () => {
@@ -75,6 +62,11 @@ describe('/api/me authorization matrix', () => {
     const mine = await app.request('/api/me', { headers: { Cookie: owner.cookie } }, env)
     expect(meResponseSchema.parse(await mine.json()).passkeyCount).toBe(1)
 
+    // The other account has only ever used email. Zero is the whole "account
+    // not fully set up" signal, and it is DERIVED, not a stored flag: a column
+    // would drift the moment a passkey was deleted out-of-band. Zero makes the
+    // client prompt for enrollment, and an email-only account is legitimate,
+    // so it is a prompt, never a gate.
     const theirs = await app.request('/api/me', { headers: { Cookie: other.cookie } }, env)
     expect(meResponseSchema.parse(await theirs.json()).passkeyCount).toBe(0)
   })

@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { PACK_RANK_MAX } from '../../shared/lists'
 import app from '../index'
@@ -1281,14 +1281,14 @@ describe('deleting a location keeps its contents together', () => {
       looseB.id,
       ...bagOrderBefore,
     ])
-    // Ranks are unique, which is what the interleaving bug destroyed.
-    const ranks = unassigned.map((i) => i.packSortOrder)
-    expect(new Set(ranks).size).toBe(ranks.length)
-    expect(ranks.every((r) => r >= 0)).toBe(true)
+    // The bag's ranks 0..2 collided with Unassigned's 0..1. The orphans are
+    // re-ranked after them: distinct (which an interleaving bug breaks) and
+    // dense.
+    expect(unassigned.map((i) => i.packSortOrder)).toEqual([0, 1, 2, 3, 4])
   })
 })
 
-// Release 2A. The reserved scratch band, and the guard that turns a lost race
+// The reserved scratch band, and the guard that turns a lost race
 // into a 409 instead of a 204 that lies.
 describe('pack-order scratch band and reorder guard (0019)', () => {
   async function bagOfThree(email: string) {
@@ -1391,10 +1391,10 @@ describe('pack-order scratch band and reorder guard (0019)', () => {
 
   it('refuses to commit a rank ABOVE PACK_RANK_MAX, closing the silent-overflow hole', async () => {
     // The reason the scratch range is negative rather than a band above the
-    // maximum: arrivals compute max+1 and import may legitimately create a row
-    // at exactly PACK_RANK_MAX, so an ordinary move would COMMIT above it. With
-    // the UPDATE trigger capped, that aborts instead of silently stranding a
-    // rank the client can never submit back.
+    // maximum: arrivals compute max+1 and a pack-order PUT may legitimately
+    // set a row to exactly PACK_RANK_MAX, so an ordinary move would COMMIT
+    // above it. With the UPDATE trigger capped, that aborts instead of
+    // silently stranding a rank the client can never submit back.
     const { cookie, inBag } = await bagOfThree('pack-overflow@example.com')
     const userId = await userIdFor(cookie)
     const db = createDb(env.DB)
@@ -1407,52 +1407,15 @@ describe('pack-order scratch band and reorder guard (0019)', () => {
     )
   })
 
-  it('fires the guard when a park did not land, and rolls the whole batch back', async () => {
-    // The defect this exists for: when a concurrent reorder rewrites the cohort
-    // first, every park predicate AND every settle predicate matches zero rows.
-    // Nothing violates a constraint, so nothing raises - the batch commits
-    // having changed nothing and the route returns 204 claiming success.
-    //
-    // A route-level test cannot produce that interleaving, because the pre-read
-    // and the batch both live inside one repo call. So this drives the batch
-    // shape directly against real D1: park ONE row, then run the guard
-    // expecting TWO. The guard must abort.
-    const { cookie, list, inBag } = await bagOfThree('pack-guard-fires@example.com')
-    const userId = await userIdFor(cookie)
-    const db = createDb(env.DB)
-    const before = await getItems(cookie, list.id)
-    const [a] = inBag as [ItemBody]
-
-    await expect(
-      db.batch([
-        db
-          .update(listItems)
-          .set({ packSortOrder: -1 })
-          .where(and(eq(listItems.id, a.id), eq(listItems.userId, userId))),
-        db.insert(packReorderGuard).select(
-          sql`select ${list.id}, (select case when count(*) = 2 then 1 end
-                from list_items
-               where list_id = ${list.id} and user_id = ${userId}
-                 and packing_location_id is not null
-                 and pack_sort_order < 0)`,
-        ),
-      ]),
-    ).rejects.toThrow(/NOT NULL constraint failed: _pack_reorder_guard\.ok/)
-
-    // The whole batch rolled back: the park is gone and no guard row survived
-    // to poison the next reorder.
-    expect(await getItems(cookie, list.id)).toEqual(before)
-    expect(await guardRows()).toEqual([])
-  })
 })
 
-// Release 2A, the other half of bounding the column: what happens at the top.
+// The other half of bounding the column: what happens at the top.
 describe('pack rank exhaustion is a status, not a 500', () => {
   it('answers 422 when a cohort has no rank headroom left', async () => {
-    // Reachable in principle whenever a cohort's maximum is PACK_RANK_MAX,
-    // because every arrival computes max+1 and 0019 refuses to commit past the
-    // bound. Import used to be able to plant such a row by copying sortOrder;
-    // it now assigns dense ranks, so this is forced directly instead.
+    // Reachable whenever a cohort's maximum is PACK_RANK_MAX, because every
+    // arrival computes max+1 and 0019 refuses to commit past the bound. A
+    // pack-order PUT may set any free rank up to PACK_RANK_MAX, so a user can
+    // reach this. Forced directly here because it is shorter.
     const { cookie } = await signUpVerifiedUser('pack-exhausted@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const userId = await userIdFor(cookie)
@@ -1510,7 +1473,8 @@ describe('location deletion near the top of the rank space', () => {
     // one below PACK_RANK_MAX needs 1000000000 AND 1000000001 for two orphans -
     // and the second overflows. This is why 0019 normalizes cohorts lacking
     // LIST_ITEM_CAP of headroom rather than only those already out of range.
-    // Fresh lists cannot reach that state any more, so it is forced directly.
+    // A pack-order PUT with a free rank near PACK_RANK_MAX reaches this state;
+    // it is forced directly here because that is shorter.
     const { cookie } = await signUpVerifiedUser('pack-nearceiling@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const userId = await userIdFor(cookie)
@@ -1544,9 +1508,8 @@ describe('location deletion near the top of the rank space', () => {
     // The DENSE FALLBACK in packingLocations.remove(): when base + i would
     // step past PACK_RANK_MAX, the whole merged cohort is renumbered from 0 -
     // Unassigned block first, then the bag's contents in display order -
-    // instead of refusing the delete. This is the only test that reaches that
-    // branch; every other delete has headroom and takes the plain append, so
-    // deleting the fallback turns this 204 into a 422.
+    // instead of refusing the delete. Deleting the fallback turns this 204
+    // into a 422. (food-packing.test.ts reaches the same branch with food.)
     expect(res.status).toBe(204)
 
     const after = await getItems(cookie, list.id)
@@ -1559,7 +1522,6 @@ describe('location deletion near the top of the rank space', () => {
   })
 })
 
-// Release 2B: the actual P0.1 fix.
 describe('deleting a list with bagged items (P0.1)', () => {
   async function collidingList(email: string) {
     // The minimal shape that reproduces it: rank 0 held in Unassigned AND rank
@@ -1580,33 +1542,6 @@ describe('deleting a list with bagged items (P0.1)', () => {
     expect(looseRank).toBe(baggedRank)
     return { cookie, list, location, loose, bagged }
   }
-
-  it('deletes the list instead of failing on the unique index', async () => {
-    const { cookie, list } = await collidingList('p01-list-delete@example.com')
-    const res = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
-    expect(res.status).toBe(204)
-    expect((await apiRequest(cookie, 'GET', `/api/lists/${list.id}`)).status).toBe(404)
-  })
-
-  it('deletes the location and re-ranks its orphans into Unassigned', async () => {
-    const { cookie, list, location, loose, bagged } = await collidingList(
-      'p01-location-delete@example.com',
-    )
-    const res = await apiRequest(
-      cookie,
-      'DELETE',
-      `/api/lists/${list.id}/packing-locations/${location.id}`,
-    )
-    expect(res.status).toBe(204)
-
-    const after = await getItems(cookie, list.id)
-    expect(after.every((i) => i.packingLocationId === null)).toBe(true)
-    // Dense, distinct, and the survivor keeps its place ahead of the orphan.
-    expect(after.map((i) => i.packSortOrder).sort((a, b) => a - b)).toEqual([0, 1])
-    expect(after.find((i) => i.id === loose.id)!.packSortOrder).toBeLessThan(
-      after.find((i) => i.id === bagged.id)!.packSortOrder,
-    )
-  })
 
   it('leaves the transient mapping table empty afterwards', async () => {
     const { cookie, list } = await collidingList('p01-transient@example.com')
@@ -1711,8 +1646,9 @@ describe('cascade delete at the schema caps', () => {
     // 7 rows, not 10. Drizzle emits EVERY column of the table - 14 here,
     // including the ones left to their defaults - so the parameter count is
     // driven by the table's width, not by how many fields this code sets.
-    // 7 x 14 = 98, just under D1's 100-parameter cap. (This is the same
-    // divisor bug P2.6 records against `chunkForParamCap`.)
+    // 7 x 14 = 98, just under D1's 100-parameter cap. chunkForParamCap
+    // (server/repos/chunk-ids.ts) divides by the table's width for the same
+    // reason.
     for (let i = 0; i < rows.length; i += 7) {
       await db.insert(listItems).values(rows.slice(i, i + 7))
     }

@@ -23,22 +23,13 @@ describe('asset caching', () => {
     // If the shell were frozen, a deploy could never reach a returning browser -
     // it would keep asking for the old hashed bundles forever. must-revalidate on
     // the shell is exactly what makes immutable safe on everything it points to.
-    const res = await app.request('/', {}, env)
-    expect(res.status).toBe(200)
-    expect(cacheControl(res)).not.toContain('immutable')
-  })
-
-  it('a client-side route is NOT immutable', async () => {
-    // Deep links fall back to the shell, so they are the shell, and must not be
-    // frozen either.
-    const res = await app.request('/lists', {}, env)
-    expect(cacheControl(res)).not.toContain('immutable')
-  })
-
-  it('API responses are never immutable', async () => {
-    const res = await app.request('/api/health', {}, env)
-    expect(res.status).toBe(200)
-    expect(cacheControl(res)).not.toContain('immutable')
+    // A deep link falls back to the shell, so it is the shell too. An API
+    // response is never immutable either.
+    for (const path of ['/', '/lists', '/api/health']) {
+      const res = await app.request(path, {}, env)
+      expect(res.status, path).toBe(200)
+      expect(cacheControl(res), path).not.toContain('immutable')
+    }
   })
 
   it('an UNHASHED path under /assets/ is not immutable', async () => {

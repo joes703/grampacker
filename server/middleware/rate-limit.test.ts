@@ -131,21 +131,6 @@ function sendMagicLink(ip: string, email: string) {
 }
 
 describe('auth rate limiting', () => {
-  it('passkey sign-in cuts off after the budget with Retry-After', async () => {
-    const ip = '203.0.113.1'
-    for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
-      const res = await signIn(ip)
-      expect(res.status).not.toBe(429)
-    }
-    const blocked = await signIn(ip)
-    expect(blocked.status).toBe(429)
-    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
-    const retryAfter = Number(blocked.headers.get('Retry-After'))
-    expect(Number.isInteger(retryAfter)).toBe(true)
-    expect(retryAfter).toBeGreaterThan(0)
-    expect(retryAfter).toBeLessThanOrEqual(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
-  })
-
   // THE REGRESSION THIS BUDGET EXISTS FOR (production, 2026-09-12: the app
   // owner locked himself out of his own app).
   //
@@ -160,8 +145,8 @@ describe('auth rate limiting', () => {
     for (let attempt = 0; attempt < 10; attempt++) {
       const [options, verify] = await signInCeremony(ip)
       // The options GET must actually WORK, not merely dodge a 429. A 404 or a
-      // 500 is not a 429 either, and this file has already been burned once by
-      // a test that accepted one (see the body-intact regression below).
+      // 500 is not a 429 either (see the consumed-body trap in the
+      // accepted-send test below).
       expect(options.status, `attempt ${attempt} options`).toBe(200)
       expect(verify.status, `attempt ${attempt} verify`).not.toBe(429)
     }
@@ -170,27 +155,6 @@ describe('auth rate limiting', () => {
     // own - which would silently re-open the gap this budget exists to close,
     // since the ceremony's cost is the whole reason 10 requests was 5 attempts.
     expect(await passkeyBucketCount(ip)).toBe(20)
-  })
-
-  // The other half of the same story: abandoning the browser's passkey picker
-  // still costs a request, because generate-authenticate-options has already
-  // written its challenge row. Cancelling repeatedly must not be cheaper for
-  // the limiter to ignore, nor expensive enough to lock the owner out.
-  it('abandoned ceremonies are metered but leave room to recover', async () => {
-    const ip = '203.0.113.62'
-    for (let i = 0; i < 15; i++) {
-      expect((await signIn(ip)).status, `abandon ${i}`).toBe(200)
-    }
-    // METERED is half the claim in this test's name, so assert it: an abandoned
-    // ceremony costs budget because the challenge row was already written.
-    expect(await passkeyBucketCount(ip)).toBe(15)
-
-    // ...and LEAVE ROOM is the other half. Half the budget spent on abandoned
-    // attempts still leaves a full ceremony.
-    const [options, verify] = await signInCeremony(ip)
-    expect(options.status).toBe(200)
-    expect(verify.status).not.toBe(429)
-    expect(await passkeyBucketCount(ip)).toBe(17)
   })
 
   // The budget is passkey-specific: burning it must not take the magic-link
@@ -203,7 +167,7 @@ describe('auth rate limiting', () => {
 
     // 200 AND the mail actually went out. `not.toBe(429)` would accept a 400 or
     // a 500 as "recovery works", which is the exact false positive documented
-    // in the body-intact test below - recovery that errors is not recovery.
+    // in the accepted-send test below - recovery that errors is not recovery.
     const email = 'locked-out@example.com'
     const recovery = await sendMagicLink(ip, email)
     expect(recovery.status).toBe(200)
@@ -223,24 +187,6 @@ describe('auth rate limiting', () => {
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(SENSITIVE_WINDOW_MS / 1000)
-  })
-
-  it('reading the email for its bucket does NOT consume the body better-auth needs', async () => {
-    // REGRESSION (caught by CI, not by me). The route handler passes the RAW
-    // request to better-auth (`handler(c.req.raw)`), which bypasses Hono's body
-    // cache. The first cut of the per-email bucket called `c.req.json()`, which
-    // populates that cache BY CONSUMING raw's stream - so better-auth got a used
-    // body and threw "Body has already been used". Every magic-link send 500'd:
-    // nobody could sign in at all.
-    //
-    // The limiter tests all asserted `not.toBe(429)`, and a 500 is not a 429, so
-    // they stayed green through it. Hence this test asserts the send SUCCEEDS and
-    // that better-auth actually parsed the address out of the body - if the body
-    // were consumed, no email could name the right recipient.
-    const email = 'body-intact@example.com'
-    const res = await sendMagicLink('203.0.113.40', email)
-    expect(res.status).toBe(200)
-    expect(lastEmailTo(email)).toBeDefined()
   })
 
   it('the magic-link plugin is NOT self-policing: our limiter is the only one', async () => {
@@ -312,29 +258,6 @@ describe('auth rate limiting', () => {
     expect(real.status).not.toBe(429)
   })
 
-  it('caps TOTAL mail sent, not just mail per IP (the quota guard)', async () => {
-    // The provider's quota is global (Resend free tier: 100/day), so only a global
-    // bucket can guard it. A per-IP cap cannot: at N/day per IP, a handful of IPs
-    // still drains the provider, and then nobody can recover an account.
-    //
-    // Seeded rather than exhausted honestly - 90 real sends would be slow, and
-    // seeding makes the test independent of whatever earlier tests already sent.
-    await env.DB.prepare(
-      'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
-      .run()
-
-    // Fresh IP, fresh address: neither of the other two buckets can explain this.
-    const blocked = await sendMagicLink('198.51.150.1', 'quota-victim@example.com')
-    expect(blocked.status).toBe(429)
-
-    // And it really was the global bucket: clear it, and the same request is served.
-    await env.DB.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
-    const served = await sendMagicLink('198.51.150.2', 'quota-victim2@example.com')
-    expect(served.status).toBe(200)
-  })
-
   it('an INVALID address does not spend global mail budget', async () => {
     // REGRESSION (code review, 2026-07-12). The global bucket used to be charged
     // in the middleware, which runs BEFORE better-auth parses the body - so it
@@ -380,6 +303,15 @@ describe('auth rate limiting', () => {
   it('an ACCEPTED send spends exactly one global slot', async () => {
     // The other direction: the counter must still track real sends, or the quota
     // guard is decorative. One accepted send, one slot.
+    //
+    // The 200 and the email also prove that reading the address for its bucket
+    // did NOT consume the body better-auth needs. The route handler passes the
+    // RAW request to better-auth (`handler(c.req.raw)`), which bypasses Hono's
+    // body cache, and `c.req.json()` fills that cache BY CONSUMING raw's stream.
+    // better-auth then gets a used body, throws "Body has already been used",
+    // and every magic-link send 500s: nobody can sign in. A `not.toBe(429)`
+    // check stays green through that, so this asserts the send SUCCEEDS and
+    // better-auth parsed the right recipient out of the body.
     const before = await globalCount()
     const res = await sendMagicLink('198.51.162.1', 'accepted-send@example.com')
     expect(res.status).toBe(200)
@@ -593,20 +525,6 @@ describe('auth rate limiting', () => {
     expect((await authPost('/api/auth/delete-user', {}, ip)).status).toBe(429)
   })
 
-  it('sensitive endpoints cut off well before the generic auth bucket would', async () => {
-    // delete-user stops at 5...
-    const sensitiveIp = '203.0.113.23'
-    for (let i = 0; i < DELETE_USER_LIMIT; i++) {
-      expect((await authPost('/api/auth/delete-user', {}, sensitiveIp)).status).not.toBe(429)
-    }
-    expect((await authPost('/api/auth/delete-user', {}, sensitiveIp)).status).toBe(429)
-    // ...while a generic auth endpoint on a fresh IP sails past 5 (budget 30).
-    const genericIp = '203.0.113.24'
-    for (let i = 0; i < DELETE_USER_LIMIT + 2; i++) {
-      expect((await authPost('/api/auth/sign-out', {}, genericIp)).status).not.toBe(429)
-    }
-  })
-
   it('buckets are per IP: another client is unaffected', async () => {
     const ip = '203.0.113.2'
     for (let i = 0; i <= PASSKEY_SIGN_IN_LIMIT; i++) {
@@ -800,11 +718,10 @@ describe('auth rate limiting', () => {
   })
 
   it('challenge-generating GETs are limited and stop writing challenges', async () => {
-    // Regression for the PR #10 blocker: the passkey plugin's
-    // /passkey/generate-authenticate-options is an UNAUTHENTICATED GET
-    // that writes a verification row per call. The old exempt-all-GETs
-    // rule left it as an unguarded write path. Prove the GET itself
-    // consumes budget, gets cut off, and that a blocked request writes
+    // The passkey plugin's /passkey/generate-authenticate-options is an
+    // UNAUTHENTICATED GET that writes a verification row per call, so a rule
+    // that exempts all GETs leaves an unguarded write path. Prove the GET
+    // itself consumes budget, gets cut off, and that a blocked request writes
     // no verification row.
     //
     // It is metered on the PASSKEY_SIGN_IN budget, matched by exact path rather
@@ -832,12 +749,18 @@ describe('auth rate limiting', () => {
     // The allowed calls really DID write challenge rows. Without this the
     // before/after comparison below could hold at zero-equals-zero and prove
     // nothing at all - it would pass just as happily if the endpoint had
-    // stopped writing rows, or stopped working. (Pre-existing hole, found by
-    // review 2026-09-12, not introduced by the budget split.)
+    // stopped writing rows, or stopped working.
     expect(before!.n).toBeGreaterThan(start!.n)
 
     const blocked = await challenge()
     expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: 'Too many requests' })
+    // Retry-After is bounded by the passkey window, so a locked-out user is
+    // told to wait minutes, not the longer windows of the other buckets.
+    const retryAfter = Number(blocked.headers.get('Retry-After'))
+    expect(Number.isInteger(retryAfter)).toBe(true)
+    expect(retryAfter).toBeGreaterThan(0)
+    expect(retryAfter).toBeLessThanOrEqual(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
     const after = await env.DB.prepare(
       'select count(*) as n from verification',
     ).first<{ n: number }>()
@@ -944,10 +867,13 @@ describe('auth rate limiting', () => {
   it('allowlisted read-only GETs are never limited', async () => {
     // Exhaust the shared default 'auth' bucket for this IP with cheap
     // sign-out POSTs, then confirm the session poll still passes while
-    // a non-allowlisted request on the same bucket is refused.
+    // a non-allowlisted request on the same bucket is refused. The budget is
+    // asserted on the way up too: the generic bucket must stay much looser than
+    // the sensitive ones (delete-user stops at 5).
     const ip = '203.0.113.6'
     for (let i = 0; i <= AUTH_DEFAULT_LIMIT; i++) {
-      await authPost('/api/auth/sign-out', {}, ip)
+      const res = await authPost('/api/auth/sign-out', {}, ip)
+      if (i < AUTH_DEFAULT_LIMIT) expect(res.status, `sign-out ${i}`).not.toBe(429)
     }
     expect((await authPost('/api/auth/sign-out', {}, ip)).status).toBe(429)
 

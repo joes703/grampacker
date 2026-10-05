@@ -94,13 +94,15 @@ describe('security headers', () => {
 
   it('allows the Cloudflare Web Analytics beacon in script-src, and ONLY there', () => {
     // Cloudflare injects the beacon into our HTML at the edge (verified on the
-    // wire; it only injects when the request sends Accept: text/html, which is
-    // why a plain curl appears to show a clean document and this contradiction
-    // survived a review). With `script-src 'self'` the browser blocked it on
-    // every page load: analytics collected nothing, and a permanent CSP
-    // violation sat in the console ready to mask a real one. Allowing it is a
-    // deliberate expansion of script trust, taken because the alternative was
-    // paying the cost and getting no data.
+    // wire; it only injects when the request sends Accept: text/html, so a
+    // plain curl shows a clean document). With `script-src 'self'` the browser
+    // blocked it on every page load: analytics collected nothing, and a
+    // permanent CSP violation sat in the console ready to mask a real one.
+    // Allowing it is a deliberate expansion of script trust, taken because the
+    // alternative was paying the cost and getting no data.
+    //
+    // parseCsp throws on a duplicate directive, so this also proves there is
+    // none (see parseCsp for why a duplicate is dangerous).
     const csp = parseCsp(securityHeaderMap({ dev: false })['Content-Security-Policy'] ?? '')
 
     // Path-restricted, not host-wide: a host-only source authorizes every
@@ -111,7 +113,7 @@ describe('security headers', () => {
     // ...and the policy must actually permit the script Cloudflare really
     // injects. A path-restricted source that does not match the live URL would
     // be a stricter-looking policy that leaves the beacon just as blocked as
-    // before, which is the bug this PR exists to fix.
+    // before.
     expect(INSIGHTS_SRCS.some((src) => sourceAllows(src, INJECTED_BEACON_URL))).toBe(true)
 
     // The load-bearing half. An edge-injected beacon reports to the SAME-ORIGIN
@@ -138,15 +140,6 @@ describe('security headers', () => {
       if (name === 'script-src') continue
       expect(value, `${name} must not mention the beacon origin`).not.toContain(INSIGHTS_HOST)
     }
-  })
-
-  it('the CSP has no duplicate directives', () => {
-    // Browsers honor the first occurrence of a directive and ignore the rest, so
-    // a duplicate is a silent way for a policy to read stricter than it enforces.
-    // parseCsp throws on one.
-    expect(() =>
-      parseCsp(securityHeaderMap({ dev: false })['Content-Security-Policy'] ?? ''),
-    ).not.toThrow()
   })
 
   it('API responses carry the full production set', async () => {

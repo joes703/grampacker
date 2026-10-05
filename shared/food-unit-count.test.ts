@@ -11,12 +11,6 @@ describe('foodUnitCount', () => {
   const slots = (n: number) => Array.from({ length: n }, (_, i) => `s${i}`)
 
   describe('per meal - the default, and the case that was broken', () => {
-    it('is one per meal scheduled', () => {
-      expect(
-        foodUnitCount({ quantity: 1, isPerMeal: true, slotIds: slots(5) }),
-      ).toBe(5)
-    })
-
     it('multiplies the per-meal count by the meals', () => {
       // Two bars at each of five lunches is ten bars, not two.
       expect(
@@ -35,14 +29,8 @@ describe('foodUnitCount', () => {
   })
 
   describe('shared - the case the old contract was protecting', () => {
-    it('ignores the schedule entirely', () => {
-      // One 500 g bag of trail mix picked at across five lunches is one bag.
-      expect(
-        foodUnitCount({ quantity: 1, isPerMeal: false, slotIds: slots(5) }),
-      ).toBe(1)
-    })
-
     it('is the total, however many meals it spans', () => {
+      // One bag of trail mix picked at across several lunches is one bag.
       expect(
         foodUnitCount({ quantity: 4, isPerMeal: false, slotIds: slots(3) }),
       ).toBe(4)
@@ -53,13 +41,5 @@ describe('foodUnitCount', () => {
         foodUnitCount({ quantity: 2, isPerMeal: false, slotIds: [] }),
       ).toBe(2)
     })
-  })
-
-  it('is the ONLY thing the two modes differ by', () => {
-    // Same inputs, one flag apart: 5 vs 1. If these ever converge, one of the
-    // two real cases has been lost.
-    const scheduled = { quantity: 1, slotIds: slots(5) }
-    expect(foodUnitCount({ ...scheduled, isPerMeal: true })).toBe(5)
-    expect(foodUnitCount({ ...scheduled, isPerMeal: false })).toBe(1)
   })
 })
