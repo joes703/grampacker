@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router'
-import type { ReactNode } from 'react'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
-import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import { useLocation, useNavigationType } from 'react-router'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import {
+  emptyFood,
+  list,
+  listId,
+  renderListDetailPage,
+  shimDialog,
+  stubViewport,
+} from './test/list-detail-harness'
 
 // Pack's entry point back to the gear library.
 //
@@ -19,17 +22,6 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 //
 // Which surface carries the trigger is the whole point of these tests, so
 // they assert per-breakpoint and per-view rather than just "a button exists".
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
 
 const gear = {
   id: 'gear-1',
@@ -51,8 +43,6 @@ const listItem = {
   sortOrder: 0,
 } as unknown as ListItemWithGear
 
-const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
-
 const wornItem = {
   ...listItem,
   id: 'li-worn',
@@ -73,13 +63,9 @@ const h = vi.hoisted(() => ({
   quickAddListItem: vi.fn(),
 }))
 
-// The page calls authClient.useSession(), which mounts better-auth's nanostores
-// session atom. Nanostores keeps an unmounted store alive on a ~1s timer, and
-// when that timer fires AFTER vitest has torn down this file's jsdom
-// environment, better-auth's cleanupBroadcastSetup touches `window` and throws
-// an unhandled ReferenceError - failing CI with every test still passing.
-// Mocking the client means the atom never mounts. The session is read here only
-// for the last-list pointer's owner id, which no test in this file asserts on.
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why). The session is read here only for the last-list pointer's
+// owner id, which no test in this file asserts on.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -89,54 +75,11 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderDetail(path: string) {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
-  // Anchors on content that only exists past the detail loading gate. Food
-  // used to render inline in both List and Pack (that was the regression
-  // this file's tests were written to catch), so its heading was a
-  // convenient anchor reachable from either mode; food now has its own route
-  // and does not render inline in Pack, so a Food-based anchor is gone.
+  await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack'])
+  // Anchors on content that only exists past the detail loading gate.
   //
-  // The gear item's own name is NOT a safe substitute here: in List (edit)
+  // The gear item's own name is NOT a safe anchor here: in List (edit)
   // view it renders in the desktop library aside too, which mounts OUTSIDE
   // the detail gate (it needs only the gear query) - so it would let this
   // file's negative assertions (no Add-gear button, no packing kebab, no
@@ -144,11 +87,10 @@ async function renderDetail(path: string) {
   // render. Branch on mode instead, anchoring on something that is both
   // unconditional in that mode AND strictly inside the loaded branch:
   // the packing-location create form in Pack, the category section's
-  // "Add new item" footer in Edit. Edit used to anchor on the Food summary
-  // row; food is a section of rows now and this list has no food. The
-  // section HEADER is not usable either - the picker aside groups by
-  // category too, so "Collapse Uncategorized" matches twice. The footer
-  // control exists only on the document side.
+  // "Add new item" footer in Edit. This list has no food, so no food row can
+  // serve as the anchor. The section HEADER is not usable either - the
+  // picker aside groups by category too, so "Collapse Uncategorized" matches
+  // twice. The footer control exists only on the document side.
   if (path.endsWith('/pack')) {
     await screen.findByLabelText('New packing location')
   } else {
@@ -158,16 +100,8 @@ async function renderDetail(path: string) {
 
 const addGear = () => screen.queryByRole('button', { name: 'Add gear' })
 
-// jsdom implements <dialog> without its modal methods, and the gear editor is
-// a Modal. Same shim ListDetailPage.edit-gear.test.tsx uses.
-beforeAll(() => {
-  if (!HTMLDialogElement.prototype.showModal) {
-    HTMLDialogElement.prototype.showModal = function () { this.open = true }
-  }
-  if (!HTMLDialogElement.prototype.close) {
-    HTMLDialogElement.prototype.close = function () { this.open = false }
-  }
-})
+// The gear editor is a Modal, which jsdom cannot open without the shim.
+beforeAll(shimDialog)
 
 beforeEach(() => {
   h.fetchLists.mockResolvedValue([list])
@@ -436,25 +370,11 @@ describe('rewriting retired list URLs', () => {
   }
 
   async function renderAtRetiredRoute(path: string) {
-    const { default: ListDetailPage } = await import('./ListDetailPage')
-    const page = (
-      <>
-        <ListDetailPage />
-        <LocationProbe />
-      </>
-    )
     stubViewport(1024)
-    render(
-      <Providers>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/lists/:id" element={page} />
-            <Route path="/lists/:id/pack" element={page} />
-            <Route path="/lists/:id/organize" element={page} />
-            <Route path="/lists/:id/pack/organize" element={page} />
-          </Routes>
-        </MemoryRouter>
-      </Providers>,
+    await renderListDetailPage(
+      path,
+      ['/lists/:id', '/lists/:id/pack', '/lists/:id/organize', '/lists/:id/pack/organize'],
+      { beside: <LocationProbe /> },
     )
     // Every entry this describe uses derives to Pack, so Pack's loaded anchor
     // is the gate (renderDetail picks its anchor by path suffix and would wait

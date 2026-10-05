@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import { makeDnDId } from '../lib/dnd-ids'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
-import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import {
+  emptyFood,
+  list,
+  listId,
+  renderListDetailPage,
+  stubViewport,
+} from './test/list-detail-harness'
 
 // A pack drag while "Use as container" is still saving.
 //
@@ -19,17 +21,6 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 // in its old bag. The drag planner has to plan against the same rows: counting
 // the hidden header would compute the move against a sequence the user is not
 // looking at, and rewrite the header's rank as a side effect.
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
 
 function gearRow(id: string, name: string, rank: number): ListItemWithGear {
   return {
@@ -61,8 +52,6 @@ const backpack: PackingLocation = {
   containerListItemId: null,
 }
 
-const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
-
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
@@ -74,7 +63,7 @@ const h = vi.hoisted(() => ({
   reorderPackListItems: vi.fn(),
 }))
 
-// See ListDetailPage.locations-failure.test.tsx: mocking the auth client keeps
+// See test/list-detail-harness.tsx: mocking the auth client keeps
 // better-auth's session atom from outliving jsdom.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
@@ -123,46 +112,8 @@ vi.mock('@dnd-kit/sortable', async () => {
   }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderPack() {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[`/lists/${listId}/pack`]}>
-        <Routes>
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(`/lists/${listId}/pack`, ['/lists/:id/pack'])
 }
 
 beforeEach(() => {

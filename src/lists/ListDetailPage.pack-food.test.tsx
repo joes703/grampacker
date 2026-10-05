@@ -1,30 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import type { ReactNode } from 'react'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import { list, listId, renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
-// Food as a full peer of gear in Pack mode (0022). What these tests pin:
+// Food as a full peer of gear in Pack mode. What these tests pin:
 // food rows render as checkable pack rows, the checkbox PATCHes the food
 // item, the progress header counts the union, and none of it leaks into the
 // List (edit) view - food's editing surface stays the Food view.
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
 
 const gear = {
   id: 'gear-1',
@@ -76,6 +61,8 @@ const h = vi.hoisted(() => ({
   updateFoodItem: vi.fn(),
 }))
 
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why).
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -92,47 +79,8 @@ vi.mock('../lib/queries/food', async (importOriginal) => {
   return { ...actual, updateFoodItem: h.updateFoodItem }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderDetail(path: string) {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack'])
   // Same anchors as ListDetailPage.pack.test.tsx: strictly inside the loaded
   // branch of each mode.
   if (path.endsWith('/pack')) {

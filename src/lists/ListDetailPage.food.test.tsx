@@ -1,13 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, cleanup, screen, within } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import type { ReactNode } from 'react'
+import { cleanup, screen, within } from '@testing-library/react'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 // The first page-level test for ListDetailPage. It exists for invariants that
 // unit tests structurally cannot reach: WHERE in the page food is mounted,
@@ -72,13 +68,9 @@ const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
 }))
 
-// The page calls authClient.useSession(), which mounts better-auth's nanostores
-// session atom. Nanostores keeps an unmounted store alive on a ~1s timer, and
-// when that timer fires AFTER vitest has torn down this file's jsdom
-// environment, better-auth's cleanupBroadcastSetup touches `window` and throws
-// an unhandled ReferenceError - failing CI with every test still passing.
-// Mocking the client means the atom never mounts. The session is read here only
-// for the last-list pointer's owner id, which no test in this file asserts on.
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why). The session is read here only for the last-list pointer's
+// owner id, which no test in this file asserts on.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -88,51 +80,8 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-// jsdom has no matchMedia; the page reads breakpoints to decide which of the
-// mobile/desktop surfaces to mount. Answer as a desktop viewport.
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderDetail(path: string) {
-  // Imported lazily so the module-level query mocks are installed first.
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-          <Route path="/lists/:id/food" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack', '/lists/:id/food'])
 }
 
 const foodHeading = () => screen.queryByRole('heading', { name: 'Food' })

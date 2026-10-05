@@ -8,14 +8,17 @@
 // which list they were working in.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider, onlineManager, useQuery } from '@tanstack/react-query'
+import { QueryClient, onlineManager, useQuery } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 import { writeLastListPath, readLastListPath } from '../lib/last-list-path'
 import { queryKeys, fetchLists } from '../lib/queries'
+import {
+  ListDetailProviders,
+  stubViewport,
+  testQueryClient,
+} from './test/list-detail-harness'
 
 // The last-list pointer is owner-tagged: both ListDetailPage's write/self-heal
 // and the test's own pointer setup must use the SAME account, or the self-heal
@@ -76,45 +79,25 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
 // seedLists pre-populates the ['lists'] cache so the page mounts with data
 // already in hand, which is the only way to reach "cached collection defined
 // but missing the route id". A failed refetch RETAINS the previous data, so it
 // cannot produce that state on its own.
 async function renderDetail(seedLists?: List[]) {
   const { default: ListDetailPage } = await import('./ListDetailPage')
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
+  const qc = testQueryClient()
   if (seedLists) qc.setQueryData(queryKeys.lists(), seedLists)
+  // The probe sits outside the router, beside the page rather than inside its
+  // route, so this file keeps its own render.
   render(
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>
-          <ListsQueryProbe />
-          <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-            <Routes>
-              <Route path="/lists/:id" element={<ListDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>,
+    <ListDetailProviders client={qc}>
+      <ListsQueryProbe />
+      <MemoryRouter initialEntries={[`/lists/${listId}`]}>
+        <Routes>
+          <Route path="/lists/:id" element={<ListDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </ListDetailProviders>,
   )
   return qc
 }

@@ -1,13 +1,9 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import type { ReactNode } from 'react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import type { Category, GearItem, List, ListItemWithGear } from '../lib/types'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
 
 // ListDetailPage's edit-gear dialog is a two-stage async save - gear first, then the
 // per-list patch - and a dialog the user can dismiss at any point during it. Three
@@ -104,13 +100,9 @@ const h = vi.hoisted(() => ({
   updateListItem: vi.fn<(listId: string, itemId: string, patch: unknown) => Promise<unknown>>(),
 }))
 
-// The page calls authClient.useSession(), which mounts better-auth's nanostores
-// session atom. Nanostores keeps an unmounted store alive on a ~1s timer, and
-// when that timer fires AFTER vitest has torn down this file's jsdom
-// environment, better-auth's cleanupBroadcastSetup touches `window` and throws
-// an unhandled ReferenceError - failing CI with every test still passing.
-// Mocking the client means the atom never mounts. The session is read here only
-// for the last-list pointer's owner id, which no test in this file asserts on.
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why). The session is read here only for the last-list pointer's
+// owner id, which no test in this file asserts on.
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -138,46 +130,8 @@ vi.mock('./CategoryGroup', () => ({
   ),
 }))
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderDetail() {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-        <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
   return screen.findByRole('button', { name: 'Edit Tent' })
 }
 
@@ -185,14 +139,7 @@ function nameField(): HTMLInputElement {
   return screen.getByLabelText(/^Name/) as HTMLInputElement
 }
 
-beforeAll(() => {
-  if (!HTMLDialogElement.prototype.showModal) {
-    HTMLDialogElement.prototype.showModal = function () { this.open = true }
-  }
-  if (!HTMLDialogElement.prototype.close) {
-    HTMLDialogElement.prototype.close = function () { this.open = false }
-  }
-})
+beforeAll(shimDialog)
 
 beforeEach(() => {
   stubViewport(1280)

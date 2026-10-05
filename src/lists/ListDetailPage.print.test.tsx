@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, cleanup, screen, within } from '@testing-library/react'
+import { act, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router'
-import type { ReactNode } from 'react'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
-import type { ListFoodResponse } from '../../shared/food'
-import { MobilePrimaryNavProvider } from '../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
+import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import {
+  emptyFood,
+  list,
+  listId,
+  renderListDetailPage,
+  shimDialog,
+  stubViewport,
+} from './test/list-detail-harness'
 
 // Printing a pack list.
 //
@@ -25,17 +27,6 @@ import { SidebarDrawerProvider } from '../layout/sidebar-drawer-context'
 // shared tokens, so a later edit cannot quietly drop them. What none of this
 // can prove is that the sheet LOOKS right - jsdom paginates nothing. That
 // check is a human in a print preview.
-
-const listId = 'list-1'
-
-const list = {
-  id: listId,
-  name: 'Sierra High Route',
-  isShared: false,
-  shareSlug: null,
-  description: null,
-  updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
 
 const gear = {
   id: 'gear-1',
@@ -67,8 +58,6 @@ const packedItem = {
   sortOrder: 1,
 } as unknown as ListItemWithGear
 
-const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
-
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
   fetchListItems: vi.fn(),
@@ -78,8 +67,8 @@ const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
 }))
 
-// Same reason as ListDetailPage.pack.test.tsx: keep better-auth's nanostores
-// session atom from outliving this file's jsdom environment.
+// Keeps better-auth's nanostores session atom from outliving this file's
+// jsdom environment (test/list-detail-harness.tsx explains why).
 vi.mock('../lib/auth-client', () => ({
   authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
 }))
@@ -89,46 +78,8 @@ vi.mock('../lib/queries', async (importOriginal) => {
   return { ...actual, ...h }
 })
 
-function stubViewport(width: number) {
-  vi.stubGlobal('matchMedia', (query: string) => {
-    const m = /width\s*<\s*([\d.]+)rem/.exec(query)
-    return {
-      matches: m ? width < Number(m[1]) * 16 : false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }
-  })
-}
-
-function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
-    <QueryClientProvider client={qc}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
-    </QueryClientProvider>
-  )
-}
-
 async function renderPack() {
-  const { default: ListDetailPage } = await import('./ListDetailPage')
-  render(
-    <Providers>
-      <MemoryRouter initialEntries={[`/lists/${listId}/pack`]}>
-        <Routes>
-          <Route path="/lists/:id/pack" element={<ListDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    </Providers>,
-  )
+  await renderListDetailPage(`/lists/${listId}/pack`, ['/lists/:id/pack'])
   await screen.findByLabelText('New packing location')
 }
 
@@ -146,14 +97,7 @@ function fireAfterPrint() {
   })
 }
 
-beforeAll(() => {
-  if (!HTMLDialogElement.prototype.showModal) {
-    HTMLDialogElement.prototype.showModal = function () { this.open = true }
-  }
-  if (!HTMLDialogElement.prototype.close) {
-    HTMLDialogElement.prototype.close = function () { this.open = false }
-  }
-})
+beforeAll(shimDialog)
 
 beforeEach(() => {
   h.fetchLists.mockResolvedValue([list])
@@ -226,16 +170,7 @@ describe('printing renders collapsed sections too', () => {
   // the paper to say why.
   it('restores a section collapsed in List view', async () => {
     const user = userEvent.setup()
-    const { default: ListDetailPage } = await import('./ListDetailPage')
-    render(
-      <Providers>
-        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-          <Routes>
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </Providers>,
-    )
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
     await screen.findByRole('button', { name: 'Add new item' })
 
     // Scoped to the document column: the desktop gear picker aside groups by
@@ -251,16 +186,7 @@ describe('printing renders collapsed sections too', () => {
 
   it('leaves the section collapsed again afterwards', async () => {
     const user = userEvent.setup()
-    const { default: ListDetailPage } = await import('./ListDetailPage')
-    render(
-      <Providers>
-        <MemoryRouter initialEntries={[`/lists/${listId}`]}>
-          <Routes>
-            <Route path="/lists/:id" element={<ListDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </Providers>,
-    )
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
     await screen.findByRole('button', { name: 'Add new item' })
 
     const doc = () => within(screen.getByTestId('list-document-column'))
