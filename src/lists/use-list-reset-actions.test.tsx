@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { ListItemWithGear } from '../lib/types'
 
-// resetPacked / resetReady were inline in ListDetailPage (which has no component
-// test), so this is coverage for their field-scoped optimistic rollback - the
-// subtle part is that each reset only restores its OWN field on failure, so a
-// failing reset never stomps the other reset's clear. We drive the hook with a
-// REAL QueryClient (seeded via setQueryData) and mock only the fetch helpers +
-// toast, because the cache cancel/snapshot/clear/rollback/invalidate lifecycle
-// IS the contract here, not an implementation detail to stub out.
+// Coverage for resetPacked / resetReady and their field-scoped optimistic
+// rollback. The subtle part is that each reset only restores its OWN field on
+// failure, so a failing reset never stomps the other reset's clear. We drive
+// the hook with a REAL QueryClient (seeded via setQueryData) and mock only the
+// fetch helpers + toast, because the cache
+// cancel/snapshot/clear/rollback/invalidate lifecycle IS the contract here,
+// not an implementation detail to stub out.
 
 const LIST_ID = 'list-1'
 const KEY = ['list-items', LIST_ID] as const
@@ -74,14 +74,25 @@ afterEach(() => vi.clearAllMocks())
 describe('useListResetActions', () => {
   describe('resetPacked', () => {
     it('optimistically clears isPacked on every cached item', async () => {
+      // Held pending, so the check runs while the request is in flight:
+      // "optimistic" means cleared before the server answers.
+      let finish: () => void = () => {}
+      h.resetPackedForList.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { finish = resolve }),
+      )
       const { qc, result } = setup([
         item({ id: 'a', isPacked: true }),
         item({ id: 'b', isPacked: false }),
       ])
 
-      await act(async () => { await result.current.resetPacked() })
+      let done: Promise<void> = Promise.resolve()
+      act(() => { done = result.current.resetPacked() })
+      await waitFor(() => expect(h.resetPackedForList).toHaveBeenCalled())
 
       expect(read(qc).every((i) => !i.isPacked)).toBe(true)
+
+      finish()
+      await act(async () => { await done })
     })
 
     it('calls resetPackedForList with the list id', async () => {
@@ -122,14 +133,23 @@ describe('useListResetActions', () => {
 
   describe('resetReady', () => {
     it('optimistically clears isReady on every cached item', async () => {
+      let finish: () => void = () => {}
+      h.resetReadyForList.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { finish = resolve }),
+      )
       const { qc, result } = setup([
         item({ id: 'a', isReady: true }),
         item({ id: 'b', isReady: false }),
       ])
 
-      await act(async () => { await result.current.resetReady() })
+      let done: Promise<void> = Promise.resolve()
+      act(() => { done = result.current.resetReady() })
+      await waitFor(() => expect(h.resetReadyForList).toHaveBeenCalled())
 
       expect(read(qc).every((i) => !i.isReady)).toBe(true)
+
+      finish()
+      await act(async () => { await done })
     })
 
     it('calls resetReadyForList with the list id', async () => {

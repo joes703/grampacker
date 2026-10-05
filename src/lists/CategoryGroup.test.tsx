@@ -140,12 +140,12 @@ describe('CategoryGroup worn extraction', () => {
   })
 })
 
-// The per-section footer subtotal. This used to be summed inside CategoryGroup
-// from its own rows, which counted consumables and worn items into it, so the subtotals never
-// reconciled with the summary panel's Base weight, and an unrelated display
-// toggle changed what the number meant.
+// The per-section footer subtotal. Summed inside CategoryGroup from its own
+// rows, it would count consumables and worn items, so the subtotals would not
+// reconcile with the summary panel's Base weight, and an unrelated display
+// toggle would change what the number means.
 //
-// The section no longer computes it. The parent, which already holds the
+// So the section does not compute it. The parent, which already holds the
 // canonical computeListWeightBreakdown result, passes it down. These tests pin
 // that the section RENDERS what it is handed and never re-derives it.
 describe('CategoryGroup footer subtotal', () => {
@@ -331,9 +331,9 @@ describe('CategoryGroup footer subtotal', () => {
   })
 
   it('marks a pack section complete only when every row is packed', () => {
-    // The packed/total count used to live in the header and was removed - it
-    // cost mobile width for a number the progress bars already carry. The
-    // packed tally still drives the "All packed" mark, so that is what pins it.
+    // The header shows no packed/total count: it would cost mobile width for a
+    // number the progress bars already carry. The packed tally still drives
+    // the "All packed" mark, so that is what pins it.
     const packed = { ...itemNamed('a', 'Tarp'), isPacked: true }
     const { rerender } = render(
       <CategoryGroup
@@ -546,9 +546,22 @@ describe('CategoryGroup footer subtotal', () => {
 
     it('judges completeness on the unfiltered set', () => {
       // The filter is a view of the section, not a redefinition of it. If
-      // progress followed the filter, "unpacked only" would hide every packed
-      // row and the section would report itself complete with work left in it.
-      renderFiltered({ showUnpackedOnly: true })
+      // completeness followed the filter, a filter that hides unpacked rows
+      // would let the section report itself complete with work left in it.
+      // Here the un-ready filter leaves only the packed Tarp on screen, while
+      // the hidden Stove is still unpacked.
+      render(
+        <CategoryGroup
+          name="Kitchen"
+          categoryId="cat-1"
+          items={[packed, ready]}
+          weightUnit="g"
+          packMode
+          showUnreadyOnly
+        />,
+      )
+      expect(screen.getByText('Tarp')).toBeInTheDocument()
+      expect(screen.queryByText('Stove')).not.toBeInTheDocument()
       expect(screen.queryByLabelText('All packed')).toBeNull()
     })
 
@@ -718,8 +731,8 @@ describe('plain food rows belong to the non-pack arrangements', () => {
     expect(screen.queryByText('Oatmeal')).toBeNull()
   })
 
-  // Found in review. subtotalGrams is the WORN section's channel and the
-  // footer hardcodes "Worn" as its label, so routing food through it printed
+  // subtotalGrams is the WORN section's channel and the footer hardcodes
+  // "Worn" as its label, so routing food through it printed
   // "Worn 470 g" under the food rows. Food is consumable by definition, and
   // that is the bucket its grams already land in upstream - so the section
   // has to say so.

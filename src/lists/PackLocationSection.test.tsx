@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DndContext } from '@dnd-kit/core'
+import { DndContext, type DragStartEvent } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import CategoryGroup from './CategoryGroup'
@@ -12,10 +12,9 @@ import type { PackingTreeLocation } from './packing-tree'
 
 afterEach(cleanup)
 
-// Pack absorbed the Organize view: a packing-location section is now the
-// checklist section, and it carries the drag, drop and admin chrome Organize
-// used to own. These tests cover the wiring that merge introduced - the parts
-// that silently do nothing if a seam is only half-connected.
+// A packing-location section is the pack checklist section, and it also
+// carries the drag, drop and admin chrome. These tests cover that wiring -
+// the parts that silently do nothing if a seam is only half-connected.
 
 function item(id: string, name: string, overrides: Partial<ListItemWithGear> = {}): ListItemWithGear {
   return {
@@ -187,8 +186,8 @@ describe('PackLocationSection', () => {
     it('renders the backing item as the section header checklist row', () => {
       // The header IS the container's checklist row: its Packed checkbox is the
       // one that marks the container itself. Anchored on the drag grip rather
-      // than a collapse chevron, because pack headers no longer have one - the
-      // chevron sat in the rows' leading control column and pushed the header's
+      // than a collapse chevron, because pack headers have none: a chevron
+      // would sit in the rows' leading control column and push the header's
       // checkboxes out of line with the rows they label.
       renderSection({ node: containerNode })
       const header = screen
@@ -258,23 +257,29 @@ describe('pack collision wiring', () => {
 })
 
 describe('renderRows seams', () => {
-  function idsFor(render: typeof sortableRows): string[] {
-    const captured: string[] = []
-    const rows = render([item('a', 'Tarp')], (i) => ({
-      item: i,
-      weightUnit: 'g' as const,
-      isBelowLg: false,
-    }), { key: 'loc-1', name: 'Main pack' })
-    // The SortableContext's `items` prop is the registration the row's
-    // useSortable resolves against; a mismatch between the two is exactly the
-    // bug this pins, and it is invisible at runtime until a drag does nothing.
-    const props = (rows as { props: { items: string[] } }).props
-    captured.push(...props.items)
-    return captured
+  // The SortableContext registers one set of ids and each row's useSortable
+  // registers its own. If they disagree, dnd-kit cannot find the dragged row in
+  // its context: the drag starts, but the row has no index there, so no row
+  // shifts and the planner gets an id from the wrong namespace. Nothing in the
+  // UI shows this until a drag does nothing. So start a real keyboard drag and
+  // check the id the row drags under and its place in the context.
+  function startKeyboardDrag(renderRows: typeof sortableRows, grip: string) {
+    const onDragStart = vi.fn<(event: DragStartEvent) => void>()
+    render(
+      <DndContext onDragStart={onDragStart}>
+        <CategoryGroup name="Main pack" items={[item('a', 'Tarp')]} weightUnit="g" packMode renderRows={renderRows} />
+      </DndContext>,
+    )
+    const handle = screen.getByRole('button', { name: grip })
+    handle.focus()
+    fireEvent.keyDown(handle, { code: 'Space' })
+    expect(onDragStart).toHaveBeenCalledTimes(1)
+    const { active } = onDragStart.mock.calls[0]![0]
+    return { id: active.id, index: active.data.current?.sortable?.index }
   }
 
   it('registers category rows under the item namespace', () => {
-    expect(idsFor(sortableRows)).toEqual(['item:a'])
+    expect(startKeyboardDrag(sortableRows, 'Reorder Tarp')).toEqual({ id: 'item:a', index: 0 })
   })
 
   it('registers pack rows under the packing-item namespace', () => {
@@ -282,6 +287,9 @@ describe('renderRows seams', () => {
     // packing planner understands, and the one it shares with the
     // packing-location drop targets. Registering them as `item:` would leave
     // cross-location drags planning nothing.
-    expect(idsFor(packingSortableRows)).toEqual(['packing-item:a'])
+    expect(startKeyboardDrag(packingSortableRows, 'Reorder or move Tarp')).toEqual({
+      id: 'packing-item:a',
+      index: 0,
+    })
   })
 })

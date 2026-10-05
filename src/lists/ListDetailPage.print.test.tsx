@@ -291,8 +291,13 @@ describe('the printed sheet identifies itself', () => {
   })
 
   it('counts gear and food as one union, matching the progress metric', async () => {
+    h.fetchListFood.mockResolvedValue({
+      ...emptyFood,
+      items: [{ id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: [] }],
+    })
     await renderPack()
-    expect(screen.getByText(/^2 items/)).toBeTruthy()
+    // 2 gear rows + 1 food row.
+    expect(await screen.findByText(/^3 items/)).toBeTruthy()
   })
 })
 
