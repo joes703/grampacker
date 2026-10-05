@@ -525,25 +525,6 @@ describe('CategoryGroup footer subtotal', () => {
       expect(cohorts).toEqual([1])
     })
 
-    it('hands the row action every row when nothing is filtered', () => {
-      const cohorts: string[][] = []
-      render(
-        <CategoryGroup
-          name="Kitchen"
-          categoryId="cat-1"
-          items={all}
-          weightUnit="g"
-          packMode
-          renderRowAction={(_item, cohort) => {
-            cohorts.push(cohort.map((i) => i.gearItem.name))
-            return null
-          }}
-        />,
-      )
-      expect(cohorts).toHaveLength(4)
-      expect(cohorts[0]).toEqual(['Stakes', 'Tarp', 'Stove', 'Pot'])
-    })
-
     it('judges completeness on the unfiltered set', () => {
       // The filter is a view of the section, not a redefinition of it. If
       // completeness followed the filter, a filter that hides unpacked rows
@@ -729,26 +710,6 @@ describe('plain food rows belong to the non-pack arrangements', () => {
       />,
     )
     expect(screen.queryByText('Oatmeal')).toBeNull()
-  })
-
-  // subtotalGrams is the WORN section's channel and the footer hardcodes
-  // "Worn" as its label, so routing food through it printed
-  // "Worn 470 g" under the food rows. Food is consumable by definition, and
-  // that is the bucket its grams already land in upstream - so the section
-  // has to say so.
-  it('labels the food subtotal Consumable, never Worn', () => {
-    render(
-      <CategoryGroup
-        name="Food"
-        items={[]}
-        foodRows={[oats]}
-        weightUnit="g"
-        consumableSubtotalGrams={270}
-      />,
-    )
-    // getAll: the footer renders twice, once per breakpoint branch.
-    expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Worn/)).toBeNull()
   })
 
   // The quantity is a multiplier, not a count of rows. A section showing

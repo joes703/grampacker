@@ -34,40 +34,18 @@ function head(): Document {
 }
 
 describe('index.html', () => {
-  it('ships a real /favicon.ico, so the default browser probe misses the SPA fallback', () => {
-    // The actual finding (PERF-05). wrangler.jsonc sets not_found_handling:
-    // "single-page-application", so ANY path with no matching file is answered
-    // with index.html at status 200. A browser with no icon link probes
-    // /favicon.ico by convention, and that probe was being served the HTML shell
-    // as if it were an image.
-    //
-    // The <link> tags below do NOT make that request go away - the document
-    // links /favicon.ico explicitly, so a browser may well fetch that exact URL,
-    // and a crawler or link unfurler that ignores the markup asks for it
-    // regardless. The links only steer a browser toward the SVG when it can use
-    // one. What closes the finding is a real file at the conventional path, which
-    // is what this asserts.
-    expect(publicFiles.has('/public/favicon.ico')).toBe(true)
-  })
-
-  it('ships a real /apple-touch-icon.png, the other path probed by convention', () => {
-    // Same hole as the favicon, different prober: iOS Safari asks for
-    // /apple-touch-icon.png at the site root when saving to the Home Screen.
-    // With no file there, the SPA fallback hands back index.html at 200, iOS
-    // gets HTML where it asked for a PNG, and the Home Screen falls back to
-    // generating something of its own instead of the mark. (Exactly WHAT it
-    // generates has changed across iOS versions, so this does not assert a
-    // specific fallback - only that we never take it.)
-    //
-    // The file is deliberately full-bleed and opaque (rendered with
-    // `rsvg-convert -w 180 -h 180 -b '#2563eb' public/favicon.svg`, which fills
-    // favicon.svg's rounded corners with the same blue). iOS applies its OWN
-    // rounded mask, so shipping the pre-rounded art would leave the corners
-    // outside our radius transparent, and iOS composites those onto black.
-    expect(publicFiles.has('/public/apple-touch-icon.png')).toBe(true)
-  })
-
   it('declares both icon formats, and every icon link resolves to a file', () => {
+    // The files matter even to a client that ignores these links. Any path
+    // with no file is answered by the SPA fallback (wrangler.jsonc
+    // not_found_handling) with index.html at 200: a browser probes
+    // /favicon.ico by convention, crawlers and link unfurlers ask for it
+    // regardless, and iOS asks for /apple-touch-icon.png when saving to the
+    // Home Screen. Each would get HTML where it asked for an image.
+    //
+    // apple-touch-icon.png is deliberately full-bleed and opaque (rendered with
+    // `rsvg-convert -w 180 -h 180 -b '#2563eb' public/favicon.svg`). iOS
+    // applies its OWN rounded mask, so pre-rounded art would leave transparent
+    // corners that iOS composites onto black.
     const links = [
       ...head().querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]'),
     ]

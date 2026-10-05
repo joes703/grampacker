@@ -12,7 +12,7 @@ vi.mock('../lib/queries', () => ({
   fetchPackingLocations: h.fetchPackingLocations,
 }))
 
-import { findBackedLocation, resolveRemovalPlan } from './list-item-removal'
+import { resolveRemovalPlan } from './list-item-removal'
 
 const LIST_ID = 'list-1'
 const container: PackingLocation = {
@@ -44,29 +44,6 @@ afterEach(() => {
 // The predicate underneath is the whole rule, and "sometimes asks" is exactly
 // the kind of behavior that rots silently - hence the direction tests below.
 
-describe('findBackedLocation', () => {
-  const locations = [plainLocation, container]
-
-  it('finds the location an item backs', () => {
-    expect(findBackedLocation('li-canister', locations)?.name).toBe('Bear canister')
-  })
-
-  it('returns null for an ordinary item', () => {
-    expect(findBackedLocation('li-tarp', locations)).toBeNull()
-  })
-
-  it('does not mistake an item ASSIGNED to a location for one BACKING it', () => {
-    // packingLocationId (where an item sits) and containerListItemId (what an
-    // item contains) point opposite ways. Confusing them would put the dialog
-    // in front of every packed item.
-    expect(findBackedLocation('loc-main', locations)).toBeNull()
-  })
-
-  it('returns null when the list has no locations', () => {
-    expect(findBackedLocation('li-canister', [])).toBeNull()
-  })
-})
-
 describe('resolveRemovalPlan', () => {
   beforeEach(() => {
     h.fetchPackingLocations.mockResolvedValue([plainLocation, container])
@@ -78,6 +55,14 @@ describe('resolveRemovalPlan', () => {
   })
 
   it('asks before removing a container, and names it', async () => {
+    // The match is on the location's containerListItemId, never its id:
+    // packingLocationId (where an item sits) and containerListItemId (what an
+    // item contains) point opposite ways. Confusing them would put the dialog
+    // in front of every packed item.
+    //
+    // Nothing is cached here, the window where rows are on screen and
+    // removable before the locations query has loaded. Fetching is what turns
+    // "we do not know" into the right answer instead of a silent "no".
     await expect(resolveRemovalPlan(client(), LIST_ID, 'li-canister'))
       .resolves.toEqual({ kind: 'confirm', location: container })
   })
@@ -89,11 +74,6 @@ describe('resolveRemovalPlan', () => {
     h.fetchPackingLocations.mockRejectedValue(new Error('offline'))
     await expect(resolveRemovalPlan(client(), LIST_ID, 'li-tarp'))
       .resolves.toEqual({ kind: 'confirm', location: null })
-  })
-
-  it('never rejects, so the caller cannot leak an unhandled rejection', async () => {
-    h.fetchPackingLocations.mockRejectedValue(new Error('offline'))
-    await expect(resolveRemovalPlan(client(), LIST_ID, 'li-tarp')).resolves.toBeTruthy()
   })
 
   it('refetches a STALE cached result instead of trusting it', async () => {
@@ -118,14 +98,5 @@ describe('resolveRemovalPlan', () => {
     await expect(resolveRemovalPlan(qc, LIST_ID, 'li-tarp'))
       .resolves.toEqual({ kind: 'remove' })
     expect(h.fetchPackingLocations).not.toHaveBeenCalled()
-  })
-
-  it('answers correctly when the locations query has not loaded yet', async () => {
-    // The window that makes reading the render's array unsafe: nothing is
-    // cached, rows are already on screen and removable. Fetching is what
-    // turns "we do not know" into the right answer instead of a silent "no".
-    const qc = client()
-    await expect(resolveRemovalPlan(qc, LIST_ID, 'li-canister'))
-      .resolves.toEqual({ kind: 'confirm', location: container })
   })
 })

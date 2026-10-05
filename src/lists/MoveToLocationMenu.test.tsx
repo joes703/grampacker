@@ -68,7 +68,9 @@ afterEach(() => {
 })
 
 describe('MoveToLocationMenu container actions', () => {
-  it.each([390, 767, 768, 800, 1023, 1024, 1440])(
+  // The menu reads only the `mobile` flag, so one width per branch: 390 is the
+  // mobile modal, 1440 the desktop popover.
+  it.each([390, 1440])(
     'offers promotion and invokes it at %ipx',
     async (width) => {
       stubViewport(width)

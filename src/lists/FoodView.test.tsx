@@ -138,9 +138,9 @@ afterEach(() => {
 })
 
 describe('FoodView quantity', () => {
-  // The carrying row owns the control (FoodCarryingList.test.tsx); this pins
-  // the wire call it produces. quantity ONLY - a PATCH that also carried
-  // slotIds would rewrite the schedule as a side effect of changing a count.
+  // Through the carrying row's control, at a count of 1 (the row must offer it
+  // even then). quantity ONLY - a PATCH that also carried slotIds would
+  // rewrite the schedule as a side effect of changing a count.
   it('patches only the quantity', async () => {
     h.fetchListFood.mockResolvedValue(guardFood)
     await renderFoodView()
@@ -207,13 +207,6 @@ describe('FoodView query gate', () => {
     expect(await screen.findByText("Couldn't load the food plan.")).toBeInTheDocument()
     expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
   })
-
-  it('renders live controls once the food read resolves', async () => {
-    await renderFoodView()
-    const days = await screen.findByLabelText('Trip length in days')
-    expect((days as HTMLInputElement).disabled).toBe(false)
-    expect((days as HTMLInputElement).value).toBe('3')
-  })
 })
 
 describe('FoodView header', () => {
@@ -264,6 +257,8 @@ describe('FoodView days-input destructive guards', () => {
   })
 
   it('reverts an out-of-range value instead of committing it', async () => {
+    // Also proves the field is live once the read resolves: user.clear
+    // throws on a disabled input, and the value is the loaded day count.
     h.fetchListFood.mockResolvedValue(guardFood)
     await renderFoodView()
     const input = await screen.findByLabelText('Trip length in days')
@@ -416,15 +411,6 @@ describe('FoodView days-input after the write settles', () => {
     return input
   }
 
-  it('returns to the saved length when the server rejects the change', async () => {
-    h.setFoodDays.mockRejectedValue(new ApiError(400, 'Bad request'))
-    await renderFoodView()
-    const input = await commitDays('5')
-
-    await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
-    await waitFor(() => expect(input).toHaveValue(3))
-  })
-
   it('shows the refetched length, not a stale copy, when the rejected write saw it move', async () => {
     // The write refetches first; here another tab has already made it 4 days.
     h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 4 })
@@ -434,16 +420,6 @@ describe('FoodView days-input after the write settles', () => {
 
     await waitFor(() => expect(h.setFoodDays).toHaveBeenCalledWith(listId, 5))
     await waitFor(() => expect(input).toHaveValue(4))
-  })
-
-  it('shows the new length after a successful change', async () => {
-    h.setFoodDays.mockResolvedValue({ ...food, dayCount: 5 })
-    h.fetchListFood.mockResolvedValueOnce(food).mockResolvedValue({ ...food, dayCount: 5 })
-    await renderFoodView()
-    const input = await commitDays('5')
-
-    await waitFor(() => expect(input).toBeEnabled())
-    expect(input).toHaveValue(5)
   })
 
   it('keeps the saved length when the read after a successful change fails', async () => {

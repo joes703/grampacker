@@ -8,20 +8,15 @@ afterEach(() => {
 })
 
 describe('useQuickAddForm', () => {
-  it('starts empty and cannot submit', () => {
+  it('canSubmit tracks a non-blank name', () => {
     const { result } = renderHook(() => useQuickAddForm())
+    // A fresh form starts empty and cannot submit. The other defaults
+    // (description, weight, worn) are pinned by buildData below.
     expect(result.current.name).toBe('')
-    expect(result.current.description).toBe('')
-    expect(result.current.weightGrams).toBe(0)
     expect(result.current.quantity).toBe('1')
-    expect(result.current.worn).toBe(false)
     expect(result.current.consumable).toBe(false)
     expect(result.current.canSubmit).toBe(false)
     expect(result.current.buildData()).toBeNull()
-  })
-
-  it('canSubmit tracks a non-blank name', () => {
-    const { result } = renderHook(() => useQuickAddForm())
     act(() => result.current.setName('  '))
     expect(result.current.canSubmit).toBe(false)
     act(() => result.current.setName('Tent'))

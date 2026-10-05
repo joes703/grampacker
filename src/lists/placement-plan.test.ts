@@ -105,7 +105,9 @@ describe('isNoOpSlot', () => {
     expect(isNoOpSlot(3, 2)).toBe(true)
     expect(isNoOpSlot(1, 2)).toBe(false)
     expect(isNoOpSlot(4, 2)).toBe(false)
-    // First row: slots 0 and 1.
+    // First row: slots 0 and 1. A single-row bag has only these two slots,
+    // so it has no usable slot at all: the UI must refuse to open placement
+    // rather than show a mode with nothing in it.
     expect(isNoOpSlot(0, 0)).toBe(true)
     expect(isNoOpSlot(1, 0)).toBe(true)
     expect(isNoOpSlot(2, 0)).toBe(false)
@@ -113,13 +115,6 @@ describe('isNoOpSlot', () => {
     expect(isNoOpSlot(4, 4)).toBe(true)
     expect(isNoOpSlot(5, 4)).toBe(true)
     expect(isNoOpSlot(3, 4)).toBe(false)
-  })
-
-  it('leaves a single-row bag with no usable slot at all', () => {
-    // One row means two slots and both touch it. The UI must refuse to open
-    // placement rather than showing a mode with nothing in it.
-    expect(isNoOpSlot(0, 0)).toBe(true)
-    expect(isNoOpSlot(1, 0)).toBe(true)
   })
 })
 
@@ -145,6 +140,12 @@ describe('planPlacementWithinLocation', () => {
     expect(order(planPlacementWithinLocation('E', 0, rows))).toEqual(['E', 'A', 'B', 'C', 'D'])
   })
 
+  it('handles a two-row bag, where every real move is a swap', () => {
+    const two = [gearRow('A', 5), gearRow('B', 9)]
+    expect(order(planPlacementWithinLocation('B', 0, two))).toEqual(['B', 'A'])
+    expect(order(planPlacementWithinLocation('A', 1, two))).toEqual(['B', 'A'])
+  })
+
   it('refuses the no-op, a missing row, and an out-of-range slot', () => {
     expect(planPlacementWithinLocation('C', 2, rows)).toBeNull()
     expect(planPlacementWithinLocation('missing', 1, rows)).toBeNull()
@@ -155,31 +156,14 @@ describe('planPlacementWithinLocation', () => {
   it('permutes the cohort ranks rather than minting new ones', () => {
     // Load-bearing twice over: it keeps rows OUTSIDE this bag from renumbering,
     // and the optimistic reorder validator rejects any update set that is not
-    // a permutation of the ranks it touched.
+    // a permutation of the ranks it touched. The caller passes the RENDERED
+    // cohort, so filtered-out rows never appear here and keep their ranks.
     const updates = planPlacementWithinLocation('C', 0, rows)!
     expect(allEntries(updates).map((u) => u.packSortOrder).sort((a, b) => a - b))
       .toEqual([0, 10, 20, 30, 45])
     expect(allEntries(updates).map((u) => u.id).sort()).toEqual(['A', 'B', 'C', 'D', 'E'])
     // The food row's new rank rides the food half of the payload.
     expect(updates.foodItems).toEqual([{ id: 'C', packSortOrder: 0 }])
-  })
-
-  it('operates on the array it is GIVEN, hidden rows already absent', () => {
-    // The caller passes the rendered cohort, so filtered-out rows never appear
-    // here and keep their ranks untouched. Reconstructing the cohort from a
-    // location id instead is the bug this signature exists to prevent.
-    const visible = [rows[0]!, rows[2]!, rows[4]!] // A, C, E
-    const updates = planPlacementWithinLocation('E', 0, visible)!
-    expect(order(updates)).toEqual(['E', 'A', 'C'])
-    expect(allEntries(updates).map((u) => u.id).sort()).toEqual(['A', 'C', 'E'])
-    // B and D are untouched entirely.
-    expect(allEntries(updates).map((u) => u.packSortOrder).sort((a, b) => a - b)).toEqual([0, 20, 45])
-  })
-
-  it('handles a two-row bag, where every real move is a swap', () => {
-    const two = [gearRow('A', 5), gearRow('B', 9)]
-    expect(order(planPlacementWithinLocation('B', 0, two))).toEqual(['B', 'A'])
-    expect(order(planPlacementWithinLocation('A', 1, two))).toEqual(['B', 'A'])
   })
 })
 

@@ -42,21 +42,6 @@ const category: Category = {
 }
 
 describe('gear picker search control', () => {
-  it('names the gear search control', () => {
-    render(
-      <LibraryPanel
-        gearItems={[item]}
-        categories={[category]}
-        listItemGearIds={new Set()}
-        weightUnit="g"
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('searchbox', { name: 'Search gear to add' })).toBeInTheDocument()
-  })
-
   it('binds each search input to its own label when two panels are mounted', () => {
     const props = {
       gearItems: [item],

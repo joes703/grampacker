@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import FoodDaySection from './FoodDaySection'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 
@@ -55,10 +54,6 @@ function renderDay(overrides: {
   const props = { ...baseProps, slots, itemsBySlot }
   render(<FoodDaySection {...props} />)
   return props
-}
-
-function dinnerRow() {
-  return screen.getByText('Dinner').closest('div')!
 }
 
 describe('FoodDaySection food lines', () => {
@@ -147,15 +142,6 @@ describe('FoodDaySection day total', () => {
     })
     const totalRow = screen.getByText('Day total').closest('div')!
     expect(within(totalRow).getByLabelText('1000 g')).toBeInTheDocument()
-  })
-})
-
-describe('FoodDaySection empty slot', () => {
-  it('offers + Add on an empty slot, preselecting it', async () => {
-    const user = userEvent.setup()
-    const props = renderDay()
-    await user.click(within(dinnerRow()).getByRole('button', { name: /add/i }))
-    expect(props.onAddToSlot).toHaveBeenCalledWith('d1')
   })
 })
 

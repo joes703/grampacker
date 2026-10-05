@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, cleanup, fireEvent, getByText as getByTextWithin } from '@testing-library/react'
+import { render, cleanup, fireEvent } from '@testing-library/react'
 import Modal from './Modal'
 
 // jsdom (29.x at install time) doesn't implement <dialog>.showModal() / .close().
@@ -59,11 +59,14 @@ describe('Modal', () => {
 
   it('does not close on click inside dialog content (target !== currentTarget)', () => {
     const onClose = vi.fn()
-    const { getByTestId } = render(
+    const { container, getByTestId } = render(
       <Modal open={true} onClose={onClose} title="Test">
         <div data-testid="content">content</div>
       </Modal>,
     )
+    // Content outside the dialog would also miss the dialog on click, so
+    // pin where it renders.
+    expect(container.querySelector('dialog')).toContainElement(getByTestId('content'))
 
     fireEvent.click(getByTestId('content'))
 
@@ -121,18 +124,5 @@ describe('Modal', () => {
     const dialog = container.querySelector('dialog')
     expect(dialog).not.toBeNull()
     expect(document.activeElement).toBe(dialog)
-  })
-
-  it('renders children inside the dialog when open', () => {
-    const { container } = render(
-      <Modal open={true} onClose={() => {}} title="Test">
-        <div>visible content</div>
-      </Modal>,
-    )
-    const dialog = container.querySelector('dialog')
-    expect(dialog).not.toBeNull()
-    // getByText throws if not found — reaching the line below means the
-    // text was rendered inside the dialog. No jest-dom matcher needed.
-    expect(getByTextWithin(dialog!, 'visible content').textContent).toBe('visible content')
   })
 })

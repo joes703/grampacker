@@ -270,13 +270,15 @@ describe('planPackingRowDragEnd over the union', () => {
   })
 
   it('moves a food row dropped on a location section', () => {
+    // loc-b is backed by a container item. Container rules are gear-only:
+    // food cannot create a nesting cycle or contain itself, so it still moves.
     expect(planPackingRowDragEnd(
       makeDnDId('packing-food-item', foodMid.id),
       makeDnDId('packing-location', 'loc-b'),
       unionItems,
       unionFood,
       validLocationIds,
-      noContainerItems,
+      containerItemIdByLocation,
       noExcludedLocations,
     )).toEqual({ kind: 'move-food', foodItemId: 'food-mid', locationId: 'loc-b' })
   })
@@ -332,20 +334,6 @@ describe('planPackingRowDragEnd over the union', () => {
         ],
       },
     })
-  })
-
-  it('never blocks a food move on gear-only container rules', () => {
-    // loc-b is backed by a container item; food can still be dropped into it
-    // (food cannot create a nesting cycle or contain itself).
-    expect(planPackingRowDragEnd(
-      makeDnDId('packing-food-item', foodMid.id),
-      makeDnDId('packing-location', 'loc-b'),
-      unionItems,
-      unionFood,
-      validLocationIds,
-      containerItemIdByLocation,
-      noExcludedLocations,
-    )).toEqual({ kind: 'move-food', foodItemId: 'food-mid', locationId: 'loc-b' })
   })
 })
 
