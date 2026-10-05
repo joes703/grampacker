@@ -29,6 +29,9 @@ describe('readLastListPath', () => {
   it('returns a valid bare path round-tripped through write for the same owner', () => {
     writeLastListPath(BARE_PATH, OWNER)
     expect(readLastListPath(OWNER)).toBe(BARE_PATH)
+    // The stored shape is pinned too: renaming its fields on both sides would
+    // keep this round trip green but orphan every pointer already stored.
+    expect(JSON.parse(localStorage.getItem('lastListPath')!)).toEqual({ p: BARE_PATH, o: OWNER })
   })
 
   it('returns a valid pack-mode path round-tripped through write for the same owner', () => {
@@ -89,16 +92,6 @@ describe('readLastListPath', () => {
 })
 
 describe('writeLastListPath', () => {
-  it('stores a valid bare path tagged with its owner', () => {
-    writeLastListPath(BARE_PATH, OWNER)
-    expect(JSON.parse(localStorage.getItem('lastListPath')!)).toEqual({ p: BARE_PATH, o: OWNER })
-  })
-
-  it('stores a valid pack-mode path tagged with its owner', () => {
-    writeLastListPath(PACK_PATH, OWNER)
-    expect(JSON.parse(localStorage.getItem('lastListPath')!)).toEqual({ p: PACK_PATH, o: OWNER })
-  })
-
   it('refuses to write without an owner id', () => {
     // An untagged pointer could never be read back safely, so it is never
     // written in the first place.
@@ -119,10 +112,7 @@ describe('writeLastListPath', () => {
 
   it('no-ops on a path with extra query keys', () => {
     writeLastListPath(`${BARE_PATH}?other=1`, OWNER)
-    expect(localStorage.getItem('lastListPath')).toBeNull()
-  })
-
-  it('no-ops on the legacy pack-mode query path', () => {
+    // The legacy pack-mode query too: no route reads ?mode=pack any more.
     writeLastListPath(LEGACY_PACK_PATH, OWNER)
     expect(localStorage.getItem('lastListPath')).toBeNull()
   })
@@ -155,12 +145,6 @@ describe('writeLastListPath', () => {
 })
 
 describe('clearLastListPath', () => {
-  it('removes the stored path', () => {
-    writeLastListPath(BARE_PATH, OWNER)
-    clearLastListPath()
-    expect(localStorage.getItem('lastListPath')).toBeNull()
-  })
-
   it('also removes the legacy lastListId key', () => {
     // Account-deletion teardown depends on this: a clear must scrub both keys so
     // nothing about the deleted account lingers in this browser.

@@ -376,6 +376,9 @@ describe('makeOptimisticReorder', () => {
   })
 
   it('applies sortOrder patches and re-sorts the cache (happy path)', () => {
+    // A SUBSET payload, run with the DEV assertion on: B is cached but absent
+    // from the payload, as for a drag within one category. A stricter
+    // all-ids rule would throw here. B must also keep its own slot.
     const { qc, key } = makeSortableClient([
       { id: 'A', name: 'a', sortOrder: 10 },
       { id: 'B', name: 'b', sortOrder: 20 },
@@ -409,27 +412,6 @@ describe('makeOptimisticReorder', () => {
     expect(qc.getQueryData<SortableRow[]>(key)).toEqual(initial)
   })
 
-  it('leaves untouched rows in their original sortOrder slots', () => {
-    const { qc, key } = makeSortableClient([
-      { id: 'A', name: 'a', sortOrder: 10 },
-      { id: 'B', name: 'b', sortOrder: 20 },
-      { id: 'C', name: 'c', sortOrder: 30 },
-      { id: 'D', name: 'd', sortOrder: 40 },
-    ])
-    const helper = makeOptimisticReorder<SortableRow>(qc, key)
-    // Only swap B and C; A and D unchanged.
-    helper.onMutate([
-      { id: 'B', sortOrder: 30 },
-      { id: 'C', sortOrder: 20 },
-    ])
-    expect(qc.getQueryData<SortableRow[]>(key)).toEqual([
-      { id: 'A', name: 'a', sortOrder: 10 },
-      { id: 'C', name: 'c', sortOrder: 20 },
-      { id: 'B', name: 'b', sortOrder: 30 },
-      { id: 'D', name: 'd', sortOrder: 40 },
-    ])
-  })
-
   // ── Dev-only invariant assertion ─────────────────────────────────────────
   //
   // Vitest sets `import.meta.env.DEV` to `true` by default, so the assertion
@@ -439,29 +421,6 @@ describe('makeOptimisticReorder', () => {
   // for caller bugs that would otherwise silently corrupt the optimistic
   // cache until the next refetch (see the helper's docstring).
   describe('dev-only payload assertion', () => {
-    it('accepts a subset payload (cached ids absent from payload do NOT trigger the assertion)', () => {
-      // The contract documented at optimistic.ts:51-59 explicitly allows
-      // SUBSET permutations: only the dragged category's items appear in
-      // the payload while other categories' items stay in their slots.
-      // assignSortOrderSlots() in grouping.ts produces exactly these
-      // shapes for within-category DnD on /lists/:id. Locking this case
-      // here keeps the assertion from regressing into a stricter rule
-      // that breaks legitimate callers.
-      const { qc, key } = makeSortableClient([
-        { id: 'A', name: 'a', sortOrder: 10 },
-        { id: 'B', name: 'b', sortOrder: 20 },
-        { id: 'C', name: 'c', sortOrder: 30 },
-        { id: 'D', name: 'd', sortOrder: 40 },
-      ])
-      const helper = makeOptimisticReorder<SortableRow>(qc, key)
-      expect(() =>
-        helper.onMutate([
-          { id: 'B', sortOrder: 30 },
-          { id: 'C', sortOrder: 20 },
-        ]),
-      ).not.toThrow()
-    })
-
     it('throws on a duplicate id in the payload', () => {
       const { qc, key } = makeSortableClient([
         { id: 'A', name: 'a', sortOrder: 10 },

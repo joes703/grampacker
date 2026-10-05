@@ -57,29 +57,32 @@ const shelter: Category = {
 }
 
 describe('computeListWeightBreakdown', () => {
-  // Regression test for B-1: when an item references a category id not present
-  // in `categories` (cache drift between ['categories'] and ['list-items']),
-  // its weight must route to Uncategorized so it still contributes to base.
-  // Previously, orphan-keyed grams accumulated into a bucket that was never
-  // read, and silently disappeared from the headline pack-weight number.
+  // When an item references a category id not present in `categories` (cache
+  // drift between ['categories'] and ['list-items']), its weight must route to
+  // Uncategorized so it still contributes to base. Grams kept under the orphan
+  // key would land in a bucket nothing reads, and silently drop out of the
+  // headline pack-weight number. The orphan and the null item share one row,
+  // matching the grouper, so their grams must add up.
   it('routes orphan category ids to Uncategorized so base weight stays correct', () => {
     const items = [
       listItem({ id: '1', categoryId: 'orphan-uuid', weightGrams: 250 }),
+      listItem({ id: '2', categoryId: null, weightGrams: 17 }),
     ]
     const result = computeListWeightBreakdown({ gear: { items: items, categories: [shelter] }, food: { grams: 0 } })
 
-    expect(result.baseGrams).toBe(250)
-    expect(result.catRows).toEqual([{ id: '__uncategorized__', name: 'Uncategorized', grams: 250 }])
+    expect(result.baseGrams).toBe(267)
+    expect(result.catRows).toEqual([{ id: '__uncategorized__', name: 'Uncategorized', grams: 267 }])
   })
 
   it('multiplies weightGrams by quantity when accumulating base', () => {
+    // A fractional weight, so rounding the per-item grams also fails here.
     const items = [
-      listItem({ id: '1', categoryId: shelter.id, weightGrams: 100, quantity: 3 }),
+      listItem({ id: '1', categoryId: shelter.id, weightGrams: 12.5, quantity: 4 }),
     ]
     const result = computeListWeightBreakdown({ gear: { items: items, categories: [shelter] }, food: { grams: 0 } })
 
-    expect(result.baseGrams).toBe(300)
-    expect(result.catRows).toEqual([{ id: shelter.id, name: 'Shelter', grams: 300 }])
+    expect(result.baseGrams).toBe(50)
+    expect(result.catRows).toEqual([{ id: shelter.id, name: 'Shelter', grams: 50 }])
   })
 
   // Component returns null on items.length === 0, so this just confirms the
@@ -120,7 +123,7 @@ describe('baseGramsForCategory', () => {
             // Same category, but consumable: must NOT reach the Shelter subtotal.
             listItem({ id: 'gas', categoryId: shelter.id, weightGrams: 230, isConsumable: true }),
             // Same category, worn: must NOT reach it either, regardless of any
-            // display toggle. This is the half of the bug that was invisible.
+            // display toggle.
             listItem({ id: 'jacket', categoryId: shelter.id, weightGrams: 550, isWorn: true }),
             // A category whose every item is consumable - absent from catRows.
             listItem({ id: 'bar', categoryId: consumables.id, weightGrams: 90, isConsumable: true }),
@@ -145,36 +148,6 @@ describe('baseGramsForCategory', () => {
   it('maps a null categoryId onto the Uncategorized sentinel row', () => {
     // Trap 2.
     expect(baseGramsForCategory(breakdown(), null)).toBe(17)
-  })
-
-  it('returns 0 for a category id that does not exist at all', () => {
-    expect(baseGramsForCategory(breakdown(), 'cat-nope')).toBe(0)
-  })
-
-  it('counts quantity and fractional gram weights', () => {
-    const b = computeListWeightBreakdown({
-      gear: {
-        items: [listItem({ id: 'stake', categoryId: shelter.id, weightGrams: 12.5, quantity: 4 })],
-        categories: [shelter],
-      },
-      food: { grams: 0 },
-    })
-    expect(baseGramsForCategory(b, shelter.id)).toBe(50)
-  })
-
-  it('routes an orphan category id to Uncategorized, matching the grouper', () => {
-    const b = computeListWeightBreakdown({
-      gear: {
-        items: [
-          listItem({ id: 'ghost', categoryId: 'cat-deleted', weightGrams: 60 }),
-          listItem({ id: 'spork', categoryId: null, weightGrams: 17 }),
-        ],
-        categories: [shelter],
-      },
-      food: { grams: 0 },
-    })
-    expect(baseGramsForCategory(b, null)).toBe(77)
-    expect(baseGramsForCategory(b, 'cat-deleted')).toBe(0)
   })
 
   it('category subtotals sum to baseGrams', () => {
@@ -215,17 +188,6 @@ describe('consumableGramsForCategory', () => {
     expect(consumableGramsForCategory(breakdown(), 'cat-deleted')).toBe(0)
   })
 
-  it('returns zero when a category contains no consumables', () => {
-    const result = computeListWeightBreakdown({
-      gear: {
-        items: [listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 1200 })],
-        categories: [shelter],
-      },
-      food: { grams: 0 },
-    })
-    expect(consumableGramsForCategory(result, shelter.id)).toBe(0)
-  })
-
 })
 
 describe('food weight', () => {
@@ -252,13 +214,6 @@ describe('food weight', () => {
       food: { grams: 0 },
     })
 
-  it('counts an item once no matter how many slots it is associated with', () => {
-    // THE invariant. One 500 g bag of trail mix eaten across five lunches
-    // weighs 500 g. Summing across the item->slot associations would say 2500,
-    // and pack weight is the number this app exists to produce.
-    expect(foodGramsFor([{ weightGrams: 500, unitCount: 1 }])).toBe(500)
-  })
-
   it('multiplies by quantity, which is UNITS CARRIED', () => {
     // Four oatmeal packets is four packets - that is the user telling us, not
     // us inferring it from four breakfast slots.
@@ -266,6 +221,10 @@ describe('food weight', () => {
   })
 
   it('sums several carried items', () => {
+    // foodGramsFor takes items, never slots: one 500 g bag of trail mix eaten
+    // across five lunches weighs 500 g. Summing across the item->slot
+    // associations would say 2500, and pack weight is the number this app
+    // exists to produce.
     expect(
       foodGramsFor([
         { weightGrams: 500, unitCount: 1 },

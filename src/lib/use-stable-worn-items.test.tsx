@@ -6,10 +6,7 @@ import type { ListItemWithGear } from './types'
 
 afterEach(cleanup)
 
-// The hook reads only `.items`, so the groups are written as literals. They
-// used to come from groupListItemsByLocation, which no production code called;
-// these reproduce that builder's exact output for these inputs - group order,
-// order within each group, and the retained empty group all included. The
+// The hook reads only `.items`, so the groups are written as literals. The
 // orderings below are DELIBERATELY not sorted: each one is what the assertion
 // underneath it has to overcome.
 const groups = (...buckets: ListItemWithGear[][]) => buckets.map((items) => ({ items }))
@@ -68,9 +65,9 @@ describe('useStableWornItems with location groups', () => {
 })
 
 // The Worn section renders in DOCUMENT order, and it has to derive that
-// itself. This hook walks the grouped buckets, so before it sorted, two worn
-// rows in different groups came out ordered by their GROUPS - which is not an
-// order the user ever chose for them.
+// itself. This hook walks the grouped buckets, so without a sort two worn rows
+// in different groups come out ordered by their GROUPS - which is not an order
+// the user ever chose for them.
 //
 // Pack order is deliberately not used here either: worn rows sit outside the
 // packing tree and cannot be dragged, so ranking them by a pack rank would
@@ -79,7 +76,8 @@ describe('useStableWornItems with location groups', () => {
 describe('useStableWornItems ordering', () => {
   it('orders by document rank across groups, not by group', () => {
     // Document order says late-bag-row comes FIRST. Group order would put it
-    // last, because its bag sorts second.
+    // last, because its bag sorts second. Pack ranks run the other way, so
+    // sorting by pack rank fails here too.
     const early = item('early-doc', 'loc-2', true, 0, 99)
     const late = item('late-doc', 'loc-1', true, 5, 0)
     // First bag then second bag, so `late` leads. That inversion is the point:
@@ -98,8 +96,8 @@ describe('useStableWornItems ordering', () => {
     const a = item('a', 'loc-1', true, 0, 2)
     const b = item('b', 'loc-1', true, 1, 1)
     const c = item('c', 'loc-1', true, 2, 0)
-    // All in the first bag, in pack-rank order c-b-a; the second bag is empty
-    // and still present, exactly as the builder emitted it.
+    // All in ONE bag, in pack-rank order c-b-a, so a hook that sorted only
+    // across groups would keep that order. The second bag is empty.
     const grouped = groups([c, b, a], [])
 
     const { result } = renderHook(() => useStableWornItems(grouped))

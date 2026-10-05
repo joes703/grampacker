@@ -219,10 +219,13 @@ describe('useGroupedListItems', () => {
       categoryId: shelter.id,
       packingLocationId: locations[0]!.id,
     })
+    // Unassigned. Location mode keeps empty groups, and must still emit the
+    // unassigned tail: the Worn section reads worn rows from these groups.
+    const unassigned = makeItem({ id: 'b', categoryId: shelter.id, packingLocationId: null })
     const { result, rerender } = renderHook(
       ({ kind }: { kind: 'category' | 'location' }) =>
         useGroupedListItems(
-          [item],
+          [item, unassigned],
           kind === 'category'
             ? { kind, groups: [shelter] }
             : { kind, groups: locations },
@@ -236,7 +239,9 @@ describe('useGroupedListItems', () => {
     expect(result.current.map((group) => group.group?.id ?? null)).toEqual([
       'loc-main',
       'loc-lid',
+      null,
     ])
+    expect(result.current.at(-1)?.items.map((i) => i.id)).toEqual(['b'])
 
     const locationResult = result.current
     rerender({ kind: 'location' })
