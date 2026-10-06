@@ -1,5 +1,5 @@
 import { ESLint } from 'eslint'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { mutationKeys } from './keys'
 
 describe('mutationKeys', () => {
@@ -11,12 +11,10 @@ describe('mutationKeys', () => {
     key: (build as (arg: string) => readonly string[])('ARG') as readonly string[],
   }))
 
-  it('covers every exported factory', () => {
-    // Guards the loop below against silently testing nothing.
-    expect(keys.length).toBeGreaterThan(30)
-  })
-
   it('has no key that is a prefix of another', () => {
+    // Guards the loop against silently testing nothing.
+    expect(keys.length).toBeGreaterThan(30)
+
     // TanStack Query matches mutation filters by PREFIX. use-list-item-actions
     // gates its last-one-out invalidation on isMutating({mutationKey}), so a key
     // that starts with another key's elements would silently join that burst
@@ -38,6 +36,16 @@ describe('mutationKeys', () => {
 // unless the rule itself bites, so this asserts it does - including the shapes
 // that defeated the textual scan this replaced.
 describe('the useMutation lint rule', () => {
+  let eslint: ESLint
+
+  // The first lint starts the type-aware TypeScript program, which takes
+  // seconds and timed out the first test under load. Pay it once here, with
+  // room to spare, so each test times only its own lint.
+  beforeAll(async () => {
+    eslint = new ESLint()
+    await lint('const warm = 1')
+  }, 60_000)
+
   async function lint(source: string): Promise<string[]> {
     // The fixture is attributed to keys.ts rather than an invented filename:
     // the config is type-aware (`projectService`), and a path that is not in the
@@ -45,7 +53,6 @@ describe('the useMutation lint rule', () => {
     // below pass for the wrong reason. keys.ts is a real source file, is not a
     // test file (test files are exempt from this rule block), and only the
     // syntactic rule is asserted.
-    const eslint = new ESLint()
     const [result] = await eslint.lintText(source, {
       filePath: new URL('./keys.ts', import.meta.url).pathname,
     })

@@ -319,6 +319,12 @@ export const NUMERIC_VALUE_TEXT = 'font-mono tabular-nums'
 // of joining the 13px body tier.
 export const FLAT_TABLE_NUMERIC_TEXT = `text-xs ${NUMERIC_VALUE_TEXT}`
 
+// The weight cell on a Pack row, for gear and food rows alike. One bag holds
+// both, so a cell that differs on one of them pushes every column to its
+// right out of line. lg+ only: a w-24 cell at 375px would crush the name.
+// Hidden in print, where the checklist keeps its own geometry.
+export const PACK_ROW_WEIGHT_CELL = 'hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden'
+
 // Compact stat panel body text (WeightTable cells). Denser than flat
 // row body text on mobile because these panels are summary surfaces,
 // not list rows. Desktop aligns to the shared 13px tier so summary

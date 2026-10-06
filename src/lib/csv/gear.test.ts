@@ -416,24 +416,14 @@ describe('gear csv with cost and purchaseDate', () => {
 })
 
 describe('parseGearCsv unit conversion and column handling', () => {
-  it('converts oz / lb / kg and spelled-out unit aliases to grams', () => {
-    const csv = [
-      'name,weight,unit',
-      'Item A,3,ounce', // 3 oz -> 85 g
-      'Item B,2.5,ounces', // 2.5 oz -> 70.9 g
-      'Item C,1,pound', // 1 lb -> 453.6 g
-      'Item D,2,pounds', // 2 lb -> 907.2 g
-      'Item E,1.5,kilogram', // 1.5 kg -> 1500 g
-      'Item F,0.5,kilograms', // 0.5 kg -> 500 g
-      'Item G,100,gram', // 100 g -> 100 g
-      'Item H,200,grams', // 200 g -> 200 g
-      'Item I,50,', // empty unit -> 50 g
-    ].join('\r\n')
+  // The alias table belongs to toGrams (units.test.ts): this parser hands it
+  // the cell as written. One non-gram row proves the parser reads the unit
+  // column, and a blank cell in that column still means grams.
+  it('converts the weight by the unit column', () => {
+    const csv = ['name,weight,unit', 'Item A,3,ounce', 'Item B,50,'].join('\r\n')
     const parsed = parseGearCsv(csv)
     if (typeof parsed === 'string') throw new Error(parsed)
-    expect(parsed.map((r) => r.weightGrams)).toEqual([
-      85, 70.9, 453.6, 907.2, 1500, 500, 100, 200, 50,
-    ])
+    expect(parsed.map((r) => r.weightGrams)).toEqual([85, 50])
   })
 
   it('resolves the "name" / "Item Name" and "weight" / "weight_grams" aliases', () => {

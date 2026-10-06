@@ -4,6 +4,7 @@ import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
+import { PACK_ROW_WEIGHT_CELL } from '../components/flat-table-styles'
 import { list, listId, renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 // Food as a full peer of gear in Pack mode. What these tests pin:
@@ -137,28 +138,21 @@ describe('food rows in Pack mode', () => {
   it('gives food rows the same weight cell as the gear rows beside them', async () => {
     await renderDetail(`/lists/${listId}/pack`)
 
-    // The gear weight appears twice now - once in the pack row, once in the
-    // picker aside, which renders in Pack since the one-page change. Pick the
-    // row cell by the column width only the row uses.
-    const rowCell = (label: string) =>
-      screen
-        .getAllByLabelText(label)
-        .map((el) => el.parentElement)
-        .find((el) => el?.className.includes('w-24'))
+    // The gear cell is a button (its weight is editable in place) and the
+    // food cell is a span (food weight is authored in the Food view), so
+    // their affordance styling differs. The column geometry is the shared
+    // token. The gear weight also shows in the picker aside, so look for the
+    // token among every cell that shows the weight.
+    const cellClasses = (label: string) =>
+      screen.getAllByLabelText(label).map((el) => el.parentElement?.className ?? '')
 
     await screen.findByLabelText('300 g')
-    const foodWeight = rowCell('300 g')
-    const gearWeight = rowCell('210 g')
-
-    expect(foodWeight).toBeDefined()
-    expect(gearWeight).toBeDefined()
-    // Compare what governs alignment, not the whole class string: the gear
-    // cell is a button (its weight is editable in place) and the food cell is
-    // a span (food weight is authored in the Food view), so they legitimately
-    // differ in affordance styling while their column geometry must not.
-    for (const token of ['shrink-0', 'w-24', 'text-right', 'hidden', 'lg:inline-block', 'print:hidden']) {
-      expect(foodWeight?.className).toContain(token)
-      expect(gearWeight?.className).toContain(token)
+    expect(cellClasses('300 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
+    expect(cellClasses('210 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
+    // What the token must keep: one fixed column width, shown from lg up only
+    // (a w-24 cell at 375px would crush the name), never printed.
+    for (const cls of ['shrink-0', 'w-24', 'hidden', 'lg:inline-block', 'print:hidden']) {
+      expect(PACK_ROW_WEIGHT_CELL.split(' ')).toContain(cls)
     }
   })
 

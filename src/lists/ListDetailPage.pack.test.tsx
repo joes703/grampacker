@@ -2,6 +2,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
+import type { ComponentProps } from 'react'
 import { useLocation, useNavigationType } from 'react-router'
 import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
 import {
@@ -61,7 +63,27 @@ const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
   deleteListItem: vi.fn(),
   quickAddListItem: vi.fn(),
+  // The latest collision detector each mounted DndContext was given.
+  collisionDetections: new Map<string, CollisionDetection | undefined>(),
 }))
+
+// DndContext still runs for real. The wrapper records which collision
+// detector the page hands it, for the wiring test at the end. The page has
+// more than one DndContext (the desktop lists panel has its own), so the
+// record is per mounted instance and always holds its latest render.
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/core')>()
+  const { createElement, useEffect, useId } = await import('react')
+  return {
+    ...actual,
+    DndContext: (props: ComponentProps<typeof actual.DndContext>) => {
+      const id = useId()
+      h.collisionDetections.set(id, props.collisionDetection)
+      useEffect(() => () => void h.collisionDetections.delete(id), [id])
+      return createElement(actual.DndContext, props)
+    },
+  }
+})
 
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
@@ -118,6 +140,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
+  h.collisionDetections.clear()
 })
 
 describe('adding gear from Pack view', () => {
@@ -411,5 +434,46 @@ describe('rewriting retired list URLs', () => {
     // first effect flush, long before the loaded anchor above appeared - and
     // the URL, query and fragment are exactly what was entered.
     expect(screen.getByTestId('location')).toHaveTextContent(`${path}|POP`)
+  })
+})
+
+describe('pack collision wiring', () => {
+  // Location drags may land only on a sibling location: plain closestCenter
+  // would let a section drop onto a cousin, which reparents it. Category
+  // grouping has one kind of target and keeps plain closestCenter.
+  it('selects the packing collision filter for location grouping', async () => {
+    // Two root locations, and a third nested in the first through a
+    // container item that sits there.
+    h.fetchListItems.mockResolvedValue([{ ...listItem, packingLocationId: 'loc-a' }])
+    h.fetchPackingLocations.mockResolvedValue([
+      { id: 'loc-a', name: 'Pack', sortOrder: 0, containerListItemId: null },
+      { id: 'loc-b', name: 'Duffel', sortOrder: 1, containerListItemId: null },
+      { id: 'loc-c', name: 'Pot', sortOrder: 0, containerListItemId: 'li-1' },
+    ] as PackingLocation[])
+    stubViewport(1280)
+    await renderDetail(`/lists/${listId}/pack`)
+
+    const filters = [...h.collisionDetections.values()].filter((d) => d !== closestCenter)
+    expect(filters).toHaveLength(1)
+    const [detect] = filters
+    if (!detect) throw new Error('unreachable: length checked above')
+    const rect = { top: 0, left: 0, width: 10, height: 10, bottom: 10, right: 10 }
+    const target = (id: string) => ({
+      id, key: id, data: { current: undefined }, disabled: false,
+      node: { current: null }, rect: { current: rect },
+    })
+    const hits = detect({
+      active: { id: 'packing-location:loc-a', data: { current: undefined }, rect: { current: { initial: rect, translated: rect } } },
+      collisionRect: rect,
+      droppableRects: new Map([['packing-location:loc-b', rect], ['packing-location:loc-c', rect]]),
+      droppableContainers: [target('packing-location:loc-b'), target('packing-location:loc-c')],
+      pointerCoordinates: null,
+    })
+    expect(hits.map((hit) => hit.id)).toEqual(['packing-location:loc-b'])
+
+    cleanup()
+    await renderDetail(`/lists/${listId}`)
+    expect(h.collisionDetections.size).toBeGreaterThan(0)
+    expect(new Set(h.collisionDetections.values())).toEqual(new Set([closestCenter]))
   })
 })

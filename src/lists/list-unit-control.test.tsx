@@ -2,15 +2,44 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import type { List } from '../lib/types'
+import type { GearItem, List, ListItemWithGear } from '../lib/types'
 import ListDocumentToolbar from './ListDocumentToolbar'
+import {
+  emptyFood,
+  list as pageList,
+  listId,
+  renderListDetailPage,
+  stubViewport,
+} from './test/list-detail-harness'
 
 vi.mock('./CurrentListHeader', () => ({ default: () => <div>current-list-header</div> }))
 vi.mock('./ListSettingsButton', () => ({ default: () => <div>list-settings-button</div> }))
 
+// For the one test that mounts the whole page.
+const h = vi.hoisted(() => ({
+  fetchLists: vi.fn(),
+  fetchListItems: vi.fn(),
+  fetchGearItems: vi.fn(),
+  fetchCategories: vi.fn(),
+  fetchPackingLocations: vi.fn(),
+  fetchListFood: vi.fn(),
+}))
+
+// Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
+// explains why).
+vi.mock('../lib/auth-client', () => ({
+  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
+}))
+
+vi.mock('../lib/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/queries')>()
+  return { ...actual, ...h }
+})
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  vi.unstubAllGlobals()
 })
 
 const list: List = {
@@ -32,19 +61,26 @@ const list: List = {
 // Route identity, mode controls, and units share one document toolbar at every
 // viewport so switching modes changes tools without replacing the heading.
 describe('list unit control placement', () => {
-  it('keeps a single unit control in the viewport-independent toolbar', () => {
-    render(<ListDocumentToolbar list={list} mode="edit" />, { wrapper: MemoryRouter })
+  it('keeps a single unit control in the viewport-independent toolbar', async () => {
+    const gear = { id: 'gear-1', name: 'Cooking pot', weightGrams: 210, categoryId: null } as unknown as GearItem
+    h.fetchLists.mockResolvedValue([pageList])
+    h.fetchListItems.mockResolvedValue([
+      { id: 'li-1', gearItemId: 'gear-1', gearItem: gear, quantity: 1, sortOrder: 0 } as unknown as ListItemWithGear,
+    ])
+    h.fetchGearItems.mockResolvedValue([gear])
+    h.fetchCategories.mockResolvedValue([])
+    h.fetchPackingLocations.mockResolvedValue([])
+    h.fetchListFood.mockResolvedValue(emptyFood)
 
-    expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
-
-    const sources = import.meta.glob('./ListDetailPage.tsx', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>
-    const src = Object.values(sources)[0]!
-    expect(src).not.toContain('idPrefix="list-mobile"')
-    expect(src.match(/<ListDocumentToolbar/g)).toHaveLength(1)
+    // The page mounts different surfaces below and above lg, so check both.
+    for (const width of [375, 1280]) {
+      stubViewport(width)
+      await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
+      // The category footer exists only past the page's loading gate.
+      await screen.findByRole('button', { name: 'Add new item' })
+      expect(screen.getAllByRole('radiogroup', { name: 'Weight units' }), `${width}px`).toHaveLength(1)
+      cleanup()
+    }
   })
 
   it('hides the unit control and list options in Pack', () => {
@@ -68,10 +104,9 @@ describe('list unit control placement', () => {
     expect(screen.queryByText('list-settings-button')).toBeNull()
   })
 
-  it('offers List and Pack as peer views in every list mode', () => {
-    // Organize was a third peer here. It merged into Pack, so the nav is two
-    // destinations and nothing links to /organize any more - the retired URLs
-    // survive only as redirects (see list-detail-mode).
+  // The toolbar passes its mode on to the view nav, which marks that view as
+  // the current page. ListViewNav.test.tsx covers the nav's own links.
+  it('marks the current view in the view nav', () => {
     const { rerender } = render(
       <ListDocumentToolbar
         list={list}
@@ -82,7 +117,6 @@ describe('list unit control placement', () => {
     expect(screen.getByRole('navigation', { name: 'List views' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Category', current: 'page' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Pack' })).not.toHaveAttribute('aria-current')
-    expect(screen.queryByRole('link', { name: 'Organize' })).toBeNull()
 
     rerender(
       <ListDocumentToolbar

@@ -208,6 +208,8 @@ the Pack row showed no weight at all. Three copies of the same state machine
   (food weight is authored in the Food view).
 - Pass text color and width/visibility through `className`; the control owns
   the numeric token and the hover affordance, not the row's color.
+- Pack rows, gear and food alike, pass `PACK_ROW_WEIGHT_CELL`. One bag holds
+  both kinds of row, so their weight cells must keep the same column geometry.
 - Name and description are edited inline by `InlineText`. On a Pack row they
   deliberately are NOT: those sit inside the label that toggles Packed, and an
   input there would fight the gesture. Weight sits outside it, which is the

@@ -19,6 +19,7 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  PACK_ROW_WEIGHT_CELL,
   POPOVER_SURFACE,
   PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
@@ -265,7 +266,7 @@ export default function ItemRow({
           unit={weightUnit}
           onSave={onSaveWeight}
           itemName={name}
-          className="hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden"
+          className={PACK_ROW_WEIGHT_CELL}
           // While editing the cell becomes a flex row (input + unit toggle),
           // so it cannot keep inline-block.
           editingClassName="hidden lg:flex shrink-0 w-24 print:hidden"
