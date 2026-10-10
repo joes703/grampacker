@@ -439,7 +439,33 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 ## Supply chain
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
-  `.npmrc`, exact pins, no core infra on beta/RC.
+  `.npmrc`, exact pins, no core infra on beta/RC. We never choose a
+  prerelease ourselves: not as a direct dependency, not in `overrides`, and
+  not in place of a stable release.
+  - *Exception, Cloudflare development tooling only.* The stable `wrangler`,
+    `@cloudflare/vite-plugin` and `@cloudflare/vitest-plugin` releases we
+    pin require these prereleases at exact versions, so no stable
+    alternative can be installed with them:
+    - `miniflare` `5.20261006.1-alpha` (pinned by all three): the local
+      Workers simulator behind `npm run dev` and `npm run test:api`.
+    - `youch` `4.1.0-beta.10` (pinned by miniflare): formats error pages
+      in local development.
+    - `unenv` `2.0.0-rc.24` (pinned by wrangler and the Vite plugin, and an
+      exact peer dependency of `@cloudflare/unenv-preset`): stand-ins for
+      Node.js APIs that the build can bundle into the Worker under
+      `nodejs_compat`.
+
+    The exception covers only these packages, only at the versions that a
+    reviewed stable Cloudflare release pins. Re-check it, and update the
+    versions here, in the change that updates that tooling. It does not mean
+    that any prerelease a dependency picks, or any version npm tags
+    `latest`, is acceptable. `unenv` is the one that can reach production:
+    because `nodejs_compat` is on, the build can put its Node.js stand-ins
+    into the deployed Worker. Inspect the Worker bundle when the tooling,
+    the `nodejs_compat` setting, or our use of Node.js APIs changes.
+    Searching for unenv's `[unenv]` error prefix is a quick check, but
+    finding none does not prove that unenv code is absent: some of its code
+    has no such marker, and the bundler can remove unused error paths.
 - **Routine updates wait; security fixes bypass routine waiting and receive
   prompt review.** Neither path makes a release safe or approves a deploy.
   - *Routine:* Dependabot version updates wait 7 days on the registry
