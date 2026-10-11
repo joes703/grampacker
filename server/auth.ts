@@ -228,6 +228,15 @@ export function authOptions(env: Env, incident?: AuthIncident) {
       defaultCookieAttributes: {
         sameSite: 'strict' as const,
       },
+      // Explicit, never left to the default. Unset, better-auth SKIPS its
+      // origin validation whenever NODE_ENV is 'test' or TEST is truthy
+      // (create-context's isTest()). On Node that means a stray TEST=1 in
+      // production would silently drop the forged-Origin 403 and the
+      // cookieless magic-link-send refusal, and under Vitest (which sets
+      // NODE_ENV=test) the check would not run at all. Workers never
+      // matched, because process.env was empty there.
+      // server/auth-origin-validation.test.ts pins the check.
+      disableOriginCheck: false,
     },
     rateLimit: {
       // Rate limiting is owned by our middleware
