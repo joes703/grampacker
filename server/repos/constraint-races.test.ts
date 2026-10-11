@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDb, type Db } from '../db'
 import { createFoodRepo } from './food'
 import { createListItemsRepo } from './list-items'
-import { createPackReorderRepo } from './pack-reorder'
-import { createPackingLocationsRepo } from './packing-locations'
 import { createListsRepo } from './lists'
 import { eq } from 'drizzle-orm'
 import { listFoodItemSlots } from '../db/app-schema'
@@ -567,37 +565,11 @@ describe('list CSV import loses a race', () => {
   })
 })
 
-describe('packing location create loses a race', () => {
-  // The container precheck reads the list item, then the insert runs. A
-  // delete of that item in between leaves the same-list trigger as the only
-  // guard, and it aborts the insert. That abort is a lost race on the
-  // client's input, not a 500.
-  it('container item deleted after the precheck -> invalid_container_item', async () => {
-    const { cookie, userId } = await newUser('pl1')
-    const listId = await createList(cookie, 'Trip')
-    const gearId = await createGear(cookie, 'Pack')
-    const add = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
-      gearItemId: gearId,
-    })
-    if (add.status !== 201) throw new Error(`add item: ${add.status}`)
-    const itemId = ((await add.json()) as { id: string }).id
-
-    const repo = createPackingLocationsRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from list_items where id = ?')
-          .bind(itemId)
-          .run()
-      }),
-      userId,
-    )
-    const result = await repo.create(listId, { containerListItemId: itemId })
-    expect(result).toEqual({ ok: false, reason: 'invalid_container_item' })
-    const locations = await testDb.prepare(
-      'select count(*) as c from packing_locations where list_id = ?',
-    ).bind(listId).first<{ c: number }>()
-    expect(locations?.c).toBe(0)
-  })
-})
+// Packing-location create, pack reorder and location delete no longer appear
+// here: each runs its reads, checks and writes in one SQLite transaction, so
+// the window these tests staged between a precheck and its write does not
+// exist. server/repos/pack-transactions.test.ts proves the transactions are
+// all-or-nothing instead.
 
 describe('update() rank collision', () => {
   // The colliding state cannot exist in a serialized database - the rank is
@@ -647,115 +619,7 @@ describe('listItemFailure', () => {
 // can be staged through HTTP: the payload must be a permutation of the
 // cohort's CURRENT ranks, so any state that would collide is rejected as a
 // 400 before the batch. Hence the failing-db harness, same as update().
-describe('reorderPack loses a race', () => {
-  async function seedTwoItemCohort(cookie: string, listId: string) {
-    const gearA = await createGear(cookie, 'Stove A')
-    const gearB = await createGear(cookie, 'Stove B')
-    for (const gearItemId of [gearA, gearB]) {
-      const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
-        gearItemId,
-      })
-      if (res.status !== 201) throw new Error(`add item: ${res.status}`)
-    }
-    const items = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
-    const rows = (await items.json()) as { id: string; packSortOrder: number }[]
-    // A genuine permutation of the current ranks: swap the two.
-    return [
-      { id: rows[0]!.id, packSortOrder: rows[1]!.packSortOrder },
-      { id: rows[1]!.id, packSortOrder: rows[0]!.packSortOrder },
-    ]
-  }
-
-  it('maps a rank collision (unique index) to conflict', async () => {
-    const { cookie, userId } = await newUser('rp1')
-    const listId = await createList(cookie, 'Trip')
-    const updates = await seedTwoItemCohort(cookie, listId)
-
-    // skip = 1: the union reorder's FIRST batch is the cohort read; the
-    // injected failure must land on the write batch that follows it.
-    const repo = createPackReorderRepo(
-      failing(raw(), 'batch', rankCollision(), 1),
-      userId,
-    )
-    const result = await repo.reorder(listId, { items: updates, foodItems: [] })
-    expect(result).toEqual({ ok: false, reason: 'conflict' })
-  })
-
-  it('maps the park guard firing (NOT NULL) to conflict', async () => {
-    const { cookie, userId } = await newUser('rp2')
-    const listId = await createList(cookie, 'Trip')
-    const updates = await seedTwoItemCohort(cookie, listId)
-
-    const guardViolation = new Error('Failed query', {
-      cause: new Database.SqliteError(
-        'NOT NULL constraint failed: _pack_reorder_guard.ok',
-        'SQLITE_CONSTRAINT_NOTNULL',
-      ),
-    })
-    const repo = createPackReorderRepo(
-      failing(raw(), 'batch', guardViolation, 1),
-      userId,
-    )
-    const result = await repo.reorder(listId, { items: updates, foodItems: [] })
-    expect(result).toEqual({ ok: false, reason: 'conflict' })
-  })
-
-  it('location delete answers conflict when a bag row drifts between read and write', async () => {
-    // The append path's fail-loud census (round-8): a concurrent in-bag
-    // reorder between remove()'s pre-read and its write batch makes a
-    // reassign miss its (bag, rank) assertion; the leftover row trips the
-    // census guard and the WHOLE batch - including the location delete -
-    // rolls back into the retryable conflict. Injected deterministically:
-    // a Proxy defers remove()'s SECOND batch (the writes) until after a
-    // raw rank bump simulates the concurrent reorder.
-    const { cookie, userId } = await newUser('ld-census')
-    const listId = await createList(cookie, 'Trip')
-    const locRes = await apiRequest(
-      cookie,
-      'POST',
-      `/api/lists/${listId}/packing-locations`,
-      { name: 'Bag' },
-    )
-    const { id: locationId } = (await locRes.json()) as { id: string }
-    const updates = await seedTwoItemCohort(cookie, listId)
-    for (const u of updates) {
-      await apiRequest(cookie, 'PATCH', `/api/lists/${listId}/items/${u.id}`, {
-        packingLocationId: locationId,
-      })
-    }
-
-    let batchCalls = 0
-    const drifting = new Proxy(raw(), {}) as Db
-    batchHooks.set(drifting, async () => {
-            batchCalls += 1
-            if (batchCalls === 2) {
-              // The concurrent reorder: swap the two bag rows' ranks.
-              const rows = await testDb.prepare(
-                `select id, pack_sort_order from list_items where list_id = ? and packing_location_id = ? order by pack_sort_order`,
-              ).bind(listId, locationId).all<{ id: string; pack_sort_order: number }>()
-              const [a, b] = rows.results
-              await testDb.prepare(
-                `update list_items set pack_sort_order = -1 where id = ?`,
-              ).bind(a!.id).run()
-              await testDb.prepare(
-                `update list_items set pack_sort_order = ? where id = ?`,
-              ).bind(a!.pack_sort_order, b!.id).run()
-              await testDb.prepare(
-                `update list_items set pack_sort_order = ? where id = ?`,
-              ).bind(b!.pack_sort_order, a!.id).run()
-            }
-    })
-
-    const repo = createPackingLocationsRepo(drifting, userId)
-    const result = await repo.remove(listId, locationId)
-    expect(result).toBe('conflict')
-    // Nothing partial landed: the location still exists with both rows.
-    const stillThere = await testDb.prepare(
-      `select count(*) as c from list_items where packing_location_id = ?`,
-    ).bind(locationId).all<{ c: number }>()
-    expect(stillThere.results[0]?.c).toBe(2)
-  })
-
+describe('pack-order and location-delete routes keep their 409 dialect', () => {
   it('the location-delete route answers a fallback conflict with 409', async () => {
     const { Hono } = await import('hono')
     const { packingLocationRoutes } = await import('../routes/packing-locations')

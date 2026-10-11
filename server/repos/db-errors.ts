@@ -74,49 +74,6 @@ export function isForeignKeyViolation(err: unknown): boolean {
   )
 }
 
-// The reorder guard firing. `reorderPack` aborts its batch by feeding NULL into
-// `_pack_reorder_guard.ok` (NOT NULL) when a park did not land, which is how a
-// lost race becomes a 409 instead of a silent no-op that returns 204.
-//
-// Pinned to the guard's own column so an unrelated NOT NULL failure elsewhere
-// in the batch is not misread as a lost race. Any constraint code is accepted
-// (SQLite reports SQLITE_CONSTRAINT_NOTNULL); the root SQLite message never
-// embeds bound values, so no user-controlled text can reach this match.
-export function isPackGuardViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    root.message.includes('NOT NULL constraint failed: _pack_reorder_guard.ok') &&
-    isConstraint(root.code)
-  )
-}
-
-// A chunked park/settle statement matched a row by id but not by its
-// expected rank: the SET subquery yielded NULL into the NOT NULL rank
-// column. Per-row drift detection for the union reorder - the row moved
-// between the pre-read and the batch, so the whole batch must roll back.
-export function isPackRankNotNullViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    (root.message.includes('NOT NULL constraint failed: list_items.pack_sort_order') ||
-      root.message.includes(
-        'NOT NULL constraint failed: list_food_items.pack_sort_order',
-      )) &&
-    isConstraint(root.code)
-  )
-}
-
-// The food half of the union reorder guard, 0022's mirror of the above.
-export function isFoodPackGuardViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    root.message.includes('NOT NULL constraint failed: _food_pack_reorder_guard.ok') &&
-    isConstraint(root.code)
-  )
-}
-
 // Migration 0019's range triggers. Reachable only when a cohort has exhausted
 // the rank space (its maximum is already PACK_RANK_MAX, so the `max + 1` every
 // arrival computes would step past it).

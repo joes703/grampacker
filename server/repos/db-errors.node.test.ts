@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { isCategoryCapError } from './categories'
 import {
   isAnyUniqueViolation,
-  isFoodPackGuardViolation,
   isForeignKeyViolation,
-  isPackGuardViolation,
-  isPackRankNotNullViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -76,9 +73,8 @@ describe('isUniqueViolation', () => {
 })
 
 // The matchers below decide user-facing statuses with no other check behind
-// them: isAnyUniqueViolation and isPackGuardViolation together decide the
-// pack-order 409, and isForeignKeyViolation opens the precheck-race recovery
-// path. Same discipline as above: real root shapes match here, and the
+// them: isAnyUniqueViolation decides the pack-order 409, and
+// isForeignKeyViolation opens the precheck-race recovery path. Same discipline as above: real root shapes match here, and the
 // wrapper forgeries are in the table at the end.
 
 describe('isAnyUniqueViolation', () => {
@@ -107,23 +103,6 @@ describe('isForeignKeyViolation', () => {
 
   it('rejects a plain error with no constraint marker', () => {
     expect(isForeignKeyViolation(new Error('FOREIGN KEY constraint failed'))).toBe(false)
-  })
-})
-
-describe('isPackGuardViolation', () => {
-  it('matches only the guard table own column', () => {
-    const guard = wrapped(
-      sqliteError('NOT NULL constraint failed: _pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'),
-      'Failed query: insert into "_pack_reorder_guard" ...',
-    )
-    expect(isPackGuardViolation(guard)).toBe(true)
-
-    // An unrelated NOT NULL in the same batch must NOT read as a lost race.
-    const other = wrapped(
-      sqliteError('NOT NULL constraint failed: list_items.quantity', 'SQLITE_CONSTRAINT_NOTNULL'),
-      'Failed query: update "list_items" ...',
-    )
-    expect(isPackGuardViolation(other)).toBe(false)
   })
 })
 
@@ -160,10 +139,6 @@ describe('wrapper params never classify an error', () => {
     { name: 'isUniqueViolation', match: (e: unknown) => isUniqueViolation(e, 'lists.slug'), text: sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'), other: FK_ROOT },
     { name: 'isAnyUniqueViolation', match: isAnyUniqueViolation, text: sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'), other: FK_ROOT },
     { name: 'isForeignKeyViolation', match: isForeignKeyViolation, text: sqliteError('FOREIGN KEY constraint failed', 'SQLITE_CONSTRAINT_FOREIGNKEY'), other: UNIQUE_ROOT },
-    { name: 'isPackGuardViolation', match: isPackGuardViolation, text: sqliteError('NOT NULL constraint failed: _pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
-    { name: 'isFoodPackGuardViolation', match: isFoodPackGuardViolation, text: sqliteError('NOT NULL constraint failed: _food_pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
-    { name: 'isPackRankNotNullViolation (gear)', match: isPackRankNotNullViolation, text: sqliteError('NOT NULL constraint failed: list_items.pack_sort_order', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
-    { name: 'isPackRankNotNullViolation (food)', match: isPackRankNotNullViolation, text: sqliteError('NOT NULL constraint failed: list_food_items.pack_sort_order', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
   ])('$name ignores its text in wrapper params', ({ match, text, other }) => {
     expect(match(wrapped(text, 'Failed query: ...'))).toBe(true)
     expect(match(wrapped(other, `Failed query: insert ... params: abc,${text.message},0`))).toBe(false)

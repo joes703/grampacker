@@ -351,7 +351,7 @@ listRoutes.put('/:id/items/pack-order', async (c) => {
   const raw = await c.req.json().catch(() => null)
   const parsed = reorderPackListItemsRequestSchema.safeParse(raw)
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
-  // Union reorder since 0022: gear and food halves written in one batch.
+  // Union reorder since 0022: gear and food halves written in one transaction.
   // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
   // onto the same payload.
   const result = await c
@@ -365,8 +365,10 @@ listRoutes.put('/:id/items/pack-order', async (c) => {
   // from a list that does not exist, deliberately - the same 404 either way,
   // so the response never confirms that someone else's item id is real.
   if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
-  // Lost a race with a concurrent reorder of the same bag. The whole batch
-  // rolled back, so nothing partial landed; the client refetches and retries.
+  // The unique index refused the write. No longer reachable by a concurrent
+  // reorder (the repo works in one transaction); kept as the backstop. The
+  // transaction rolled back, so nothing partial landed; the client refetches
+  // and retries.
   if (result.reason === 'conflict') {
     return c.json({ error: 'This bag changed while you were reordering' }, 409)
   }
