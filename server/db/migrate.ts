@@ -24,38 +24,57 @@ import type { Sqlite } from './index'
 // Returns how many migrations it applied, for logging.
 export const DEFAULT_MIGRATIONS_FOLDER = 'migrations'
 
-export function applyMigrations(
-  sqlite: Sqlite,
-  migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,
-): number {
+const LEDGER_DDL = `
+  CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+    id SERIAL PRIMARY KEY,
+    hash text NOT NULL,
+    created_at numeric
+  )
+`
+
+function pending(sqlite: Sqlite, migrationsFolder: string) {
   const migrations = readMigrationFiles({ migrationsFolder })
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
-      id SERIAL PRIMARY KEY,
-      hash text NOT NULL,
-      created_at numeric
-    )
-  `)
+  const hasLedger = sqlite
+    .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = '__drizzle_migrations'`)
+    .get()
+  if (!hasLedger) return migrations
   const last = sqlite
     .prepare(
       'SELECT created_at FROM "__drizzle_migrations" ORDER BY created_at DESC LIMIT 1',
     )
     .get() as { created_at: number | string } | undefined
   const lastApplied = last === undefined ? null : Number(last.created_at)
-  const pending = migrations.filter(
+  return migrations.filter(
     (m) => lastApplied === null || lastApplied < m.folderMillis,
   )
+}
 
+// How many migrations have not been applied. Read-only: it never creates the
+// ledger. The server refuses to start unless this is 0, so it never serves a
+// schema older than its code.
+export function pendingMigrationCount(
+  sqlite: Sqlite,
+  migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,
+): number {
+  return pending(sqlite, migrationsFolder).length
+}
+
+export function applyMigrations(
+  sqlite: Sqlite,
+  migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,
+): number {
+  sqlite.exec(LEDGER_DDL)
+  const todo = pending(sqlite, migrationsFolder)
   const record = sqlite.prepare(
     'INSERT INTO "__drizzle_migrations" ("hash", "created_at") VALUES (?, ?)',
   )
   sqlite.transaction(() => {
-    for (const migration of pending) {
+    for (const migration of todo) {
       for (const chunk of migration.sql) {
         if (chunk.trim() !== '') sqlite.exec(chunk)
       }
       record.run(migration.hash, migration.folderMillis)
     }
   }).immediate()
-  return pending.length
+  return todo.length
 }

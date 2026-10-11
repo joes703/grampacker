@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:node": "tsx watch --clear-screen=false --include vite.node.config.ts server/dev.ts",
+    "start:node": "tsx server/node.ts",
+    "db:migrate": "tsx server/node.ts migrate",
     "build": "npm run typecheck && npm run lint && vite build",
     "typecheck": "wrangler types && tsc -b",
     "lint": "eslint .",

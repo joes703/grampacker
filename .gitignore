@@ -4,6 +4,8 @@ dist/
 worker-configuration.d.ts
 *.tsbuildinfo
 .dev.vars
+# Local SQLite database for `npm run dev:node`.
+.data/
 *.local
 .claude/settings.local.json
 .DS_Store
