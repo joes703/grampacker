@@ -9,7 +9,7 @@ import {
   packingLocations,
 } from '../db/schema'
 import {
-  isAnyUniqueViolation,
+  isPackRankUniqueViolation,
   isForeignKeyViolation,
   isPackRankRangeError,
   isTriggerAbort,
@@ -276,8 +276,9 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
         // Not reachable through concurrency any more (nothing can change
         // between the reads and the writes). Kept as the route's documented
-        // retryable answer should the unique index ever disagree with the plan.
-        if (isAnyUniqueViolation(err)) return 'conflict'
+        // retryable answer should a PACK-RANK unique index ever disagree with
+        // the plan. Any other constraint failure is a 500.
+        if (isPackRankUniqueViolation(err)) return 'conflict'
         throw err
       }
     },

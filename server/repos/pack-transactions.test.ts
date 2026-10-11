@@ -1,5 +1,7 @@
 import { env } from '../test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createDb, type Db } from '../db'
+import { createPackingLocationsRepo } from './packing-locations'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -106,12 +108,39 @@ describe('pack reorder is all-or-nothing', () => {
     for (const move of payload) expect(after.get(move.id)).toBe(move.packSortOrder)
   })
 
-  it('a unique-index failure maps to the route 409 and still rolls back', async () => {
+  it('a pack-rank index collision maps to the route 409 and still rolls back', async () => {
     // The 409 path no longer has a race to report (the transaction holds the
-    // write lock), but it stays as the backstop should the index ever
-    // disagree with validation. Stage that disagreement with a test-only
-    // unique index the validation does not know about: rank 777 may appear
-    // once in the whole table, and a row in ANOTHER list already holds it.
+    // write lock), but it stays as the backstop should the cohort index ever
+    // disagree with validation. Stage that disagreement: a test-only trigger
+    // moves an UNTOUCHED row of the same bag onto b's target rank just before
+    // b settles there, so b's settle hits the real cohort index.
+    const { cookie, listId } = await seedBag(3)
+    const before = itemsIn(listId)
+    const [a, b, c] = [...before].sort((x, y) => x.packSortOrder - y.packSortOrder)
+    sqlite.exec(`
+      CREATE TRIGGER test_inject_failure BEFORE UPDATE OF pack_sort_order ON list_items
+      WHEN NEW.id = '${b!.id}' AND NEW.pack_sort_order >= 0
+      BEGIN
+        UPDATE list_items SET pack_sort_order = NEW.pack_sort_order WHERE id = '${c!.id}';
+      END
+    `)
+    // a settles first onto b's rank, then b onto a's rank - where c now is.
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listId}/items/pack-order`, {
+      items: [
+        { id: a!.id, packSortOrder: b!.packSortOrder },
+        { id: b!.id, packSortOrder: a!.packSortOrder },
+      ],
+      foodItems: [],
+    })
+    expect(res.status).toBe(409)
+    // a's park and settle, b's park, and the trigger's move of c: all undone.
+    expect(itemsIn(listId)).toEqual(before)
+  })
+
+  it('any OTHER unique failure is a 500, not a retryable 409', async () => {
+    // A unique index that is not one of the pack-rank indexes: rank 777 may
+    // appear once in the whole table, and a row in ANOTHER list holds it.
+    // Retrying cannot fix that, so it must not be answered as a conflict.
     const { cookie, listId } = await seedBag(2)
     const other = await seedBag(0)
     const gear = (await (
@@ -129,7 +158,6 @@ describe('pack reorder is all-or-nothing', () => {
     try {
       const before = itemsIn(listId)
       const [a, b] = [...before].sort((x, y) => x.packSortOrder - y.packSortOrder)
-      // a settles first onto b's rank, then b's settle onto 777 collides.
       const res = await apiRequest(cookie, 'PUT', `/api/lists/${listId}/items/pack-order`, {
         items: [
           { id: a!.id, packSortOrder: b!.packSortOrder },
@@ -137,8 +165,7 @@ describe('pack reorder is all-or-nothing', () => {
         ],
         foodItems: [],
       })
-      expect(res.status).toBe(409)
-      // a's park and settle, and b's park, were all undone.
+      expect(res.status).toBe(500)
       expect(itemsIn(listId)).toEqual(before)
     } finally {
       sqlite.exec('DROP INDEX test_only_rank')
@@ -201,3 +228,78 @@ describe('deleting a packing location is all-or-nothing', () => {
     expect(itemsIn(listId).every((row) => row.packingLocationId === null)).toBe(true)
   })
 })
+
+// The repo's own db handle, with the Nth select() it makes - directly or
+// inside a transaction - failing when it executes. create and rename read the
+// list back AFTER their write, inside the same transaction; failing that
+// read-back must take the write with it, or a "failed" create leaves a bag
+// behind (names are not unique, so the retry makes a second one).
+function failingNthSelect(n: number): Db {
+  const db = createDb(env.DB)
+  let selects = 0
+  const failChain = (builder: object): unknown =>
+    new Proxy(builder, {
+      get(target, prop) {
+        if (prop === 'all' || prop === 'get') {
+          return () => {
+            throw new Error('test: read-back failed')
+          }
+        }
+        const value = Reflect.get(target, prop) as unknown
+        return typeof value === 'function'
+          ? (...args: unknown[]) => failChain((value as (...a: unknown[]) => object).apply(target, args))
+          : value
+      },
+    })
+  const countSelects = <T extends object>(handle: T): T =>
+    new Proxy(handle, {
+      get(t, p, r) {
+        if (p === 'select') {
+          return (...args: unknown[]) => {
+            selects += 1
+            const builder = (Reflect.get(t, p, r) as (...a: unknown[]) => object).apply(t, args)
+            return selects === n ? failChain(builder) : builder
+          }
+        }
+        if (p === 'transaction') {
+          return (fn: (tx: object) => unknown, config: unknown) =>
+            (t as unknown as Db).transaction((tx) => fn(countSelects(tx)), config as never)
+        }
+        return Reflect.get(t, p, r)
+      },
+    })
+  return countSelects(db)
+}
+
+function ownerOf(listId: string): string {
+  return (sqlite.prepare('select user_id from lists where id = ?').get(listId) as { user_id: string })
+    .user_id
+}
+
+describe('create and rename take their write down with a failed read-back', () => {
+  it('create: the inserted location does not survive', async () => {
+    const { listId } = await seedBag(0)
+    const count = () =>
+      (sqlite.prepare('select count(*) as n from packing_locations where list_id = ?').get(listId) as {
+        n: number
+      }).n
+    const before = count()
+    // Select 1 is the ownership check, select 2 the read-back after the insert.
+    const repo = createPackingLocationsRepo(failingNthSelect(2), ownerOf(listId))
+    await expect(repo.create(listId, { name: 'Doomed' })).rejects.toThrow('test: read-back failed')
+    expect(count()).toBe(before)
+  })
+
+  it('rename: the new name does not survive', async () => {
+    const { listId, locationId } = await seedBag(0)
+    const name = () =>
+      (sqlite.prepare('select name from packing_locations where id = ?').get(locationId) as {
+        name: string
+      }).name
+    // Select 1 is the pre-read, select 2 the read-back after the update.
+    const repo = createPackingLocationsRepo(failingNthSelect(2), ownerOf(listId))
+    await expect(repo.rename(listId, locationId, 'Renamed')).rejects.toThrow('test: read-back failed')
+    expect(name()).toBe('Bag')
+  })
+})
+

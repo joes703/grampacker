@@ -3,7 +3,7 @@ import type { ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db, Tx } from '../db'
 import { listFoodItems, listItems } from '../db/schema'
-import { isAnyUniqueViolation } from './db-errors'
+import { isPackRankUniqueViolation } from './db-errors'
 
 // The ONE implementation of "permute a packing cohort safely", shared by both
 // packable tables.
@@ -176,9 +176,10 @@ export function createPackReorderRepo(db: Db, userId: string) {
         )
       } catch (err) {
         // Not reachable through concurrency (see the header). Kept as the
-        // route's documented retryable answer should the unique index ever
-        // disagree with validation rule 4; the transaction rolled back.
-        if (isAnyUniqueViolation(err)) return { ok: false, reason: 'conflict' }
+        // route's documented retryable answer should a PACK-RANK unique
+        // index ever disagree with validation rule 4; the transaction rolled
+        // back. Any other constraint failure is a 500: retrying cannot fix it.
+        if (isPackRankUniqueViolation(err)) return { ok: false, reason: 'conflict' }
         throw err
       }
     },
