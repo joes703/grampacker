@@ -50,7 +50,7 @@ boundary. When unsure of a D1 equivalent, ask rather than assume.
 | Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
 | Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
 | Dev server | `npm run dev:node` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. `npm run dev` is the old Worker path. |
-| Node server | `npm run db:migrate`, `npm run start:node` | Apply migrations to `DATABASE_PATH`, then serve. The server refuses to start while migrations are pending. |
+| Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.

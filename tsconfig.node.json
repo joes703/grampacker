@@ -24,6 +24,7 @@
   "include": [
     "vite.config.ts",
     "vite.node.config.ts",
+    "vite.server.config.ts",
     "vitest.config.ts",
     "vitest.workers.config.ts",
     "vitest.api.config.ts",
