@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { securityHeaderMap } from './security-headers'

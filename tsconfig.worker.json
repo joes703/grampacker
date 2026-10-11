@@ -14,7 +14,11 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": ["@cloudflare/vitest-plugin/types"]
+    "types": ["node"]
   },
-  "include": ["server", "shared", "worker-configuration.d.ts"]
+  "include": ["server", "shared"],
+  // The workerd test tier's setup, kept in place (with vitest.workers.config.ts)
+  // until the Cloudflare tooling is removed. It needs the Workers types, which
+  // cannot share a project with the Node types the server now uses.
+  "exclude": ["server/test/apply-migrations.ts", "server/test/env.d.ts"]
 }

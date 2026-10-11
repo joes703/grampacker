@@ -1,6 +1,7 @@
 import { isDevEnvironment } from '../middleware/security-headers'
 import { ConsoleEmailSender } from './console'
 import { ResendEmailSender } from './resend'
+import type { AppEnv } from '../env'
 
 export type AuthEmail = {
   to: string
@@ -9,7 +10,7 @@ export type AuthEmail = {
   text: string
 }
 
-// All outbound email goes through this interface. The Worker uses Resend's
+// All outbound email goes through this interface. The server uses Resend's
 // HTTP API; a provider change swaps the implementation, not the callers.
 export interface EmailSender {
   send(msg: AuthEmail): Promise<void>
@@ -28,7 +29,7 @@ export interface EmailSender {
 // time, as a logged 500 on the magic-link request alone. Not at construction:
 // authOptions runs for every /api/auth/* request and every requireSession
 // check, and a mail misconfiguration must not take down session lookups.
-export function createEmailSender(env: Env): EmailSender {
+export function createEmailSender(env: AppEnv): EmailSender {
   if (env.RESEND_API_KEY) {
     return new ResendEmailSender(env.RESEND_API_KEY, env.EMAIL_FROM)
   }

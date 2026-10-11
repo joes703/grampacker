@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env } from '../test/node-env'
 import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { PACK_RANK_MAX } from '../../shared/lists'

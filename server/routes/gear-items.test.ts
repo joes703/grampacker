@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
@@ -293,7 +293,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('seed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -312,7 +312,7 @@ describe('/api/gear-items authorization matrix', () => {
 
     // ...and the DB trigger backstops writes that bypass the repo.
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 0, 'active', 0, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
@@ -415,7 +415,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('capseed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -447,7 +447,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 120 }, (_, i) => {
       return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
 
@@ -534,7 +534,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 150 }, (_, i) => {
       return `('bulkmany-${i}', '${userId}', 'Bulk item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
     const ids = Array.from({ length: 150 }, (_, i) => `bulkmany-${i}`)

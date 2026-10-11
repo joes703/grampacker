@@ -6,6 +6,7 @@ import {
   type ListFoodResponse,
 } from '../../shared/food'
 import { type SessionVars } from '../middleware/session'
+import type { AppEnv } from '../env'
 
 // The food estimate on one list. Everything here is nested under a list id, and
 // EVERY handler passes that id to the repo - the child id alone is never enough
@@ -23,7 +24,7 @@ import { type SessionVars } from '../middleware/session'
 // item's slot ids and pack state.
 
 export const foodRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: SessionVars
 }>()
 

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { meResponseSchema } from '../../shared/me'
@@ -37,13 +37,13 @@ describe('/api/me authorization matrix', () => {
     const owner = await signUpVerifiedUser('me-haskey@example.com', 'HasKey')
     const other = await signUpVerifiedUser('me-otherkey@example.com', 'Other')
 
-    const ownerId = await env.DB.prepare('select id from user where email = ?')
+    const ownerId = await testDb.prepare('select id from user where email = ?')
       .bind('me-haskey@example.com')
       .first<{ id: string }>()
     // Passkey rows can only be created by a WebAuthn ceremony, which cannot run
     // in a test worker, so the credential is seeded directly. What is under test
     // is the COUNT's scoping, not the ceremony (covered by the passkey tests).
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into passkey (id, name, public_key, user_id, credential_id, counter,
          device_type, backed_up, transports, created_at, aaguid)
        values (?, ?, ?, ?, ?, 0, 'singleDevice', 0, 'internal', ?, ?)`,
@@ -111,7 +111,7 @@ describe('user name is never stored', () => {
     // the endpoint is public, so the server cannot rely on that: the
     // databaseHooks guard is the actual defense, and this drives it.
     await signUpVerifiedUser('me-noname@example.com', 'Should Be Dropped')
-    const row = await env.DB.prepare('select name from user where email = ?')
+    const row = await testDb.prepare('select name from user where email = ?')
       .bind('me-noname@example.com')
       .first<{ name: string }>()
     expect(row?.name).toBe('')

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from './node-env'
 import app from '../index'
 import { lastEmailTo } from '../email/console'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
@@ -67,7 +67,7 @@ export async function signUpVerifiedUser(
       headers: {
         'Content-Type': 'application/json',
         Origin: ORIGIN,
-        'cf-connecting-ip': clientIp,
+        'x-real-ip': clientIp,
       },
       body: JSON.stringify({ email, name }),
     },
@@ -82,7 +82,7 @@ export async function signUpVerifiedUser(
     `/api/auth/magic-link/verify?token=${encodeURIComponent(tokenFromEmail(email))}`,
     {
       method: 'GET',
-      headers: { Origin: ORIGIN, 'cf-connecting-ip': clientIp },
+      headers: { Origin: ORIGIN, 'x-real-ip': clientIp },
     },
     env,
   )
@@ -118,7 +118,7 @@ export async function makeSessionStale(cookie: string): Promise<void> {
   if (!sessionToken) throw new Error('cannot age a cookie with no token')
 
   const staleMs = Date.now() - 1000 * 60 * 60 * 48 // 48h: twice freshAge
-  const { meta } = await env.DB.prepare(
+  const { meta } = await testDb.prepare(
     'update session set created_at = ? where token = ?',
   )
     .bind(staleMs, sessionToken)

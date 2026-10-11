@@ -2,6 +2,7 @@ import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { isDevEnvironment, securityHeaderMap } from './security-headers'
 import type { ApiErrorBody } from '../../shared/api'
+import type { AppEnv } from '../env'
 
 // The server's single incident handler. Before this existed the whole server
 // held one `console.` call (the dev email sender) and no `onError`, so every
@@ -390,7 +391,7 @@ export async function withAuthErrorCorrelation(
   })
 }
 
-export const errorHandler: ErrorHandler<{ Bindings: Env }> = (err, c) => {
+export const errorHandler: ErrorHandler<{ Bindings: AppEnv }> = (err, c) => {
   const httpException = err instanceof HTTPException ? err : null
 
   // A sub-500 HTTPException is a deliberate answer from a middleware, not an

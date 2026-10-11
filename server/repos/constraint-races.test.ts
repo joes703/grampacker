@@ -1,5 +1,6 @@
-import { env } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { env, testDb } from '../test/node-env'
+import Database from 'better-sqlite3'
+import { describe, expect, it, vi } from 'vitest'
 import { createDb, type Db } from '../db'
 import { createFoodRepo } from './food'
 import { createListItemsRepo } from './list-items'
@@ -17,15 +18,35 @@ import { signUpVerifiedUser } from '../test/auth-helpers'
 // window cannot be staged through the HTTP surface (requests serialize), so
 // these tests wrap the repo's OWN db handle and sabotage the parent at the
 // last instant before the write executes. The write then fails with the REAL
-// D1 foreign-key error, and the recovery path re-probes real database state -
-// nothing about the error or the probes is simulated.
+// SQLite foreign-key error, and the recovery path re-probes real database
+// state - nothing about the error or the probes is simulated.
+
+// Repositories not yet converted to transactions write through runBatch(db,
+// statements) (server/db/index.ts). A batch hook registered for a wrapped db
+// handle runs immediately before that handle's batch executes - the same
+// window D1's db.batch() left open. Keyed by handle, so only the repo built on
+// the wrapped handle is affected.
+const batchHooks = vi.hoisted(
+  () => new WeakMap<object, () => Promise<void>>(),
+)
+vi.mock('../db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../db')>()
+  return {
+    ...actual,
+    runBatch: (async (db, statements) => {
+      const hook = batchHooks.get(db)
+      if (hook) await hook()
+      return actual.runBatch(db, statements)
+    }) as typeof actual.runBatch,
+  }
+})
 
 const raw = () => createDb(env.DB)
 
 async function newUser(tag: string) {
   const email = `race-${tag}@example.com`
   const { cookie } = await signUpVerifiedUser(email, `R-${tag}`)
-  const row = await env.DB.prepare('select id from user where email = ?')
+  const row = await testDb.prepare('select id from user where email = ?')
     .bind(email)
     .first<{ id: string }>()
   if (!row) throw new Error(`no user row for ${email}`)
@@ -83,17 +104,9 @@ function sabotaged(
     await sabotage()
   }
   if (method === 'batch') {
-    return new Proxy(db, {
-      get(target, prop, receiver) {
-        if (prop === 'batch') {
-          return async (stmts: Parameters<Db['batch']>[0]) => {
-            await pre()
-            return target.batch(stmts)
-          }
-        }
-        return Reflect.get(target, prop, receiver)
-      },
-    }) as Db
+    const wrapped = new Proxy(db, {}) as Db
+    batchHooks.set(wrapped, pre)
+    return wrapped
   }
   // insert/update return a builder chain; the query only executes when the
   // final builder is awaited. Wrap every link of the chain and run the
@@ -138,8 +151,9 @@ function sabotaged(
 // A builder chain whose execution rejects with `err` - for the branches whose
 // triggering state cannot exist in a serialized database (update()'s rank
 // collision) and for proving unexplained errors rethrow. The error SHAPE is
-// the real one: DrizzleQueryError-style wrapper with the raw SQLite message
-// at the root cause, which is where the matchers look. `skip` passes the
+// the real one: a Drizzle-style wrapper with better-sqlite3's SqliteError (the
+// raw message and its extended code) at the root cause, which is where the
+// matchers look. `skip` passes the
 // first N calls through untouched (prechecks that share the method), and
 // every call AFTER the failing one passes through too, so recovery probes
 // run for real.
@@ -151,13 +165,16 @@ function failing(
 ): Db {
   let calls = 0
   const shouldFail = () => calls++ === skip
+  if (method === 'batch') {
+    const wrapped = new Proxy(db, {}) as Db
+    batchHooks.set(wrapped, async () => {
+      if (shouldFail()) throw err
+    })
+    return wrapped
+  }
   return new Proxy(db, {
     get(target, prop, receiver) {
       if (prop === method) {
-        if (method === 'batch') {
-          return (stmts: Parameters<Db['batch']>[0]) =>
-            shouldFail() ? Promise.reject(err) : target.batch(stmts)
-        }
         const original = Reflect.get(target, prop, receiver) as (
           ...a: unknown[]
         ) => unknown
@@ -183,16 +200,18 @@ function failing(
 }
 
 const fkViolation = () =>
-  new Error('D1_ERROR', {
-    cause: new Error(
-      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+  new Error('Failed query', {
+    cause: new Database.SqliteError(
+      'FOREIGN KEY constraint failed',
+      'SQLITE_CONSTRAINT_FOREIGNKEY',
     ),
   })
 
 const rankCollision = () =>
-  new Error('D1_ERROR', {
-    cause: new Error(
-      'UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+  new Error('Failed query', {
+    cause: new Database.SqliteError(
+      'UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order',
+      'SQLITE_CONSTRAINT_UNIQUE',
     ),
   })
 
@@ -207,7 +226,7 @@ describe('food createItem loses a race', () => {
       // skip 1: usableSlotIds itself batches, and the point is to trim the
       // slot AFTER that precheck has honestly passed.
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from list_food_slots where id = ?')
+        await testDb.prepare('delete from list_food_slots where id = ?')
           .bind(slotId)
           .run()
       }, 1),
@@ -230,7 +249,7 @@ describe('food createItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from lists where id = ?').bind(listId).run()
+        await testDb.prepare('delete from lists where id = ?').bind(listId).run()
       }, 1),
       userId,
     )
@@ -252,7 +271,7 @@ describe('food setDayCount loses a race', () => {
     const listId = await createList(cookie, 'Trip')
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from lists where id = ?').bind(listId).run()
+        await testDb.prepare('delete from lists where id = ?').bind(listId).run()
       }),
       userId,
     )
@@ -283,7 +302,7 @@ describe('food updateItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from list_food_items where id = ?')
+        await testDb.prepare('delete from list_food_items where id = ?')
           .bind(itemId)
           .run()
       }, 1),
@@ -302,10 +321,10 @@ describe('food updateItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from list_food_items where id = ?')
+        await testDb.prepare('delete from list_food_items where id = ?')
           .bind(itemId)
           .run()
-        await env.DB.prepare('delete from list_food_slots where id = ?')
+        await testDb.prepare('delete from list_food_slots where id = ?')
           .bind(otherSlot)
           .run()
       }, 1),
@@ -324,7 +343,7 @@ describe('food updateItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from list_food_slots where id = ?')
+        await testDb.prepare('delete from list_food_slots where id = ?')
           .bind(otherSlot)
           .run()
       }, 1),
@@ -369,7 +388,7 @@ describe('food updateItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from packing_locations where id = ?')
+        await testDb.prepare('delete from packing_locations where id = ?')
           .bind(locationId)
           .run()
       }, 1),
@@ -382,7 +401,7 @@ describe('food updateItem loses a race', () => {
     })
     expect(result).toEqual({ ok: false, reason: 'invalid_location' })
 
-    const [row] = await env.DB.prepare(
+    const [row] = await testDb.prepare(
       'select name, packing_location_id as loc from list_food_items where id = ?',
     )
       .bind(itemId)
@@ -409,7 +428,7 @@ describe('food updateItem loses a race', () => {
 
     const repo = createFoodRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('update list_food_items set quantity = 7 where id = ?')
+        await testDb.prepare('update list_food_items set quantity = 7 where id = ?')
           .bind(itemId)
           .run()
       }),
@@ -438,7 +457,7 @@ describe('food updateItem loses a race', () => {
     const repo = createFoodRepo(failing(raw(), 'batch', fkViolation(), 1), userId)
     await expect(
       repo.updateItem(listId, itemId, { slotIds: [slotId] }),
-    ).rejects.toThrow('D1_ERROR')
+    ).rejects.toThrow('Failed query')
   })
 })
 
@@ -450,7 +469,7 @@ describe('addExisting loses a race', () => {
 
     const repo = createListItemsRepo(
       sabotaged(raw(), 'insert', async () => {
-        await env.DB.prepare('delete from gear_items where id = ?')
+        await testDb.prepare('delete from gear_items where id = ?')
           .bind(gearId)
           .run()
       }),
@@ -467,7 +486,7 @@ describe('addExisting loses a race', () => {
 
     const repo = createListItemsRepo(
       sabotaged(raw(), 'insert', async () => {
-        await env.DB.prepare('delete from lists where id = ?').bind(listId).run()
+        await testDb.prepare('delete from lists where id = ?').bind(listId).run()
       }),
       userId,
     )
@@ -521,7 +540,7 @@ describe('list CSV import loses a race', () => {
 
     const repo = createListsRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from gear_items where id = ?')
+        await testDb.prepare('delete from gear_items where id = ?')
           .bind(gearId)
           .run()
       }),
@@ -537,7 +556,7 @@ describe('list CSV import loses a race', () => {
 
     const repo = createListsRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from categories where id = ?')
+        await testDb.prepare('delete from categories where id = ?')
           .bind(categoryId)
           .run()
       }),
@@ -565,7 +584,7 @@ describe('packing location create loses a race', () => {
 
     const repo = createPackingLocationsRepo(
       sabotaged(raw(), 'batch', async () => {
-        await env.DB.prepare('delete from list_items where id = ?')
+        await testDb.prepare('delete from list_items where id = ?')
           .bind(itemId)
           .run()
       }),
@@ -573,7 +592,7 @@ describe('packing location create loses a race', () => {
     )
     const result = await repo.create(listId, { containerListItemId: itemId })
     expect(result).toEqual({ ok: false, reason: 'invalid_container_item' })
-    const locations = await env.DB.prepare(
+    const locations = await testDb.prepare(
       'select count(*) as c from packing_locations where list_id = ?',
     ).bind(listId).first<{ c: number }>()
     expect(locations?.c).toBe(0)
@@ -667,9 +686,10 @@ describe('reorderPack loses a race', () => {
     const listId = await createList(cookie, 'Trip')
     const updates = await seedTwoItemCohort(cookie, listId)
 
-    const guardViolation = new Error('D1_ERROR', {
-      cause: new Error(
-        'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+    const guardViolation = new Error('Failed query', {
+      cause: new Database.SqliteError(
+        'NOT NULL constraint failed: _pack_reorder_guard.ok',
+        'SQLITE_CONSTRAINT_NOTNULL',
       ),
     })
     const repo = createPackReorderRepo(
@@ -704,41 +724,33 @@ describe('reorderPack loses a race', () => {
       })
     }
 
-    const underlying = raw()
     let batchCalls = 0
-    const drifting = new Proxy(underlying, {
-      get(target, prop, receiver) {
-        if (prop === 'batch') {
-          return async (stmts: Parameters<Db['batch']>[0]) => {
+    const drifting = new Proxy(raw(), {}) as Db
+    batchHooks.set(drifting, async () => {
             batchCalls += 1
             if (batchCalls === 2) {
               // The concurrent reorder: swap the two bag rows' ranks.
-              const rows = await env.DB.prepare(
+              const rows = await testDb.prepare(
                 `select id, pack_sort_order from list_items where list_id = ? and packing_location_id = ? order by pack_sort_order`,
               ).bind(listId, locationId).all<{ id: string; pack_sort_order: number }>()
               const [a, b] = rows.results
-              await env.DB.prepare(
+              await testDb.prepare(
                 `update list_items set pack_sort_order = -1 where id = ?`,
               ).bind(a!.id).run()
-              await env.DB.prepare(
+              await testDb.prepare(
                 `update list_items set pack_sort_order = ? where id = ?`,
               ).bind(a!.pack_sort_order, b!.id).run()
-              await env.DB.prepare(
+              await testDb.prepare(
                 `update list_items set pack_sort_order = ? where id = ?`,
               ).bind(b!.pack_sort_order, a!.id).run()
             }
-            return target.batch(stmts)
-          }
-        }
-        return Reflect.get(target, prop, receiver)
-      },
     })
 
     const repo = createPackingLocationsRepo(drifting, userId)
     const result = await repo.remove(listId, locationId)
     expect(result).toBe('conflict')
     // Nothing partial landed: the location still exists with both rows.
-    const stillThere = await env.DB.prepare(
+    const stillThere = await testDb.prepare(
       `select count(*) as c from list_items where packing_location_id = ?`,
     ).bind(locationId).all<{ c: number }>()
     expect(stillThere.results[0]?.c).toBe(2)

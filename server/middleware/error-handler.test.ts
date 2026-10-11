@@ -1,9 +1,10 @@
-import { env } from 'cloudflare:test'
+import { env } from '../test/node-env'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import app from '../index'
 import { sql } from 'drizzle-orm'
+import { DrizzleQueryError } from 'drizzle-orm/errors'
 import { createDb } from '../db'
 import {
   errorHandler,
@@ -12,6 +13,7 @@ import {
   withAuthErrorCorrelation,
 } from './error-handler'
 import { securityHeaders } from './security-headers'
+import type { AppEnv } from '../env'
 
 // Prod-like origin so securityHeaders emits the full set (the test default is
 // localhost = dev mode, which omits the CSP).
@@ -23,9 +25,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // sub-app, because that topology is the thing being relied on: a sub-app's own
 // onError would win, so `api` must not have one. Mirrors server/index.ts.
 function appThatThrows(thrown: unknown) {
-  const root = new Hono<{ Bindings: Env }>()
+  const root = new Hono<{ Bindings: AppEnv }>()
   root.use('*', securityHeaders)
-  const api = new Hono<{ Bindings: Env }>()
+  const api = new Hono<{ Bindings: AppEnv }>()
   api.get('/boom', () => {
     throw thrown
   })
@@ -344,11 +346,13 @@ describe('bound parameters never reach the log', () => {
     consoleError.mockRestore()
   })
 
-  it('redacts the params of a REAL Drizzle failure and keeps the diagnosis', async () => {
-    // Not a hand-built error: a statement that fails on D1 with a bound
-    // sentinel, wrapped by the installed drizzle-orm exactly as a repo
-    // failure would be. First prove the leak exists at the source, so the
-    // assertion below cannot pass because the sentinel was never there.
+  it('logs a REAL Drizzle failure with its diagnosis and without its params', async () => {
+    // Not a hand-built error: a statement that fails on SQLite with a bound
+    // sentinel, wrapped by the installed drizzle-orm exactly as a repo failure
+    // would be. On better-sqlite3 Drizzle's wrapper names the SQL with `?`
+    // placeholders and never the values, so this pins that the real failure
+    // shape keeps its diagnosis and carries no params into the log. The next
+    // test covers the wrapper shape that DOES embed params.
     const sentinel = 'bound-value-that-must-never-be-logged-7a3d'
     let thrown: unknown
     try {
@@ -357,8 +361,6 @@ describe('bound parameters never reach the log', () => {
       thrown = err
     }
     expect(thrown).toBeInstanceOf(Error)
-    expect((thrown as Error).message).toContain(sentinel)
-    expect((thrown as Error).stack).toContain(sentinel)
 
     const res = await appThatThrows(thrown).request('/api/boom', {}, prodEnv)
     expect(res.status).toBe(500)
@@ -372,6 +374,36 @@ describe('bound parameters never reach the log', () => {
     const [entry] = logLines(consoleError)
     expect(entry).toMatchObject({ event: 'server-error', status: 500 })
     expect(entry!.cause).toBeDefined()
+  })
+
+  it('redacts the params of Drizzle\'s DrizzleQueryError and keeps the diagnosis', async () => {
+    // DrizzleQueryError is the wrapper whose message is
+    // `Failed query: <sql>\nparams: <every bound value>`. Drizzle's other
+    // drivers throw it for every failed statement, and better-auth's session
+    // lookup failure carries the session token this way. Built with Drizzle's
+    // own class around a real SQLite failure, and the leak is proven present
+    // first, so the assertion below cannot pass because it was never there.
+    const sentinel = 'bound-value-that-must-never-be-logged-9c1e'
+    let root: unknown
+    try {
+      env.DB.prepare('select 1 from no_such_table where x = ?').get(sentinel)
+    } catch (err) {
+      root = err
+    }
+    const thrown = new DrizzleQueryError(
+      'select 1 from no_such_table where x = ?',
+      [sentinel],
+      root as Error,
+    )
+    expect(thrown.message).toContain(sentinel)
+
+    const res = await appThatThrows(thrown).request('/api/boom', {}, prodEnv)
+    expect(res.status).toBe(500)
+
+    const everything = consoleError.mock.calls.flat().map(String).join('\n')
+    expect(everything).not.toContain(sentinel)
+    expect(everything).toContain('no_such_table')
+    expect(everything).toContain('no such table')
   })
 
   it('counts better-auth log lines against the same ceiling as incidents', async () => {

@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import type { ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import {
   foodPackReorderGuard,
   listFoodItems,
@@ -197,7 +197,7 @@ export function createPackReorderRepo(db: Db, userId: string) {
       // membership rather than inArray over the input - D1 caps bound params
       // at 100 and the payload allows LIST_ITEM_CAP + FOOD_ITEM_CAP ids; the
       // per-list caps bound the scans instead.
-      const [gearRows, foodRows] = await db.batch([
+      const [gearRows, foodRows] = await runBatch(db, [
         db
           .select({
             id: listItems.id,
@@ -411,7 +411,7 @@ export function createPackReorderRepo(db: Db, userId: string) {
       ]
       if (!first) return { ok: true }
       try {
-        await db.batch([first, ...rest])
+        await runBatch(db, [first, ...rest])
       } catch (err) {
         // Someone beat us, in one of four shapes: a concurrent reorder took
         // a rank first (unique violation on either table's cohort index), a

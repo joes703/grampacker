@@ -1,4 +1,5 @@
 import { createMiddleware } from 'hono/factory'
+import type { AppEnv } from '../env'
 
 // One security-header map, owned by the Worker and applied to EVERY
 // response - the SPA shell, static assets, and /api/* alike. The old
@@ -87,7 +88,7 @@ const CSP = [
 //
 // Fails CLOSED: an unparseable origin is treated as production, so the full
 // header set (including CSP) applies rather than the relaxed dev set.
-export function isDevEnvironment(env: Env): boolean {
+export function isDevEnvironment(env: AppEnv): boolean {
   try {
     return new URL(env.BETTER_AUTH_URL).hostname === 'localhost'
   } catch {
@@ -111,12 +112,12 @@ export function securityHeaderMap(opts: { dev: boolean }): Record<string, string
   }
 }
 
-export const securityHeaders = createMiddleware<{ Bindings: Env }>(
+export const securityHeaders = createMiddleware<{ Bindings: AppEnv }>(
   async (c, next) => {
     await next()
     const dev = isDevEnvironment(c.env)
-    // Responses proxied from ASSETS.fetch have immutable headers;
-    // reconstruct before writing.
+    // Some responses (static files) arrive with headers that should not be
+    // edited in place; reconstruct before writing.
     const res = new Response(c.res.body, c.res)
     for (const [key, value] of Object.entries(securityHeaderMap({ dev }))) {
       res.headers.set(key, value)

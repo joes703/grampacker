@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import { foodRoutes } from './food'
 import type { SessionVars } from '../middleware/session'
+import type { AppEnv } from '../env'
 
 // PUT /:id/food/days makes two repo calls - set the count, then re-read the
 // plan - and the list can vanish between them. The handler used to pass the
@@ -11,7 +12,7 @@ import type { SessionVars } from '../middleware/session'
 // repo fixture that answers exactly that sequence.
 describe('PUT /:id/food/days when the list vanishes between the two repo calls', () => {
   it('answers 404, not a 200 with a null body', async () => {
-    const app = new Hono<{ Bindings: Env; Variables: SessionVars }>()
+    const app = new Hono<{ Bindings: AppEnv; Variables: SessionVars }>()
     app.use('*', async (c, next) => {
       c.set('userId', 'u1')
       c.set('repos', {

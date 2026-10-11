@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { isCategoryCapError } from './categories'
 import {
@@ -15,19 +16,25 @@ import { isCapError } from './gear-items'
 // Root-cause-only matching: the drizzle wrapper message embeds bound params,
 // so user-controlled text that LOOKS like a trigger/constraint message must
 // never classify an unrelated failure.
-// The live route tests pin the real workerd error shapes; these pin the
-// matcher logic itself.
+// The live route tests pin the real error shapes; these pin the matcher logic
+// itself.
 
-function wrapped(rootMsg: string, wrapperMsg: string): Error {
-  const root = new Error(rootMsg)
-  const d1 = new Error('D1_ERROR: something failed', { cause: root })
-  return new Error(wrapperMsg, { cause: d1 })
+// A real better-sqlite3 error: SQLite's message plus its extended result code.
+function sqliteError(message: string, code: string): Error {
+  return new Database.SqliteError(message, code)
+}
+
+// Drizzle wraps the driver error; its own message embeds the query and params.
+// A plain string root is an error with no SQLite code at all.
+function wrapped(root: Error | string, wrapperMsg: string): Error {
+  const cause = typeof root === 'string' ? new Error(root) : root
+  return new Error(wrapperMsg, { cause })
 }
 
 describe('isTriggerAbort', () => {
   it('matches the real trigger shape at the root', () => {
     const err = wrapped(
-      'list cap exceeded (100 per user): SQLITE_CONSTRAINT_TRIGGER',
+      sqliteError('list cap exceeded (100 per user)', 'SQLITE_CONSTRAINT_TRIGGER'),
       'Failed query: insert into "lists" ...',
     )
     expect(isTriggerAbort(err, 'list cap exceeded')).toBe(true)
@@ -35,7 +42,7 @@ describe('isTriggerAbort', () => {
 
   it('requires the trigger constraint class, not just the text', () => {
     const err = wrapped(
-      'list cap exceeded (100 per user)', // no SQLITE_CONSTRAINT_TRIGGER
+      'list cap exceeded (100 per user)', // no SQLite code at all
       'Failed query: ...',
     )
     expect(isTriggerAbort(err, 'list cap exceeded')).toBe(false)
@@ -43,7 +50,7 @@ describe('isTriggerAbort', () => {
 
   it('distinguishes markers: a gear cap error is not a list cap error', () => {
     const err = wrapped(
-      'gear item cap exceeded (500 per user): SQLITE_CONSTRAINT_TRIGGER',
+      sqliteError('gear item cap exceeded (500 per user)', 'SQLITE_CONSTRAINT_TRIGGER'),
       'Failed query: ...',
     )
     expect(isTriggerAbort(err, 'gear item cap exceeded')).toBe(true)
@@ -60,7 +67,7 @@ describe('isTriggerAbort', () => {
 describe('isUniqueViolation', () => {
   it('matches the named column at the root', () => {
     const err = wrapped(
-      'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT',
+      sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'),
       'Failed query: insert into "lists" ...',
     )
     expect(isUniqueViolation(err, 'lists.slug')).toBe(true)
@@ -77,7 +84,7 @@ describe('isUniqueViolation', () => {
 describe('isAnyUniqueViolation', () => {
   it('matches a unique violation on ANY column at the root', () => {
     const err = wrapped(
-      'UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+      sqliteError('UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order', 'SQLITE_CONSTRAINT_UNIQUE'),
       'Failed query: update "list_items" ...',
     )
     expect(isAnyUniqueViolation(err)).toBe(true)
@@ -92,7 +99,7 @@ describe('isAnyUniqueViolation', () => {
 describe('isForeignKeyViolation', () => {
   it('matches the real (anonymous) FK shape at the root', () => {
     const err = wrapped(
-      'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)',
+      sqliteError('FOREIGN KEY constraint failed', 'SQLITE_CONSTRAINT_FOREIGNKEY'),
       'Failed query: insert into "list_food_item_slots" ...',
     )
     expect(isForeignKeyViolation(err)).toBe(true)
@@ -106,14 +113,14 @@ describe('isForeignKeyViolation', () => {
 describe('isPackGuardViolation', () => {
   it('matches only the guard table own column', () => {
     const guard = wrapped(
-      'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+      sqliteError('NOT NULL constraint failed: _pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'),
       'Failed query: insert into "_pack_reorder_guard" ...',
     )
     expect(isPackGuardViolation(guard)).toBe(true)
 
     // An unrelated NOT NULL in the same batch must NOT read as a lost race.
     const other = wrapped(
-      'NOT NULL constraint failed: list_items.quantity: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)',
+      sqliteError('NOT NULL constraint failed: list_items.quantity', 'SQLITE_CONSTRAINT_NOTNULL'),
       'Failed query: update "list_items" ...',
     )
     expect(isPackGuardViolation(other)).toBe(false)
@@ -123,7 +130,7 @@ describe('isPackGuardViolation', () => {
 describe('isPackRankRangeError', () => {
   it('matches the 0019 range trigger at the root', () => {
     const err = wrapped(
-      'pack_sort_order out of range: SQLITE_CONSTRAINT_TRIGGER',
+      sqliteError('pack_sort_order out of range', 'SQLITE_CONSTRAINT_TRIGGER'),
       'Failed query: update "list_items" ...',
     )
     expect(isPackRankRangeError(err)).toBe(true)
@@ -141,25 +148,25 @@ describe('isPackRankRangeError', () => {
 // Non-errors and unrelated errors never match either.
 // isCapError and isCategoryCapError are one-line isTriggerAbort calls in the
 // repos; their rows prove each still matches only the root.
-const FK_ROOT = 'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_FOREIGNKEY)'
-const UNIQUE_ROOT = 'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)'
+const FK_ROOT = sqliteError('FOREIGN KEY constraint failed', 'SQLITE_CONSTRAINT_FOREIGNKEY')
+const UNIQUE_ROOT = sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE')
 
 describe('wrapper params never classify an error', () => {
   it.each([
-    { name: 'isTriggerAbort', match: (e: unknown) => isTriggerAbort(e, 'list cap exceeded'), text: 'list cap exceeded (100 per user): SQLITE_CONSTRAINT_TRIGGER', other: FK_ROOT },
-    { name: 'isCapError', match: isCapError, text: 'gear item cap exceeded (500 per user): SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)', other: FK_ROOT },
-    { name: 'isCategoryCapError', match: isCategoryCapError, text: 'category cap exceeded (500 per user): SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)', other: FK_ROOT },
-    { name: 'isPackRankRangeError', match: isPackRankRangeError, text: 'pack_sort_order out of range: SQLITE_CONSTRAINT_TRIGGER', other: FK_ROOT },
-    { name: 'isUniqueViolation', match: (e: unknown) => isUniqueViolation(e, 'lists.slug'), text: 'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT', other: FK_ROOT },
-    { name: 'isAnyUniqueViolation', match: isAnyUniqueViolation, text: 'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT', other: FK_ROOT },
-    { name: 'isForeignKeyViolation', match: isForeignKeyViolation, text: 'FOREIGN KEY constraint failed: SQLITE_CONSTRAINT', other: UNIQUE_ROOT },
-    { name: 'isPackGuardViolation', match: isPackGuardViolation, text: 'NOT NULL constraint failed: _pack_reorder_guard.ok: SQLITE_CONSTRAINT', other: FK_ROOT },
-    { name: 'isFoodPackGuardViolation', match: isFoodPackGuardViolation, text: 'NOT NULL constraint failed: _food_pack_reorder_guard.ok: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)', other: FK_ROOT },
-    { name: 'isPackRankNotNullViolation (gear)', match: isPackRankNotNullViolation, text: 'NOT NULL constraint failed: list_items.pack_sort_order: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)', other: FK_ROOT },
-    { name: 'isPackRankNotNullViolation (food)', match: isPackRankNotNullViolation, text: 'NOT NULL constraint failed: list_food_items.pack_sort_order: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_NOTNULL)', other: FK_ROOT },
+    { name: 'isTriggerAbort', match: (e: unknown) => isTriggerAbort(e, 'list cap exceeded'), text: sqliteError('list cap exceeded (100 per user)', 'SQLITE_CONSTRAINT_TRIGGER'), other: FK_ROOT },
+    { name: 'isCapError', match: isCapError, text: sqliteError('gear item cap exceeded (500 per user)', 'SQLITE_CONSTRAINT_TRIGGER'), other: FK_ROOT },
+    { name: 'isCategoryCapError', match: isCategoryCapError, text: sqliteError('category cap exceeded (500 per user)', 'SQLITE_CONSTRAINT_TRIGGER'), other: FK_ROOT },
+    { name: 'isPackRankRangeError', match: isPackRankRangeError, text: sqliteError('pack_sort_order out of range', 'SQLITE_CONSTRAINT_TRIGGER'), other: FK_ROOT },
+    { name: 'isUniqueViolation', match: (e: unknown) => isUniqueViolation(e, 'lists.slug'), text: sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'), other: FK_ROOT },
+    { name: 'isAnyUniqueViolation', match: isAnyUniqueViolation, text: sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'), other: FK_ROOT },
+    { name: 'isForeignKeyViolation', match: isForeignKeyViolation, text: sqliteError('FOREIGN KEY constraint failed', 'SQLITE_CONSTRAINT_FOREIGNKEY'), other: UNIQUE_ROOT },
+    { name: 'isPackGuardViolation', match: isPackGuardViolation, text: sqliteError('NOT NULL constraint failed: _pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
+    { name: 'isFoodPackGuardViolation', match: isFoodPackGuardViolation, text: sqliteError('NOT NULL constraint failed: _food_pack_reorder_guard.ok', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
+    { name: 'isPackRankNotNullViolation (gear)', match: isPackRankNotNullViolation, text: sqliteError('NOT NULL constraint failed: list_items.pack_sort_order', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
+    { name: 'isPackRankNotNullViolation (food)', match: isPackRankNotNullViolation, text: sqliteError('NOT NULL constraint failed: list_food_items.pack_sort_order', 'SQLITE_CONSTRAINT_NOTNULL'), other: FK_ROOT },
   ])('$name ignores its text in wrapper params', ({ match, text, other }) => {
     expect(match(wrapped(text, 'Failed query: ...'))).toBe(true)
-    expect(match(wrapped(other, `Failed query: insert ... params: abc,${text},0`))).toBe(false)
+    expect(match(wrapped(other, `Failed query: insert ... params: abc,${text.message},0`))).toBe(false)
     expect(match(null)).toBe(false)
     expect(match(new Error('unrelated'))).toBe(false)
   })

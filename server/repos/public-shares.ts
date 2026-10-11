@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import {
   categories,
   gearItems,
@@ -170,7 +170,7 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
 
       const [listRows, itemRows, categoryRows, foodRows, foodSlotLinkRows] =
-        await db.batch([
+        await runBatch(db, [
           listQuery,
           itemsQuery,
           categoriesQuery,

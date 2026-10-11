@@ -1,8 +1,9 @@
-import { env } from 'cloudflare:test'
+import { env } from './test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import app from './index'
 import { resetLogBudget } from './middleware/error-handler'
 import { signUpVerifiedUser } from './test/auth-helpers'
+import type { Sqlite } from './db'
 
 // What better-auth's failures write to the log, end to end through the real
 // app. Two leaks are closed here and both are proven against the installed
@@ -18,28 +19,30 @@ import { signUpVerifiedUser } from './test/auth-helpers'
 
 const ORIGIN = 'http://localhost:5173'
 const PROD_ORIGIN = 'https://grampacker.app'
-const MARKER = 'SABOTAGE_MARKER_d1_is_down'
+const MARKER = 'SABOTAGE_MARKER_db_is_down'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// The real D1 binding with statement EXECUTION replaced: prepare and bind
-// succeed (so drizzle-orm builds its wrapper with the real query and params)
-// and every execute method rejects. `batch` is left real - the session
-// lookup does not use it. The rate limiter's own statements are spared, so a
+// The real SQLite connection with statement EXECUTION replaced: prepare
+// succeeds (so drizzle-orm builds its wrapper with the real query) and every
+// execute method throws. The rate limiter's own statements are spared, so a
 // request gets PAST the limiter (which would otherwise fail first, through
 // the Hono handler, and prove nothing about better-auth). Every sabotaged
 // statement's bound params are recorded so a test can prove the failing
-// statement actually carried the value it asserts is absent.
+// statement actually carried the value it asserts is absent. better-sqlite3
+// takes params at execution (`stmt.all(...params)`), not in a bind step, so
+// they are recorded there.
 function sabotagedD1(
   seen: unknown[],
   // Which statements explode. Default: everything but the limiter's.
   doomed: (query: string) => boolean = () => true,
-): D1Database {
+): Sqlite {
   const bindTo = (target: object, prop: string | symbol, receiver: unknown) => {
     const value = Reflect.get(target, prop, receiver)
     return typeof value === 'function' ? value.bind(target) : value
   }
-  const explode = async () => {
-    throw new Error(`D1_ERROR: ${MARKER}`)
+  const explode = (...params: unknown[]) => {
+    seen.push(...params)
+    throw new Error(`SQLITE_IOERR: ${MARKER}`)
   }
   return new Proxy(env.DB, {
     get(db, prop) {
@@ -47,23 +50,23 @@ function sabotagedD1(
       return (query: string) => {
         const stmt = db.prepare(query)
         if (query.includes('rate_limits') || !doomed(query)) return stmt
-        return new Proxy(stmt, {
+        const sabotaged: object = new Proxy(stmt, {
           get(s, sProp) {
-            if (sProp !== 'bind') return bindTo(s, sProp, s)
-            return (...params: unknown[]) => {
-              seen.push(...params)
-              const bound = s.bind(...params)
-              return new Proxy(bound, {
-                get(b, bProp) {
-                  if (bProp === 'all' || bProp === 'run' || bProp === 'raw' || bProp === 'first') {
-                    return explode
-                  }
-                  return bindTo(b, bProp, b)
-                },
-              })
+            if (sProp === 'all' || sProp === 'run' || sProp === 'get' || sProp === 'iterate') {
+              return explode
             }
+            // Mode switches return the statement itself; keep returning the
+            // sabotaged proxy so a later execute still explodes.
+            if (sProp === 'raw' || sProp === 'pluck' || sProp === 'expand') {
+              return (...args: unknown[]) => {
+                ;(Reflect.get(s, sProp, s) as (...a: unknown[]) => unknown).apply(s, args)
+                return sabotaged
+              }
+            }
+            return bindTo(s, sProp, s)
           },
         })
+        return sabotaged
       }
     },
   })
@@ -123,7 +126,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/get-session',
-      { headers: { Cookie: cookie, Origin: ORIGIN, 'cf-connecting-ip': clientIp() } },
+      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-real-ip': clientIp() } },
       { ...env, DB: sabotagedD1(seen) },
     )
     expect(res.status).toBe(500)
@@ -160,7 +163,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/get-session',
-      { headers: { Cookie: cookie, Origin: ORIGIN, 'cf-connecting-ip': clientIp() } },
+      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-real-ip': clientIp() } },
       { ...env, DB: sabotagedD1(seen, (query) => query.includes('"user"')) },
     )
     expect(res.status).toBe(500)
@@ -184,7 +187,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/magic-link/verify?token=not-a-real-token',
-      { headers: { Origin: ORIGIN, 'cf-connecting-ip': clientIp() } },
+      { headers: { Origin: ORIGIN, 'x-real-ip': clientIp() } },
       { ...env, DB: sabotagedD1(seen) },
     )
     expect(res.status).toBe(500)
@@ -213,7 +216,7 @@ describe('auth failures in the log', () => {
         headers: {
           'Content-Type': 'application/json',
           Origin: PROD_ORIGIN,
-          'cf-connecting-ip': clientIp(),
+          'x-real-ip': clientIp(),
         },
         body: JSON.stringify({ email: `nokey-${crypto.randomUUID()}@example.com` }),
       },
@@ -238,7 +241,7 @@ describe('auth failures in the log', () => {
     // send time, not at construction.
     const session = await app.request(
       '/api/auth/get-session',
-      { headers: { Origin: PROD_ORIGIN, 'cf-connecting-ip': clientIp() } },
+      { headers: { Origin: PROD_ORIGIN, 'x-real-ip': clientIp() } },
       prodEnv,
     )
     expect(session.status).toBe(200)

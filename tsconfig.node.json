@@ -25,6 +25,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.workers.config.ts",
+    "vitest.api.config.ts",
     "drizzle.config.ts",
     "scripts/check-action-pins.mjs",
     "scripts/check-migration-immutability.mjs",

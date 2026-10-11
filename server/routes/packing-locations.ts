@@ -7,9 +7,10 @@ import {
 } from '../../shared/lists'
 import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
+import type { AppEnv } from '../env'
 
 export const packingLocationRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: SessionVars
 }>()
 

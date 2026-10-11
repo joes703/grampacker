@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { generateSlug, withFreshSlug } from './lists'
 
@@ -9,13 +10,15 @@ import { generateSlug, withFreshSlug } from './lists'
 // 6-char base62 draws collide, which is ~1-in-2^35 per attempt. Hence a direct
 // test with a fake that collides on demand.
 
-// Shaped like the real thing: DrizzleQueryError -> D1_ERROR -> the raw SQLite
-// message. isUniqueViolation walks to the ROOT cause and requires the
-// SQLITE_CONSTRAINT marker, so a plain `new Error(text)` would not exercise it.
+// Shaped like the real thing: a Drizzle wrapper -> better-sqlite3's SqliteError
+// (the raw message and its extended code). isUniqueViolation walks to the ROOT
+// cause and requires a SQLITE_CONSTRAINT* code, so a plain `new Error(text)`
+// would not exercise it.
 const slugCollision = () =>
-  new Error('D1_ERROR', {
-    cause: new Error(
-      'UNIQUE constraint failed: lists.slug: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+  new Error('Failed query', {
+    cause: new Database.SqliteError(
+      'UNIQUE constraint failed: lists.slug',
+      'SQLITE_CONSTRAINT_UNIQUE',
     ),
   })
 
@@ -52,13 +55,17 @@ describe('withFreshSlug', () => {
     // error must pass straight through instead of burning retries or being
     // swallowed into a misleading "exhausted retries".
     for (const err of [
-      new Error('D1_ERROR', {
-        cause: new Error(
-          'UNIQUE constraint failed: lists.id, lists.user_id: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+      new Error('Failed query', {
+        cause: new Database.SqliteError(
+          'UNIQUE constraint failed: lists.id, lists.user_id',
+          'SQLITE_CONSTRAINT_UNIQUE',
         ),
       }),
-      new Error('D1_ERROR', {
-        cause: new Error('list cap exceeded: SQLITE_CONSTRAINT_TRIGGER'),
+      new Error('Failed query', {
+        cause: new Database.SqliteError(
+          'list cap exceeded',
+          'SQLITE_CONSTRAINT_TRIGGER',
+        ),
       }),
       new Error('network exploded'),
     ]) {

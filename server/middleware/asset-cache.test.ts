@@ -1,11 +1,12 @@
-import { env } from 'cloudflare:test'
+import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 
-// Real requests through the real ASSETS binding (server/test/fixtures/assets),
-// not fabricated Responses. That distinction is the whole point of the last test
-// in this file: what makes a missing asset dangerous is what the BINDING does
-// with it, so a hand-rolled Response would prove nothing about it.
+// Real requests through the real static handler (server/middleware/spa.ts,
+// serving server/test/fixtures/assets), not fabricated Responses. That
+// distinction matters for the missing-asset test: what makes a missing asset
+// dangerous is what the HANDLER does with it, so a hand-rolled Response would
+// prove nothing about it.
 const IMMUTABLE = 'public, max-age=31536000, immutable'
 
 const cacheControl = (res: Response) => res.headers.get('cache-control') ?? ''
@@ -43,51 +44,47 @@ describe('asset caching', () => {
     expect(cacheControl(res)).not.toContain('immutable')
   })
 
-  it('a MISSING hashed asset is never frozen, even though it answers 200 HTML', async () => {
+  it('a MISSING hashed asset is a 404, never the shell, and never frozen', async () => {
     // THE TRAP, and the reason the guard checks content-type and status rather
-    // than just the path.
+    // than just the path: if a miss under /assets/ were answered with the SPA
+    // shell (200 HTML, as Cloudflare's assets binding did), a path-only rule
+    // would stamp `immutable, max-age=1y` onto an HTML body served at a .js
+    // URL. Any browser that cached it would be wedged for a year, on a URL we
+    // can never change, with no way to bust it: a self-inflicted outage, cached.
     //
-    // wrangler.jsonc sets not_found_handling: "single-page-application", so a
-    // request for an asset that does not exist does NOT 404 - the binding serves
-    // index.html with status 200. A path-only rule would therefore stamp
-    // `immutable, max-age=1y` onto an HTML body served at a .js URL. Any browser
-    // that cached it would be wedged for a year, on a URL we can never change,
-    // with no way to bust it: a self-inflicted outage, cached.
-    //
-    // Asserted without pinning the status, because what the binding does with a
-    // miss is the binding's business (and differs between miniflare and the
-    // edge). The invariant that matters holds either way: this must never come
-    // back immutable.
+    // The Node handler refuses that shape at the source: a miss under /assets/
+    // is a 404. Pinned, so a change to the fallback that starts serving the
+    // shell here fails this test, and assetCache's own guard stays the second
+    // line of defense.
     const res = await app.request('/assets/nope-12345678.js', {}, env)
 
-    // Pinned, not tolerated: this IS the SPA fallback, and if the harness ever
-    // stops reproducing it (a 404 instead) then this test quietly degrades into
-    // "a 404 is not immutable" and stops guarding anything. Assert the dangerous
-    // shape exists, then assert we do not freeze it.
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type') ?? '').toContain('text/html')
+    expect(res.status).toBe(404)
+    expect(res.headers.get('content-type') ?? '').not.toContain('text/html')
     expect(cacheControl(res)).not.toContain('immutable')
   })
 
   it('a revalidating browser is upgraded to immutable, not left on a 304', async () => {
-    // The bug that would have made this whole change a no-op for every EXISTING
-    // user - which, on the deploy that ships it, is all of them.
-    //
-    // Their browsers hold these assets under the old max-age=0, must-revalidate
-    // policy, so they revalidate with If-None-Match. A 304 carries no
-    // Cache-Control, so the stored entry would keep must-revalidate and keep
-    // revalidating forever, and only brand-new visitors would ever benefit.
-    //
-    // We strip the conditional headers for hashed assets so the binding answers
-    // 200 with the immutable policy, once, and the browser stops asking.
+    // The bug that would make the immutable policy a no-op for every EXISTING
+    // user. Their browsers may hold these assets under an older
+    // must-revalidate policy and revalidate with If-None-Match or
+    // If-Modified-Since. A 304 carries no Cache-Control, so the stored entry
+    // would keep revalidating forever. The static handler never answers 304,
+    // so the browser gets the 200 with the immutable policy, once, and stops
+    // asking. Pinned so a future switch to an ETag-aware handler cannot
+    // silently bring the 304 back.
     const path = '/assets/index-BuiCutTI.js'
     const first = await app.request(path, {}, env)
-    const etag = first.headers.get('etag')
-    expect(etag).toBeTruthy()
+    const lastModified = first.headers.get('last-modified')
+    expect(lastModified).toBeTruthy()
 
     const revalidated = await app.request(
       path,
-      { headers: { 'If-None-Match': etag! } },
+      {
+        headers: {
+          'If-None-Match': '"any-etag"',
+          'If-Modified-Since': lastModified!,
+        },
+      },
       env,
     )
     expect(revalidated.status).not.toBe(304)
@@ -95,16 +92,19 @@ describe('asset caching', () => {
     expect(cacheControl(revalidated)).toBe(IMMUTABLE)
   })
 
-  it('conditional requests for NON-asset paths are left alone', async () => {
-    // The strip is scoped to hashed assets. The SPA shell must keep its ordinary
-    // revalidation behavior - a 304 on the shell is a cheap, correct answer, and
-    // the shell is the one thing that must stay fresh.
+  it('the shell answers a conditional request with a fresh, revalidating 200', async () => {
+    // The shell must stay fresh: it carries the current asset hashes. Without
+    // 304 support it is simply re-sent (a few hundred bytes), and it always
+    // carries must-revalidate so no cache keeps a stale copy.
     const shell = await app.request('/', {}, env)
-    const etag = shell.headers.get('etag')
-    // Asserted, not branched on: without an etag there is no conditional
-    // request to leave alone, and the test would pass without checking.
-    expect(etag).toBeTruthy()
-    const revalidated = await app.request('/', { headers: { 'If-None-Match': etag! } }, env)
-    expect(revalidated.status).toBe(304)
+    const lastModified = shell.headers.get('last-modified')
+    expect(lastModified).toBeTruthy()
+    const revalidated = await app.request(
+      '/',
+      { headers: { 'If-Modified-Since': lastModified! } },
+      env,
+    )
+    expect(revalidated.status).toBe(200)
+    expect(cacheControl(revalidated)).toBe('public, max-age=0, must-revalidate')
   })
 })

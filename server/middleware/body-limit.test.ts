@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 import { API_BODY_LIMIT_BYTES } from './body-limit'
@@ -38,12 +38,12 @@ describe('api body limit', () => {
       {
         method: 'POST',
         body: oversized,
-        headers: { 'cf-connecting-ip': '10.98.0.1' },
+        headers: { 'x-real-ip': '10.98.0.1' },
       },
       env,
     )
     expect(res.status).toBe(413)
-    const row = await env.DB.prepare(
+    const row = await testDb.prepare(
       'select count(*) as n from rate_limits',
     ).first<{ n: number }>()
     expect(row?.n).toBe(0)

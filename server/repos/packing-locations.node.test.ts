@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Db } from '../db'
 import { createPackingLocationsRepo } from './packing-locations'
 
+const runBatch = vi.hoisted(() => vi.fn())
+vi.mock('../db', () => ({ runBatch }))
+
 describe('createPackingLocationsRepo', () => {
+  beforeEach(() => runBatch.mockReset())
+
   // What these two pin is that the write and its read-back travel in ONE
   // db.batch. That is the whole fix: a batch is a real D1 transaction, so a
   // read-back that throws takes the write down with it. Written as a
@@ -38,11 +43,11 @@ describe('createPackingLocationsRepo', () => {
     const insert = vi.fn(() => ({
       values: () => ({ returning: () => insertStatement }),
     }))
-    const batch = vi.fn(async () => [
+    runBatch.mockResolvedValueOnce([
       [{ id: 'loc-1' }],
       [{ id: 'loc-1', name: 'Dry bag', sortOrder: 0, containerListItemId: null }],
     ])
-    const db = { select, insert, batch } as unknown as Db
+    const db = { select, insert } as unknown as Db
 
     await expect(
       createPackingLocationsRepo(db, 'user-1').create('list-1', {
@@ -52,8 +57,8 @@ describe('createPackingLocationsRepo', () => {
       ok: true,
       row: { id: 'loc-1', name: 'Dry bag', sortOrder: 0, containerListItemId: null },
     })
-    expect(batch).toHaveBeenCalledTimes(1)
-    expect(batch).toHaveBeenCalledWith([insertStatement, readBack])
+    expect(runBatch).toHaveBeenCalledTimes(1)
+    expect(runBatch).toHaveBeenCalledWith(db, [insertStatement, readBack])
   })
 
   it('renames a location and reads it back in one batch', async () => {
@@ -79,11 +84,11 @@ describe('createPackingLocationsRepo', () => {
     const update = vi.fn(() => ({
       set: () => ({ where: () => ({ returning: () => updateStatement }) }),
     }))
-    const batch = vi.fn(async () => [
+    runBatch.mockResolvedValueOnce([
       [{ id: 'loc-1' }],
       [{ id: 'loc-1', name: 'Food bag', sortOrder: 0, containerListItemId: null }],
     ])
-    const db = { select, update, batch } as unknown as Db
+    const db = { select, update } as unknown as Db
 
     await expect(
       createPackingLocationsRepo(db, 'user-1').rename('list-1', 'loc-1', 'Food bag'),
@@ -91,7 +96,7 @@ describe('createPackingLocationsRepo', () => {
       ok: true,
       row: { id: 'loc-1', name: 'Food bag', sortOrder: 0, containerListItemId: null },
     })
-    expect(batch).toHaveBeenCalledTimes(1)
-    expect(batch).toHaveBeenCalledWith([updateStatement, readBack])
+    expect(runBatch).toHaveBeenCalledTimes(1)
+    expect(runBatch).toHaveBeenCalledWith(db, [updateStatement, readBack])
   })
 })

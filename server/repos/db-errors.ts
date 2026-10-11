@@ -1,56 +1,64 @@
 // Matchers for SQLite errors that repos convert into friendly results
-// instead of 500s. The error text arrives wrapped (DrizzleQueryError ->
-// D1_ERROR -> the SQLite message); match ONLY the root cause. The outer
-// wrappers embed bound params, so matching any other link in the chain
-// would let user-controlled text (an item literally named 'list cap
-// exceeded') misclassify an unrelated failure (Codex finding, PR #14).
-// The raw SQLite message never embeds values, and requiring the
-// SQLITE_CONSTRAINT_* marker pins the failure class.
+// instead of 500s. better-sqlite3 throws a SqliteError whose `code` is the
+// SQLite extended result code (SQLITE_CONSTRAINT_UNIQUE, ..._TRIGGER, ...),
+// and Drizzle may wrap it in its own error with the SqliteError as `cause`.
+// Match ONLY the root cause. The outer wrappers embed the query and its
+// bound params, so matching any other link in the chain would let
+// user-controlled text (an item literally named 'list cap exceeded')
+// misclassify an unrelated failure (Codex finding, PR #14). The root
+// message never embeds bound values, and the code is set by SQLite itself,
+// so requiring a SQLITE_CONSTRAINT* code pins the failure class.
 
-function rootMessage(err: unknown): string | null {
+function rootError(err: unknown): { message: string; code: string } | null {
   let root: unknown = err
   while (root instanceof Error && root.cause instanceof Error) {
     root = root.cause
   }
-  return root instanceof Error ? root.message : null
+  if (!(root instanceof Error)) return null
+  const code = (root as { code?: unknown }).code
+  return { message: root.message, code: typeof code === 'string' ? code : '' }
+}
+
+// Any constraint class: SQLITE_CONSTRAINT and every extended code.
+function isConstraint(code: string): boolean {
+  return code.startsWith('SQLITE_CONSTRAINT')
 }
 
 // A cap trigger's RAISE(ABORT, marker). Keep markers in lockstep with
 // the trigger message text in migrations 0003/0004.
 export function isTriggerAbort(err: unknown, marker: string): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes(marker) &&
-    msg.includes('SQLITE_CONSTRAINT_TRIGGER')
+    root !== null &&
+    root.message.includes(marker) &&
+    root.code === 'SQLITE_CONSTRAINT_TRIGGER'
   )
 }
 
 // A UNIQUE index violation on a specific table.column (SQLite names the
 // columns in the message: "UNIQUE constraint failed: lists.slug").
 export function isUniqueViolation(err: unknown, column: string): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes(`UNIQUE constraint failed: ${column}`) &&
-    msg.includes('SQLITE_CONSTRAINT')
+    root !== null &&
+    root.message.includes(`UNIQUE constraint failed: ${column}`) &&
+    isConstraint(root.code)
   )
 }
 
 // A UNIQUE violation on ANY column - used where a repo prechecks a duplicate but
 // wants the DB's own unique index as the race backstop, and a composite/partial
-// index names several columns so a single-column match is impractical. The
-// class marker check is the bare SQLITE_CONSTRAINT prefix - a SUBSTRING of
-// every extended code (D1's real messages carry the extended
-// SQLITE_CONSTRAINT_UNIQUE, which this matches) - because the message text
-// "UNIQUE constraint failed" already names the class and the marker only has
-// to rule out non-constraint errors.
+// index names several columns so a single-column match is impractical. Any
+// constraint code is accepted (SQLite reports SQLITE_CONSTRAINT_UNIQUE or
+// SQLITE_CONSTRAINT_PRIMARYKEY here): the message text "UNIQUE constraint
+// failed" already names the class, and the code only has to rule out
+// non-constraint errors.
 export function isAnyUniqueViolation(err: unknown): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes('UNIQUE constraint failed') &&
-    msg.includes('SQLITE_CONSTRAINT')
+    root !== null &&
+    root.message.includes('UNIQUE constraint failed') &&
+    isConstraint(root.code)
   )
 }
 
@@ -58,11 +66,11 @@ export function isAnyUniqueViolation(err: unknown): boolean {
 // referenced row's ownership/existence but that row can be deleted between the
 // precheck and the insert - the FK then fires instead of a clean result.
 export function isForeignKeyViolation(err: unknown): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes('FOREIGN KEY constraint failed') &&
-    msg.includes('SQLITE_CONSTRAINT')
+    root !== null &&
+    root.message.includes('FOREIGN KEY constraint failed') &&
+    isConstraint(root.code)
   )
 }
 
@@ -71,17 +79,15 @@ export function isForeignKeyViolation(err: unknown): boolean {
 // lost race becomes a 409 instead of a silent no-op that returns 204.
 //
 // Pinned to the guard's own column so an unrelated NOT NULL failure elsewhere
-// in the batch is not misread as a lost race. The class marker is the bare
-// SQLITE_CONSTRAINT prefix (a substring of the extended
-// SQLITE_CONSTRAINT_NOTNULL that D1's real messages carry); the raw SQLite
-// message never embeds bound values, so no user-controlled text can reach
-// this match.
+// in the batch is not misread as a lost race. Any constraint code is accepted
+// (SQLite reports SQLITE_CONSTRAINT_NOTNULL); the root SQLite message never
+// embeds bound values, so no user-controlled text can reach this match.
 export function isPackGuardViolation(err: unknown): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes('NOT NULL constraint failed: _pack_reorder_guard.ok') &&
-    msg.includes('SQLITE_CONSTRAINT')
+    root !== null &&
+    root.message.includes('NOT NULL constraint failed: _pack_reorder_guard.ok') &&
+    isConstraint(root.code)
   )
 }
 
@@ -90,24 +96,24 @@ export function isPackGuardViolation(err: unknown): boolean {
 // column. Per-row drift detection for the union reorder - the row moved
 // between the pre-read and the batch, so the whole batch must roll back.
 export function isPackRankNotNullViolation(err: unknown): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    (msg.includes('NOT NULL constraint failed: list_items.pack_sort_order') ||
-      msg.includes(
+    root !== null &&
+    (root.message.includes('NOT NULL constraint failed: list_items.pack_sort_order') ||
+      root.message.includes(
         'NOT NULL constraint failed: list_food_items.pack_sort_order',
       )) &&
-    msg.includes('SQLITE_CONSTRAINT')
+    isConstraint(root.code)
   )
 }
 
 // The food half of the union reorder guard, 0022's mirror of the above.
 export function isFoodPackGuardViolation(err: unknown): boolean {
-  const msg = rootMessage(err)
+  const root = rootError(err)
   return (
-    msg !== null &&
-    msg.includes('NOT NULL constraint failed: _food_pack_reorder_guard.ok') &&
-    msg.includes('SQLITE_CONSTRAINT')
+    root !== null &&
+    root.message.includes('NOT NULL constraint failed: _food_pack_reorder_guard.ok') &&
+    isConstraint(root.code)
   )
 }
 

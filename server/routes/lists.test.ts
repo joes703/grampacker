@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   listItemResponseSchema,
@@ -284,7 +284,7 @@ describe('lists CRUD', () => {
     const del = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
     expect(del.status).toBe(204)
 
-    const orphans = await env.DB.prepare(
+    const orphans = await testDb.prepare(
       `select count(*) as n from list_items where list_id = ?`,
     )
       .bind(list.id)
@@ -336,7 +336,7 @@ describe('lists CRUD', () => {
     )
     // Mark the source shared + published raw (the API deliberately cannot
     // set isShared yet) to prove duplicate resets both.
-    await env.DB.prepare(
+    await testDb.prepare(
       `update lists set is_shared = 1, is_draft = 0 where id = ?`,
     )
       .bind(source.id)
@@ -523,7 +523,7 @@ describe('list items', () => {
 
     // The DB CHECK backstops writes that bypass the repo.
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `update list_items set is_worn = 1, is_consumable = 1 where id = ?`,
       )
         .bind(item.id)
@@ -785,7 +785,7 @@ describe('caps and slug integrity', () => {
       const slug = `s${String(i).padStart(5, '0')}`
       return `('seed-${i}', '${userId}', 'Seed list ${i}', '${slug}', 0, 1, ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -800,7 +800,7 @@ describe('caps and slug integrity', () => {
     expect(over.status).toBe(422)
 
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 'bypass', 0, 1, 0, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
@@ -821,7 +821,7 @@ describe('caps and slug integrity', () => {
     const values = Array.from({ length: 299 }, (_, i) => {
       return `('seed-${i}', '${userId}', '${list.id}', '${gearId}', 1, 0, 0, 0, 0, ${i}, ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -867,7 +867,7 @@ describe('caps and slug integrity', () => {
     const gearValues = Array.from({ length: 150 }, (_, i) => {
       return `('selmany-${i}', '${userId}', 'Sel gear ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${gearValues}`,
     ).run()
     const gearIds = Array.from({ length: 150 }, (_, i) => `selmany-${i}`)
@@ -894,7 +894,7 @@ describe('caps and slug integrity', () => {
     const listValues = Array.from({ length: 99 }, (_, i) => {
       return `('listmany-${i}', '${userId}', 'List ${i}', 'LM${String(i).padStart(4, '0')}', 0, 1, ${i + 10}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ${listValues}`,
     ).run()
     const reorderIds = [
@@ -1067,7 +1067,7 @@ describe('caps and slug integrity', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('importcap-${i}', '${userId}', 'Seed ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -1103,7 +1103,7 @@ describe('caps and slug integrity', () => {
     const values = Array.from({ length: 120 }, (_, i) => {
       return `('importwide-${i}', '${userId}', 'Wide ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -1165,12 +1165,12 @@ describe('caps and slug integrity', () => {
   it('slugs are unique at the DB level with the matcher-visible error shape', async () => {
     const { cookie } = await signUpVerifiedUser('lists-slug@example.com', 'S')
     const userId = await userIdFor(cookie)
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('slug-1', '${userId}', 'One', 'AAAAAA', 0, 1, 0, 0, 0)`,
     ).run()
     // Pins the real error text isUniqueViolation matches on.
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ('slug-2', '${userId}', 'Two', 'AAAAAA', 0, 1, 1, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/UNIQUE constraint failed: lists.slug/)

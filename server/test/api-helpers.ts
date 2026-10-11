@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env } from './node-env'
 import app from '../index'
 import { CSRF_HEADER } from '../middleware/csrf'
 

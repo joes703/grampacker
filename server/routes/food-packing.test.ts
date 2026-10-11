@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import { FOOD_ITEM_CAP } from '../../shared/food'
 import { PACK_RANK_MAX } from '../../shared/lists'
@@ -322,7 +322,7 @@ describe('the food half of the pack-order permutation and its parents', () => {
   async function snapshot(cookie: string, listId: string) {
     const gear = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
     expect(gear.status).toBe(200)
-    const food = await env.DB.prepare(
+    const food = await testDb.prepare(
       'select * from list_food_items where list_id = ? order by id',
     )
       .bind(listId)
@@ -389,7 +389,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const gearValues = Array.from({ length: 300 }, (_, i) =>
       `('${userId}-g-${i}', '${userId}', 'Seed gear ${i}', 100, ${i}, 0, 0)`)
     for (let i = 0; i < gearValues.length; i += 50) {
-      await env.DB.prepare(
+      await testDb.prepare(
         'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
           gearValues.slice(i, i + 50).join(','),
       ).run()
@@ -397,7 +397,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const itemValues = Array.from({ length: 300 }, (_, i) =>
       `('${userId}-li-${i}', '${userId}', '${list.id}', '${userId}-g-${i}', 1, 0, 0, 0, 0, ${i}, ${i}, 0, 0)`)
     for (let i = 0; i < itemValues.length; i += 40) {
-      await env.DB.prepare(
+      await testDb.prepare(
         'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
           itemValues.slice(i, i + 40).join(','),
       ).run()
@@ -405,7 +405,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const foodValues = Array.from({ length: 200 }, (_, i) =>
       `('${userId}-f-${i}', '${userId}', '${list.id}', 'Seed food ${i}', 100, 1, ${i}, 0, 0, ${300 + i}, 0, 0)`)
     for (let i = 0; i < foodValues.length; i += 40) {
-      await env.DB.prepare(
+      await testDb.prepare(
         'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ' +
           foodValues.slice(i, i + 40).join(','),
       ).run()
@@ -450,14 +450,14 @@ describe('index-safety validation heals degraded rank states', () => {
     const list = await createList(cookie, 'Trip')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-tg', '${userId}', 'Stove', 100, 0, 0, 0)`,
     ).run()
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-tli', '${userId}', '${list.id}', '${userId}-tg', 1, 0, 0, 0, 0, 0, 0, 0, 0)`,
     ).run()
     // The TIE: food also at rank 0 in the same (Unassigned) cohort.
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ('${userId}-tf', '${userId}', '${list.id}', 'Oats', 100, 1, 0, 0, 0, 0, 0, 0)`,
     ).run()
 
@@ -510,10 +510,10 @@ describe('location deletion near the rank ceiling', () => {
     const location = await createLocation(cookie, list.id, 'Bag')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-cg', '${userId}', 'Legacy', 100, 0, 0, 0)`,
     ).run()
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-cli', '${userId}', '${list.id}', '${userId}-cg', 1, 0, 0, 0, 0, 0, 999999700, 0, 0)`,
     ).run()
     // 299 bag gear rows (the 300-item list cap minus the legacy row) plus
@@ -523,7 +523,7 @@ describe('location deletion near the rank ceiling', () => {
     const bagGearValues = Array.from({ length: 299 }, (_, i) =>
       `('${userId}-bg-${i}', '${userId}', 'Bag gear ${i}', 100, ${i + 1}, 0, 0)`)
     for (let i = 0; i < bagGearValues.length; i += 50) {
-      await env.DB.prepare(
+      await testDb.prepare(
         'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
           bagGearValues.slice(i, i + 50).join(','),
       ).run()
@@ -531,12 +531,12 @@ describe('location deletion near the rank ceiling', () => {
     const bagItemValues = Array.from({ length: 299 }, (_, i) =>
       `('${userId}-bli-${i}', '${userId}', '${list.id}', '${userId}-bg-${i}', 1, 0, 0, 0, 0, ${i + 1}, ${i}, 0, 0)`)
     for (let i = 0; i < bagItemValues.length; i += 40) {
-      await env.DB.prepare(
+      await testDb.prepare(
         'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
           bagItemValues.slice(i, i + 40).join(','),
       ).run()
     }
-    await env.DB.prepare(
+    await testDb.prepare(
       `update list_items set packing_location_id = '${location.id}' where user_id = '${userId}' and id like '${userId}-bli-%'`,
     ).run()
     const food = await createFood(cookie, list.id, 'Oats')
@@ -671,7 +671,7 @@ describe('list_food_items guards below the API', () => {
   }
 
   function insertFood(userId: string, row: FoodRow) {
-    return env.DB.prepare(
+    return testDb.prepare(
       'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, is_per_meal, sort_order, is_packed, is_ready, packing_location_id, pack_sort_order, created_at, updated_at) values (?, ?, ?, ?, 100, 1, ?, 0, 0, 0, ?, ?, 0, 0)',
     )
       .bind(
@@ -687,7 +687,7 @@ describe('list_food_items guards below the API', () => {
   }
 
   function setRank(id: string, rank: number) {
-    return env.DB.prepare('update list_food_items set pack_sort_order = ? where id = ?')
+    return testDb.prepare('update list_food_items set pack_sort_order = ? where id = ?')
       .bind(rank, id)
       .run()
   }
@@ -705,7 +705,7 @@ describe('list_food_items guards below the API', () => {
 
     await insertFood(userId, { id: `${userId}-z`, listId: otherList.id, rank: 0 })
     await expect(
-      env.DB.prepare('update list_food_items set packing_location_id = ? where id = ?')
+      testDb.prepare('update list_food_items set packing_location_id = ? where id = ?')
         .bind(location.id, `${userId}-z`)
         .run(),
     ).rejects.toThrow(/packing location does not belong to this list/)
@@ -764,9 +764,9 @@ describe('list_food_items guards below the API', () => {
     await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
     await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 2 })
 
-    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+    await testDb.prepare('delete from packing_locations where id = ?').bind(location.id).run()
 
-    const { results } = await env.DB.prepare(
+    const { results } = await testDb.prepare(
       'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
     )
       .bind(list.id)
@@ -788,9 +788,9 @@ describe('list_food_items guards below the API', () => {
     await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
     await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 1 })
 
-    await env.DB.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+    await testDb.prepare('delete from packing_locations where id = ?').bind(location.id).run()
 
-    const { results } = await env.DB.prepare(
+    const { results } = await testDb.prepare(
       'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
     )
       .bind(list.id)

@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import { categories, gearItems } from '../db/schema'
 import { isTriggerAbort } from './db-errors'
 
@@ -82,7 +82,7 @@ export function createCategoriesRepo(db: Db, userId: string) {
         .where(and(eq(categories.id, id), eq(categories.userId, userId)))
         .limit(1)
       if (!existing) return false
-      await db.batch([
+      await runBatch(db, [
         db
           .update(gearItems)
           .set({ categoryId: null, updatedAt: Date.now() })
@@ -119,7 +119,7 @@ export function createCategoriesRepo(db: Db, userId: string) {
           .where(and(eq(categories.id, u.id), eq(categories.userId, userId))),
       )
       if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
   }

@@ -20,6 +20,7 @@ import { dollarsToCents } from './money'
 import type { GearItemRow } from '../repos/gear-items'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
 import type { ListRow } from '../repos/lists'
+import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/lists                          - session - own rows only
@@ -71,7 +72,7 @@ import type { ListRow } from '../repos/lists'
 // Session-gated by the hoisted api.use('/lists/*', requireSession) in
 // server/index.ts - one lookup for all three sub-apps on this mount.
 export const listRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: SessionVars
 }>()
 

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { GearStatus } from '../../shared/gear'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import { categories, gearItems } from '../db/schema'
 import { chunkIds } from './chunk-ids'
 import { isTriggerAbort } from './db-errors'
@@ -249,7 +249,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
         return { ok: true, createdCategories: 0, createdItems: 0 }
       }
       try {
-        await db.batch([first, ...rest])
+        await runBatch(db, [first, ...rest])
       } catch (err) {
         if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
         // An import can carry new categories, so the 0021 category cap can
@@ -316,7 +316,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
           ),
       )
       if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
 
@@ -338,7 +338,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
           ),
       )
       if (!first) return 'ok' // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return 'ok'
     },
 
@@ -356,7 +356,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
           .where(and(eq(gearItems.id, u.id), eq(gearItems.userId, userId))),
       )
       if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
   }

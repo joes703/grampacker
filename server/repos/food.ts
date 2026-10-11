@@ -1,5 +1,6 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
-import type { Db } from '../db'
+import type { BatchItem } from 'drizzle-orm/batch'
+import { runBatch, type Db } from '../db'
 import {
   listFoodItemSlots,
   listFoodItems,
@@ -145,7 +146,7 @@ export function createFoodRepo(db: Db, userId: string) {
     if (!first) throw new Error('unreachable: the list probe is always present')
     // Every probe selects only `id`; batch typing cannot see through the
     // dynamically built tuple, so one cast pins the shape they all share.
-    const results = (await db.batch([first, ...rest])) as { id: string }[][]
+    const results = (await runBatch(db, [first, ...rest])) as { id: string }[][]
     const [listRows, ...restRows] = results
     if (!listRows?.[0]) return 'not_found'
     let slotRowSets = restRows
@@ -166,7 +167,7 @@ export function createFoodRepo(db: Db, userId: string) {
       // One batch: a D1 transaction, so the three reads are a consistent
       // snapshot and an item cannot appear with associations to slots that a
       // concurrent day-trim already removed.
-      const [slotRows, itemRows, linkRows] = await db.batch([
+      const [slotRows, itemRows, linkRows] = await runBatch(db, [
         db
           .select({
             id: listFoodSlots.id,
@@ -305,7 +306,7 @@ export function createFoodRepo(db: Db, userId: string) {
       const statements = [...inserts, trim] as const
       const [first, ...rest] = statements
       try {
-        if (first) await db.batch([first, ...rest])
+        if (first) await runBatch(db, [first, ...rest])
       } catch (err) {
         // The list was deleted between the ownership check and the batch:
         // the slot inserts fail a foreign key. A slot references both the
@@ -371,7 +372,7 @@ export function createFoodRepo(db: Db, userId: string) {
       const linkInserts = linkStatements(db, listId, userId, id, usable)
       let inserted: { packSortOrder: number } | undefined
       try {
-        const [insertRows] = await db.batch([insertItem, ...linkInserts])
+        const [insertRows] = await runBatch(db, [insertItem, ...linkInserts])
         inserted = insertRows[0]
       } catch (err) {
         if (isFoodItemCapError(err)) return { ok: false, reason: 'cap_exceeded' }
@@ -527,7 +528,7 @@ export function createFoodRepo(db: Db, userId: string) {
       // from `patch.x ?? item.x` (the old shape) could pair a quantity a
       // concurrent write had already replaced with links this write made -
       // a row the database never held.
-      const statements: Parameters<Db['batch']>[0][number][] = [
+      const statements: BatchItem<'sqlite'>[] = [
         db
           .update(listFoodItems)
           .set(set)
@@ -593,7 +594,7 @@ export function createFoodRepo(db: Db, userId: string) {
       let links: string[] = []
       try {
         if (first) {
-          const results = await db.batch([first, ...rest])
+          const results = await runBatch(db, [first, ...rest])
           updated = (results[0] as Updated[])[0]
           links = (results[results.length - 1] as { slotId: string }[]).map(
             (row) => row.slotId,
@@ -710,7 +711,7 @@ export function createFoodRepo(db: Db, userId: string) {
     // One batch even when chunking splits the probe: the membership answer
     // should be a single snapshot, and the FK-recovery path reuses these
     // exact builders (classifyFoodFk), so the two cannot drift.
-    const chunks = await db.batch([first, ...rest])
+    const chunks = await runBatch(db, [first, ...rest])
     const found = new Set(chunks.flat().map((row) => row.id))
     if (found.size !== new Set(slotIds).size) return null
     return slotIds

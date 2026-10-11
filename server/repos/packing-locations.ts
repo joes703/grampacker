@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/sqlite-core'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import {
   gearItems,
   listFoodItems,
@@ -178,7 +178,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           .returning({ id: packingLocations.id })
         // Insert and read-back in ONE batch. Statements run in order inside the
         // transaction, so the select sees the row the insert just wrote.
-        const [insertedRows, rows] = await db.batch([
+        const [insertedRows, rows] = await runBatch(db, [
           insertLocation,
           ownedListQuery(listId),
         ])
@@ -236,7 +236,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         )
         .returning({ id: packingLocations.id })
       // Update and read-back in ONE batch, for the reason on ownedListQuery.
-      const [renamedRows, rows] = await db.batch([
+      const [renamedRows, rows] = await runBatch(db, [
         renameLocation,
         ownedListQuery(listId),
       ])
@@ -278,7 +278,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // the read is what makes "keep their relative order" true rather than
       // incidental.
       const [gearOrphans, foodOrphans, gearMaxRows, foodMaxRows] =
-        await db.batch([
+        await runBatch(db, [
           db
             .select({
               id: listItems.id,
@@ -362,7 +362,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       // this is an administrative renumber of the whole cohort, and skipping
       // them would land a settle on a reserved slot.
       if (base + orphans.length - 1 > PACK_RANK_MAX && orphans.length > 0) {
-        const [unassignedGear, unassignedFood] = await db.batch([
+        const [unassignedGear, unassignedFood] = await runBatch(db, [
           db
             .select({ id: listItems.id, packSortOrder: listItems.packSortOrder })
             .from(listItems)
@@ -472,7 +472,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         if (!firstStmt) return 'not_found' // unreachable: delete is present
         let denseResults
         try {
-          denseResults = await db.batch([firstStmt, ...restStmts])
+          denseResults = await runBatch(db, [firstStmt, ...restStmts])
         } catch (err) {
           // A drifted row fed NULL into its NOT NULL rank column, a settle
           // lost a rank race, or the census counted a late arrival. Known,
@@ -587,7 +587,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       if (!first) return 'not_found' // unreachable: `remove` is always present
       let results
       try {
-        results = await db.batch([first, ...rest])
+        results = await runBatch(db, [first, ...rest])
       } catch (err) {
         // `base + i` can step past PACK_RANK_MAX when the destination cohort
         // is near the ceiling. Migration 0019 normalizes any legacy cohort
@@ -636,7 +636,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           ),
       )
       if (!first) return true
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
   }

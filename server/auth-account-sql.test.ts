@@ -1,9 +1,10 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from './test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from './index'
 import { signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from './middleware/csrf'
 import { DELETE_ACCOUNT_USER_HEADER } from '../shared/auth'
+import type { Sqlite } from './db'
 
 // The account model better-auth queries must match the physical table,
 // asserted ON THE WIRE.
@@ -19,11 +20,11 @@ import { DELETE_ACCOUNT_USER_HEADER } from '../shared/auth'
 
 const ORIGIN = 'http://localhost:5173'
 
-// The real D1 binding with `prepare` instrumented: every statement's SQL is
-// appended to `seen` and the REAL prepared statement is returned, so the
-// request runs normally and the assertions happen afterwards. Same shape as
-// the sabotage proxy in auth-error-logging.test.ts, minus the sabotage.
-function recordingD1(seen: string[]): D1Database {
+// The real SQLite connection with `prepare` instrumented: every statement's
+// SQL is appended to `seen` and the REAL prepared statement is returned, so
+// the request runs normally and the assertions happen afterwards. Same shape
+// as the sabotage proxy in auth-error-logging.test.ts, minus the sabotage.
+function recordingD1(seen: string[]): Sqlite {
   return new Proxy(env.DB, {
     get(db, prop) {
       if (prop !== 'prepare') {
@@ -61,7 +62,7 @@ describe('the account model better-auth actually queries', () => {
     const email = `acct-sql-${crypto.randomUUID()}@example.com`
     const { cookie } = await signUpVerifiedUser(email, '')
 
-    const before = await env.DB.prepare('select id from user where email = ?')
+    const before = await testDb.prepare('select id from user where email = ?')
       .bind(email)
       .first<{ id: string }>()
     expect(before?.id).toBeTruthy()
@@ -79,7 +80,7 @@ describe('the account model better-auth actually queries', () => {
           'Content-Type': 'application/json',
           [CSRF_HEADER]: '1',
           [DELETE_ACCOUNT_USER_HEADER]: userId,
-          'cf-connecting-ip': '10.55.0.1',
+          'x-real-ip': '10.55.0.1',
         },
         body: JSON.stringify({}),
       },
@@ -104,7 +105,7 @@ describe('the account model better-auth actually queries', () => {
     // each quoted name must be the table or one of its physical columns.
     const columns = new Set(
       (
-        await env.DB.prepare("select name from pragma_table_info('account')").all<{
+        await testDb.prepare("select name from pragma_table_info('account')").all<{
           name: string
         }>()
       ).results.map((column) => column.name),
@@ -124,13 +125,13 @@ describe('the account model better-auth actually queries', () => {
 
     // And the deletion was real, so the SQL above is the SQL of a working
     // delete rather than of a request that bailed out early.
-    const after = await env.DB.prepare(
+    const after = await testDb.prepare(
       'select count(*) as n from user where id = ?',
     )
       .bind(userId)
       .first<{ n: number }>()
     expect(after?.n).toBe(0)
-    const sessions = await env.DB.prepare(
+    const sessions = await testDb.prepare(
       'select count(*) as n from session where user_id = ?',
     )
       .bind(userId)

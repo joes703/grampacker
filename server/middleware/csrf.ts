@@ -3,12 +3,13 @@ import { createMiddleware } from 'hono/factory'
 // middleware cannot drift. Re-exported for existing server-side importers.
 export { CSRF_HEADER } from '../../shared/api'
 import { CSRF_HEADER } from '../../shared/api'
+import type { AppEnv } from '../env'
 
 // Belt-and-braces CSRF for our API routes (SameSite=Strict cookies are the
 // first layer). better-auth routes are skipped - better-auth does its own
 // origin validation against baseURL (verified: forged origin -> 403
 // INVALID_ORIGIN).
-export const csrfProtection = createMiddleware<{ Bindings: Env }>(
+export const csrfProtection = createMiddleware<{ Bindings: AppEnv }>(
   async (c, next) => {
     if (c.req.path.startsWith('/api/auth/')) {
       return next()

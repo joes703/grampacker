@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import { categories, gearItems, listFoodItems, listItems, lists } from '../db/schema'
 import {
   isAnyUniqueViolation,
@@ -227,7 +227,7 @@ export function createListItemsRepo(db: Db, userId: string) {
           return { ok: false, reason: 'pack_rank_exhausted' }
         }
         if (isForeignKeyViolation(err)) {
-          const [listRows, gearRows] = await db.batch([
+          const [listRows, gearRows] = await runBatch(db, [
             listProbe(listId),
             gearProbe(gearItemId),
           ])
@@ -298,7 +298,7 @@ export function createListItemsRepo(db: Db, userId: string) {
         })
         .returning(itemCols)
       try {
-        const [gearRows, itemRows] = await db.batch([insertGear, insertItem])
+        const [gearRows, itemRows] = await runBatch(db, [insertGear, insertItem])
         const gear = gearRows[0]
         const item = itemRows[0]
         if (!gear || !item) throw new Error('quick-add returned no rows')
@@ -526,7 +526,7 @@ export function createListItemsRepo(db: Db, userId: string) {
           ),
       )
       if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
 
@@ -537,7 +537,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     async resetPacked(listId: string): Promise<boolean> {
       if (!(await ownsList(listId))) return false
       const now = Date.now()
-      await db.batch([
+      await runBatch(db, [
         db
           .update(listItems)
           .set({ isPacked: false, updatedAt: now })
@@ -565,7 +565,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     async resetReady(listId: string): Promise<boolean> {
       if (!(await ownsList(listId))) return false
       const now = Date.now()
-      await db.batch([
+      await runBatch(db, [
         db
           .update(listItems)
           .set({ isReady: false, updatedAt: now })

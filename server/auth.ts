@@ -26,6 +26,7 @@ import {
   FRESH_AGE_SECONDS,
   MAGIC_LINK_PATH,
 } from '../shared/auth'
+import type { AppEnv } from './env'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
 // domain (or a suffix of it): grampacker.app for the apex and any
@@ -71,7 +72,7 @@ const PASSKEY_UNGATED = new Set([
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
 // plugins) MUST live here so the generated tables cannot drift from runtime.
-export function authOptions(env: Env, incident?: AuthIncident) {
+export function authOptions(env: AppEnv, incident?: AuthIncident) {
   const db = createDb(env.DB)
   const email = createEmailSender(env)
 
@@ -454,7 +455,7 @@ export function authOptions(env: Env, incident?: AuthIncident) {
 
 // Workers get fresh bindings per request, so the auth instance is built per
 // request. This is config wiring only - no I/O happens until a handler runs.
-export function createAuth(env: Env, incident?: AuthIncident) {
+export function createAuth(env: AppEnv, incident?: AuthIncident) {
   return betterAuth(authOptions(env, incident))
 }
 

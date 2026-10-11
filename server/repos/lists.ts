@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
-import type { Db } from '../db'
+import { runBatch, type Db } from '../db'
 import {
   categories,
   gearItems,
@@ -270,7 +270,7 @@ export function createListsRepo(db: Db, userId: string) {
           .where(and(eq(lists.id, u.id), eq(lists.userId, userId))),
       )
       if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
+      await runBatch(db, [first, ...rest])
       return true
     },
 
@@ -292,7 +292,7 @@ export function createListsRepo(db: Db, userId: string) {
       // Items and locations are one D1 batch snapshot so a concurrent delete
       // cannot split the organization graph across two moments.
       const [items, sourceLocations, sourceFoodSlots, sourceFoodItems, sourceFoodLinks] =
-        await db.batch([
+        await runBatch(db, [
         db
           .select({
             id: listItems.id,
@@ -533,7 +533,7 @@ export function createListsRepo(db: Db, userId: string) {
           ]
         })
         try {
-          const results = await db.batch([
+          const results = await runBatch(db, [
             insertList,
             ...insertLocations,
             ...insertItems,
@@ -709,7 +709,7 @@ export function createListsRepo(db: Db, userId: string) {
           }),
         )
         try {
-          const [inserted] = await db.batch([
+          const [inserted] = await runBatch(db, [
             insertList,
             ...insertCategories,
             ...insertGear,
@@ -740,7 +740,7 @@ export function createListsRepo(db: Db, userId: string) {
           // is a UNIQUE violation, not an FK one, so it still falls through
           // to withFreshSlug's retry.)
           if (isForeignKeyViolation(err)) {
-            const [catRows, gearRows] = await db.batch([
+            const [catRows, gearRows] = await runBatch(db, [
               ownedCategoryIdsProbe(),
               ownedGearIdsProbe(),
             ])
@@ -813,7 +813,7 @@ export function createListsRepo(db: Db, userId: string) {
           }),
         )
         try {
-          const [inserted] = await db.batch([insertList, ...insertItems])
+          const [inserted] = await runBatch(db, [insertList, ...insertItems])
           const row = inserted[0]
           if (!row) throw new Error('list from-selection returned no row')
           return { ok: true, row }

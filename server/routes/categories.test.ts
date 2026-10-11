@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   CATEGORY_CAP,
@@ -155,7 +155,7 @@ describe('/api/categories authorization matrix', () => {
     const values = Array.from({ length: 120 }, (_, i) => {
       return `('catmany-${i}', '${userId}', 'Cat ${i}', ${i}, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
 
@@ -202,7 +202,7 @@ describe('the category cap (500 per user)', () => {
       { length: count },
       (_, i) => `('${userId}-seed-${i}', '${userId}', 'Seed ${i}', ${i}, 0)`,
     ).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
   }
@@ -231,7 +231,7 @@ describe('the category cap (500 per user)', () => {
     })
 
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into categories (id, user_id, name, sort_order, created_at) values ('bypass', '${userId}', 'Bypass', 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
@@ -261,11 +261,11 @@ describe('the category cap (500 per user)', () => {
     })
 
     // Atomic: no category (not even the one that fit) and no gear survived.
-    const cats = await env.DB.prepare(
+    const cats = await testDb.prepare(
       'select count(*) as n from categories where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(cats?.n).toBe(CATEGORY_CAP - 1)
-    const gear = await env.DB.prepare(
+    const gear = await testDb.prepare(
       'select count(*) as n from gear_items where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(gear?.n).toBe(0)
@@ -297,15 +297,15 @@ describe('the category cap (500 per user)', () => {
     })
 
     // Atomic: no list, no categories past the seed, no gear.
-    const cats = await env.DB.prepare(
+    const cats = await testDb.prepare(
       'select count(*) as n from categories where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(cats?.n).toBe(CATEGORY_CAP - 1)
-    const listsLeft = await env.DB.prepare(
+    const listsLeft = await testDb.prepare(
       'select count(*) as n from lists where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(listsLeft?.n).toBe(0)
-    const gear = await env.DB.prepare(
+    const gear = await testDb.prepare(
       'select count(*) as n from gear_items where user_id = ?',
     ).bind(userId).first<{ n: number }>()
     expect(gear?.n).toBe(0)
@@ -317,7 +317,7 @@ describe('the category cap (500 per user)', () => {
 // These pin the copies to the constant so changing one alone goes red.
 describe('CATEGORY_CAP stays in lockstep with its copies', () => {
   it('the live trigger uses the constant as threshold AND in its message', async () => {
-    const row = await env.DB.prepare(
+    const row = await testDb.prepare(
       "select sql from sqlite_master where type='trigger' and name='categories_user_cap'",
     ).first<{ sql: string }>()
     expect(row?.sql).toContain(`>= ${CATEGORY_CAP}`)
