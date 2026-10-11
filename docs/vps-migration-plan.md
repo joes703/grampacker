@@ -3,18 +3,15 @@
 **Status:** Planning only. Do not deploy, change production data, or change DNS
 until the relevant stage is approved.
 
+The step-by-step commands live in the companion runbook,
+`docs/vps-bootstrap-and-migration-runbook.md`. This document says what and
+why; the runbook says exactly how, where each command runs, and how to check
+and undo it.
+
 ## Goal
 
 Move Grampacker from Cloudflare Workers and D1 to an ordinary Linux server.
 The result should be simpler to develop, test, operate, and move again later.
-
-The purchased production host is a RackNerd KVM VPS with:
-
-- 2 GB RAM
-- 2 shared vCPUs
-- 35 GB SSD
-- public IPv4
-- x86-64 Linux
 
 The application will run as one Node container using a local SQLite database.
 Caddy will provide HTTPS and forward requests to the application. GitHub
@@ -24,6 +21,50 @@ Registry (GHCR). The VPS will pull that image and run it with Docker Compose.
 Nothing in the application will depend on RackNerd. Moving later should require
 copying the SQLite database and configuration, pulling the same image, and
 changing DNS.
+
+## Current infrastructure (recorded 2026-10-11)
+
+This section records the server as it exists today. Reusable commands and
+configuration elsewhere use the name `VPS_HOST` instead of the address, so
+they still work after a move.
+
+| Item | Value |
+| --- | --- |
+| Provider | RackNerd KVM |
+| Public IPv4 (`VPS_HOST`) | `104.168.43.9` |
+| IPv6 | None. The only IPv6 address is link-local (`fe80::`). |
+| Operating system | Ubuntu 26.04.1 LTS, kernel `7.0.0-31-generic`, x86-64 |
+| Memory | 1.9 GiB RAM, 1 GiB swap |
+| Disk | Root filesystem about 34 GB, about 32 GB free |
+| Docker | Engine 29.9.0, Compose 5.6.0, service active |
+| Administrator | `joe`, key-based SSH from the Mac and from walnut |
+| SSH policy | Root login off; password and keyboard-interactive login off |
+| Firewall | UFW: deny incoming, allow outgoing; SSH rate-limited; TCP 80 and TCP 443 allowed |
+| Listening publicly | SSH only |
+
+Directories that exist, all owned by `joe:joe`:
+
+| Path | Mode |
+| --- | --- |
+| `/srv/grampacker` | `0755` |
+| `/srv/grampacker/data` | `0700` |
+| `/srv/grampacker/secrets` | `0700` |
+| `/srv/grampacker/snapshots` | `0700` |
+
+Not done yet: Caddy, the Grampacker deployment, GitHub Actions deployment, GHCR
+access, and any DNS change. Cloudflare Workers and D1 remain the production
+system. No sandbox or agent SSH key is installed on the VPS.
+
+Consequences for this plan:
+
+- **No AAAA record.** Publish only an A record until the VPS has a global IPv6
+  address and it has been tested. A stale AAAA record would send IPv6 clients
+  somewhere else.
+- **No UDP 443.** Grampacker does not need HTTP/3. Caddy must be configured
+  for HTTP/1.1 and HTTP/2 only, so it does not advertise HTTP/3 that the
+  firewall would block.
+- **Memory is tight but enough.** 1.9 GiB with 1 GiB swap fits one small Node
+  process, Caddy and Docker. Measure before adding a memory limit (step 6).
 
 ## Verified current design
 
@@ -73,7 +114,11 @@ Use:
 - one Hono application serving both the built React frontend and API.
 - a multi-stage Docker build using a glibc-based Node image, not Alpine.
 - Docker Compose on the VPS.
-- Caddy on the VPS for TLS and reverse proxying.
+- Caddy on the VPS for TLS and reverse proxying. Run it as a second Compose
+  service from a pinned official image, with host networking. Host networking
+  lets Caddy see the real client address (Docker's port proxy can hide it)
+  and reach the application on `127.0.0.1`. It also means Docker publishes no
+  port for Caddy, so UFW's rules for 80 and 443 apply to it normally.
 - SQLite on a host-mounted persistent directory, never inside the image.
 - GitHub Actions and GHCR for production images.
 
@@ -126,7 +171,8 @@ Before changing code:
 - identify any Pages project, redirect rule, or old Worker route that could
   continue answering for the domain;
 - confirm the GitHub plan and whether the repository is private;
-- confirm the VPS distribution, SSH setup, IPv6 availability, and firewall.
+- confirm the VPS distribution, SSH setup, IPv6 availability, and firewall
+  (done 2026-10-11; see "Current infrastructure").
 
 Stop automatic Worker deployment immediately before the first incompatible
 Node/SQLite change reaches `main`. Do not disable it weeks in advance.
@@ -210,6 +256,14 @@ Create a multi-stage Dockerfile:
 5. expose only the application port;
 6. include a health check that verifies both HTTP and a simple database query.
 
+The health check passes only when `GET /api/health` returns HTTP status 200
+**and** a JSON body whose `ok` property is exactly `true`, within a short
+timeout. Receiving some HTTP response is not enough: the application can
+answer with an error response, or with `{"ok": false}`, when its database
+check fails. A missing body, a body that is not JSON, any other status, or a
+timeout is unhealthy. The deployment script's own health step uses the same
+rule.
+
 The image must not contain:
 
 - `.env` files or secrets;
@@ -218,25 +272,30 @@ The image must not contain:
 - source-control credentials;
 - development caches.
 
-Build `linux/amd64`. Both oak and the RackNerd VPS are x86-64. GitHub's normal
-Linux build runners are also suitable.
+Build `linux/amd64`. The VPS is x86-64, and GitHub's normal Linux build
+runners are too.
 
 ### 6. Prepare Compose and the VPS
 
 Use a small production layout:
 
 ```text
-/srv/grampacker/
+/srv/grampacker/          joe:joe 0755 (exists)
   compose.yaml
   Caddyfile
-  app.env
-  deploy.env
-  data/
-  snapshots/
+  deploy.env              image references to run; no secrets
+  secrets/                joe:joe 0700 (exists)
+    app.env               application secrets, mode 0600
+  data/                   0700 (exists); owned by the image's runtime UID
+  snapshots/              0700 (exists); owned by the image's runtime UID
+  caddy/data/             certificates and ACME account
+  caddy/config/
 ```
 
-`app.env` contains application secrets and is mode `0600`. `deploy.env`
-contains the exact image digest or immutable commit tag to run.
+`secrets/app.env` contains application secrets and is mode `0600`.
+`deploy.env` contains the exact image digests to run (application and Caddy).
+`data/` and `snapshots/` must be writable by the container's non-root user, so
+they are owned by that user's numeric UID, whatever `joe`'s UID is.
 
 The Compose service should:
 
@@ -252,9 +311,16 @@ Do not impose a guessed 512 MB memory limit. Measure ordinary and peak use on
 the 2 GB VPS first. Add a limit later only if it protects the host without
 causing avoidable out-of-memory failures.
 
-Allow only the required public ports: SSH, HTTP, and HTTPS. Prefer Tailscale or
-a restricted source range for administration if convenient, but do not make
-that a requirement for the application design.
+Allow only the required public ports: SSH, HTTP, and HTTPS (TCP only). Prefer
+Tailscale or a restricted source range for administration if convenient, but
+do not make that a requirement for the application design.
+
+**Docker-published ports bypass UFW.** Docker writes its own packet-filter
+rules, and they are evaluated before UFW's. A Compose line such as
+`"3000:3000"` would make the application reachable from the internet even
+though UFW has no rule allowing 3000. Every published port must therefore
+name `127.0.0.1` explicitly, and the runbook proves this from another machine
+rather than by reading `ufw status`.
 
 ### 7. Configure Caddy
 
@@ -264,9 +330,19 @@ Caddy should:
 - redirect HTTP to HTTPS;
 - proxy to `127.0.0.1:3000`;
 - pass the real client address in a header accepted only from the local proxy;
-- enforce a small outer request-body ceiling;
-- optionally return a simple 503 maintenance response while a deployment is
-  changing the database.
+- enforce a small outer request-body ceiling, above the application's own
+  largest limit (2 MB on the two import routes; 128 KB elsewhere), so the
+  application stays the component that decides and reports 413;
+- serve HTTP/1.1 and HTTP/2 only (UDP 443 is closed on purpose);
+- return a simple 503 maintenance response while a deployment is changing the
+  database.
+
+The maintenance response is a requirement, not a design. How Caddy switches it
+on and off is designed and tested together with the real Compose files during
+implementation. Whatever the mechanism, it must: answer every request with 503
+while on, including `/api/*`; not depend on the application container running;
+survive a Caddy restart in the state it was left in; and be provable with one
+`curl` from outside the VPS.
 
 The application must stop trusting `cf-connecting-ip`. Configure one explicit
 proxy header, such as `X-Real-IP`, and trust it only because the application
@@ -283,6 +359,19 @@ For staging:
 - confirm magic links and an existing passkey both work.
 
 Production uses `BETTER_AUTH_URL=https://grampacker.app`.
+
+Today `BETTER_AUTH_URL` is Better Auth's `baseURL`, the passkey origin, and the
+origin the CSRF middleware compares against, and `passkeyRpId` maps any
+`*.grampacker.app` URL to the RP ID `grampacker.app`. Setting the staging URL
+may therefore be all the "allow" needs. Confirm that against the code at
+implementation time instead of adding a second trusted origin by habit.
+
+Staging uses its own `BETTER_AUTH_SECRET`, different from both the old
+Cloudflare secret and the new production secret. Testing an existing passkey
+needs a copy of production users and passkeys on staging, so loading that copy
+is a production-data operation: it needs explicit approval, the copy is
+protected like production, and it is deleted when staging is removed. Remove
+the staging DNS record and Caddy site after cutover.
 
 ### 8. Add GitHub image builds
 
@@ -312,6 +401,37 @@ key in ordinary repository secrets.
 The VPS uses a read-only GHCR credential. It may prune unused images from its
 local Docker storage, but it must not be able to delete images from GHCR.
 Registry retention can be handled separately if it ever becomes necessary.
+
+The deployment SSH key logs in as a dedicated `deploy` account, not as `joe`.
+Its `authorized_keys` entry forces one command: a root-owned wrapper that
+accepts only an image digest and runs the deployment script. The key cannot
+open a shell, forward ports or run anything else. The workflow verifies the
+VPS host key against a pinned value and never accepts an unknown one.
+
+The current `deploy.yml` forbids `workflow_dispatch` because a dispatch runs
+the chosen branch's copy of the workflow with repository secrets. The new
+manual workflow is safe only because its SSH key lives in an environment
+whose deployment-branch rule allows `main` alone. A branch that edits and
+dispatches the workflow is refused the environment and never sees the key.
+Without that environment rule (GitHub Pro on a private repository), the key
+must not be stored in GitHub at all.
+
+## Access and credentials
+
+Four separate credentials. None is reused for another purpose.
+
+| Credential | Holder | Can do | Lifetime |
+| --- | --- | --- | --- |
+| Administrator SSH keys | the Mac and walnut, logging in as `joe` | full administration through `sudo` | permanent; already installed |
+| Temporary provisioning key (optional) | the agent sandbox | log in as a separate temporary account, only during an approved provisioning session | removed after that session; none exists now |
+| Deployment SSH key | the GitHub `production` environment | run the deployment wrapper as `deploy`, nothing else | permanent; rotated if exposed |
+| Read-only GHCR credential | root's Docker configuration on the VPS | pull Grampacker images | long-lived token with an expiry date and a reminder |
+
+The coding sandbox does not need VPS access for the Node/SQLite conversion or
+the container build. No agent key is created or installed now. If direct
+sandbox access is ever needed, the runbook's controlled process applies: a new
+dedicated key, a separate temporary account, removal afterward, and a failed
+login test that proves the removal.
 
 ### 9. Keep routine deployment simple
 
@@ -424,12 +544,17 @@ Cloudflare proxy or Tunnel.
 During the maintenance window:
 
 1. prevent new writes to D1 by removing the Worker's production custom domain;
-2. verify no alternate Worker hostname can accept production writes;
+2. verify no alternate Worker hostname can accept production writes. The
+   `workers.dev` URL refuses browser writes because the CSRF middleware checks
+   `Origin`, but a non-browser client can send any `Origin` header, so disable
+   the `workers.dev` route and preview URLs rather than relying on that;
 3. take the final D1 export;
 4. import and validate SQLite;
 5. start the application locally on the VPS and test with an explicit Host
    header;
-6. create the DNS-only A record for the VPS, plus AAAA only if IPv6 is verified;
+6. create the DNS-only A record for the VPS. Create no AAAA record: the VPS
+   has no global IPv6 address. Confirm that no AAAA record for the name is
+   left over from the Worker;
 7. wait for Caddy to obtain the production certificate;
 8. test HTTPS, headers, cookies, API routes, deep links, static assets, magic
    links, passkeys, private data, and public shares;
@@ -446,6 +571,10 @@ Before the first real SQLite write, rollback is straightforward:
 - restore the Worker custom domain;
 - treat D1 as authoritative;
 - discard the rehearsal or failed SQLite import.
+
+Do not re-enable `deploy.yml` as part of that rollback once `main` contains
+Node/SQLite code: it would deploy code the Worker cannot run. The Worker keeps
+serving its last deployed version, which is what rollback needs.
 
 After SQLite accepts real writes, D1 is stale. Prefer fixing forward or running
 the previous container image. Returning to D1 would lose or require manually
