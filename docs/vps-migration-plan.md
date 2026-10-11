@@ -159,6 +159,23 @@ Keep:
 Do not use the migration as an excuse to redesign the relational schema or
 remove security checks whose purpose is still valid.
 
+## Access and credentials
+
+Four separate credentials. None is reused for another purpose.
+
+| Credential | Holder | Can do | Lifetime |
+| --- | --- | --- | --- |
+| Administrator SSH keys | the Mac and walnut, logging in as `joe` | full administration through `sudo` | permanent; already installed |
+| Temporary provisioning key (optional) | the agent sandbox | log in as a separate temporary account, only during an approved provisioning session | removed after that session; none exists now |
+| Deployment SSH key | GitHub: a `production` environment secret (with Pro) or a repository secret (without Pro) | run the deployment wrapper as `deploy`, nothing else | permanent; rotated if exposed |
+| Read-only GHCR credential | root's Docker configuration on the VPS | pull Grampacker images | long-lived token with an expiry date and a reminder |
+
+The coding sandbox does not need VPS access for the Node/SQLite conversion or
+the container build. No agent key is created or installed now. If direct
+sandbox access is ever needed, the runbook's controlled process applies: a new
+dedicated key, a separate temporary account, removal afterward, and a failed
+login test that proves the removal.
+
 ## Implementation sequence
 
 ### 1. Record production state
@@ -366,8 +383,8 @@ origin the CSRF middleware compares against, and `passkeyRpId` maps any
 may therefore be all the "allow" needs. Confirm that against the code at
 implementation time instead of adding a second trusted origin by habit.
 
-Staging uses its own `BETTER_AUTH_SECRET`, different from both the old
-Cloudflare secret and the new production secret. Testing an existing passkey
+Staging uses its own `BETTER_AUTH_SECRET`, different from the production
+secret, so a staging cookie can never be valid in production. Testing an existing passkey
 needs a copy of production users and passkeys on staging, so loading that copy
 is a production-data operation: it needs explicit approval, the copy is
 protected like production, and it is deleted when staging is removed. Remove
@@ -391,12 +408,26 @@ Create a manually triggered production workflow that:
 Do not require GitHub Releases. Do not deploy `latest` without also recording
 the immutable digest or commit tag.
 
-If the private repository can use a protected GitHub production environment,
-store the deployment SSH key there and restrict the environment to `main`.
-GitHub Pro is required for those environment controls on a private personal
-repository. If that is unavailable, publish the image in Actions and run the
-final VPS deployment command manually rather than placing a broadly usable SSH
-key in ordinary repository secrets.
+Deployment can be automated with or without GitHub Pro. Pro decides only
+where the SSH key is stored and what enforces "main only":
+
+- **With Pro** (environments and environment secrets work on a private
+  repository): store the key as a secret of a `production` environment whose
+  deployment-branch rule allows `main` alone. GitHub itself refuses the
+  environment, and its secrets, to a run from any other branch.
+- **Without Pro:** store the key as a repository secret. The workflow refuses
+  to run unless `github.ref` is `refs/heads/main`, as a job-level condition on
+  every job, so no step of a branch's code runs. This is enforced by the
+  workflow file, not by GitHub: a branch whose copy of the workflow drops the
+  condition and is then dispatched would receive the secret. That is
+  acceptable here because only two kinds of identity could do it, and neither
+  can today: the agent tokens have no Workflows permission (cannot push
+  workflow-file changes) and only Actions read access (cannot dispatch), per
+  `docs/testing-and-ci.md` section 12; and Joe, who already holds every
+  credential. Recheck those token permissions before storing the key.
+
+In both cases the VPS limits the key with a forced command (below), so even a
+leaked key can only deploy an image digest.
 
 The VPS uses a read-only GHCR credential. It may prune unused images from its
 local Docker storage, but it must not be able to delete images from GHCR.
@@ -409,29 +440,12 @@ open a shell, forward ports or run anything else. The workflow verifies the
 VPS host key against a pinned value and never accepts an unknown one.
 
 The current `deploy.yml` forbids `workflow_dispatch` because a dispatch runs
-the chosen branch's copy of the workflow with repository secrets. The new
-manual workflow is safe only because its SSH key lives in an environment
-whose deployment-branch rule allows `main` alone. A branch that edits and
-dispatches the workflow is refused the environment and never sees the key.
-Without that environment rule (GitHub Pro on a private repository), the key
-must not be stored in GitHub at all.
-
-## Access and credentials
-
-Four separate credentials. None is reused for another purpose.
-
-| Credential | Holder | Can do | Lifetime |
-| --- | --- | --- | --- |
-| Administrator SSH keys | the Mac and walnut, logging in as `joe` | full administration through `sudo` | permanent; already installed |
-| Temporary provisioning key (optional) | the agent sandbox | log in as a separate temporary account, only during an approved provisioning session | removed after that session; none exists now |
-| Deployment SSH key | the GitHub `production` environment | run the deployment wrapper as `deploy`, nothing else | permanent; rotated if exposed |
-| Read-only GHCR credential | root's Docker configuration on the VPS | pull Grampacker images | long-lived token with an expiry date and a reminder |
-
-The coding sandbox does not need VPS access for the Node/SQLite conversion or
-the container build. No agent key is created or installed now. If direct
-sandbox access is ever needed, the runbook's controlled process applies: a new
-dedicated key, a separate temporary account, removal afterward, and a failed
-login test that proves the removal.
+the chosen branch's copy of the workflow with repository secrets, and its
+Cloudflare token can do anything to production. The new workflow reverses
+that rule deliberately, for the reasons above: the deploy key's power is
+limited on the VPS side, and who can edit or dispatch workflows is limited on
+the GitHub side. `deploy.yml`'s header must be updated in the same change that
+adds the new workflow, so the two documents do not contradict each other.
 
 ### 9. Keep routine deployment simple
 
@@ -446,10 +460,11 @@ The deployment script should be short and readable:
 7. start the candidate through Compose;
 8. check health, the SPA, one static asset, anonymous API rejection, and CSRF
    rejection;
-9. disable maintenance mode after the checks pass;
-10. record the current and previous image digests.
+9. record the current and previous image digests;
+10. disable maintenance mode, as the last step.
 
-If a step fails, leave maintenance mode enabled and report:
+Disabling maintenance comes last so that every earlier failure happens while
+the site is closed. If a step fails, leave maintenance mode enabled and report:
 
 - the failed step;
 - the previous image digest;
@@ -499,7 +514,10 @@ Use the same production image and SQLite library that will run Grampacker.
 6. Disable foreign-key checking outside the import transaction.
 7. Inspect the export for its own `BEGIN` and `COMMIT`. Use its transaction if
    present; otherwise add one. Never nest transactions blindly.
-8. Load the data and discard the D1-specific migration ledger.
+8. Load the data and discard the D1-specific migration ledger. Before
+   reporting success, checkpoint, close every connection, and leave one
+   self-contained file with no `-wal` or `-shm` beside it, so promoting it is
+   a plain rename.
 9. Recreate the triggers and enable foreign keys.
 10. Require `PRAGMA integrity_check` to return `ok` and
     `PRAGMA foreign_key_check` to return no rows.
@@ -527,9 +545,15 @@ Keep unchanged:
 - user IDs;
 - passkey credential IDs, public keys, and counters.
 
-Rotate `BETTER_AUTH_SECRET` during the move and require one new sign-in. This
-is a deliberate clean boundary, not a claim that the old secret could never be
-recovered. Delete imported sessions and short-lived verification challenges.
+Keep the existing production `BETTER_AUTH_SECRET` during the move. Rotating it
+is a separate future operation, not part of this migration. Cloudflare cannot
+show a Worker secret after it is set, so the VPS needs the value from the
+password-manager copy. If no copy exists, stop: the move then forces a
+rotation, and that needs its own decision.
+
+Still delete imported sessions and short-lived verification challenges, so
+everyone signs in once on the new server. That is one statement in the import
+and avoids carrying sessions across a change of server.
 
 Magic-link sign-in remains the recovery path if a passkey test fails. Do not
 complete cutover until at least one existing passkey works against the staging
@@ -604,8 +628,10 @@ The migration is ready for production only when:
 - magic-link sign-in and an existing passkey work on staging;
 - two D1 import rehearsals pass every integrity, relationship, and row-count
   check;
-- a manual GitHub workflow publishes and deploys an immutable image;
+- a manually started GitHub workflow publishes and deploys an immutable image;
 - the SQLite snapshot and previous image recovery procedure has been tested;
+- the existing B2 backup copies a backup-API snapshot of the database, and one
+  has been restored from B2 and passed `integrity_check`;
 - final DNS, HTTPS, cookie, security-header, private-data, and public-share
   checks pass.
 
