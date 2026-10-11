@@ -30,26 +30,57 @@ const LEDGER_DDL = `
   )
 `
 
+// The database and migrations/ disagree in a way no migration run can fix.
+// The server refuses to start, and migrate refuses to run, until a person
+// has looked.
+export class MigrationStateError extends Error {}
+
+// The migrations not yet applied, after checking that the ledger is an exact
+// prefix of the journal:
+//
+// - journal timestamps must strictly increase. The runner orders by them,
+//   and an entry dated before the newest applied one would otherwise be
+//   skipped forever without a word;
+// - each ledger row must match the journal entry in the same position, by
+//   timestamp AND hash. A different hash means a shipped migration file was
+//   edited (AGENTS.md forbids it) and the database was built from other SQL.
+//
+// A ledger LONGER than the journal is accepted when its overlap matches: that
+// is the previous image running against a database the newer image already
+// migrated, which is exactly the rollback the deploy relies on
+// (docs/vps-migration-plan.md, "Rollback").
 function pending(sqlite: Sqlite, migrationsFolder: string) {
   const migrations = readMigrationFiles({ migrationsFolder })
+  migrations.forEach((m, i) => {
+    const previous = migrations[i - 1]
+    if (previous && m.folderMillis <= previous.folderMillis) {
+      throw new MigrationStateError(
+        `migrations/ journal entry ${i} (when ${m.folderMillis}) is not newer than entry ${i - 1}`,
+      )
+    }
+  })
   const hasLedger = sqlite
     .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = '__drizzle_migrations'`)
     .get()
   if (!hasLedger) return migrations
-  const last = sqlite
-    .prepare(
-      'SELECT created_at FROM "__drizzle_migrations" ORDER BY created_at DESC LIMIT 1',
-    )
-    .get() as { created_at: number | string } | undefined
-  const lastApplied = last === undefined ? null : Number(last.created_at)
-  return migrations.filter(
-    (m) => lastApplied === null || lastApplied < m.folderMillis,
-  )
+  const ledger = sqlite
+    .prepare('SELECT hash, created_at FROM "__drizzle_migrations" ORDER BY created_at, rowid')
+    .all() as { hash: string; created_at: number | string }[]
+  ledger.forEach((row, i) => {
+    const expected = migrations[i]
+    if (!expected) return // the database is ahead of this code; see above
+    if (Number(row.created_at) !== expected.folderMillis || row.hash !== expected.hash) {
+      throw new MigrationStateError(
+        `applied migration ${i} does not match migrations/ entry ${i} (changed, removed or reordered)`,
+      )
+    }
+  })
+  return migrations.slice(ledger.length)
 }
 
 // How many migrations have not been applied. Read-only: it never creates the
 // ledger. The server refuses to start unless this is 0, so it never serves a
-// schema older than its code.
+// schema older than its code. Throws MigrationStateError on a mismatch.
 export function pendingMigrationCount(
   sqlite: Sqlite,
   migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,

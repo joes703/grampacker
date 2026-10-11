@@ -18,6 +18,10 @@ import type { AppEnv } from '../env'
 //   the asset-cache trap (a 304 cannot carry the new Cache-Control) out of
 //   reach entirely.
 //
+// Everything under STATIC_DIR is public, dotfiles included, and symlinks are
+// followed: serveStatic only refuses `.`/`..` path segments. So STATIC_DIR must
+// hold nothing but the SPA build output (dist/client).
+//
 // Every response here starts with the binding's old default policy,
 // `public, max-age=0, must-revalidate`: right for the shell, which carries the
 // current asset hashes. assetCache then upgrades content-hashed assets to a

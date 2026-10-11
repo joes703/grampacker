@@ -65,12 +65,22 @@ httpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`grampacker dev server on ${ORIGIN}`)
 })
 
+// Same order as production: stop accepting and let in-flight requests finish,
+// stop Vite, and only then close the database. A second signal exits at once.
+let stopping = false
 const stop = () => {
-  httpServer.close()
-  void vite.close().finally(() => {
-    sqlite.close()
-    process.exit(0)
+  if (stopping) process.exit(1)
+  stopping = true
+  const drained = new Promise<void>((resolve) => {
+    httpServer.close(() => resolve())
+    httpServer.closeIdleConnections()
   })
+  Promise.all([drained, vite.close()])
+    .catch((err: unknown) => console.error('dev shutdown:', err))
+    .finally(() => {
+      sqlite.close()
+      process.exit(0)
+    })
 }
-process.once('SIGINT', stop)
-process.once('SIGTERM', stop)
+process.on('SIGINT', stop)
+process.on('SIGTERM', stop)

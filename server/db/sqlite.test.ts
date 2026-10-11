@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openSqlite, type Sqlite } from './index'
-import { applyMigrations } from './migrate'
+import { applyMigrations, MigrationStateError, pendingMigrationCount } from './migrate'
 
 // The database foundation, against real files: the pragmas every connection
 // gets, and the migration runner that builds a fresh database.
@@ -117,4 +117,65 @@ describe('applyMigrations', () => {
       (sqlite.prepare('select count(*) as n from __drizzle_migrations').get() as { n: number }).n,
     ).toBe(0)
   })
+
+  // A copy of migrations/ that a test can edit, plus helpers for its journal.
+  type Journal = {
+    entries: { idx: number; version: string; when: number; tag: string; breakpoints: boolean }[]
+  }
+  function copyMigrations(): { folder: string; journal: Journal; save(): void } {
+    const folder = join(tempDir(), 'migrations')
+    cpSync('migrations', folder, { recursive: true })
+    const journalPath = join(folder, 'meta', '_journal.json')
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as Journal
+    return { folder, journal, save: () => writeFileSync(journalPath, JSON.stringify(journal)) }
+  }
+  function addMigration(
+    copy: ReturnType<typeof copyMigrations>,
+    tag: string,
+    when: number,
+    sql: string,
+  ) {
+    const last = copy.journal.entries[copy.journal.entries.length - 1]!
+    copy.journal.entries.push({ ...last, idx: last.idx + 1, when, tag })
+    copy.save()
+    writeFileSync(join(copy.folder, `${tag}.sql`), sql)
+  }
+
+  it('refuses a database whose applied migration was edited afterwards', () => {
+    const sqlite = openFile(join(tempDir(), 'edited.db'))
+    applyMigrations(sqlite)
+    const copy = copyMigrations()
+    const baseline = copy.journal.entries[0]!.tag
+    writeFileSync(
+      join(copy.folder, `${baseline}.sql`),
+      readFileSync(`migrations/${baseline}.sql`, 'utf8') + '\n-- edited after shipping\n',
+    )
+    expect(() => pendingMigrationCount(sqlite, copy.folder)).toThrow(MigrationStateError)
+    expect(() => applyMigrations(sqlite, copy.folder)).toThrow(MigrationStateError)
+  })
+
+  it('refuses a journal entry dated before the one it follows', () => {
+    // Without this check the runner, which compares timestamps, would treat
+    // the late entry as already applied and never run it.
+    const sqlite = openFile(join(tempDir(), 'order.db'))
+    applyMigrations(sqlite)
+    const copy = copyMigrations()
+    const first = copy.journal.entries[0]!
+    addMigration(copy, '0001_backdated', first.when - 1, 'CREATE TABLE backdated (id text);')
+    expect(() => pendingMigrationCount(sqlite, copy.folder)).toThrow(MigrationStateError)
+    expect(() => applyMigrations(sqlite, copy.folder)).toThrow(MigrationStateError)
+    expect(sqlite.prepare(`select 1 from sqlite_schema where name = 'backdated'`).get()).toBeUndefined()
+  })
+
+  it('accepts a database AHEAD of this code, so the previous image can run after a deploy', () => {
+    const copy = copyMigrations()
+    const last = copy.journal.entries[copy.journal.entries.length - 1]!
+    addMigration(copy, '0001_newer', last.when + 1, 'CREATE TABLE newer (id text);')
+    const sqlite = openFile(join(tempDir(), 'ahead.db'))
+    expect(applyMigrations(sqlite, copy.folder)).toBe(2)
+    // The real migrations/ (the "previous image") lacks 0001_newer.
+    expect(pendingMigrationCount(sqlite)).toBe(0)
+    expect(applyMigrations(sqlite)).toBe(0)
+  })
 })
+

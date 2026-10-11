@@ -97,7 +97,7 @@ describe('graceful close', () => {
           headers: {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(body),
-            'x-real-ip': '198.51.100.40',
+            'x-forwarded-for': '198.51.100.40',
           },
         },
         (res) => {
@@ -140,8 +140,9 @@ describe('graceful close', () => {
     }
     const fakeDb = { close: () => order.push('database closed') }
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    let removeHandlers = () => {}
     try {
-      shutdownOnSignals(fakeServer, fakeDb as never, () => {})
+      removeHandlers = shutdownOnSignals(fakeServer, fakeDb as never, () => {})
       process.emit('SIGTERM')
       await new Promise((r) => setTimeout(r, 10))
       expect(order).toEqual(['server close started'])
@@ -150,8 +151,24 @@ describe('graceful close', () => {
       expect(order).toEqual(['server close started', 'server closed', 'database closed'])
       expect(exit).toHaveBeenCalledWith(0)
     } finally {
+      removeHandlers()
       exit.mockRestore()
-      process.removeAllListeners('SIGINT')
+    }
+  })
+
+  it('a second signal, even the same one, exits at once with status 1', async () => {
+    const fakeServer: RunningServer = { port: 0, close: () => new Promise<void>(() => {}) }
+    const fakeDb = { close: () => {} }
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    const removeHandlers = shutdownOnSignals(fakeServer, fakeDb as never, () => {})
+    try {
+      process.emit('SIGTERM')
+      expect(exit).not.toHaveBeenCalled()
+      process.emit('SIGTERM')
+      expect(exit).toHaveBeenCalledWith(1)
+    } finally {
+      removeHandlers()
+      exit.mockRestore()
     }
   })
 })
@@ -199,6 +216,22 @@ describe('main', () => {
     const sqlite = openSqlite(path)
     expect(applyMigrations(sqlite)).toBe(0)
     sqlite.close()
+  })
+
+  it('refuses to serve when the ledger does not match migrations/', async () => {
+    const path = tempDb()
+    const sqlite = openSqlite(path)
+    applyMigrations(sqlite)
+    sqlite.prepare('update __drizzle_migrations set hash = ?').run('not-the-real-hash')
+    sqlite.close()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['serve'], config(path))).toBe(1)
+      expect(await main(['migrate'], config(path))).toBe(1)
+      expect(String(error.mock.calls[0]?.[0])).toContain('migration state error')
+    } finally {
+      error.mockRestore()
+    }
   })
 
   it('stops on missing configuration before opening anything', async () => {

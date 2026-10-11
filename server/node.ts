@@ -4,13 +4,16 @@ import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
 import app from './index'
 import { openSqlite, type Sqlite } from './db'
-import { applyMigrations, pendingMigrationCount } from './db/migrate'
+import { applyMigrations, MigrationStateError, pendingMigrationCount } from './db/migrate'
 import { ConfigError, loadConfig, type AppEnv } from './env'
 
-// The Node process entry.
+// The Node process entry. Production runs the compiled output
+// (`npm run build:server`), never tsx:
 //
-//   tsx server/node.ts           serve (the default)
-//   tsx server/node.ts migrate   apply pending migrations, then exit
+//   node dist/server/node.js           serve (the default)
+//   node dist/server/node.js migrate   apply pending migrations, then exit
+//
+// In local development `tsx server/node.ts [migrate]` runs the same code.
 //
 // Migrations are a separate, explicit step (docs/vps-migration-plan.md step
 // 9): the deploy runs them with the candidate image while the app is stopped
@@ -69,15 +72,19 @@ function closeServer(server: Server, graceMs: number): Promise<void> {
 
 // SIGTERM (docker stop, Compose) and SIGINT (Ctrl-C): stop taking requests,
 // let the in-flight ones finish, THEN close the database. Closing SQLite first
-// would fail requests that are still running. A second signal exits at once.
+// would fail requests that are still running. A second signal of either kind
+// exits at once with status 1. Returns a function that removes the handlers.
 export function shutdownOnSignals(
   running: RunningServer,
   sqlite: Sqlite,
   log: (message: string) => void = (m) => console.log(m),
-): void {
+): () => void {
   let stopping = false
   const stop = (signal: NodeJS.Signals) => {
-    if (stopping) process.exit(1)
+    if (stopping) {
+      log(`${signal} again: exiting now`)
+      process.exit(1)
+    }
     stopping = true
     log(`${signal}: shutting down`)
     running
@@ -89,8 +96,12 @@ export function shutdownOnSignals(
         process.exit(0)
       })
   }
-  process.once('SIGTERM', stop)
-  process.once('SIGINT', stop)
+  process.on('SIGTERM', stop)
+  process.on('SIGINT', stop)
+  return () => {
+    process.off('SIGTERM', stop)
+    process.off('SIGINT', stop)
+  }
 }
 
 export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<number> {
@@ -106,21 +117,29 @@ export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<n
     throw err
   }
 
-  const sqlite = openSqlite(config.DATABASE_PATH)
-
-  if (command === 'migrate') {
-    const applied = applyMigrations(sqlite)
-    console.log(`applied ${applied} migration(s) to ${config.DATABASE_PATH}`)
-    sqlite.close()
-    return 0
-  }
-  if (command !== 'serve') {
+  if (command !== 'serve' && command !== 'migrate') {
     console.error(`unknown command: ${command} (expected serve or migrate)`)
-    sqlite.close()
     return 2
   }
 
-  const behind = pendingMigrationCount(sqlite)
+  const sqlite = openSqlite(config.DATABASE_PATH)
+  let behind: number
+  try {
+    if (command === 'migrate') {
+      const applied = applyMigrations(sqlite)
+      console.log(`applied ${applied} migration(s) to ${config.DATABASE_PATH}`)
+      sqlite.close()
+      return 0
+    }
+    behind = pendingMigrationCount(sqlite)
+  } catch (err) {
+    sqlite.close()
+    if (err instanceof MigrationStateError) {
+      console.error(`migration state error in ${config.DATABASE_PATH}: ${err.message}`)
+      return 1
+    }
+    throw err
+  }
   if (behind > 0) {
     console.error(
       `${behind} migration(s) not applied to ${config.DATABASE_PATH}; run the migrate command first`,
