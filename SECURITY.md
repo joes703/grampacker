@@ -447,7 +447,8 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     pin require these prereleases at exact versions, so no stable
     alternative can be installed with them:
     - `miniflare` `5.20261006.1-alpha` (pinned by all three): the local
-      Workers simulator behind `npm run dev` and `npm run test:api`.
+      Workers simulator behind `npm run dev` (the Worker dev server; the API
+      tests no longer use it).
     - `youch` `4.1.0-beta.10` (pinned by miniflare): formats error pages
       in local development.
     - `unenv` `2.0.0-rc.24` (pinned by wrangler and the Vite plugin, and an
@@ -780,25 +781,24 @@ of it:
   with the same name rather than refusing; promoting gear to a container is
   the one path that does refuse, with "Item is already a container".
 
-  Each now issues its write and its read-back as the two statements of ONE
-  `db.batch`, which is a real transaction on D1: a SQL statement that fails
-  rolls the sequence back, so a failing read-back takes the write with it. The
-  read also runs after the write inside that transaction, so it sees the row.
+  Each now runs its checks, its write and its read-back inside ONE SQLite
+  transaction: a statement that fails rolls the whole sequence back, so a
+  failing read-back takes the write with it. The read runs after the write
+  inside that transaction, so it sees the row.
 
   Scoped claim, deliberately: this closes the read-back-failed case and the
   window between the two round trips. It does not make the write atomic with
   its RESPONSE - a transport failure after the batch commits, or a failure
   mapping the batch's results, still leaves the caller unsure. Nothing at this
   layer can fix that; only an idempotency key would.
-  `rename`'s "the UPDATE matched nothing" branch still answers not_found and
-  is still reachable (a concurrent delete between the pre-read and the
-  write); its read-back-found-nothing branch is now unreachable and throws
-  rather than returning a not_found that would deny a committed rename.
+  `rename`'s pre-read, write and read-back share the transaction, so a
+  concurrent delete can no longer land between them; both "matched nothing"
+  branches are unreachable and throw rather than answer not_found over a
+  committed rename.
 
-  Two repo tests pin the batching itself rather than the rollback, which is
-  D1's to guarantee - split either write back into write-then-read and they
-  fail. Verified by running that mutation, not by inspection. They are
-  structural only; the real-workerd route tests cover the semantics.
+  server/repos/pack-transactions.test.ts proves the packing-location and
+  pack-order transactions are all-or-nothing by injecting a failure partway
+  through; those tests fail when the transaction is removed.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email

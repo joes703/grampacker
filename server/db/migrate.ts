@@ -20,8 +20,6 @@ import type { Sqlite } from './index'
 //
 // `exec` (not `prepare`) runs each chunk because a trigger body or a chunk
 // without breakpoints may hold several statements.
-//
-// Returns how many migrations it applied, for logging.
 export const DEFAULT_MIGRATIONS_FOLDER = 'migrations'
 
 const LEDGER_DDL = `
@@ -59,6 +57,8 @@ export function pendingMigrationCount(
   return pending(sqlite, migrationsFolder).length
 }
 
+// Applies every pending migration in one transaction and returns how many
+// it applied, for logging.
 export function applyMigrations(
   sqlite: Sqlite,
   migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,

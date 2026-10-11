@@ -4,11 +4,14 @@ Shared instructions for every coding agent in this repo. CLAUDE.md imports
 this file and adds Claude-specific notes.
 
 **Stack:** Cloudflare Workers + D1 (SQLite), Hono, Vite, React, TypeScript,
-Drizzle, better-auth. This is a rewrite of a Supabase app, and Supabase or
-Postgres patterns do not exist here: no RLS (`auth.uid()`, `WITH CHECK`), no
-PostgREST `.upsert()`, no `SECURITY DEFINER` RPCs or `supabase.rpc()`, no
-pgTAP. The scoped repositories are the authorization boundary. When unsure of
-a D1 equivalent, ask rather than assume.
+Drizzle, better-auth. **Moving to Node + better-sqlite3 on a VPS**
+(`docs/vps-migration-plan.md`): on a branch that has the Node server
+(`server/node.ts`), the API tests and local dev already run on Node and
+SQLite, and the Worker no longer runs. This is a rewrite of a Supabase app,
+and Supabase or Postgres patterns do not exist here: no RLS (`auth.uid()`,
+`WITH CHECK`), no PostgREST `.upsert()`, no `SECURITY DEFINER` RPCs or
+`supabase.rpc()`, no pgTAP. The scoped repositories are the authorization
+boundary. When unsure of a D1 equivalent, ask rather than assume.
 
 ## Shipping
 
@@ -43,10 +46,11 @@ a D1 equivalent, ask rather than assume.
 | --- | --- | --- |
 | Build | `npm run build` | Typecheck + lint + bundle; tests are separate. A bare `tsc --noEmit` misses project-reference errors. |
 | Unit tests | `npm run test:unit` | Node tier: `scripts/`, `shared/`, `src/`, `server/**/*.node.test.ts`. |
-| API tests | `npm run test:api` | Every other `server/**/*.test.ts`, on real workerd + D1. Needs a local port; if the sandbox cannot bind one, say so and rely on CI. |
+| API tests | `npm run test:api` | Every other `server/**/*.test.ts`: the real app on Node against a fresh SQLite database per file. A few tests open a local port; if the sandbox cannot bind one, say so and rely on CI. |
 | Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
 | Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
-| Dev server | `npm run dev` | SPA + `/api/*` + local D1. |
+| Dev server | `npm run dev:node` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. `npm run dev` is the old Worker path. |
+| Node server | `npm run db:migrate`, `npm run start:node` | Apply migrations to `DATABASE_PATH`, then serve. The server refuses to start while migrations are pending. |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
@@ -135,10 +139,14 @@ Each has cost an incident. When working near one, read its
 
 - D1 allows at most 100 bound parameters per statement: no unbounded
   `inArray`. Chunk bulk writes with `server/repos/chunk-ids.ts`.
-- `db.batch` is a real transaction. Compute the plan, then apply it in one
-  batch; a partial write is a bug.
-- Never put `db.run/all/get(sql)` in `db.batch()`: it typechecks, then crashes
-  the D1 driver. Use a builder (`.insert().select()`, `.delete().where()`).
+- A repository write is one transaction. Converted repositories
+  (packing locations, pack reorder) do their reads, checks and writes inside
+  one `db.transaction(..., { behavior: 'immediate' })`, whose callback must
+  be synchronous (no `await` inside). The rest still use `runBatch(db, [...])`,
+  the temporary stand-in for D1's `db.batch`: compute the plan, then apply it
+  in one call; a partial write is a bug.
+- Never put `db.run/all/get(sql)` in `runBatch()`: it typechecks, then
+  crashes. Use a builder (`.insert().select()`, `.delete().where()`).
 - Never put `${table.column}` in a raw sql`` fragment that correlates to an
   outer table: Drizzle renders it unqualified. Use a join, and assert the
   values in an API test.
@@ -155,11 +163,12 @@ Each has cost an incident. When working near one, read its
   and `hooks.before` sees an unvalidated body.
 - Hono's `c.res = res` merges headers and the old value wins. Set
   `c.res = undefined` first.
-- Our 304s carry no Cache-Control, so cached browsers keep the old policy. A
-  cache-policy change needs `forceValidatedAssetResponse`
-  (`server/middleware/asset-cache.ts`).
-- `Env` differs between local (reads `.dev.vars`) and CI. Never read a secret
-  off `env` in a test; use the bindings in `vitest.workers.config.ts`.
+- A 304 carries no Cache-Control, so a browser that revalidates keeps its old
+  policy. The static handler (`server/middleware/spa.ts`) never answers 304;
+  if conditional responses are ever added, hashed assets must still answer
+  200 (`server/middleware/asset-cache.test.ts` pins it).
+- Never read a real secret in a test. API tests get a fixed test
+  configuration from `server/test/node-env.ts`.
 - `noUncheckedIndexedAccess` is on. Prefer guards, defaults or `.find()` over
   `!`; if `!` is unavoidable, comment why.
 - **An empty array is not "nothing"** - it also means loading, or failed, and

@@ -73,7 +73,7 @@ Cross-cutting, tested in `server/middleware/csrf.test.ts`:
 
 Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 
-- `/api/auth/*` is limited per client IP (`CF-Connecting-IP`), fixed
+- `/api/auth/*` is limited per client IP (`X-Real-IP`, set by Caddy), fixed
   windows in the `rate_limits` table: passkey sign-in 30/5min, sign-in
   10/10min, magic-link verify 10/10min, delete-user 5/10min, everything else
   30/10min. Over budget -> 429 + `Retry-After`.

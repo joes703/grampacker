@@ -74,7 +74,7 @@ Consequences for this plan:
 - The repositories contain 33 `db.batch()` calls. D1 batches are currently the
   transaction boundary.
 - The baseline schema has 18 tables, composite ownership foreign keys, partial
-  unique indexes, and 23 hand-written triggers.
+  unique indexes, and 22 hand-written triggers.
 - Four tables exist mainly to support D1 guard and coordination behavior.
 - Authentication uses Better Auth with magic links and passkeys.
 - Passkeys use `grampacker.app` as the WebAuthn relying-party ID.
@@ -148,7 +148,7 @@ Keep:
 - user-scoped repositories and ownership checks;
 - composite ownership foreign keys;
 - unique indexes;
-- the 23 triggers until each is separately proven unnecessary;
+- the 22 triggers until each is separately proven unnecessary;
 - CSRF protection and authentication middleware ordering;
 - request body limits;
 - strict public-share response objects;
