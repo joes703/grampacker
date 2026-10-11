@@ -126,7 +126,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/get-session',
-      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-real-ip': clientIp() } },
+      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
       { ...env, DB: sabotagedD1(seen) },
     )
     expect(res.status).toBe(500)
@@ -163,7 +163,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/get-session',
-      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-real-ip': clientIp() } },
+      { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
       { ...env, DB: sabotagedD1(seen, (query) => query.includes('"user"')) },
     )
     expect(res.status).toBe(500)
@@ -187,7 +187,7 @@ describe('auth failures in the log', () => {
     const seen: unknown[] = []
     const res = await app.request(
       '/api/auth/magic-link/verify?token=not-a-real-token',
-      { headers: { Origin: ORIGIN, 'x-real-ip': clientIp() } },
+      { headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
       { ...env, DB: sabotagedD1(seen) },
     )
     expect(res.status).toBe(500)
@@ -216,7 +216,7 @@ describe('auth failures in the log', () => {
         headers: {
           'Content-Type': 'application/json',
           Origin: PROD_ORIGIN,
-          'x-real-ip': clientIp(),
+          'x-forwarded-for': clientIp(),
         },
         body: JSON.stringify({ email: `nokey-${crypto.randomUUID()}@example.com` }),
       },
@@ -241,7 +241,7 @@ describe('auth failures in the log', () => {
     // send time, not at construction.
     const session = await app.request(
       '/api/auth/get-session',
-      { headers: { Origin: PROD_ORIGIN, 'x-real-ip': clientIp() } },
+      { headers: { Origin: PROD_ORIGIN, 'x-forwarded-for': clientIp() } },
       prodEnv,
     )
     expect(session.status).toBe(200)

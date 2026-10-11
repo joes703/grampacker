@@ -67,7 +67,7 @@ export async function signUpVerifiedUser(
       headers: {
         'Content-Type': 'application/json',
         Origin: ORIGIN,
-        'x-real-ip': clientIp,
+        'x-forwarded-for': clientIp,
       },
       body: JSON.stringify({ email, name }),
     },
@@ -82,7 +82,7 @@ export async function signUpVerifiedUser(
     `/api/auth/magic-link/verify?token=${encodeURIComponent(tokenFromEmail(email))}`,
     {
       method: 'GET',
-      headers: { Origin: ORIGIN, 'x-real-ip': clientIp },
+      headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp },
     },
     env,
   )

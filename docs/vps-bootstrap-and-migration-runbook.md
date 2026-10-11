@@ -360,7 +360,7 @@ written back into this runbook in the same PR.
 | Migrate command | Runs inside the image, applies pending Drizzle migrations to `/data/grampacker.db`, prints what it applied, exits non-zero on any failure. Safe to rerun: applied migrations are skipped. |
 | Snapshot command | Runs inside the image, uses SQLite's backup API to copy `/data/grampacker.db` to a named file under `/snapshots`, then runs `PRAGMA integrity_check` on the copy and exits non-zero unless it returns `ok`. |
 | D1 import command | Runs inside the image with `--network none`. Implements the plan's "Import" steps 1 to 15, writes a new database file (never overwrites an existing one), and prints a report: schema comparison, `integrity_check`, `foreign_key_check`, invariant checks, rows in the export against rows loaded per table (must always match), per-table counts against the D1 counts (must match, except with `--rehearsal`, where a difference is reported for the operator to review but does not fail the run), deleted transient rows, passkey field comparison. Before reporting success it checkpoints, closes every connection, and leaves a self-contained file: no `-wal` or `-shm` file beside it. Exits non-zero if any check fails. |
-| Client address | The application reads `X-Real-IP` (set by Caddy) and no longer reads `cf-connecting-ip`. |
+| Client address | The application reads the last `X-Forwarded-For` entry, which Caddy writes, and no longer reads `cf-connecting-ip`. |
 | Configuration | A documented list of environment variables. Known today: `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. The database path and port are expected to have fixed defaults (`/data/grampacker.db`, `3000`). |
 | Deploy script | `/usr/local/sbin/grampacker-deploy <APP_DIGEST>`, run as root. Steps in section 9. Validates its argument against `^sha256:[0-9a-f]{64}$`. Tags the running image `grampacker-local:current` and the one before it `grampacker-local:previous`, so `docker image prune` cannot delete the rollback image. Appends one line per deployment to `/srv/grampacker/deploy-history.log`. |
 | SSH wrapper | `/usr/local/sbin/grampacker-deploy-ssh`, the forced command for the `deploy` key. Reads `SSH_ORIGINAL_COMMAND`, accepts exactly one digest, and runs `sudo /usr/local/sbin/grampacker-deploy "$digest"`. Anything else exits non-zero without side effects. |
@@ -600,10 +600,10 @@ staging.grampacker.app {
 	request_body {
 		max_size 4MB
 	}
-	reverse_proxy 127.0.0.1:3000 {
-		# Replaces any X-Real-IP the client sent.
-		header_up X-Real-IP {remote_host}
-	}
+	# Caddy sets X-Forwarded-For to the connection's address, replacing what
+	# the client sent; the app reads only its last entry. Do not add
+	# trusted_proxies: it would make Caddy keep client-supplied entries.
+	reverse_proxy 127.0.0.1:3000
 }
 EOF
 sudo docker run --rm -v /srv/grampacker/Caddyfile:/etc/caddy/Caddyfile:ro -e ACME_EMAIL=test@example.invalid caddy:<CADDY_VERSION> caddy validate --config /etc/caddy/Caddyfile
@@ -1360,10 +1360,10 @@ grampacker.app, staging.grampacker.app {
 	request_body {
 		max_size 4MB
 	}
-	reverse_proxy 127.0.0.1:3000 {
-		# Replaces any X-Real-IP the client sent.
-		header_up X-Real-IP {remote_host}
-	}
+	# Caddy sets X-Forwarded-For to the connection's address, replacing what
+	# the client sent; the app reads only its last entry. Do not add
+	# trusted_proxies: it would make Caddy keep client-supplied entries.
+	reverse_proxy 127.0.0.1:3000
 }
 EOF
 cd /srv/grampacker && sudo docker compose --env-file deploy.env exec caddy caddy reload --config /etc/caddy/Caddyfile
@@ -1460,10 +1460,10 @@ grampacker.app {
 	request_body {
 		max_size 4MB
 	}
-	reverse_proxy 127.0.0.1:3000 {
-		# Replaces any X-Real-IP the client sent.
-		header_up X-Real-IP {remote_host}
-	}
+	# Caddy sets X-Forwarded-For to the connection's address, replacing what
+	# the client sent; the app reads only its last entry. Do not add
+	# trusted_proxies: it would make Caddy keep client-supplied entries.
+	reverse_proxy 127.0.0.1:3000
 }
 EOF
 cd /srv/grampacker && sudo docker compose --env-file deploy.env exec caddy caddy reload --config /etc/caddy/Caddyfile

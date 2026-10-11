@@ -38,7 +38,7 @@ describe('api body limit', () => {
       {
         method: 'POST',
         body: oversized,
-        headers: { 'x-real-ip': '10.98.0.1' },
+        headers: { 'x-forwarded-for': '10.98.0.1' },
       },
       env,
     )

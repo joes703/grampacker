@@ -2,7 +2,7 @@ import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
 import { createDb } from '../db'
 import { rateLimits, verification } from '../db/schema'
-import { rateLimitIpKey } from './client-ip'
+import { clientIpFromForwardedFor, rateLimitIpKey } from './client-ip'
 import type { AppEnv } from '../env'
 
 type Rule = { scope: string; limit: number; windowMs: number }
@@ -427,12 +427,9 @@ async function consume(
 }
 
 // Limits auth requests per client IP, every method except allowlisted
-// read-only GETs. The client IP comes from X-Real-IP, which Caddy sets to
-// the connection's address and which replaces any value the client sent.
-// It is trusted ONLY because the app port is reachable from localhost
-// alone (docs/vps-migration-plan.md, "Configure Caddy"). Anything else
-// that reaches the port directly could choose its own bucket. It is
-// absent in local dev and tests unless injected, where everything shares
+// read-only GETs. The client IP is the rightmost X-Forwarded-For entry, the
+// address Caddy saw (client-ip.ts says why only that entry is trusted). It
+// is absent in local dev and tests unless injected, where everything shares
 // one bucket ('local').
 export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
   async (c, next) => {
@@ -444,7 +441,7 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     }
 
     const rule = ruleFor(c.req.path)
-    const rawIp = c.req.header('x-real-ip')
+    const rawIp = clientIpFromForwardedFor(c.req.header('x-forwarded-for'))
     // IPv6 is bucketed by /64, not by exact address - see client-ip.ts.
     // Keying the raw address would let any IPv6 client rotate through its
     // own prefix and mint unlimited budget.

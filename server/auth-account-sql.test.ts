@@ -80,7 +80,7 @@ describe('the account model better-auth actually queries', () => {
           'Content-Type': 'application/json',
           [CSRF_HEADER]: '1',
           [DELETE_ACCOUNT_USER_HEADER]: userId,
-          'x-real-ip': '10.55.0.1',
+          'x-forwarded-for': '10.55.0.1',
         },
         body: JSON.stringify({}),
       },

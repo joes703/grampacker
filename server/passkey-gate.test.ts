@@ -47,7 +47,7 @@ async function request(
   const headers: Record<string, string> = {
     Origin: ORIGIN,
     [CSRF_HEADER]: '1',
-    'x-real-ip': ip,
+    'x-forwarded-for': ip,
   }
   if (cookie) headers.Cookie = cookie
   if (method !== 'GET') headers['Content-Type'] = 'application/json'
@@ -167,7 +167,7 @@ describe('passkey fresh-auth gate', () => {
       '/api/auth/passkey/list-user-passkeys',
       {
         method: 'GET',
-        headers: { Origin: ORIGIN, Cookie: cookie, 'x-real-ip': '10.60.0.5' },
+        headers: { Origin: ORIGIN, Cookie: cookie, 'x-forwarded-for': '10.60.0.5' },
       },
       env,
     )
@@ -189,7 +189,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         headers: {
           Origin: ORIGIN,
           [CSRF_HEADER]: '1',
-          'x-real-ip': ip,
+          'x-forwarded-for': ip,
           'Content-Type': 'application/json',
           Cookie: cookie,
         },
@@ -242,7 +242,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         headers: {
           Origin: ORIGIN,
           [CSRF_HEADER]: '1',
-          'x-real-ip': '10.61.0.6',
+          'x-forwarded-for': '10.61.0.6',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ id: 'pk-owner-1', name: 'Anonymous' }),
@@ -253,7 +253,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
     const anonList = await app.request(
       '/api/auth/passkey/list-user-passkeys',
-      { headers: { Origin: ORIGIN, 'x-real-ip': '10.61.0.7' } },
+      { headers: { Origin: ORIGIN, 'x-forwarded-for': '10.61.0.7' } },
       env,
     )
     expect(anonList.status).toBe(401)
@@ -261,7 +261,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     // List: only the caller's credential ids.
     const listed = await app.request(
       '/api/auth/passkey/list-user-passkeys',
-      { headers: { Origin: ORIGIN, Cookie: other.cookie, 'x-real-ip': '10.61.0.3' } },
+      { headers: { Origin: ORIGIN, Cookie: other.cookie, 'x-forwarded-for': '10.61.0.3' } },
       env,
     )
     expect(listed.status).toBe(200)

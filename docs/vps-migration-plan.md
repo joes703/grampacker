@@ -361,9 +361,12 @@ while on, including `/api/*`; not depend on the application container running;
 survive a Caddy restart in the state it was left in; and be provable with one
 `curl` from outside the VPS.
 
-The application must stop trusting `cf-connecting-ip`. Configure one explicit
-proxy header, such as `X-Real-IP`, and trust it only because the application
-port is reachable solely from localhost.
+The application must stop trusting `cf-connecting-ip`. It reads the LAST
+`X-Forwarded-For` entry: Caddy writes that entry from the connection itself
+and, with no `trusted_proxies` configured, discards what the client sent.
+Other headers such as `X-Real-IP` pass through Caddy unchanged unless the
+config overwrites them, so they are not trusted. The header is trusted only
+because the application port is reachable solely from localhost.
 
 Use a temporary DNS-only `staging.grampacker.app` record to verify Caddy and
 the container before production cutover.

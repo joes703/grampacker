@@ -186,7 +186,7 @@ describe('POST /api/auth/delete-user', () => {
 
   beforeEach(async () => {
     // /api/auth/delete-user now has its own tight 5/10min rate bucket
-    // (server/middleware/rate-limit.ts). apiRequest sends no x-real-ip,
+    // (server/middleware/rate-limit.ts). apiRequest sends no x-forwarded-for,
     // so every delete-user call here shares the 'local' bucket; across this
     // file's tests that exceeds 5 and a later test would see 429 instead of the
     // status it asserts. These tests are about deletion semantics, not rate
@@ -392,7 +392,7 @@ describe('POST /api/auth/delete-user', () => {
           headers: {
             'Content-Type': 'application/json',
             Origin: 'http://localhost:5173',
-            'x-real-ip': '10.88.0.1',
+            'x-forwarded-for': '10.88.0.1',
           },
           body: JSON.stringify({ email: to }),
         },
@@ -408,7 +408,7 @@ describe('POST /api/auth/delete-user', () => {
     const redeem = (token: string) =>
       app.request(
         `/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`,
-        { headers: { Origin: 'http://localhost:5173', 'x-real-ip': '10.88.0.2' } },
+        { headers: { Origin: 'http://localhost:5173', 'x-forwarded-for': '10.88.0.2' } },
         env,
       )
 

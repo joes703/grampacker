@@ -70,7 +70,7 @@ function authPost(path: string, body: unknown, ip: string) {
       headers: {
         'Content-Type': 'application/json',
         Origin: ORIGIN,
-        'x-real-ip': ip,
+        'x-forwarded-for': ip,
       },
       body: JSON.stringify(body),
     },
@@ -93,7 +93,7 @@ function authPost(path: string, body: unknown, ip: string) {
 function signIn(ip: string) {
   return app.request(
     '/api/auth/passkey/generate-authenticate-options',
-    { headers: { Origin: ORIGIN, 'x-real-ip': ip } },
+    { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
     env,
   )
 }
@@ -173,6 +173,35 @@ describe('auth rate limiting', () => {
     const recovery = await sendMagicLink(ip, email)
     expect(recovery.status).toBe(200)
     expect(lastEmailTo(email)).toBeDefined()
+  })
+
+  it('a forged X-Forwarded-For prefix cannot mint fresh budget', async () => {
+    // Caddy's own entry is the LAST one; everything before it is whatever the
+    // client sent. Exhaust one client's budget, then retry with a new forged
+    // prefix each time: still the same client, still refused.
+    const real = '203.0.113.31'
+    for (let i = 0; i < DELETE_USER_LIMIT; i++) {
+      const res = await authPost('/api/auth/delete-user', {}, `198.51.100.${i}, ${real}`)
+      expect(res.status).not.toBe(429)
+    }
+    const forged = await authPost('/api/auth/delete-user', {}, `192.0.2.250, ${real}`)
+    expect(forged.status).toBe(429)
+    // And X-Real-IP, which Caddy passes through untouched, is not read at all.
+    const viaRealIp = await app.request(
+      '/api/auth/delete-user',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: ORIGIN,
+          'x-forwarded-for': real,
+          'x-real-ip': '192.0.2.251',
+        },
+        body: '{}',
+      },
+      env,
+    )
+    expect(viaRealIp.status).toBe(429)
   })
 
   it('delete-user gets its own tighter sensitive budget with Retry-After', async () => {
@@ -291,7 +320,7 @@ describe('auth rate limiting', () => {
           headers: {
             'Content-Type': 'application/json',
             Origin: ORIGIN,
-            'x-real-ip': `198.51.161.${i}`,
+            'x-forwarded-for': `198.51.161.${i}`,
           },
           body: 'this is not json',
         },
@@ -496,14 +525,14 @@ describe('auth rate limiting', () => {
     for (let i = 0; i < MAGIC_VERIFY_LIMIT; i++) {
       const res = await app.request(
         `/api/auth/magic-link/verify?token=bogus-${i}`,
-        { method: 'GET', headers: { Origin: ORIGIN, 'x-real-ip': ip } },
+        { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
         env,
       )
       expect(res.status).not.toBe(429)
     }
     const blocked = await app.request(
       '/api/auth/magic-link/verify?token=bogus-over',
-      { method: 'GET', headers: { Origin: ORIGIN, 'x-real-ip': ip } },
+      { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
       env,
     )
     expect(blocked.status).toBe(429)
@@ -666,7 +695,7 @@ describe('auth rate limiting', () => {
     const options = () =>
       app.request(
         '/api/auth/sign-in/email',
-        { method: 'OPTIONS', headers: { 'x-real-ip': ip } },
+        { method: 'OPTIONS', headers: { 'x-forwarded-for': ip } },
         env,
       )
     expect((await options()).status).toBe(404)
@@ -735,7 +764,7 @@ describe('auth rate limiting', () => {
     const challenge = () =>
       app.request(
         '/api/auth/passkey/generate-authenticate-options',
-        { headers: { 'x-real-ip': ip } },
+        { headers: { 'x-forwarded-for': ip } },
         env,
       )
     const start = await testDb.prepare(
@@ -811,7 +840,7 @@ describe('auth rate limiting', () => {
 
     const res = await app.request(
       '/api/auth/passkey/generate-authenticate-options',
-      { headers: { Origin: ORIGIN, 'x-real-ip': ip } },
+      { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
       { ...env, DB: brokenSweep },
     )
     expect(res.status).toBe(200)
@@ -880,7 +909,7 @@ describe('auth rate limiting', () => {
 
     const session = await app.request(
       '/api/auth/get-session',
-      { headers: { 'x-real-ip': ip } },
+      { headers: { 'x-forwarded-for': ip } },
       env,
     )
     expect(session.status).toBe(200)
