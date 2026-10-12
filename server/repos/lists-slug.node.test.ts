@@ -23,9 +23,9 @@ const slugCollision = () =>
   })
 
 describe('withFreshSlug', () => {
-  it('retries on a slug collision, with a DIFFERENT slug each time', async () => {
+  it('retries on a slug collision, with a DIFFERENT slug each time', () => {
     const seen: string[] = []
-    const out = await withFreshSlug(async (slug) => {
+    const out = withFreshSlug((slug) => {
       seen.push(slug)
       if (seen.length < 3) throw slugCollision()
       return 'ok'
@@ -38,18 +38,18 @@ describe('withFreshSlug', () => {
     expect(new Set(seen).size).toBe(3)
   })
 
-  it('gives up after 5 attempts rather than looping forever', async () => {
+  it('gives up after 5 attempts rather than looping forever', () => {
     let attempts = 0
-    await expect(
-      withFreshSlug(async () => {
+    expect(() =>
+      withFreshSlug(() => {
         attempts++
         throw slugCollision()
       }),
-    ).rejects.toThrow(/slug generation exhausted retries/)
+    ).toThrow(/slug generation exhausted retries/)
     expect(attempts).toBe(5)
   })
 
-  it('rethrows anything that is NOT a slug collision, without retrying', async () => {
+  it('rethrows anything that is NOT a slug collision, without retrying', () => {
     // This is the property the callers depend on: they catch their own
     // failures (the list-cap trigger) and rethrow the rest, so a non-collision
     // error must pass straight through instead of burning retries or being
@@ -70,12 +70,12 @@ describe('withFreshSlug', () => {
       new Error('network exploded'),
     ]) {
       let attempts = 0
-      await expect(
-        withFreshSlug(async () => {
+      expect(() =>
+        withFreshSlug(() => {
           attempts++
           throw err
         }),
-      ).rejects.toThrow(err)
+      ).toThrow(err)
       expect(attempts, err.cause instanceof Error ? err.cause.message : err.message).toBe(1)
     }
   })
