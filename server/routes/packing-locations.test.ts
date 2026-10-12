@@ -1587,16 +1587,15 @@ describe('cascade delete at the schema caps', () => {
     // Re-ranking per location rewrites the growing Unassigned cohort each time,
     // so a cascade over a list at the caps is quadratic in locations. Measured
     // at 17,430 list_items writes for ONE list, and ~1.9M for an account at 100
-    // lists - past D1's 30-second query ceiling, where it would time out and
-    // roll the whole delete back. The trigger now deletes doomed rows instead
-    // of re-ranking them, which makes this one write per row.
+    // lists, all under the write lock. The trigger now deletes doomed rows
+    // instead of re-ranking them, which makes this one write per row.
     //
     // Seeded through the DB rather than the API: 330 API calls would dominate
     // the runtime and prove nothing extra.
     //
     // HONEST LIMIT: this asserts the delete SUCCEEDS at cap shape, not a write
-    // budget - the Cloudflare Vitest plugin gives no counter for that. The write-count
-    // evidence lives in the migration comment and was measured directly.
+    // budget. The write-count evidence lives in the migration comment and
+    // was measured directly.
     const { cookie } = await signUpVerifiedUser('cascade-scale@example.com', 'O')
     const list = await createList(cookie, 'Big')
     const userId = await userIdFor(cookie)
@@ -1606,9 +1605,6 @@ describe('cascade delete at the schema caps', () => {
 
     const LOCATIONS = 30
     const ITEMS = 300
-    // Chunked: D1 caps a query at 100 BOUND PARAMETERS, and these rows carry
-    // 7 columns each, so a single 30-row insert is 210 params and fails. Same
-    // reason the repos chunk their multi-row writes.
     const locationRows = Array.from({ length: LOCATIONS }, (_, k) => ({
       id: `scale-loc-${k}`,
       userId,
@@ -1618,9 +1614,7 @@ describe('cascade delete at the schema caps', () => {
       createdAt: now,
       updatedAt: now,
     }))
-    for (let i = 0; i < locationRows.length; i += 10) {
-      await db.insert(packingLocations).values(locationRows.slice(i, i + 10))
-    }
+    await db.insert(packingLocations).values(locationRows)
 
     // Unassigned-heavy on purpose: a big destination cohort is what the old
     // shape rewrote once per location.
@@ -1641,15 +1635,9 @@ describe('cascade delete at the schema caps', () => {
         updatedAt: now,
       })
     }
-    // 7 rows, not 10. Drizzle emits EVERY column of the table - 14 here,
-    // including the ones left to their defaults - so the parameter count is
-    // driven by the table's width, not by how many fields this code sets.
-    // 7 x 14 = 98, just under D1's 100-parameter cap. chunkForParamCap
-    // (server/repos/chunk-ids.ts) divides by the table's width for the same
-    // reason.
-    for (let i = 0; i < rows.length; i += 7) {
-      await db.insert(listItems).values(rows.slice(i, i + 7))
-    }
+    // One statement: about 300 rows x 14 columns is far below SQLite's
+    // parameter limit.
+    await db.insert(listItems).values(rows)
     expect((await getItems(cookie, list.id)).length).toBe(ITEMS)
 
     const res = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)

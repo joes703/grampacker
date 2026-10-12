@@ -144,10 +144,9 @@ describe('/api/categories authorization matrix', () => {
     expect(gear.find((g) => g.name === 'Stove')?.categoryId).toBe(keep.id)
   })
 
-  it('reorder of >100 categories works (D1 binds max 100 params/query)', async () => {
-    // Regression: the reorder ownership precheck bound one param per id
-    // via inArray (DTO allows 500), throwing an unmapped D1 error past
-    // 100. It now loads the owned set with a single bound param.
+  it('reorder of >100 categories works', async () => {
+    // The reorder ownership precheck loads the owned set with a single
+    // bound parameter, so the DTO's 500 ids do not grow the statement.
     const { cookie } = await signUpVerifiedUser('cat-many@example.com', 'M')
     const meRes = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await meRes.json()) as { id: string }

@@ -10,10 +10,10 @@ import type { Sqlite } from './db'
 // asserted ON THE WIRE.
 //
 // The schema files and the migrations are written separately, and only the
-// SQL that reaches D1 shows whether they agree. `db.select()` with no
+// SQL that reaches SQLite shows whether they agree. `db.select()` with no
 // projection expands EVERY column of whatever model the adapter resolved. A
 // regenerated schema or a hand-edit naming a column the table lacks can show
-// up here and nowhere else, because D1 does not reject it. SQLite reads a
+// up here and nowhere else, because SQLite does not reject it: it reads a
 // double-quoted name that matches no column as a string literal, so
 // `select "issuer"` on a table without that column succeeds and returns the
 // text 'issuer'. Every test asserting on rows stays green.

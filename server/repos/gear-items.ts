@@ -87,7 +87,7 @@ export const GEAR_ITEM_CAP = 500
 
 // Root-cause-only matching rationale lives in db-errors.ts (Codex
 // finding, PR #14). Exported for the false-positive/true-positive unit
-// tests; the live 501st-item test pins the REAL error shape workerd
+// tests; the live 501st-item test pins the REAL error shape SQLite
 // produces.
 export function isCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'gear item cap exceeded')

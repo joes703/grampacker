@@ -856,11 +856,11 @@ describe('caps and slug integrity', () => {
     expect(gearAfter).toBe(gearBefore)
   })
 
-  it('bulk surfaces above 100 ids work (D1 binds max 100 params/query)', async () => {
-    // Regression for the inArray param fan-out D1's 100-parameter limit
-    // made fatal; the repos now check ownership in JS instead: lists
-    // reorder at the full LIST_CAP (100 ids + userId = 101 params),
-    // from-selection with 150 gear ids, and list-items reorder at 150.
+  it('bulk surfaces work above 100 ids', async () => {
+    // The repos check these ids against the user's owned set in JS, so the
+    // bound parameters do not grow with the request: lists reorder at the
+    // full LIST_CAP (100 ids), from-selection with 150 gear ids, and
+    // list-items reorder at 150.
     const { cookie } = await signUpVerifiedUser('lists-many@example.com', 'M')
     const userId = await userIdFor(cookie)
 
@@ -979,7 +979,7 @@ describe('caps and slug integrity', () => {
 
   it('import: gear cost lands as cents, keeping zero distinct from unknown', async () => {
     // The zero/null distinction has to survive the whole DTO -> route ->
-    // D1 path, not just the parser. A free item is 0 cents; an unpriced one
+    // SQLite path, not just the parser. A free item is 0 cents; an unpriced one
     // is NULL. Collapsing either direction is invisible in the UI.
     const { cookie } = await signUpVerifiedUser('lists-import-cost@example.com', 'C')
     const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
@@ -1097,7 +1097,7 @@ describe('caps and slug integrity', () => {
     ).toHaveLength(499)
   })
 
-  it('import with 120 existing-gear refs clears the D1 param limit', async () => {
+  it('import with 120 existing-gear refs works', async () => {
     const { cookie } = await signUpVerifiedUser('lists-import-wide@example.com', 'W')
     const userId = await userIdFor(cookie)
 
@@ -1108,10 +1108,9 @@ describe('caps and slug integrity', () => {
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
-    // 120 ids would blow D1's 100-bound-param cap if the ownership
-    // precheck used inArray; the owned-set approach keeps it at one
-    // param regardless of import size (local D1 enforces the cap, so a
-    // regression here goes red for real).
+    // The ownership precheck loads the user's owned ids with one bound
+    // parameter and checks membership in JS, so its cost does not grow
+    // with the import.
     const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
       name: 'Wide import',
       categories: [],

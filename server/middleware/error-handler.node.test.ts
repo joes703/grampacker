@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { describeError, recordAuthLog, resetLogBudget } from './error-handler'
 
 // The shape every log entry is built from. Pure: no binding, no app, so it
-// runs on Node (docs/testing-and-ci.md section 3). The workerd half - a REAL
-// Drizzle failure against D1, and better-auth's own logger calls - lives in
+// runs on Node (docs/testing-and-ci.md section 3). The other half - a REAL
+// Drizzle failure against SQLite, and better-auth's own logger calls - lives in
 // error-handler.test.ts and server/auth-error-logging.test.ts.
 
 const SENTINEL = 'bound-value-that-must-never-be-logged-4c1e'
 
-function drizzleFailure(params: unknown[], cause: unknown = new Error('D1_ERROR: no such table: nope: SQLITE_ERROR')) {
+function drizzleFailure(params: unknown[], cause: unknown = new Error('no such table: nope')) {
   return new DrizzleQueryError('select 1 from nope where x = ?', params, cause as Error)
 }
 
@@ -20,7 +20,7 @@ describe('describeError', () => {
     expect(entry.message).toContain('select 1 from nope where x = ?')
     expect(entry.message).toContain('redacted')
     expect(entry.cause).toEqual([
-      { name: 'Error', message: 'D1_ERROR: no such table: nope: SQLITE_ERROR' },
+      { name: 'Error', message: 'no such table: nope' },
     ])
   })
 

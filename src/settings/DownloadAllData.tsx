@@ -46,7 +46,7 @@ export default function DownloadAllData() {
 
       // Items for every list, fetched per list and flattened;
       // buildTakeoutFiles regroups by listId. No bulk endpoint and no
-      // inArray, so no D1 param-limit exposure - the count of requests is
+      // inArray, so no parameter-limit exposure - the count of requests is
       // the list count.
       const perList = await Promise.all(
           lists.map(async (list) => {

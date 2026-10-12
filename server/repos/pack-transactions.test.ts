@@ -173,9 +173,8 @@ describe('pack reorder is all-or-nothing', () => {
   })
 
   it('concurrent reorders of the same bag both apply; neither loses a race', async () => {
-    // Under D1 the second of two overlapping reorders could answer 409. Each
-    // reorder now reads and writes inside one immediate transaction, so they
-    // run one after the other and both succeed.
+    // Each reorder reads and writes inside one immediate transaction, so two
+    // overlapping reorders run one after the other and both succeed.
     const { cookie, listId } = await seedBag(3)
     const rows = [...itemsIn(listId)].sort((a, b) => a.packSortOrder - b.packSortOrder)
     const ranks = rows.map((r) => r.packSortOrder)

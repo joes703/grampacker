@@ -103,9 +103,8 @@ describe('food: day grid', () => {
   })
 
   it('handles a full 30-day trip in one write', async () => {
-    // 90 slots in one INSERT, about 630 bound parameters. D1 needed this
-    // chunked; SQLite allows 32766 (server/repos/food.ts says why that is
-    // enough).
+    // 90 slots in one INSERT, about 630 bound parameters. SQLite allows
+    // 32766 (server/repos/food.ts says why that is enough).
     const { cookie } = await signUpVerifiedUser('food-5@example.com', 'F5')
     const listId = await createList(cookie, 'Thru hike')
 
@@ -208,7 +207,7 @@ describe('food: ownership and list scoping', () => {
 // The matrix rule (docs/authz-matrix.md): owner / non-owner / anon for every
 // route, plus wrong-parent stitching for a child resource - and a status alone
 // proves nothing, so every refusal below is paired with a raw-row snapshot of
-// the victim list taken through D1 directly (no user predicate), compared
+// the victim list taken through SQLite directly (no user predicate), compared
 // byte-for-byte after the request.
 describe('food: the matrix cells a status alone would not prove', () => {
   async function foodRows(listId: string) {

@@ -45,7 +45,7 @@ function tokenFromEmail(email: string): string {
 //
 // The user is created by the redemption itself, with emailVerified: true - the
 // magic link IS the proof of the mailbox, so there is no separate verify step
-// to fake (the old helper had to UPDATE email_verified directly in D1).
+// to fake.
 //
 // `name` is POSTED, deliberately. grampacker collects no display name, but the
 // magic-link plugin's body schema still ACCEPTS one and writes it straight onto
@@ -101,7 +101,7 @@ export async function signUpVerifiedUser(
 // A SECOND session for a user who already exists, from a fresh ceremony.
 // Sessions are fresh only for a window after they are CREATED, so a test that
 // needs to act on a stale session cannot get one by waiting - it has to be
-// aged directly in D1 (see makeSessionStale below).
+// aged directly in SQLite (see makeSessionStale below).
 export async function signInAgain(email: string): Promise<{ cookie: string }> {
   return signUpVerifiedUser(email, '')
 }

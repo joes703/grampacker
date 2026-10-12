@@ -13,7 +13,7 @@ import type { AppEnv } from '../env'
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
-// no session, and UNMETERED: a counter here would add a D1 write to every
+// no session, and UNMETERED: a counter here would add a database write to every
 // anonymous view in order to protect a read, and could not stop the
 // invocation it was counting. If this ever needs a budget it belongs at the
 // edge; SECURITY.md records the trigger and the fact that none exists yet.

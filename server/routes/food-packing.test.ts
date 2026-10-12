@@ -375,12 +375,10 @@ describe('the food half of the pack-order permutation and its parents', () => {
 })
 
 describe('a full-cohort union reorder at the caps', () => {
-  it('reorders 300 gear + 200 food rows in one request (chunked batch)', async () => {
-    // A full-cohort reorder ships as chunked multi-row statements rather
-    // than one statement per row (docs/incidents.md, the D1 section, on what
-    // the per-invocation limit counts). This seeds a list AT both caps and
-    // reverses the whole 500-row union - the payload shape the drag planner
-    // actually submits for a worst-case drag.
+  it('reorders 300 gear + 200 food rows in one request', async () => {
+    // This seeds a list AT both caps and reverses the whole 500-row union in
+    // one transaction - the payload shape the drag planner actually submits
+    // for a worst-case drag.
     const { cookie } = await signUpVerifiedUser('cap1@example.com', 'CAP')
     const list = await createList(cookie, 'Everything')
     const me = await apiRequest(cookie, 'GET', '/api/me')

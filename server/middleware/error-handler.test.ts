@@ -318,8 +318,8 @@ describe('the real app', () => {
   })
 
   it('routes a genuine route failure through the handler', async () => {
-    // Not a synthetic throw: /api/health round-trips through Drizzle to the D1
-    // binding, so removing the binding fails the way a real outage would - and
+    // Not a synthetic throw: /api/health round-trips through Drizzle to the
+    // database, so removing the connection fails the way a real outage would - and
     // proves the handler is actually wired to the exported app.
     const res = await app.request('/api/health', {}, { ...prodEnv, DB: undefined })
     expect(res.status).toBe(500)
