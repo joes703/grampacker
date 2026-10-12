@@ -934,6 +934,7 @@ describe('rate-limit windows', () => {
   }
 
   afterEach(async () => {
+    vi.restoreAllMocks()
     vi.useRealTimers()
     await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
   })
@@ -973,10 +974,10 @@ describe('rate-limit windows', () => {
   })
 
   it('a late request with an older clock reading cannot reset a newer window', async () => {
-    // A request reads the clock when it arrives, then awaits (the email HMAC)
-    // before it charges. So a charge can carry an OLDER `now` than one that a
-    // faster request already used to start a new window. It must count in that
-    // window, not start another one.
+    // Two requests' clock readings can reach the charge out of order, so a
+    // charge can carry an OLDER `now` than the one a faster request already
+    // used to start a new window. It must count in that window, not start
+    // another one.
     const newer = T + DAY_MS
     await seed(GLOBAL_KEY, 1, newer)
 
@@ -1009,6 +1010,39 @@ describe('rate-limit windows', () => {
     expect(await bucket(key)).toEqual({ count: 1, window_start: T + PASSKEY_SIGN_IN_WINDOW_MS })
   })
 
+  it('Retry-After counts from when the address bucket is charged, not when the request arrived', async () => {
+    // The address bucket is charged after an await (the HMAC). If the charge
+    // used the time the request arrived, a newer window started meanwhile
+    // would make Retry-After longer than the window itself.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T)
+    const email = 'slow-hmac@example.com'
+    const hmac = async (message: string) => {
+      const key = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(TEST_AUTH_SECRET),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      )
+      const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
+      return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32)
+    }
+    const key = `magic-send-email:${await hmac(`grampacker:magic-send-email:v1:${email}`)}`
+    // Faster requests have filled a window that started 2 s after this
+    // request arrived.
+    await seed(key, MAGIC_SEND_EMAIL_LIMIT, T + 2000)
+    const sign = crypto.subtle.sign.bind(crypto.subtle)
+    vi.spyOn(crypto.subtle, 'sign').mockImplementation(async (...args) => {
+      vi.setSystemTime(T + 2000)
+      return sign(...args)
+    })
+
+    const res = await sendMagicLink('198.51.166.1', email)
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe(String(MAGIC_SEND_EMAIL_WINDOW_MS / 1000))
+  })
+
   it('overlapping requests at a window roll start ONE new window and admit exactly the limit', { timeout: 30000 }, async () => {
     // The bucket is spent and its window ends exactly now. Every overlapping
     // request sees that expired window. Exactly one may reset it; the rest
@@ -1030,8 +1064,8 @@ describe('rate-limit windows', () => {
 
   it('overlapping magic-link sends to one address admit exactly the per-address limit', { timeout: 30000 }, async () => {
     // The address bucket is charged AFTER an await (the HMAC), so these
-    // requests interleave between reading the clock and charging. Distinct
-    // IPs keep the per-IP bucket out of it.
+    // requests interleave before they charge. Distinct IPs keep the per-IP
+    // bucket out of it.
     const email = 'overlap-victim@example.com'
     const results = await Promise.all(
       Array.from({ length: MAGIC_SEND_EMAIL_LIMIT * 3 }, (_, i) =>

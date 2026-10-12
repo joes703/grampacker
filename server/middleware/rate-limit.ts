@@ -295,10 +295,10 @@ function charge(db: Db, rule: Rule, keySuffix: string, now: number): RateVerdict
   // out - but the fixed window still expires at windowStart + windowMs
   // regardless of attempts.
   //
-  // `now` is read when the request arrives, and the request may await before
-  // it charges. So a charge can carry an older `now` than a request that has
-  // already started a newer window. The `windowStart <= cutoff` test keeps
-  // that late charge in the newer window; it never moves a window backwards.
+  // Callers read `now` just before charging, but two requests' readings can
+  // still arrive out of order. A charge carrying an older `now` than the one
+  // that started the current window counts in that window: the
+  // `windowStart <= cutoff` test never moves a window backwards.
   const row = db
     .insert(rateLimits)
     .values({ key, count: 1, windowStart: now })
@@ -480,15 +480,15 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     // today. If something ever does, it is stepping around two of the three
     // buckets and needs to say why.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
-      const byEmail = consume(
-        db,
-        MAGIC_LINK_SEND_EMAIL,
-        await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c)),
-        now,
-      )
+      const emailKey = await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
+      // Read the clock again after those awaits. Other requests may have
+      // started a newer window meanwhile; Retry-After counted from the
+      // earlier time would be longer than the window.
+      const sendNow = Date.now()
+      const byEmail = consume(db, MAGIC_LINK_SEND_EMAIL, emailKey, sendNow)
       if (byEmail) return byEmail
 
-      const quota = peekMagicLinkGlobalQuota(db, now)
+      const quota = peekMagicLinkGlobalQuota(db, sendNow)
       if (!quota.ok) return tooManyRequests(quota)
     }
 
