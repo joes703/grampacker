@@ -785,8 +785,8 @@ describe('auth rate limiting', () => {
   })
 
   // The sweep is garbage collection, so it must never cost a user their
-  // sign-in. Proven by breaking it: a binding whose `verification` deletes
-  // reject, with every other statement real. The request must still succeed.
+  // sign-in. Proven by breaking it: a connection whose `verification` deletes
+  // throw, with every other statement real. The request must still succeed.
   //
   // The asymmetry with the CHARGE is deliberate and worth a test of its own -
   // a charge that threw and was swallowed would be a limiter bypass, while a
@@ -799,16 +799,22 @@ describe('auth rate limiting', () => {
       const v = Reflect.get(t, p, r)
       return typeof v === 'function' ? v.bind(t) : v
     }
+    let sweepFailures = 0
     const brokenSweep = new Proxy(env.DB, {
       get(db, prop) {
         if (prop !== 'prepare') return bindTo(db, prop, db)
         return (query: string) => {
           const stmt = db.prepare(query)
           if (!/^\s*delete\s+from\s+"?verification"?/i.test(query)) return stmt
+          // Drizzle executes a better-sqlite3 statement with run/all/get
+          // (parameters passed directly), so those are what must fail.
           return new Proxy(stmt, {
             get(st, sProp) {
-              if (sProp !== 'bind') return bindTo(st, sProp, st)
+              if (sProp !== 'run' && sProp !== 'all' && sProp !== 'get') {
+                return bindTo(st, sProp, st)
+              }
               return () => {
+                sweepFailures += 1
                 throw new Error('sweep is down')
               }
             },
@@ -830,6 +836,9 @@ describe('auth rate limiting', () => {
       { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
       { ...env, DB: brokenSweep },
     )
+    // The sweep really ran and really failed...
+    expect(sweepFailures).toBe(1)
+    // ...and the request still succeeded.
     expect(res.status).toBe(200)
     // And it was still METERED: failing open on the sweep must not fail open
     // on the charge.

@@ -31,7 +31,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // statement actually carried the value it asserts is absent. better-sqlite3
 // takes params at execution (`stmt.all(...params)`), not in a bind step, so
 // they are recorded there.
-function sabotagedD1(
+function sabotagedConnection(
   seen: unknown[],
   // Which statements explode. Default: everything but the limiter's.
   doomed: (query: string) => boolean = () => true,
@@ -127,7 +127,7 @@ describe('auth failures in the log', () => {
     const res = await app.request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedD1(seen) },
+      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     // The failing statement really was the token lookup.
@@ -164,7 +164,7 @@ describe('auth failures in the log', () => {
     const res = await app.request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedD1(seen, (query) => query.includes('"user"')) },
+      { ...env, DB: sabotagedConnection(seen, (query) => query.includes('"user"')) },
     )
     expect(res.status).toBe(500)
     // The session read succeeded (its token was never bound to a doomed
@@ -188,7 +188,7 @@ describe('auth failures in the log', () => {
     const res = await app.request(
       '/api/auth/magic-link/verify?token=not-a-real-token',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedD1(seen) },
+      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     expect(seen.length).toBeGreaterThan(0)
