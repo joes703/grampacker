@@ -397,7 +397,13 @@ tidier sentence, but tidiness is not a threat model.)
   empty user. The plugin stores the submitted casing and the user row is
   lowercase, so the purge folds case on both sides
   (`server/repos/users.ts`, proven over HTTP in
-  `server/auth-delete-user.test.ts`).
+  `server/auth-delete-user.test.ts`). It runs twice: before the delete
+  (failing that aborts the delete) and again once the user row is gone,
+  because better-auth deletes the user in several awaited steps and
+  another request can write a link or passkey challenge in between. The
+  second purge fails open and logs: by then the account is deleted, and
+  what it could miss expires within minutes. A link requested after the
+  delete is a new sign-up.
 - Deleting the account needs the request to name the account
   (`x-grampacker-delete-user-id`, `shared/auth.ts`). The `beforeDelete`
   hook refuses with 400 `DELETE_ACCOUNT_MISMATCH` when the header is

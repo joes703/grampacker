@@ -1,9 +1,10 @@
 import { env, testDb } from './test/node-env'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
 import app from './index'
 import { lastEmailTo } from './email/console'
+import { resetLogBudget } from './middleware/error-handler'
 import { DELETE_ACCOUNT_USER_HEADER, MAGIC_LINK_PATH } from '../shared/auth'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
@@ -438,6 +439,70 @@ describe('POST /api/auth/delete-user', () => {
     const kept = await redeem(bystanderToken)
     expect(kept.status).toBe(200)
     expect(kept.headers.get('set-cookie')).toContain('session_token')
+  })
+
+  it('purges a link or challenge written WHILE the delete runs', async () => {
+    // better-auth awaits beforeDelete (the first purge) and then deletes the
+    // user in further awaited steps, so another request can write a
+    // verification row in between: a magic link someone requested for this
+    // address, or a passkey challenge. A test-only trigger writes both at the
+    // last such moment - just before the user row goes. Left in place, the
+    // link would redeem afterwards and recreate the account.
+    env.DB.exec(`
+      CREATE TRIGGER test_write_during_delete BEFORE DELETE ON user
+      WHEN OLD.id = '${userId}'
+      BEGIN
+        INSERT INTO verification (id, identifier, value, expires_at) VALUES
+          ('race-ml', 'magic-link:race', json_object('type', 'magic-link', 'email', OLD.email, 'name', ''),
+           unixepoch() * 1000 + 300000),
+          ('race-pk', 'race-challenge', json_object('expectedChallenge', 'x', 'userData', json_object('id', OLD.id)),
+           unixepoch() * 1000 + 300000);
+      END
+    `)
+    try {
+      expect((await deleteAccount(cookie, userId)).status).toBe(200)
+    } finally {
+      env.DB.exec('DROP TRIGGER test_write_during_delete')
+    }
+    expect(await rowCounts(userId)).toMatchObject({ user: 0 })
+    expect(await verificationCount(userId, email)).toBe(0)
+    // The bystander's own artifacts are untouched.
+    expect(await verificationCount(otherId, otherEmail)).toBe(2)
+  })
+
+  it('reports the delete as done when only the second purge fails, and logs it', async () => {
+    // The account is gone by the time the second purge runs, so its failure
+    // must not turn a completed delete into an error response. A link written
+    // during the delete gives the second purge a row to delete, and the
+    // failure trigger refuses that delete once the user row is gone.
+    env.DB.exec(`
+      CREATE TRIGGER test_write_during_delete BEFORE DELETE ON user
+      WHEN OLD.id = '${userId}'
+      BEGIN
+        INSERT INTO verification (id, identifier, value, expires_at) VALUES
+          ('race-ml-2', 'magic-link:race-2', json_object('type', 'magic-link', 'email', OLD.email, 'name', ''),
+           unixepoch() * 1000 + 300000);
+      END
+    `)
+    env.DB.exec(`
+      CREATE TRIGGER test_fail_second_purge BEFORE DELETE ON verification
+      WHEN NOT EXISTS (SELECT 1 FROM user WHERE id = '${userId}')
+      BEGIN SELECT RAISE(ABORT, 'test: second purge down'); END
+    `)
+    resetLogBudget()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect((await deleteAccount(cookie, userId)).status).toBe(200)
+      expect(JSON.stringify(consoleError.mock.calls)).toContain('post-delete verification purge failed')
+    } finally {
+      consoleError.mockRestore()
+      env.DB.exec('DROP TRIGGER test_write_during_delete')
+      env.DB.exec('DROP TRIGGER test_fail_second_purge')
+    }
+    expect(await rowCounts(userId)).toMatchObject({ user: 0 })
+    // The first purge removed the seeded link and challenge; only the row
+    // written during the delete is left, for expiry to remove.
+    expect(await verificationCount(userId, email)).toBe(1)
   })
 
   it('refuses to resurrect a password: a supplied password is rejected, not honored', async () => {

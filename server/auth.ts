@@ -193,6 +193,26 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
             deleted.email,
           )
         },
+        // The same purge again, once the user row is gone. better-auth awaits
+        // beforeDelete and then deletes the user in further awaited steps, so
+        // another request can write a verification row in between - a magic
+        // link requested for this address would then survive and recreate
+        // the account. A row written after this point belongs to a request
+        // that arrived after the account was gone: a new sign-up.
+        //
+        // FAILS OPEN, unlike the purge above. The account is already deleted,
+        // so throwing here would report a failed delete that succeeded. What
+        // it can miss is only what was written during the delete, and those
+        // rows expire within minutes. The failure is logged.
+        afterDelete: async (deleted: { id: string; email: string }) => {
+          try {
+            await createUsersRepo(db, deleted.id).purgeVerificationArtifacts(
+              deleted.email,
+            )
+          } catch (err) {
+            authLogger.log('error', 'post-delete verification purge failed', err)
+          }
+        },
       },
     },
     session: {
