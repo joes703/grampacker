@@ -1,6 +1,5 @@
 import Database from 'better-sqlite3'
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import type { BatchItem, BatchResponse } from 'drizzle-orm/batch'
 import * as schema from './schema'
 
 // All DB access goes through this module. The app opens ONE better-sqlite3
@@ -52,29 +51,4 @@ export function createDb(sqlite: Sqlite): Db {
     instances.set(sqlite, db)
   }
   return db
-}
-
-// TEMPORARY compatibility for repositories not yet converted to transactions.
-// It runs a D1-style statement list in one SQLite transaction and returns one
-// result per statement, the way D1's db.batch() did, so those repositories keep
-// their exact behavior until each is converted (docs/vps-migration-plan.md,
-// "Implementation sequence" step 3). Delete it when no caller remains.
-//
-// Selects and statements with .returning() give their rows; other writes give
-// better-sqlite3's run result. Drizzle's prepared query knows which one each
-// statement is; `_prepare()` is Drizzle's own internal entry point for that
-// (its D1 batch uses the same call), hence the cast.
-//
-// Async only so callers keep `await db.batch(...)`'s shape. The transaction
-// itself runs synchronously, so nothing else can run in the middle of it.
-export async function runBatch<
-  U extends BatchItem<'sqlite'>,
-  T extends Readonly<[U, ...U[]]>,
->(db: Db, statements: T): Promise<BatchResponse<T>> {
-  type Prepared = { execute(): { sync(): unknown } }
-  return db.transaction(() =>
-    statements.map((statement) =>
-      (statement as unknown as { _prepare(): Prepared })._prepare().execute().sync(),
-    ),
-  ) as BatchResponse<T>
 }

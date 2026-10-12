@@ -1,26 +1,12 @@
 import { getTableColumns, type Table } from 'drizzle-orm'
 
-// D1 allows at most 100 bound parameters per query
-// (https://developers.cloudflare.com/d1/platform/limits/), and drizzle's
-// inArray binds one parameter per id. Any statement carrying a DTO-sized
-// id list (300-500 ids across this repo's bulk endpoints) must be split.
-// 90 leaves headroom for the other bound values in the same statement
-// (userId, timestamps, etc.). Chunked writes MUST go through db.batch so
-// the split stays one transaction.
+// Splits rows for multi-row INSERTs so no statement binds too many
+// parameters. Its one caller is list duplication (server/repos/lists.ts),
+// whose food associations alone can reach 18000 rows - 72000 parameters,
+// over SQLite's 32766 per statement. The budget of 90 per statement dates
+// from D1's 100-parameter limit; it is far below SQLite's, which only costs
+// more statements inside the same transaction.
 //
-// Ownership PREchecks should not use this: select ALL of the user's owned
-// ids with the single userId parameter and test membership in a JS Set
-// instead (see ownsAllGearIds) - one query regardless of input size.
-export const MAX_IDS_PER_STATEMENT = 90
-
-export function chunkIds<T>(ids: T[], size = MAX_IDS_PER_STATEMENT): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < ids.length; i += size) {
-    chunks.push(ids.slice(i, i + size))
-  }
-  return chunks
-}
-
 // floor(90 / columns) rows per multi-row INSERT, where columns is the
 // TABLE's column count, not the row literal's key count. Table width is a
 // conservative UPPER BOUND on what drizzle 0.45 actually binds: an omitted
@@ -31,11 +17,8 @@ export function chunkIds<T>(ids: T[], size = MAX_IDS_PER_STATEMENT): T[][] {
 // column (listFoodItems is 9 wide; at 10 rows that is 90 params with ZERO
 // margin) reports fewer keys than drizzle binds. One caveat keeps the bound
 // honest: a cell holding a multi-parameter sql`` expression would cost more
-// than one param - none of the callers does that. 90 for the same headroom
-// as chunkIds above. Empty input -> no statements.
-//
-// Lived in the food plan-copy repo until food planning was removed; it was
-// never food-specific, and list duplication has always depended on it.
+// than one param - none of the callers does that. Empty input -> no
+// statements.
 export function chunkForParamCap<T extends Record<string, unknown>>(
   table: Table,
   rows: T[],
