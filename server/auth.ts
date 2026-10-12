@@ -360,7 +360,7 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
           // a concurrent burst can have several requests pass the peek and then
           // lose the charge. Bounded by burst concurrency, not unbounded; the
           // per-IP and per-address buckets are what bound the burst.
-          const quota = await chargeMagicLinkGlobalQuota(db, Date.now())
+          const quota = chargeMagicLinkGlobalQuota(db, Date.now())
           if (!quota.ok) {
             // Must be an APIError, not a Response: we are inside better-auth's
             // handler, and better-call converts a thrown APIError into the HTTP
