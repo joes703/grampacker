@@ -1,0 +1,39 @@
+# An allowlist. Everything is excluded from the build context unless it is
+# named below, so a new file (a secret, a database, a local cache) can never
+# reach the image by accident. The image itself copies only build output
+# (Dockerfile); this keeps the build stages clean too.
+#
+# Never allowed: .git, .env*, .dev.vars, .wrangler, wrangler.jsonc, .data,
+# dist (the Cloudflare build copies .dev.vars into it), node_modules, docs,
+# scripts, and every SQLite file.
+*
+
+!package.json
+!package-lock.json
+# ignore-scripts and save-exact; no credentials.
+!.npmrc
+!index.html
+!public/
+!src/
+!shared/
+!server/
+!migrations/
+!tsconfig.json
+!tsconfig.app.json
+!tsconfig.node.json
+!tsconfig.worker.json
+!vite.node.config.ts
+!vite.server.config.ts
+
+# Excluded again inside the allowed directories: tests and their helpers
+# and fixtures, which no production file imports, and anything secret or
+# local that could appear there.
+**/*.test.ts
+**/*.test.tsx
+**/test/
+**/.env*
+**/.dev.vars*
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/.DS_Store
