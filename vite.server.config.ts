@@ -21,7 +21,7 @@ export default defineConfig({
     emptyOutDir: true,
     // No source maps: the output is not minified, so stack traces already
     // name the real functions, and Node ignores .map files unless started
-    // with --enable-source-maps. The image ships none (Dockerfile).
+    // with --enable-source-maps. The image ships none for the server.
     sourcemap: false,
   },
 })
