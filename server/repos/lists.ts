@@ -711,8 +711,7 @@ export function createListsRepo(db: Db, userId: string) {
     // Multi-row inserts, chunked. The food associations alone can reach
     // FOOD_ITEM_CAP x FOOD_SLOT_CAP = 18000 rows, 72000 bound parameters,
     // over SQLite's 32766 for one statement; chunkForParamCap keeps every
-    // statement far below it (at D1's old 90 - more statements, all in this
-    // one transaction).
+    // statement at a quarter of that, all in this one transaction.
     const insertChunks = <T extends Record<string, unknown>>(table: Table, rows: T[]) => {
       for (const chunk of chunkForParamCap(table, rows)) {
         tx.insert(table).values(chunk).run()

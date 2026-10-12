@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openSqlite, type Sqlite } from './index'
 import { applyMigrations, MigrationStateError, pendingMigrationCount } from './migrate'
+import { SQLITE_MAX_PARAMS } from '../repos/chunk-ids'
 
 // The database foundation, against real files: the pragmas every connection
 // gets, and the migration runner that builds a fresh database.
@@ -49,14 +50,15 @@ describe('openSqlite', () => {
   })
 
   it('binds up to 32766 parameters in one statement', () => {
-    // Repositories that bound their inputs far below this skip the
-    // 100-parameter chunking D1 needed (server/repos/food.ts). A
+    // Repositories bind a request-bounded list in one statement where it is
+    // far below this (server/repos/food.ts), and list duplication chunks to a
+    // quarter of it (PARAM_BUDGET_PER_STATEMENT in server/repos/chunk-ids.ts). A
     // better-sqlite3 build with a lower limit must fail here first.
     const sqlite = openFile(join(tempDir(), 'params.db'))
     const select = (n: number) =>
       sqlite.prepare(`select 1 where 0 in (${Array(n).fill('?').join(',')})`)
-    expect(select(32766).get(...Array(32766).fill(1))).toBeUndefined()
-    expect(() => select(32767)).toThrow('too many SQL variables')
+    expect(select(SQLITE_MAX_PARAMS).get(...Array(SQLITE_MAX_PARAMS).fill(1))).toBeUndefined()
+    expect(() => select(SQLITE_MAX_PARAMS + 1)).toThrow('too many SQL variables')
   })
 })
 
