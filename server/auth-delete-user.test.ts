@@ -445,9 +445,10 @@ describe('POST /api/auth/delete-user', () => {
     // better-auth awaits beforeDelete (the first purge) and then deletes the
     // user in further awaited steps, so another request can write a
     // verification row in between: a magic link someone requested for this
-    // address, or a passkey challenge. A test-only trigger writes both at the
-    // last such moment - just before the user row goes. Left in place, the
-    // link would redeem afterwards and recreate the account.
+    // address, or a passkey challenge. A test-only trigger writes both just
+    // before the user row goes, after the first purge. Left in place, the
+    // link would redeem afterwards and recreate the account. (A row stored
+    // after the SECOND purge is the known gap in SECURITY.md.)
     env.DB.exec(`
       CREATE TRIGGER test_write_during_delete BEFORE DELETE ON user
       WHEN OLD.id = '${userId}'

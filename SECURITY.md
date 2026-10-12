@@ -402,8 +402,16 @@ tidier sentence, but tidiness is not a threat model.)
   because better-auth deletes the user in several awaited steps and
   another request can write a link or passkey challenge in between. The
   second purge fails open and logs: by then the account is deleted, and
-  what it could miss expires within minutes. A link requested after the
-  delete is a new sign-up.
+  what it could miss expires within minutes.
+
+  Known gap, accepted: a magic-link request still in flight when the
+  second purge runs (better-auth awaits token hashing before it stores the
+  row) stores its link afterwards, and redeeming it creates a new, empty
+  account. That is the same outcome as a link requested a moment after
+  the delete, which is an ordinary sign-up, and it needs the address's
+  inbox. No data comes back. Closing it would need a record of deleted
+  addresses checked at redemption, a schema change. Trigger to revisit:
+  a report of an account reappearing after deletion.
 - Deleting the account needs the request to name the account
   (`x-grampacker-delete-user-id`, `shared/auth.ts`). The `beforeDelete`
   hook refuses with 400 `DELETE_ACCOUNT_MISMATCH` when the header is

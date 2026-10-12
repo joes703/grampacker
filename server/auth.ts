@@ -197,8 +197,13 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
         // beforeDelete and then deletes the user in further awaited steps, so
         // another request can write a verification row in between - a magic
         // link requested for this address would then survive and recreate
-        // the account. A row written after this point belongs to a request
-        // that arrived after the account was gone: a new sign-up.
+        // the account.
+        //
+        // Known gap: a magic-link request that is still in flight when this
+        // purge runs stores its row afterwards, and redeeming that link
+        // creates a new, empty account - exactly as a link requested just
+        // after the delete would. Closing it needs a record of deleted
+        // addresses; SECURITY.md has the details.
         //
         // FAILS OPEN, unlike the purge above. The account is already deleted,
         // so throwing here would report a failed delete that succeeded. What
