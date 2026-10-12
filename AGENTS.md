@@ -145,9 +145,11 @@ Each has cost an incident. When working near one, read its
   (`server/db/sqlite.test.ts`); a converted repository drops the chunking
   only where a request schema bounds the input far below that, and says so.
 - A repository write is one transaction. Converted repositories (packing
-  locations, pack reorder, food) do their reads, checks and writes inside
-  one `db.transaction(..., { behavior: 'immediate' })`, whose callback must
-  be synchronous (no `await` inside). The rest still use `runBatch(db, [...])`,
+  locations, pack reorder, food, lists, list items) do their reads, checks
+  and writes inside one `db.transaction(..., { behavior: 'immediate' })`,
+  whose callback must be synchronous (no `await` inside). A slug collision
+  retries the whole transaction (`withFreshSlug` in `server/repos/lists.ts`).
+  The rest still use `runBatch(db, [...])`,
   the temporary stand-in for D1's `db.batch`: compute the plan, then apply it
   in one call; a partial write is a bug.
 - Never put `db.run/all/get(sql)` in `runBatch()`: it typechecks, then

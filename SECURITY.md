@@ -924,15 +924,15 @@ of it:
   ever stops earning its keep.
 
 - **A parent deleted mid-write answers 500, not 4xx.** Gear create, update,
-  import and bulk move, list Quick Add and create-from-selection check
-  ownership of the category or gear first, then write. If another client
-  deletes that parent in between, the foreign key rejects the write and the
-  route answers 500 (`server/repos/gear-items.ts` `create`). Nothing is half
-  written: each write is one statement or one batch. Food, packing
-  locations, add-existing and list import already map this to a 4xx.
-  Separately, list-item `update` re-reads its gear row after committing, so a
-  gear delete landing between the two answers 500 for an update that saved
-  (`server/repos/list-items.ts`, "list item lost its gear row").
+  import and bulk move check ownership of the category or gear first, then
+  write. If another client deletes that parent in between, the foreign key
+  rejects the write and the route answers 500 (`server/repos/gear-items.ts`
+  `create`). Nothing is half written: each write is one statement or one
+  batch. Food, packing locations, lists and list items no longer have the
+  window: each runs its checks, writes and read-back in one SQLite
+  transaction (2026-10-12; `server/repos/list-transactions.test.ts`), so a
+  concurrent delete lands before or after the whole operation. The gear
+  repository closes it when it is converted.
   Trigger: a second concurrent client, or any such 500 in the logs.
 
 - **A list cache can show a deleted gear row.** The gear delete fan-out
