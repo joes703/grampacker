@@ -71,9 +71,9 @@ describe('food: day grid', () => {
   })
 
   it('repairs a hole rather than reading only the highest day', async () => {
-    // A hole can form: setDayCount reads the slots outside its batch, so a
-    // grow racing a shrink can leave middle days missing. The race is cut
-    // here in D1 directly: day 3 goes, days 4 and 5 stay.
+    // Data written before the day count became one transaction can hold a
+    // hole: a grow racing a shrink could leave middle days missing. Cut one
+    // directly: day 3 goes, days 4 and 5 stay.
     const { cookie } = await signUpVerifiedUser('food-3@example.com', 'F3')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 5)
@@ -103,8 +103,9 @@ describe('food: day grid', () => {
   })
 
   it('handles a full 30-day trip in one write', async () => {
-    // 90 slots x 8 columns is ~720 bound params; D1 caps a statement at 100,
-    // including inside a batch. This fails without chunkForParamCap.
+    // 90 slots in one INSERT, about 630 bound parameters. D1 needed this
+    // chunked; SQLite allows 32766 (server/repos/food.ts says why that is
+    // enough).
     const { cookie } = await signUpVerifiedUser('food-5@example.com', 'F5')
     const listId = await createList(cookie, 'Thru hike')
 

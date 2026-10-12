@@ -2,11 +2,8 @@ import { env, testDb } from '../test/node-env'
 import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
 import { createDb, type Db } from '../db'
-import { createFoodRepo } from './food'
 import { createListItemsRepo } from './list-items'
 import { createListsRepo } from './lists'
-import { eq } from 'drizzle-orm'
-import { listFoodItemSlots } from '../db/app-schema'
 import { listItemFailure } from '../routes/lists'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
@@ -72,18 +69,9 @@ async function createCategory(cookie: string, name: string): Promise<string> {
   return ((await res.json()) as { id: string }).id
 }
 
-async function slotIdsFor(cookie: string, listId: string, days: number) {
-  const res = await apiRequest(cookie, 'PUT', `/api/lists/${listId}/food/days`, {
-    days,
-  })
-  if (res.status !== 200) throw new Error(`set days: ${res.status}`)
-  const food = (await res.json()) as { slots: { id: string }[] }
-  return food.slots.map((s) => s.id)
-}
-
 // Wraps a db handle so the (skip+1)th operation executed through `method`
 // runs `sabotage` immediately before it. `skip` exists because some
-// PRECHECKS also batch (usableSlotIds), and the point is to corrupt the
+// PRECHECKS also use the method, and the point is to corrupt the
 // world after every precheck has honestly passed - the race window under
 // test. Everything else - including the recovery probes the repo runs
 // afterwards - passes straight through to the real handle, so recovery sees
@@ -197,14 +185,6 @@ function failing(
   }) as Db
 }
 
-const fkViolation = () =>
-  new Error('Failed query', {
-    cause: new Database.SqliteError(
-      'FOREIGN KEY constraint failed',
-      'SQLITE_CONSTRAINT_FOREIGNKEY',
-    ),
-  })
-
 const rankCollision = () =>
   new Error('Failed query', {
     cause: new Database.SqliteError(
@@ -212,252 +192,6 @@ const rankCollision = () =>
       'SQLITE_CONSTRAINT_UNIQUE',
     ),
   })
-
-describe('food createItem loses a race', () => {
-  it('slot trimmed after the precheck -> invalid_slots, not a 500', async () => {
-    const { cookie, userId } = await newUser('f1')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId) throw new Error('no slots')
-
-    const repo = createFoodRepo(
-      // skip 1: usableSlotIds itself batches, and the point is to trim the
-      // slot AFTER that precheck has honestly passed.
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from list_food_slots where id = ?')
-          .bind(slotId)
-          .run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.createItem(listId, {
-      name: 'Couscous',
-      weightGrams: 120,
-      quantity: 1,
-      slotIds: [slotId],
-    })
-    expect(result).toEqual({ ok: false, reason: 'invalid_slots' })
-  })
-
-  it('the whole list deleted after the precheck -> not_found', async () => {
-    const { cookie, userId } = await newUser('f2')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId) throw new Error('no slots')
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from lists where id = ?').bind(listId).run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.createItem(listId, {
-      name: 'Couscous',
-      weightGrams: 120,
-      quantity: 1,
-      slotIds: [slotId],
-    })
-    // List-first precedence: the cascade also took the slots, and the honest
-    // answer is the list is gone, not that the slots were invalid.
-    expect(result).toEqual({ ok: false, reason: 'not_found' })
-  })
-})
-
-describe('food setDayCount loses a race', () => {
-  it('list deleted after the ownership check -> not found, not a 500', async () => {
-    const { cookie, userId } = await newUser('f9')
-    const listId = await createList(cookie, 'Trip')
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from lists where id = ?').bind(listId).run()
-      }),
-      userId,
-    )
-    // The slot inserts fail their FK to the vanished list; the repo probes
-    // ownership again and answers as the route's 404 expects.
-    expect(await repo.setDayCount(listId, 2)).toBe(false)
-  })
-})
-
-describe('food updateItem loses a race', () => {
-  async function seedItem(cookie: string, listId: string, slotId: string) {
-    const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/food/items`, {
-      name: 'Oats',
-      weightGrams: 90,
-      quantity: 1,
-      slotIds: [slotId],
-    })
-    if (res.status !== 201) throw new Error(`create food item: ${res.status}`)
-    return ((await res.json()) as { id: string }).id
-  }
-
-  it('item deleted after the precheck -> not_found', async () => {
-    const { cookie, userId } = await newUser('f3')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId, otherSlot] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId || !otherSlot) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from list_food_items where id = ?')
-          .bind(itemId)
-          .run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.updateItem(listId, itemId, { slotIds: [otherSlot] })
-    expect(result).toEqual({ ok: false, reason: 'not_found' })
-  })
-
-  it('item AND a slot both gone -> not_found wins (probe precedence)', async () => {
-    const { cookie, userId } = await newUser('f4')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId, otherSlot] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId || !otherSlot) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from list_food_items where id = ?')
-          .bind(itemId)
-          .run()
-        await testDb.prepare('delete from list_food_slots where id = ?')
-          .bind(otherSlot)
-          .run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.updateItem(listId, itemId, { slotIds: [otherSlot] })
-    expect(result).toEqual({ ok: false, reason: 'not_found' })
-  })
-
-  it('slot trimmed while rescheduling -> invalid_slots', async () => {
-    const { cookie, userId } = await newUser('f5')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId, otherSlot] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId || !otherSlot) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from list_food_slots where id = ?')
-          .bind(otherSlot)
-          .run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.updateItem(listId, itemId, { slotIds: [otherSlot] })
-    expect(result).toEqual({ ok: false, reason: 'invalid_slots' })
-
-    // The status is only half of it. updateItem replaces associations by
-    // DELETING every existing link and inserting the submitted set in ONE
-    // batch, so a failure partway must roll the delete back - otherwise a
-    // rejected reschedule silently unschedules the item instead of leaving it
-    // alone.
-    //
-    // A retired API test used to cover this via a slot left at needed=0; that
-    // column is gone (0027) and the test went with it, but the invariant did
-    // not - the trimmed-slot race reaches the same code path, so the assertion
-    // moves here rather than being lost.
-    const links = await raw()
-      .select({ slotId: listFoodItemSlots.slotId })
-      .from(listFoodItemSlots)
-      .where(eq(listFoodItemSlots.foodItemId, itemId))
-    expect(links.map((l) => l.slotId)).toEqual([slotId])
-  })
-
-  it('destination bag deleted after the precheck -> invalid_location, nothing written', async () => {
-    // The location precheck passes, then the bag is deleted before the write
-    // batch runs. 0022's BEFORE UPDATE trigger fires ahead of the FK and
-    // names the condition; before it was classified this was a 500. Moved
-    // together with a rename and a reschedule so the rollback of the WHOLE
-    // batch can be asserted, not just the status.
-    const { cookie, userId } = await newUser('f7')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId, otherSlot] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId || !otherSlot) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-    const bag = await apiRequest(cookie, 'POST', `/api/lists/${listId}/packing-locations`, {
-      name: 'Doomed',
-    })
-    if (bag.status !== 201) throw new Error(`create location: ${bag.status}`)
-    const locationId = ((await bag.json()) as { id: string }).id
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('delete from packing_locations where id = ?')
-          .bind(locationId)
-          .run()
-      }, 1),
-      userId,
-    )
-    const result = await repo.updateItem(listId, itemId, {
-      name: 'Renamed',
-      packingLocationId: locationId,
-      slotIds: [otherSlot],
-    })
-    expect(result).toEqual({ ok: false, reason: 'invalid_location' })
-
-    const [row] = await testDb.prepare(
-      'select name, packing_location_id as loc from list_food_items where id = ?',
-    )
-      .bind(itemId)
-      .all<{ name: string; loc: string | null }>()
-      .then((r) => r.results)
-    expect(row).toEqual({ name: 'Oats', loc: null })
-    const links = await raw()
-      .select({ slotId: listFoodItemSlots.slotId })
-      .from(listFoodItemSlots)
-      .where(eq(listFoodItemSlots.foodItemId, itemId))
-    expect(links.map((l) => l.slotId)).toEqual([slotId])
-  })
-
-  it('answers with what the write committed, not the pre-read', async () => {
-    // A concurrent write changes quantity between updateItem's pre-read and
-    // its batch. The response used to be composed as `patch.x ?? preRead.x`,
-    // so it reported the quantity the pre-read saw - a value the row no
-    // longer held - and a unitCount derived from it.
-    const { cookie, userId } = await newUser('f8')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-
-    const repo = createFoodRepo(
-      sabotaged(raw(), 'batch', async () => {
-        await testDb.prepare('update list_food_items set quantity = 7 where id = ?')
-          .bind(itemId)
-          .run()
-      }),
-      userId,
-    )
-    const result = await repo.updateItem(listId, itemId, { name: 'Renamed' })
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.row.name).toBe('Renamed')
-    expect(result.row.quantity).toBe(7)
-    expect(result.row.unitCount).toBe(7)
-    expect(result.row.slotIds).toEqual([slotId])
-  })
-
-  it('an FK nothing explains rethrows instead of blaming the client', async () => {
-    const { cookie, userId } = await newUser('f6')
-    const listId = await createList(cookie, 'Trip')
-    const [slotId] = await slotIdsFor(cookie, listId, 2)
-    if (!slotId) throw new Error('no slots')
-    const itemId = await seedItem(cookie, listId, slotId)
-
-    // The batch reports an FK violation but every parent still exists: the
-    // recovery probes all pass, so the repo must NOT invent a reason.
-    // skip 1: usableSlotIds' real batch passes, the WRITE batch reports the
-    // FK, and the recovery probes then run against the real (intact) rows.
-    const repo = createFoodRepo(failing(raw(), 'batch', fkViolation(), 1), userId)
-    await expect(
-      repo.updateItem(listId, itemId, { slotIds: [slotId] }),
-    ).rejects.toThrow('Failed query')
-  })
-})
 
 describe('addExisting loses a race', () => {
   it('gear deleted after the precheck -> invalid_gear', async () => {

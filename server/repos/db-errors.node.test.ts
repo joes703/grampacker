@@ -74,8 +74,8 @@ describe('isUniqueViolation', () => {
 })
 
 // The matchers below decide user-facing statuses with no other check behind
-// them: isPackRankUniqueViolation decides the pack-order 409,
-// isAnyUniqueViolation the food and list-item 409s, and
+// them: isPackRankUniqueViolation decides the pack-order and food 409s,
+// isAnyUniqueViolation the list-item 409, and
 // isForeignKeyViolation opens the precheck-race recovery path. Same discipline as above: real root shapes match here, and the
 // wrapper forgeries are in the table at the end.
 

@@ -47,6 +47,17 @@ describe('openSqlite', () => {
     expect(sqlite.pragma('synchronous', { simple: true })).toBe(1)
     expect(sqlite.pragma('busy_timeout', { simple: true })).toBe(5000)
   })
+
+  it('binds up to 32766 parameters in one statement', () => {
+    // Repositories that bound their inputs far below this skip the
+    // 100-parameter chunking D1 needed (server/repos/food.ts). A
+    // better-sqlite3 build with a lower limit must fail here first.
+    const sqlite = openFile(join(tempDir(), 'params.db'))
+    const select = (n: number) =>
+      sqlite.prepare(`select 1 where 0 in (${Array(n).fill('?').join(',')})`)
+    expect(select(32766).get(...Array(32766).fill(1))).toBeUndefined()
+    expect(() => select(32767)).toThrow('too many SQL variables')
+  })
 })
 
 describe('applyMigrations', () => {

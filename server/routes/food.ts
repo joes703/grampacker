@@ -40,14 +40,11 @@ foodRoutes.put('/:id/food/days', async (c) => {
   const parsed = setFoodDaysRequestSchema.safeParse(raw)
   if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
 
-  const ok = await c
+  // The repo answers with the estimate read inside the same transaction as
+  // the write, so the response is exactly what committed.
+  const food = await c
     .get('repos')
     .food.setDayCount(c.req.param('id'), parsed.data.days)
-  if (!ok) return c.json({ error: 'Not found' }, 404)
-
-  // Two repo calls, so the list can vanish between them; a null here used to
-  // go out as a 200 whose body the client's DTO parse then rejected.
-  const food = await c.get('repos').food.forList(c.req.param('id'))
   if (!food) return c.json({ error: 'Not found' }, 404)
   return c.json(food satisfies ListFoodResponse)
 })
