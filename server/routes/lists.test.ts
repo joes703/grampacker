@@ -857,7 +857,8 @@ describe('caps and slug integrity', () => {
   })
 
   it('bulk surfaces above 100 ids work (D1 binds max 100 params/query)', async () => {
-    // Regression for the inArray param fan-out (see chunk-ids.ts): lists
+    // Regression for the inArray param fan-out D1's 100-parameter limit
+    // made fatal; the repos now check ownership in JS instead: lists
     // reorder at the full LIST_CAP (100 ids + userId = 101 params),
     // from-selection with 150 gear ids, and list-items reorder at 150.
     const { cookie } = await signUpVerifiedUser('lists-many@example.com', 'M')

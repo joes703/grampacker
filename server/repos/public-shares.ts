@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm'
-import { runBatch, type Db } from '../db'
+import type { Db } from '../db'
 import {
   categories,
   gearItems,
@@ -78,8 +78,8 @@ export type PublicShare = {
 
 export function createPublicSharesRepo(db: Db) {
   return {
-    // One db.batch = one transaction, so the list row, its items and the
-    // referenced categories are a consistent snapshot (the old app's three
+    // One read transaction, so the list row, its items, the referenced
+    // categories and the food are a consistent snapshot (the old app's three
     // separate PostgREST fetches could interleave with an unshare; this
     // cannot). Unknown slug and is_shared = false are indistinguishable by
     // construction - every statement carries the same gate, so both cases
@@ -117,8 +117,7 @@ export function createPublicSharesRepo(db: Db) {
 
       // Only categories actually referenced by this list's items, resolved
       // through joins with a single bound parameter - never inArray over a
-      // collected id list (D1 caps bound params at 100; a 300-item list
-      // could reference more). Uncategorized gear (null category_id) drops
+      // collected id list. Uncategorized gear (null category_id) drops
       // out via the inner join and renders as the client-side
       // "Uncategorized" group.
       const categoriesQuery = db
@@ -170,13 +169,15 @@ export function createPublicSharesRepo(db: Db) {
         .where(shareGate)
 
       const [listRows, itemRows, categoryRows, foodRows, foodSlotLinkRows] =
-        await runBatch(db, [
-          listQuery,
-          itemsQuery,
-          categoriesQuery,
-          foodQuery,
-          foodSlotLinkQuery,
-        ])
+        // The builders above run on db; better-sqlite3 has one connection,
+        // so they execute inside this transaction.
+        db.transaction(() => [
+          listQuery.all(),
+          itemsQuery.all(),
+          categoriesQuery.all(),
+          foodQuery.all(),
+          foodSlotLinkQuery.all(),
+        ] as const)
 
       const list = listRows[0]
       if (!list) return null
