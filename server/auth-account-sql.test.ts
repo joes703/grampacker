@@ -12,11 +12,11 @@ import type { Sqlite } from './db'
 // The schema files and the migrations are written separately, and only the
 // SQL that reaches SQLite shows whether they agree. `db.select()` with no
 // projection expands EVERY column of whatever model the adapter resolved. A
-// regenerated schema or a hand-edit naming a column the table lacks can show
-// up here and nowhere else, because SQLite does not reject it: it reads a
-// double-quoted name that matches no column as a string literal, so
-// `select "issuer"` on a table without that column succeeds and returns the
-// text 'issuer'. Every test asserting on rows stays green.
+// regenerated schema or a hand-edit naming a column the table lacks fails
+// with `no such column` in this better-sqlite3 build (it does not read an
+// unknown double-quoted name as a string), so any test reaching the query
+// would fail too. This one names the expected columns, so its failure says
+// which column disagrees.
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -24,7 +24,7 @@ const ORIGIN = 'http://localhost:5173'
 // SQL is appended to `seen` and the REAL prepared statement is returned, so
 // the request runs normally and the assertions happen afterwards. Same shape
 // as the sabotage proxy in auth-error-logging.test.ts, minus the sabotage.
-function recordingD1(seen: string[]): Sqlite {
+function recordingConnection(seen: string[]): Sqlite {
   return new Proxy(env.DB, {
     get(db, prop) {
       if (prop !== 'prepare') {
@@ -84,7 +84,7 @@ describe('the account model better-auth actually queries', () => {
         },
         body: JSON.stringify({}),
       },
-      { ...env, DB: recordingD1(seen) },
+      { ...env, DB: recordingConnection(seen) },
     )
     expect(res.status, await res.text()).toBe(200)
 
