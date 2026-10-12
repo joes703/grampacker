@@ -85,8 +85,8 @@ dated.
   in `server/**` outside the exempt list in `eslint.config.js`, and cannot
   be waived inline. It does not see `c.env.DB`; do not reach for that
   either. If the rule blocks you, the design is wrong. One exception:
-  `/api/health` in `server/index.ts` runs `select 1` to prove the D1
-  binding answers. It reads no table and no user data.
+  `/api/health` in `server/index.ts` runs `select 1` to prove the
+  database answers. It reads no table and no user data.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous
   share read (gated on slug and `is_shared`) and system tables such as
   rate-limit buckets. Client-supplied ids never widen ownership: writes
@@ -142,7 +142,8 @@ Each has cost an incident. When working near one, read its
   parameters per statement (`server/db/sqlite.test.ts`). A repository binds
   a client list in one statement only where a request schema bounds it far
   below that, and says so; list duplication still splits its multi-row
-  INSERTs (`server/repos/chunk-ids.ts`) because its food associations can
+  INSERTs to a quarter of the limit (`server/repos/chunk-ids.ts`,
+  `PARAM_BUDGET_PER_STATEMENT`) because its food associations can
   exceed it.
 - A repository operation that reads before it writes is one transaction:
   its reads, checks, writes and response read-back run inside one

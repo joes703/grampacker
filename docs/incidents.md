@@ -90,8 +90,8 @@ otherwise):
 committed. Locally wrangler reads `.dev.vars`, so secrets like
 `BETTER_AUTH_SECRET` appear on `Env`; CI has no `.dev.vars`, so they do not.
 A test that read a secret off `env` compiled locally and failed in CI
-(2026-07-11). Test workers get their bindings from
-`vitest.workers.config.ts`; use the value from there.
+(2026-07-11). The API tests now run on Node and get a fixed configuration
+from `server/test/node-env.ts`; use the value from there.
 
 ## better-auth: routes and hooks that are not what they look like
 

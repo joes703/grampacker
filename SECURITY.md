@@ -120,8 +120,11 @@ coverage in `server/routes/me.test.ts`):
   unauthenticated GET that writes a row, and `magic-link/verify` is a GET
   that creates a user and mints a session). Budgets: passkey sign-in
   30/5min, sign-in 10/10min, magic-link verify 10/10min, delete-user
-  5/10min, default 30/10min. Single atomic upsert (no lost updates under
-  concurrency - proven by a 60-way burst test), 429 + Retry-After. The same
+  5/10min, default 30/10min. Each charge is one atomic upsert that decides
+  the count and the window together, so overlapping requests cannot lose an
+  increment, reset one expired window twice, or move a newer window back
+  (burst tests, including one across a window roll; the exact boundary and
+  Retry-After rounding are pinned to the millisecond). 429 + Retry-After. The same
   new-window trigger that sweeps `rate_limits` also sweeps EXPIRED
   `verification` rows. better-auth sweeps them only as a side effect of
   `findVerificationValue`, which several unrelated routes call (for example
