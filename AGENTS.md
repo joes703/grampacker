@@ -90,11 +90,10 @@ dated.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous
   share read (gated on slug and `is_shared`) and system tables such as
   rate-limit buckets. Client-supplied ids never widen ownership: writes
-  precheck them against the user (and parent, where there is one) within
-  D1's 100-parameter limit - usually owned-set membership in JS, or chunked
-  probes (`server/repos/gear-items.ts`). Converted repositories whose inputs
-  the request schemas bound far below SQLite's 32766 parameters check them
-  in one statement (`server/repos/food.ts`).
+  check them against the user (and parent, where there is one) inside the
+  write's transaction - usually owned-set membership in JS (one query
+  whatever the input size), or one bounded `inArray` where a request schema
+  caps the list far below SQLite's 32766 parameters (`server/repos/food.ts`).
 - **The public share returns only its strict DTO,** asserted on raw JSON.
 - **CSRF, then auth, on app write routes:** 403 without the custom header,
   then 401 without a session. `/api/auth/*` uses better-auth's own origin
@@ -139,29 +138,23 @@ section 7.
 Each has cost an incident. When working near one, read its
 `docs/incidents.md` section first.
 
-- No unbounded `inArray` over client input. D1 allowed 100 bound
-  parameters per statement, and unconverted repositories still chunk to that
-  (`server/repos/chunk-ids.ts`). SQLite allows 32766
-  (`server/db/sqlite.test.ts`); a converted repository drops the chunking
-  only where a request schema bounds the input far below that, and says so.
-- A repository write is one transaction. Converted repositories (packing
-  locations, pack reorder, food, lists, list items) do their reads, checks
-  and writes inside one `db.transaction(..., { behavior: 'immediate' })`,
-  whose callback must be synchronous (no `await` inside). A slug collision
-  retries the whole transaction (`withFreshSlug` in `server/repos/lists.ts`).
-  The rest still use `runBatch(db, [...])`,
-  the temporary stand-in for D1's `db.batch`: compute the plan, then apply it
-  in one call; a partial write is a bug.
-- Never put `db.run/all/get(sql)` in `runBatch()`: it typechecks, then
-  crashes. Use a builder (`.insert().select()`, `.delete().where()`).
+- No unbounded `inArray` over client input. SQLite allows 32766 bound
+  parameters per statement (`server/db/sqlite.test.ts`). A repository binds
+  a client list in one statement only where a request schema bounds it far
+  below that, and says so; list duplication still splits its multi-row
+  INSERTs (`server/repos/chunk-ids.ts`) because its food associations can
+  exceed it.
+- A repository operation that reads before it writes is one transaction:
+  its reads, checks, writes and response read-back run inside one
+  `db.transaction(..., { behavior: 'immediate' })`, whose callback must be
+  synchronous (no `await` inside), so nothing can change between a check
+  and its write. A foreign-key failure inside one is a defect, not a race:
+  let it 500. A single statement needs no explicit transaction. A slug
+  collision retries the whole transaction (`withFreshSlug` in
+  `server/repos/lists.ts`).
 - Never put `${table.column}` in a raw sql`` fragment that correlates to an
   outer table: Drizzle renders it unqualified. Use a join, and assert the
   values in an API test.
-- D1's per-invocation query limit (1000 Paid, 50 Free; the owner reports
-  the Free plan) counts a
-  whole `db.batch()` as one subrequest; that is not wire-verified at the
-  limit. Keep statement counts low, and suspect it first when a large batch
-  fails in production.
 - better-auth GETs are not read-only (passkey challenges write; magic-link
   verify creates users). Its own rate limiter is deliberately off: every
   budget is in `server/middleware/rate-limit.ts`, fail-closed across methods,

@@ -597,9 +597,9 @@ restatement of the general posture.
 - **The gear/food pack union** lets one bag hold rows from two tables under a
   shared ordering. Its risk is not disclosure but integrity: a client-supplied
   id in a reorder payload must be proven to belong to this list before it can
-  move, and a lost race answers 409 with the whole batch rolled back rather
-  than a partial write. Ownership prechecks are owned-set membership in JS,
-  never an unbounded `inArray`, because D1 caps bound parameters at 100.
+  move, and the reorder is one SQLite transaction, so a failure rolls the
+  whole reorder back rather than leaving a partial write. Ownership checks
+  are owned-set membership in JS: one query whatever the payload size.
 
   Two details worth being exact about, because a looser summary invites the
   wrong assumption. Migration **0022** added the union with NO rank
@@ -610,15 +610,14 @@ restatement of the general posture.
   same bag, which the reorder planner accounts for
   (`server/repos/pack-reorder.ts`).
 
-- **Deleting a packing location appends its contents after a rank read
-  taken before the write batch** (`server/repos/packing-locations.ts`,
-  `base`). The census that aborts the batch guards the SOURCE bag only, and
-  the cohort's unique index is per table, so a food row arriving in
-  Unassigned at that rank while gear is being appended there (or the
-  reverse) produces a legal cross-table tie. Nothing is lost or half-written:
-  the order of the appended block degrades to the deterministic tiebreak
-  until the next reorder renumbers the cohort. Accepted; it is the same
-  cross-table-tie class migration 0022 tolerates by design.
+- **Deleting a packing location appended its contents after a rank read
+  taken before the write**: CLOSED. A food row arriving in Unassigned at
+  that rank while gear was being appended there (or the reverse) could
+  produce a legal cross-table tie. The delete now reads `base` and writes
+  inside one immediate SQLite transaction (`server/repos/packing-locations.ts`,
+  `removeInTransaction`), so no arrival can land in between. A cross-table
+  tie remains legal by design (migration 0022) and renders by the
+  deterministic tiebreak.
 
 ## The app has TWO public origins
 
@@ -923,17 +922,16 @@ of it:
   Analytics off at the zone remains the strictly safer option if the RUM data
   ever stops earning its keep.
 
-- **A parent deleted mid-write answers 500, not 4xx.** Gear create, update,
-  import and bulk move check ownership of the category or gear first, then
-  write. If another client deletes that parent in between, the foreign key
-  rejects the write and the route answers 500 (`server/repos/gear-items.ts`
-  `create`). Nothing is half written: each write is one statement or one
-  batch. Food, packing locations, lists and list items no longer have the
-  window: each runs its checks, writes and read-back in one SQLite
-  transaction (2026-10-12; `server/repos/list-transactions.test.ts`), so a
-  concurrent delete lands before or after the whole operation. The gear
-  repository closes it when it is converted.
-  Trigger: a second concurrent client, or any such 500 in the logs.
+- **A parent deleted mid-write answered 500, not 4xx**: CLOSED 2026-10-12.
+  Repositories used to check ownership of a category, gear row or list,
+  then write in a later call; another client deleting that parent in
+  between made the foreign key reject the write (a 500, or a re-probe that
+  answered 4xx). Every repository now runs its checks, writes and
+  read-back in one immediate SQLite transaction, so a concurrent delete
+  lands before or after the whole operation
+  (`server/repos/gear-transactions.test.ts`,
+  `server/repos/list-transactions.test.ts`). A foreign-key failure inside
+  a transaction can only be a defect, and stays a 500.
 
 - **A list cache can show a deleted gear row.** The gear delete fan-out
   (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches

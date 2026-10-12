@@ -26,6 +26,9 @@ shape.
 
 ## Drizzle: raw SQL in db.batch() crashes the D1 driver
 
+No longer reachable on the Node server: no repository batches since
+2026-10-12 (each operation is a SQLite transaction). Kept as the record.
+
 `db.run(sql)` / `db.all(sql)` / `db.get(sql)` typecheck as `db.batch()` items
 but CRASH the D1 driver at runtime ("Cannot read properties of undefined
 (reading 'bind')"): `SQLiteRaw._prepare()` returns itself with no `.stmt`,
@@ -38,6 +41,9 @@ such fragments (aliases like `l.id`, not `${lists.id}`) so the
 unqualified-rendering trap above cannot reach them.
 
 ## D1: the queries-per-invocation limit, and what a batch counts as
+
+Applies only to the Cloudflare Worker, which the Node server replaces; no
+repository batches since 2026-10-12. Kept as the record.
 
 As of 2026-07-16 the D1 limits table says 1000 (Paid) / 50 (Free) queries per
 Worker invocation, but links that row to the Workers SUBREQUEST limits (one
