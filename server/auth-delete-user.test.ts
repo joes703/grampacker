@@ -72,29 +72,37 @@ async function rowCounts(userId: string): Promise<Record<string, number>> {
 // composite FKs). All ids derive from the unique userId, and the list slug
 // is a fresh random 6-char value, so two seeded users - and repeated test
 // runs against persisted storage - never collide (lists.slug is UNIQUE).
-async function seedUserData(userId: string): Promise<void> {
+function seedUserData(userId: string): void {
   const now = Date.now()
   const catId = `${userId}-cat`
   const gearId = `${userId}-gear`
   const listId = `${userId}-list`
   const slug = crypto.randomUUID().replace(/-/g, '').slice(0, 6)
-  await testDb.batch([
-    testDb.prepare(
+  // One transaction, so a seed that fails partway leaves nothing behind.
+  const run = (sql: string, ...params: (string | number)[]) =>
+    env.DB.prepare(sql).run(...params)
+  env.DB.transaction(() => {
+    run(
       'insert into categories (id, user_id, name, sort_order, created_at) values (?, ?, ?, 0, ?)',
-    ).bind(catId, userId, 'Shelter', now),
-    testDb.prepare(
+      catId, userId, 'Shelter', now,
+    )
+    run(
       'insert into gear_items (id, user_id, category_id, name, weight_grams, status, sort_order, created_at, updated_at) values (?, ?, ?, ?, 100, ?, 0, ?, ?)',
-    ).bind(gearId, userId, catId, 'Tent', 'active', now, now),
-    testDb.prepare(
+      gearId, userId, catId, 'Tent', 'active', now, now,
+    )
+    run(
       'insert into lists (id, user_id, name, slug, sort_order, created_at, updated_at) values (?, ?, ?, ?, 0, ?, ?)',
-    ).bind(listId, userId, 'Overnighter', slug, now, now),
-    testDb.prepare(
+      listId, userId, 'Overnighter', slug, now, now,
+    )
+    run(
       'insert into list_items (id, user_id, list_id, gear_item_id, quantity, sort_order, created_at, updated_at) values (?, ?, ?, ?, 1, 0, ?, ?)',
-    ).bind(`${userId}-li`, userId, listId, gearId, now, now),
-    testDb.prepare(
+      `${userId}-li`, userId, listId, gearId, now, now,
+    )
+    run(
       'insert into passkey (id, user_id, public_key, credential_id, counter, device_type, backed_up) values (?, ?, ?, ?, 0, ?, 0)',
-    ).bind(`${userId}-pk`, userId, 'pub-key', `${userId}-cred`, 'singleDevice'),
-  ])
+      `${userId}-pk`, userId, 'pub-key', `${userId}-cred`, 'singleDevice',
+    )
+  })()
 }
 
 // better-auth's `verification` table has no user_id column, so the FK cascade
@@ -200,8 +208,8 @@ describe('POST /api/auth/delete-user', () => {
     await signUpVerifiedUser(otherEmail, 'Bystander')
     userId = await userIdOf(email)
     otherId = await userIdOf(otherEmail)
-    await seedUserData(userId)
-    await seedUserData(otherId)
+    seedUserData(userId)
+    seedUserData(otherId)
     // Both users have both verification artifact shapes outstanding: a passkey
     // challenge (found by user id) and a pending magic link (found by email).
     await seedPasskeyChallenge(userId)

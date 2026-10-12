@@ -7,9 +7,9 @@ import type { AppEnv } from '../env'
 //
 // One database per test FILE. Vitest runs every file in its own module
 // graph, so this module - and the in-memory database it opens - is created
-// fresh for each file and shared by the tests inside it (the same isolation
-// the workerd tier had; docs/testing-and-ci.md section 5). openSqlite sets
-// the production pragmas, foreign keys included.
+// fresh for each file and shared by the tests inside it
+// (docs/testing-and-ci.md section 5). openSqlite sets the production pragmas,
+// foreign keys included.
 const sqlite = openSqlite(':memory:')
 applyMigrations(sqlite)
 
@@ -24,14 +24,15 @@ export const env: AppEnv = {
   STATIC_DIR: 'server/test/fixtures/assets',
 }
 
-// Raw SQL for test setup and assertions, in the call shape the tests used
-// against D1 (`prepare(sql).bind(...).first()/all()/run()`, `batch([...])`), so
-// porting them stayed mechanical. Not used by application code. New tests may
-// call better-sqlite3 on `env.DB` directly instead.
+// Raw SQL for test setup and assertions, in the call shape the tests were
+// first written in (`prepare(sql).bind(...).first()/all()/run()`), which many
+// of them still use. Not used by application code. New tests may call
+// better-sqlite3 on `env.DB` directly instead; for several statements in one
+// transaction they must (`env.DB.transaction(...)`).
 type Param = string | number | bigint | boolean | null | Buffer
 
 function toSqlite(params: Param[]): (string | number | bigint | null | Buffer)[] {
-  // D1 stored booleans as 1/0; better-sqlite3 refuses them.
+  // Tests pass booleans for 0/1 columns; better-sqlite3 refuses them.
   return params.map((p) => (typeof p === 'boolean' ? (p ? 1 : 0) : p))
 }
 
@@ -58,17 +59,13 @@ class TestStatement {
   }
 
   async run(): Promise<{ meta: { changes: number; last_row_id: number } }> {
-    return { meta: this.runSync() }
-  }
-
-  runSync(): { changes: number; last_row_id: number } {
     const stmt = this.sqlite.prepare(this.sql)
     if (stmt.reader) {
       stmt.all(...toSqlite(this.params))
-      return { changes: 0, last_row_id: 0 }
+      return { meta: { changes: 0, last_row_id: 0 } }
     }
     const info = stmt.run(...toSqlite(this.params))
-    return { changes: info.changes, last_row_id: Number(info.lastInsertRowid) }
+    return { meta: { changes: info.changes, last_row_id: Number(info.lastInsertRowid) } }
   }
 
   private exec(mode: 'get' | 'all'): unknown {
@@ -85,11 +82,5 @@ class TestStatement {
 export const testDb = {
   prepare(sql: string): TestStatement {
     return new TestStatement(sqlite, sql)
-  },
-  // All statements in one transaction, like D1's batch.
-  async batch(statements: TestStatement[]): Promise<void> {
-    sqlite.transaction(() => {
-      for (const statement of statements) statement.runSync()
-    })()
   },
 }
