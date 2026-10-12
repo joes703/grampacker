@@ -408,10 +408,11 @@ tidier sentence, but tidiness is not a threat model.)
   second purge runs (better-auth awaits token hashing before it stores the
   row) stores its link afterwards, and redeeming it creates a new, empty
   account. That is the same outcome as a link requested a moment after
-  the delete, which is an ordinary sign-up, and it needs the address's
-  inbox. No data comes back. Closing it would need a record of deleted
-  addresses checked at redemption, a schema change. Trigger to revisit:
-  a report of an account reappearing after deletion.
+  the delete, which is an ordinary sign-up, and it needs the emailed
+  token. No data comes back. Closing it would need a record of deleted
+  addresses checked at redemption: a separate behavior change, and a
+  migration if it gets its own table. Trigger to revisit: a report of an
+  account reappearing after deletion.
 - Deleting the account needs the request to name the account
   (`x-grampacker-delete-user-id`, `shared/auth.ts`). The `beforeDelete`
   hook refuses with 400 `DELETE_ACCOUNT_MISMATCH` when the header is

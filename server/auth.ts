@@ -206,9 +206,8 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
         // addresses; SECURITY.md has the details.
         //
         // FAILS OPEN, unlike the purge above. The account is already deleted,
-        // so throwing here would report a failed delete that succeeded. What
-        // it can miss is only what was written during the delete, and those
-        // rows expire within minutes. The failure is logged.
+        // so throwing here would report a failed delete that succeeded. Rows
+        // it misses expire within minutes. The failure is logged.
         afterDelete: async (deleted: { id: string; email: string }) => {
           try {
             await createUsersRepo(db, deleted.id).purgeVerificationArtifacts(
