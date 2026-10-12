@@ -690,7 +690,7 @@ of it:
   DIRECTLY; the other two delete a parent row and let the placements
   cascade. Two leave the food items themselves alone; one removes an item
   outright. A fourth, server-side path (the day-count race, last in the
-  list) is different in kind and is described on its own terms.
+  list) was different in kind and is now closed.
 
   There were FOUR paths until the Skip feature was removed. Marking a meal
   not needed cleared that slot's placements, and its confirm was skipped
@@ -730,15 +730,15 @@ of it:
     can remove something another client had just rescheduled - and the guard
     in Release B has to cover this delete, not only the trim.
 
-  - **Changing the day count** plans the missing slots from a read taken
-    OUTSIDE the write batch (`setDayCount` in `server/repos/food.ts`). Two
-    day-count writes racing - one trimming, one expanding - can leave the
-    grid with a hole, and two expansions can collide on the slot unique
-    index and surface as a 500. Different from the three paths above in one
-    way worth keeping straight: a missing grid slot self-heals on the next
-    day-count write (the contract repairs holes), whereas placements erased
-    by the paths above do not come back. The revision guard covers this
-    write too.
+  - **Changing the day count** used to plan the missing slots from a read
+    taken outside the write, so two day-count writes racing could leave the
+    grid with a hole or collide on the slot unique index as a 500. CLOSED
+    2026-10-12: `setDayCount` in `server/repos/food.ts` now reads, plans and
+    writes in one immediate SQLite transaction, so two day-count writes run
+    one after the other (`server/repos/food-transactions.test.ts`). Grids
+    written before then may still hold a hole; the next day-count write
+    repairs it. A day-count write from a STALE client is the first bullet
+    above and stays open.
 
   A fifth path exists and is deliberately out of scope: **deleting the list**
   cascades its food entirely (`server/repos/lists.ts`), reachable from three
@@ -750,21 +750,21 @@ of it:
   location only unassigns and re-ranks food; it destroys nothing.
 
   In each of the three client-side cases a second client's work is deleted
-  by a write that never saw it. A conditional UPDATE matching zero rows does
-  not abort the rest of a D1 batch, so nothing stops it today. The day-count
-  race can happen with perfectly fresh clients and may simply abort on the
-  slot unique index rather than delete anything.
+  by a write that never saw it. Nothing stops it today: the server cannot
+  tell a write made from a stale snapshot from a fresh one.
 
   The fix is designed and prototyped but unbuilt, and needs two releases
   separated by a deploy. Release A adds `lists.food_revision` and makes
   **every** food mutation bump it - that part is load-bearing, because a
   revision only some writes touch cannot detect the concurrent create or
-  reschedule this is meant to catch. Release B adds a guard table whose NOT
-  NULL column takes a NULL on mismatch, which forces D1 to roll the whole
-  batch back, mapped to a 409 the client consumes as control flow, the same
-  NOT NULL trick `_pack_reorder_guard` uses. The full design (section N1) is
-  in git history: `git show 89e4f1c:docs/review-remediation-plan.md`. Verify
-  it against the code before trusting any of it.
+  reschedule this is meant to catch. Release B checks the client's revision
+  and answers a 409 the client consumes as control flow. The original design
+  forced the rollback with a NOT NULL guard table, because a D1 batch could
+  not branch; food writes are now SQLite transactions, so Release B can
+  compare the revision inside the write's transaction and return before
+  writing. The full design (section N1) is in git history:
+  `git show 89e4f1c:docs/review-remediation-plan.md`. Verify it against the
+  code before trusting any of it.
 
   Trigger: a second person using the app, or any report of a meal plan losing
   entries. Until then the blast radius is one list, within one account, with

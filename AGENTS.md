@@ -92,7 +92,9 @@ dated.
   rate-limit buckets. Client-supplied ids never widen ownership: writes
   precheck them against the user (and parent, where there is one) within
   D1's 100-parameter limit - usually owned-set membership in JS, or chunked
-  batched probes (`server/repos/food.ts`).
+  probes (`server/repos/gear-items.ts`). Converted repositories whose inputs
+  the request schemas bound far below SQLite's 32766 parameters check them
+  in one statement (`server/repos/food.ts`).
 - **The public share returns only its strict DTO,** asserted on raw JSON.
 - **CSRF, then auth, on app write routes:** 403 without the custom header,
   then 401 without a session. `/api/auth/*` uses better-auth's own origin
@@ -137,10 +139,13 @@ section 7.
 Each has cost an incident. When working near one, read its
 `docs/incidents.md` section first.
 
-- D1 allows at most 100 bound parameters per statement: no unbounded
-  `inArray`. Chunk bulk writes with `server/repos/chunk-ids.ts`.
-- A repository write is one transaction. Converted repositories
-  (packing locations, pack reorder) do their reads, checks and writes inside
+- No unbounded `inArray` over client input. D1 allowed 100 bound
+  parameters per statement, and unconverted repositories still chunk to that
+  (`server/repos/chunk-ids.ts`). SQLite allows 32766
+  (`server/db/sqlite.test.ts`); a converted repository drops the chunking
+  only where a request schema bounds the input far below that, and says so.
+- A repository write is one transaction. Converted repositories (packing
+  locations, pack reorder, food) do their reads, checks and writes inside
   one `db.transaction(..., { behavior: 'immediate' })`, whose callback must
   be synchronous (no `await` inside). The rest still use `runBatch(db, [...])`,
   the temporary stand-in for D1's `db.batch`: compute the plan, then apply it
