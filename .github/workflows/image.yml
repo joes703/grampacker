@@ -1,0 +1,170 @@
+# Builds the production container image, tests it as a running container,
+# and, when started by hand on main, publishes it to GHCR.
+#
+# It NEVER deploys. It holds no secret and no SSH key, and nothing here talks
+# to the VPS, DNS or Cloudflare. The Worker deployment is deploy.yml, and this
+# workflow does not touch it.
+#
+# TRIGGERS
+# --------
+#   * pull_request: builds the image and runs scripts/check-image.sh. Read-only
+#     token; publishes nothing. ci.yml runs the other checks on pull requests.
+#   * workflow_dispatch: on main only, runs the build, unit, API and migration
+#     checks, builds and checks the image, then pushes it as
+#     ghcr.io/joes703/grampacker:<full commit SHA> and prints its digest.
+#     There is no input: nothing a person types reaches a command.
+#
+# There is no push trigger yet: each publish is started by hand
+# (docs/vps-bootstrap-and-migration-runbook.md step 6.1).
+#
+# WHAT "MAIN ONLY" RESTS ON
+# -------------------------
+# A dispatch runs the CHOSEN REF's copy of this file. Every job that runs on a
+# dispatch therefore carries `github.ref == 'refs/heads/main'`, so a dispatch
+# from any other branch runs nothing. That condition is enforced by this file,
+# not by GitHub: a branch could edit it away. The same is true of
+# `packages: write` on any trigger. What prevents that is who can change a
+# workflow file at all: only Joe; the agent tokens have no Workflows permission
+# (docs/testing-and-ci.md section 12). The token here can push images, which
+# is why a deployment uses the digest this workflow prints for a main run,
+# never a tag. It cannot reach any secret, because there is none.
+#
+# The checkout is `github.sha`, the commit the dispatch started on, in every
+# job. Both jobs therefore test and publish the same commit even if main moves
+# during the run, and the tag names that commit.
+#
+# Only first-party actions are used, pinned by commit SHA as in ci.yml. Docker
+# login, build and push are the runner's own docker CLI, not third-party
+# actions.
+name: Image
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# Nothing by default. Each job asks for what it needs.
+permissions: {}
+
+jobs:
+  # Pull requests: prove the image builds and passes its checks. No push.
+  check:
+    name: Build and check image
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image (linux/amd64)
+        run: docker build --platform linux/amd64 --provenance=false -t grampacker:check .
+
+      - name: Check image (scripts/check-image.sh)
+        run: scripts/check-image.sh grampacker:check
+
+  # Manual publish, step 1: build, unit, API and migration checks on this
+  # commit. ci.yml also checks shipped migrations, action pins and YAML;
+  # those run on the pull request that brought the commit to main.
+  # Never name a job here "Verify": that is the ruleset's required check
+  # (ci.yml), and this job reports "skipped" on every pull request.
+  verify:
+    name: Pre-publish checks
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'joes703/grampacker'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          # The migration check needs origin/main and its history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (typecheck + lint + vite build + server build)
+        run: npm run build
+
+      - name: Test (unit + API on Node/SQLite)
+        run: npm test
+
+      - name: Check (migrations)
+        run: npm run test:migrations
+
+  # Manual publish, step 2: build, test the container, push, record the digest.
+  publish:
+    name: Publish image to GHCR
+    needs: verify
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'joes703/grampacker'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # One publish at a time; never cancel one halfway through a push.
+    concurrency:
+      group: image-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # Push to ghcr.io/joes703/grampacker with the run's own GITHUB_TOKEN.
+      packages: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      image: ${{ steps.publish.outputs.image }}
+    env:
+      IMAGE_REPO: ghcr.io/joes703/grampacker
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          # The token stays out of .git/config, so no later step can read it.
+          persist-credentials: false
+
+      - name: Confirm the checkout is the dispatched commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      # The source label links the GHCR package to this repository on its
+      # first push. The revision label records the commit inside the image.
+      - name: Build image (linux/amd64)
+        run: >-
+          docker build --platform linux/amd64 --provenance=false
+          --label "org.opencontainers.image.source=https://github.com/joes703/grampacker"
+          --label "org.opencontainers.image.revision=$GITHUB_SHA"
+          -t grampacker:check .
+
+      # Before any login: the image under test never runs with a registry
+      # credential on the machine.
+      - name: Check image (scripts/check-image.sh)
+        run: scripts/check-image.sh grampacker:check
+
+      - name: Log in to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push and record the digest
+        id: publish
+        run: scripts/publish-image.sh grampacker:check "$IMAGE_REPO" "$GITHUB_SHA"
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
