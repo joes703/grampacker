@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
@@ -293,7 +293,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('seed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -312,7 +312,7 @@ describe('/api/gear-items authorization matrix', () => {
 
     // ...and the DB trigger backstops writes that bypass the repo.
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 0, 'active', 0, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)
@@ -415,7 +415,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('capseed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -434,12 +434,10 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listGear(cookie)).toHaveLength(499)
   })
 
-  it('import referencing >100 distinct existing categories works (D1 binds max 100 params/query)', async () => {
-    // Regression (Codex finding, PR #26): the ownership precheck used one
-    // inArray(...) over every referenced category id, which exceeds D1's
-    // 100-bound-parameters-per-query limit and blew up a valid import as
-    // an unmapped 500. The check now loads the user's owned ids with a
-    // single bound param and verifies membership in JS.
+  it('import referencing >100 distinct existing categories works', async () => {
+    // The ownership precheck loads the user's owned category ids with a
+    // single bound parameter and verifies membership in JS, so a wide
+    // import does not grow the statement.
     const { cookie } = await signUpVerifiedUser('gear-import-many@example.com', 'M')
     const userId = await userIdFor(cookie)
 
@@ -447,7 +445,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 120 }, (_, i) => {
       return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
 
@@ -522,11 +520,10 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listCategories(cookie)).toHaveLength(0)
   })
 
-  it('bulk ops on >100 ids work (D1 binds max 100 params/query)', async () => {
-    // Regression: ownsAllGearIds and the bulk-delete/bulk-move write
-    // statements bound one param per id via inArray, so any bulk op on
-    // 101+ ids (DTOs allow 500) threw an unmapped D1 error. Prechecks now
-    // use owned-set membership; the writes are chunked inside one batch.
+  it('bulk ops on >100 ids work', async () => {
+    // Prechecks use owned-set membership in JS. The writes bind every id
+    // in one statement, which the DTOs' 500-id bound keeps far below
+    // SQLite's parameter limit (server/repos/gear-items.ts).
     const { cookie } = await signUpVerifiedUser('gear-bulk-many@example.com', 'M')
     const userId = await userIdFor(cookie)
     const catId = await createCategory(cookie, 'Target')
@@ -534,7 +531,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 150 }, (_, i) => {
       return `('bulkmany-${i}', '${userId}', 'Bulk item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
     const ids = Array.from({ length: 150 }, (_, i) => `bulkmany-${i}`)
@@ -618,7 +615,7 @@ describe('/api/gear-items authorization matrix', () => {
 
 // The import maxima (review P2.7): the DTO used to allow 2000 while the
 // triggers abort at 500, so any oversized import was a GUARANTEED late
-// failure after D1 executed 500+ statements. The bound is now the real cap,
+// failure after 500+ inserts had run. The bound is now the real cap,
 // and the route answers it as the trigger's own 422 dialect through a
 // two-stage parse - malformedness (structural OR relational) stays the
 // uniform 400 even when the body is also oversized.

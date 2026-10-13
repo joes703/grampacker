@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import app from '../index'
-import { env } from 'cloudflare:test'
+import { env, testDb } from '../test/node-env'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
@@ -71,13 +71,13 @@ describe('food: day grid', () => {
   })
 
   it('repairs a hole rather than reading only the highest day', async () => {
-    // A hole can form: setDayCount reads the slots outside its batch, so a
-    // grow racing a shrink can leave middle days missing. The race is cut
-    // here in D1 directly: day 3 goes, days 4 and 5 stay.
+    // Data written before the day count became one transaction can hold a
+    // hole: a grow racing a shrink could leave middle days missing. Cut one
+    // directly: day 3 goes, days 4 and 5 stay.
     const { cookie } = await signUpVerifiedUser('food-3@example.com', 'F3')
     const listId = await createList(cookie, 'Trip')
     await setDays(cookie, listId, 5)
-    await env.DB.prepare('delete from list_food_slots where list_id = ? and day_number = 3')
+    await testDb.prepare('delete from list_food_slots where list_id = ? and day_number = 3')
       .bind(listId)
       .run()
     expect((await getFood(cookie, listId)).slots).toHaveLength(12)
@@ -103,8 +103,8 @@ describe('food: day grid', () => {
   })
 
   it('handles a full 30-day trip in one write', async () => {
-    // 90 slots x 8 columns is ~720 bound params; D1 caps a statement at 100,
-    // including inside a batch. This fails without chunkForParamCap.
+    // 90 slots in one INSERT, about 630 bound parameters. SQLite allows
+    // 32766 (server/repos/food.ts says why that is enough).
     const { cookie } = await signUpVerifiedUser('food-5@example.com', 'F5')
     const listId = await createList(cookie, 'Thru hike')
 
@@ -207,16 +207,16 @@ describe('food: ownership and list scoping', () => {
 // The matrix rule (docs/authz-matrix.md): owner / non-owner / anon for every
 // route, plus wrong-parent stitching for a child resource - and a status alone
 // proves nothing, so every refusal below is paired with a raw-row snapshot of
-// the victim list taken through D1 directly (no user predicate), compared
+// the victim list taken through SQLite directly (no user predicate), compared
 // byte-for-byte after the request.
 describe('food: the matrix cells a status alone would not prove', () => {
   async function foodRows(listId: string) {
-    const items = await env.DB.prepare(
+    const items = await testDb.prepare(
       'select * from list_food_items where list_id = ? order by id',
     )
       .bind(listId)
       .all()
-    const links = await env.DB.prepare(
+    const links = await testDb.prepare(
       'select * from list_food_item_slots where list_id = ? order by food_item_id, slot_id',
     )
       .bind(listId)
@@ -439,7 +439,7 @@ describe('food: item updates', () => {
     // orphaned link would never show in the response: count the rows.
     const linkCount = async () =>
       (
-        await env.DB.prepare(
+        await testDb.prepare(
           'select count(*) as n from list_food_item_slots where food_item_id = ?',
         )
           .bind(created.id)
@@ -665,7 +665,7 @@ describe('the food item cap (200 per list)', () => {
       (_, i) =>
         `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, ${i}, 0, 0)`,
     ).join(',')
-    await env.DB.prepare(
+    await testDb.prepare(
       'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, pack_sort_order, created_at, updated_at) values ' +
         values,
     ).run()
@@ -690,7 +690,7 @@ describe('the food item cap (200 per list)', () => {
     })
 
     await expect(
-      env.DB.prepare(
+      testDb.prepare(
         `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ('${userId}-bypass', '${userId}', '${listId}', 'Bypass', 1, 1, 999, 0, 0)`,
       ).run(),
     ).rejects.toThrow(/cap/)

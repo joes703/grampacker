@@ -4,11 +4,14 @@ Shared instructions for every coding agent in this repo. CLAUDE.md imports
 this file and adds Claude-specific notes.
 
 **Stack:** Cloudflare Workers + D1 (SQLite), Hono, Vite, React, TypeScript,
-Drizzle, better-auth. This is a rewrite of a Supabase app, and Supabase or
-Postgres patterns do not exist here: no RLS (`auth.uid()`, `WITH CHECK`), no
-PostgREST `.upsert()`, no `SECURITY DEFINER` RPCs or `supabase.rpc()`, no
-pgTAP. The scoped repositories are the authorization boundary. When unsure of
-a D1 equivalent, ask rather than assume.
+Drizzle, better-auth. **Moving to Node + better-sqlite3 on a VPS**
+(`docs/vps-migration-plan.md`): on a branch that has the Node server
+(`server/node.ts`), the API tests and local dev already run on Node and
+SQLite, and the Worker no longer runs. This is a rewrite of a Supabase app,
+and Supabase or Postgres patterns do not exist here: no RLS (`auth.uid()`,
+`WITH CHECK`), no PostgREST `.upsert()`, no `SECURITY DEFINER` RPCs or
+`supabase.rpc()`, no pgTAP. The scoped repositories are the authorization
+boundary. When unsure of a D1 equivalent, ask rather than assume.
 
 ## Shipping
 
@@ -46,10 +49,12 @@ a D1 equivalent, ask rather than assume.
 | --- | --- | --- |
 | Build | `npm run build` | Typecheck + lint + bundle; tests are separate. A bare `tsc --noEmit` misses project-reference errors. |
 | Unit tests | `npm run test:unit` | Node tier: `scripts/`, `shared/`, `src/`, `server/**/*.node.test.ts`. |
-| API tests | `npm run test:api` | Every other `server/**/*.test.ts`, on real workerd + D1. Needs a local port; if the sandbox cannot bind one, say so and rely on CI. |
+| API tests | `npm run test:api` | Every other `server/**/*.test.ts`: the real app on Node against a fresh SQLite database per file. A few tests open a local port; if the sandbox cannot bind one, say so and rely on CI. |
 | Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
 | Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
-| Dev server | `npm run dev` | SPA + `/api/*` + local D1. |
+| Dev server | `npm run dev:node` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. `npm run dev` is the old Worker path. |
+| Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
+| Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR and never deploys (runbook step 6.1). |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
@@ -84,14 +89,15 @@ dated.
   in `server/**` outside the exempt list in `eslint.config.js`, and cannot
   be waived inline. It does not see `c.env.DB`; do not reach for that
   either. If the rule blocks you, the design is wrong. One exception:
-  `/api/health` in `server/index.ts` runs `select 1` to prove the D1
-  binding answers. It reads no table and no user data.
+  `/api/health` in `server/index.ts` runs `select 1` to prove the
+  database answers. It reads no table and no user data.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous
   share read (gated on slug and `is_shared`) and system tables such as
   rate-limit buckets. Client-supplied ids never widen ownership: writes
-  precheck them against the user (and parent, where there is one) within
-  D1's 100-parameter limit - usually owned-set membership in JS, or chunked
-  batched probes (`server/repos/food.ts`).
+  check them against the user (and parent, where there is one) inside the
+  write's transaction - usually owned-set membership in JS (one query
+  whatever the input size), or one bounded `inArray` where a request schema
+  caps the list far below SQLite's 32766 parameters (`server/repos/food.ts`).
 - **The public share returns only its strict DTO,** asserted on raw JSON.
 - **CSRF, then auth, on app write routes:** 403 without the custom header,
   then 401 without a session. `/api/auth/*` uses better-auth's own origin
@@ -136,20 +142,24 @@ section 7.
 Each has cost an incident. When working near one, read its
 `docs/incidents.md` section first.
 
-- D1 allows at most 100 bound parameters per statement: no unbounded
-  `inArray`. Chunk bulk writes with `server/repos/chunk-ids.ts`.
-- `db.batch` is a real transaction. Compute the plan, then apply it in one
-  batch; a partial write is a bug.
-- Never put `db.run/all/get(sql)` in `db.batch()`: it typechecks, then crashes
-  the D1 driver. Use a builder (`.insert().select()`, `.delete().where()`).
+- No unbounded `inArray` over client input. SQLite allows 32766 bound
+  parameters per statement (`server/db/sqlite.test.ts`). A repository binds
+  a client list in one statement only where a request schema bounds it far
+  below that, and says so; list duplication still splits its multi-row
+  INSERTs to a quarter of the limit (`server/repos/chunk-ids.ts`,
+  `PARAM_BUDGET_PER_STATEMENT`) because its food associations can
+  exceed it.
+- A repository operation that reads before it writes is one transaction:
+  its reads, checks, writes and response read-back run inside one
+  `db.transaction(..., { behavior: 'immediate' })`, whose callback must be
+  synchronous (no `await` inside), so nothing can change between a check
+  and its write. A foreign-key failure inside one is a defect, not a race:
+  let it 500. A single statement needs no explicit transaction. A slug
+  collision retries the whole transaction (`withFreshSlug` in
+  `server/repos/lists.ts`).
 - Never put `${table.column}` in a raw sql`` fragment that correlates to an
   outer table: Drizzle renders it unqualified. Use a join, and assert the
   values in an API test.
-- D1's per-invocation query limit (1000 Paid, 50 Free; the owner reports
-  the Free plan) counts a
-  whole `db.batch()` as one subrequest; that is not wire-verified at the
-  limit. Keep statement counts low, and suspect it first when a large batch
-  fails in production.
 - better-auth GETs are not read-only (passkey challenges write; magic-link
   verify creates users). Its own rate limiter is deliberately off: every
   budget is in `server/middleware/rate-limit.ts`, fail-closed across methods,
@@ -158,11 +168,12 @@ Each has cost an incident. When working near one, read its
   and `hooks.before` sees an unvalidated body.
 - Hono's `c.res = res` merges headers and the old value wins. Set
   `c.res = undefined` first.
-- Our 304s carry no Cache-Control, so cached browsers keep the old policy. A
-  cache-policy change needs `forceValidatedAssetResponse`
-  (`server/middleware/asset-cache.ts`).
-- `Env` differs between local (reads `.dev.vars`) and CI. Never read a secret
-  off `env` in a test; use the bindings in `vitest.workers.config.ts`.
+- A 304 carries no Cache-Control, so a browser that revalidates keeps its old
+  policy. The static handler (`server/middleware/spa.ts`) never answers 304;
+  if conditional responses are ever added, hashed assets must still answer
+  200 (`server/middleware/asset-cache.test.ts` pins it).
+- Never read a real secret in a test. API tests get a fixed test
+  configuration from `server/test/node-env.ts`.
 - `noUncheckedIndexedAccess` is on. Prefer guards, defaults or `.find()` over
   `!`; if `!` is unavoidable, comment why.
 - **An empty array is not "nothing"** - it also means loading, or failed, and

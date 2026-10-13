@@ -31,10 +31,11 @@ and that absence is deliberate.
 
 ```sh
 npm ci             # never `npm install` - it can rewrite the lockfile
-npm run dev        # SPA + /api/* Worker + local D1, one process (no Docker)
-npm test           # unit tests (vitest) + api tests (workers pool)
+npm run dev:node   # SPA + /api/* on Node + local SQLite (.data/), one process
+npm run dev        # the old Worker dev server (Cloudflare plugin + local D1)
+npm test           # unit tests + api tests
 npm run test:unit  # unit tests only
-npm run test:api   # api tests only (needs to bind a port)
+npm run test:api   # api tests: the real app on Node against SQLite
 npm run typecheck  # wrangler types + tsc -b
 npm run build      # typecheck + lint + client/worker production build
 ```

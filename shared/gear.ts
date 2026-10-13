@@ -255,8 +255,8 @@ function importGearSchema(caps: { categories: number; items: number } | null) {
 }
 
 // The public contract: maxima are the REAL caps (the triggers abort at 500,
-// so anything larger was a guaranteed late failure after D1 executed 500+
-// statements - the old 2000 ceiling promised what the DB always refused).
+// so anything larger was a guaranteed late failure after 500 inserts had
+// run - the old 2000 ceiling promised what the DB always refused).
 export const importGearRequestSchema = importGearSchema({
   categories: CATEGORY_CAP,
   items: GEAR_ITEM_CAP,

@@ -1,9 +1,11 @@
 import { createMiddleware } from 'hono/factory'
+import type { AppEnv } from '../env'
 
 // Browser caching for Vite's content-hashed assets.
 //
-// Cloudflare's assets binding answers with `public, max-age=0, must-revalidate`,
-// which is right for the SPA shell and wrong for everything the shell points at:
+// Static files start with `public, max-age=0, must-revalidate`
+// (server/middleware/spa.ts), which is right for the SPA shell and wrong for
+// everything the shell points at:
 // a content-hashed file CANNOT change without changing its name, yet the browser
 // was forced back to the network to revalidate it on every navigation and reload.
 // That throws away the entire point of the content hash. On a throttled mobile
@@ -27,11 +29,11 @@ const HASHED_ASSET = /^\/assets\/.+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/
 
 // Positive allowlist, not "anything that isn't HTML".
 //
-// This is the load-bearing guard, and the reason is not obvious: wrangler.jsonc
-// sets `not_found_handling: "single-page-application"`, so a request for an asset
-// that DOES NOT EXIST does not 404 - the binding serves index.html with status
-// 200. Match on the path alone and a typo'd or stale asset URL gets a year of
-// immutable caching on an HTML body, and any browser that stored it is wedged for
+// This is the load-bearing guard, and the reason is not obvious: the SPA
+// fallback answers unknown paths with index.html and status 200. spa.ts keeps
+// /assets/ misses as 404s today, but match on the path alone and one change to
+// that fallback would give a typo'd or stale asset URL a year of immutable
+// caching on an HTML body, and any browser that stored it would be wedged for
 // a year with no way to bust it. A self-inflicted outage, cached.
 //
 // "not text/html" would cover that one case. An allowlist also covers the ones we
@@ -60,40 +62,7 @@ function mediaType(contentType: string | null): string {
   return (contentType ?? '').split(';')[0]!.trim().toLowerCase()
 }
 
-// Drop `If-None-Match` / `If-Modified-Since` from requests for hashed assets, so
-// the assets binding answers 200 with a body instead of 304 Not Modified.
-//
-// Without this the whole optimization silently fails for the users who already
-// have the app - which is everyone, on the deploy that introduces it. A browser
-// holding a copy cached under the OLD `max-age=0, must-revalidate` policy
-// revalidates it, the binding answers 304, and a 304 never carries the new
-// Cache-Control - so the stored entry keeps its must-revalidate policy and keeps
-// revalidating, forever, until the file's hash happens to change. Only brand-new
-// visitors would ever see the benefit.
-//
-// The obvious alternative - stamp the header onto 304s as well, which RFC 9111
-// 4.3.4 says a cache must merge into the stored response - is NOT safe here: a
-// 304 has no Content-Type, so the allowlist that keeps an SPA-fallback HTML body
-// from being frozen (see IMMUTABLE_TYPES) cannot run, and a 304 validating a
-// previously-cached fallback at a bogus asset URL would be frozen for a year.
-//
-// So force the 200 instead. It costs one full re-download per asset per browser,
-// exactly once: the 200 carries `immutable`, and an immutable response is never
-// revalidated again. A one-off body in exchange for permanently removing the
-// round trip - and it keeps the Content-Type guard in play, which is what makes
-// the poisoning case unreachable.
-export function forceValidatedAssetResponse(req: Request): Request {
-  if (!HASHED_ASSET.test(new URL(req.url).pathname)) return req
-  if (!req.headers.has('if-none-match') && !req.headers.has('if-modified-since')) {
-    return req
-  }
-  const headers = new Headers(req.headers)
-  headers.delete('if-none-match')
-  headers.delete('if-modified-since')
-  return new Request(req, { headers })
-}
-
-export const assetCache = createMiddleware<{ Bindings: Env }>(async (c, next) => {
+export const assetCache = createMiddleware<{ Bindings: AppEnv }>(async (c, next) => {
   await next()
 
   if (!HASHED_ASSET.test(c.req.path)) return
@@ -101,7 +70,7 @@ export const assetCache = createMiddleware<{ Bindings: Env }>(async (c, next) =>
   if (c.res.status !== 200) return
   if (!IMMUTABLE_TYPES.has(mediaType(c.res.headers.get('content-type')))) return
 
-  // Responses proxied from ASSETS.fetch have immutable headers; rebuild to write.
+  // Rebuild rather than edit in place: some responses carry immutable headers.
   // Only reached for a real hashed asset, so the copy is not on the API path.
   const res = new Response(c.res.body, c.res)
   res.headers.set('Cache-Control', ONE_YEAR_IMMUTABLE)
@@ -113,7 +82,7 @@ export const assetCache = createMiddleware<{ Bindings: Env }>(async (c, next) =>
   // OLD response's headers onto the incoming one with `headers.set(k, v)`, so on
   // any name that exists in both, the OLD value wins. Cache-Control exists on
   // both - that is the entire point of this middleware - so a plain `c.res = res`
-  // restores the binding's `max-age=0, must-revalidate` and the header we just
+  // restores the shell's `max-age=0, must-revalidate` and the header we just
   // set is thrown away. (securityHeaders gets away with the same pattern only
   // because CSP, X-Frame-Options and friends are not present on the original
   // response, so nothing collides.)

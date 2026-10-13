@@ -2,7 +2,18 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['dist', '.wrangler', '.superpowers', 'worker-configuration.d.ts'] },
+  {
+    ignores: [
+      'dist',
+      '.wrangler',
+      '.superpowers',
+      'worker-configuration.d.ts',
+      // The workerd test tier's setup: outside every tsconfig now (see
+      // tsconfig.worker.json), so typed lint cannot parse it.
+      'server/test/apply-migrations.ts',
+      'server/test/env.d.ts',
+    ],
+  },
   ...tseslint.configs.recommended,
   {
     // A dropped promise in a Worker is a silently swallowed error (and
@@ -103,6 +114,9 @@ export default tseslint.config(
       'server/auth.ts', // better-auth wiring, consumed via middleware
       'server/auth-schema.config.ts', // CLI-only schema generator config
       'server/index.ts', // composition root: mounts auth, /health db ping
+      'server/env.ts', // the per-request config type names the connection type
+      'server/node.ts', // process entry: opens the one database connection
+      'server/dev.ts', // local dev entry: opens and migrates the dev database
       'server/test/**', // test helpers seed the DB directly
       'server/**/*.test.ts',
     ],

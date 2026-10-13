@@ -1,9 +1,10 @@
-import { env } from 'cloudflare:test'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { env, testDb } from './test/node-env'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
 import app from './index'
 import { lastEmailTo } from './email/console'
+import { resetLogBudget } from './middleware/error-handler'
 import { DELETE_ACCOUNT_USER_HEADER, MAGIC_LINK_PATH } from '../shared/auth'
 
 // Delete-account is destructive and total: better-auth's internalAdapter
@@ -44,7 +45,7 @@ const APP_TABLES = ['categories', 'gear_items', 'lists', 'list_items', 'passkey'
 const AUTH_CHILD_TABLES = ['session'] as const
 
 async function userIdOf(email: string): Promise<string> {
-  const row = await env.DB.prepare('select id from user where email = ?')
+  const row = await testDb.prepare('select id from user where email = ?')
     .bind(email)
     .first<{ id: string }>()
   if (!row) throw new Error(`no user row for ${email}`)
@@ -54,12 +55,12 @@ async function userIdOf(email: string): Promise<string> {
 async function rowCounts(userId: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   for (const table of [...APP_TABLES, ...AUTH_CHILD_TABLES]) {
-    const r = await env.DB.prepare(`select count(*) as n from ${table} where user_id = ?`)
+    const r = await testDb.prepare(`select count(*) as n from ${table} where user_id = ?`)
       .bind(userId)
       .first<{ n: number }>()
     out[table] = r?.n ?? -1
   }
-  const u = await env.DB.prepare('select count(*) as n from user where id = ?')
+  const u = await testDb.prepare('select count(*) as n from user where id = ?')
     .bind(userId)
     .first<{ n: number }>()
   out.user = u?.n ?? -1
@@ -72,29 +73,37 @@ async function rowCounts(userId: string): Promise<Record<string, number>> {
 // composite FKs). All ids derive from the unique userId, and the list slug
 // is a fresh random 6-char value, so two seeded users - and repeated test
 // runs against persisted storage - never collide (lists.slug is UNIQUE).
-async function seedUserData(userId: string): Promise<void> {
+function seedUserData(userId: string): void {
   const now = Date.now()
   const catId = `${userId}-cat`
   const gearId = `${userId}-gear`
   const listId = `${userId}-list`
   const slug = crypto.randomUUID().replace(/-/g, '').slice(0, 6)
-  await env.DB.batch([
-    env.DB.prepare(
+  // One transaction, so a seed that fails partway leaves nothing behind.
+  const run = (sql: string, ...params: (string | number)[]) =>
+    env.DB.prepare(sql).run(...params)
+  env.DB.transaction(() => {
+    run(
       'insert into categories (id, user_id, name, sort_order, created_at) values (?, ?, ?, 0, ?)',
-    ).bind(catId, userId, 'Shelter', now),
-    env.DB.prepare(
+      catId, userId, 'Shelter', now,
+    )
+    run(
       'insert into gear_items (id, user_id, category_id, name, weight_grams, status, sort_order, created_at, updated_at) values (?, ?, ?, ?, 100, ?, 0, ?, ?)',
-    ).bind(gearId, userId, catId, 'Tent', 'active', now, now),
-    env.DB.prepare(
+      gearId, userId, catId, 'Tent', 'active', now, now,
+    )
+    run(
       'insert into lists (id, user_id, name, slug, sort_order, created_at, updated_at) values (?, ?, ?, ?, 0, ?, ?)',
-    ).bind(listId, userId, 'Overnighter', slug, now, now),
-    env.DB.prepare(
+      listId, userId, 'Overnighter', slug, now, now,
+    )
+    run(
       'insert into list_items (id, user_id, list_id, gear_item_id, quantity, sort_order, created_at, updated_at) values (?, ?, ?, ?, 1, 0, ?, ?)',
-    ).bind(`${userId}-li`, userId, listId, gearId, now, now),
-    env.DB.prepare(
+      `${userId}-li`, userId, listId, gearId, now, now,
+    )
+    run(
       'insert into passkey (id, user_id, public_key, credential_id, counter, device_type, backed_up) values (?, ?, ?, ?, 0, ?, 0)',
-    ).bind(`${userId}-pk`, userId, 'pub-key', `${userId}-cred`, 'singleDevice'),
-  ])
+      `${userId}-pk`, userId, 'pub-key', `${userId}-cred`, 'singleDevice',
+    )
+  })()
 }
 
 // better-auth's `verification` table has no user_id column, so the FK cascade
@@ -112,7 +121,7 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
     userData: { id: userId, name: '', displayName: '' },
     context: null,
   })
-  await env.DB.prepare(
+  await testDb.prepare(
     'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
   )
     .bind(`${userId}-pkver`, token, value, Date.now() + 300_000)
@@ -128,7 +137,7 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
 // `value`, so the prefix does not affect what it finds.
 async function seedPendingMagicLink(email: string): Promise<void> {
   const token = crypto.randomUUID().replace(/-/g, '')
-  await env.DB.prepare(
+  await testDb.prepare(
     'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
   )
     .bind(
@@ -143,7 +152,7 @@ async function seedPendingMagicLink(email: string): Promise<void> {
 // Count every verification artifact attributable to a user, matching the purge's
 // own predicate (passkey ceremony by user id, pending magic link by email).
 async function verificationCount(userId: string, email: string): Promise<number> {
-  const r = await env.DB.prepare(
+  const r = await testDb.prepare(
     `select count(*) as n from verification
      where (json_valid(value) and json_extract(value, '$.userData.id') = ?)
         or (json_valid(value) and json_extract(value, '$.email') = ?)`,
@@ -186,13 +195,13 @@ describe('POST /api/auth/delete-user', () => {
 
   beforeEach(async () => {
     // /api/auth/delete-user now has its own tight 5/10min rate bucket
-    // (server/middleware/rate-limit.ts). apiRequest sends no cf-connecting-ip,
+    // (server/middleware/rate-limit.ts). apiRequest sends no x-forwarded-for,
     // so every delete-user call here shares the 'local' bucket; across this
     // file's tests that exceeds 5 and a later test would see 429 instead of the
     // status it asserts. These tests are about deletion semantics, not rate
     // limiting, so reset the limiter before each so each starts with a full
     // budget (every test makes at most two delete-user calls).
-    await env.DB.prepare('delete from rate_limits').run()
+    await testDb.prepare('delete from rate_limits').run()
 
     email = `del-${crypto.randomUUID()}@example.com`
     otherEmail = `keep-${crypto.randomUUID()}@example.com`
@@ -200,8 +209,8 @@ describe('POST /api/auth/delete-user', () => {
     await signUpVerifiedUser(otherEmail, 'Bystander')
     userId = await userIdOf(email)
     otherId = await userIdOf(otherEmail)
-    await seedUserData(userId)
-    await seedUserData(otherId)
+    seedUserData(userId)
+    seedUserData(otherId)
     // Both users have both verification artifact shapes outstanding: a passkey
     // challenge (found by user id) and a pending magic link (found by email).
     await seedPasskeyChallenge(userId)
@@ -287,7 +296,7 @@ describe('POST /api/auth/delete-user', () => {
     )
 
     expect((await deleteAccount(cookie, userId)).status).toBe(200)
-    const left = await env.DB.prepare(
+    const left = await testDb.prepare(
       'select count(*) as n from list_items where user_id = ?',
     )
       .bind(userId)
@@ -392,7 +401,7 @@ describe('POST /api/auth/delete-user', () => {
           headers: {
             'Content-Type': 'application/json',
             Origin: 'http://localhost:5173',
-            'cf-connecting-ip': '10.88.0.1',
+            'x-forwarded-for': '10.88.0.1',
           },
           body: JSON.stringify({ email: to }),
         },
@@ -408,7 +417,7 @@ describe('POST /api/auth/delete-user', () => {
     const redeem = (token: string) =>
       app.request(
         `/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`,
-        { headers: { Origin: 'http://localhost:5173', 'cf-connecting-ip': '10.88.0.2' } },
+        { headers: { Origin: 'http://localhost:5173', 'x-forwarded-for': '10.88.0.2' } },
         env,
       )
 
@@ -419,7 +428,7 @@ describe('POST /api/auth/delete-user', () => {
     expect(stale.status).toBe(302)
     expect(stale.headers.get('location')).toContain('error=INVALID_TOKEN')
     expect(stale.headers.get('set-cookie')).toBeNull()
-    const resurrected = await env.DB.prepare(
+    const resurrected = await testDb.prepare(
       'select count(*) as n from user where lower(email) = lower(?)',
     )
       .bind(email)
@@ -430,6 +439,71 @@ describe('POST /api/auth/delete-user', () => {
     const kept = await redeem(bystanderToken)
     expect(kept.status).toBe(200)
     expect(kept.headers.get('set-cookie')).toContain('session_token')
+  })
+
+  it('purges a link or challenge written WHILE the delete runs', async () => {
+    // better-auth awaits beforeDelete (the first purge) and then deletes the
+    // user in further awaited steps, so another request can write a
+    // verification row in between: a magic link someone requested for this
+    // address, or a passkey challenge. A test-only trigger writes both just
+    // before the user row goes, after the first purge. Left in place, the
+    // link would redeem afterwards and recreate the account. (A row stored
+    // after the SECOND purge is the known gap in SECURITY.md.)
+    env.DB.exec(`
+      CREATE TRIGGER test_write_during_delete BEFORE DELETE ON user
+      WHEN OLD.id = '${userId}'
+      BEGIN
+        INSERT INTO verification (id, identifier, value, expires_at) VALUES
+          ('race-ml', 'magic-link:race', json_object('type', 'magic-link', 'email', OLD.email, 'name', ''),
+           unixepoch() * 1000 + 300000),
+          ('race-pk', 'race-challenge', json_object('expectedChallenge', 'x', 'userData', json_object('id', OLD.id)),
+           unixepoch() * 1000 + 300000);
+      END
+    `)
+    try {
+      expect((await deleteAccount(cookie, userId)).status).toBe(200)
+    } finally {
+      env.DB.exec('DROP TRIGGER test_write_during_delete')
+    }
+    expect(await rowCounts(userId)).toMatchObject({ user: 0 })
+    expect(await verificationCount(userId, email)).toBe(0)
+    // The bystander's own artifacts are untouched.
+    expect(await verificationCount(otherId, otherEmail)).toBe(2)
+  })
+
+  it('reports the delete as done when only the second purge fails, and logs it', async () => {
+    // The account is gone by the time the second purge runs, so its failure
+    // must not turn a completed delete into an error response. A link written
+    // during the delete gives the second purge a row to delete, and the
+    // failure trigger refuses that delete once the user row is gone.
+    env.DB.exec(`
+      CREATE TRIGGER test_write_during_delete BEFORE DELETE ON user
+      WHEN OLD.id = '${userId}'
+      BEGIN
+        INSERT INTO verification (id, identifier, value, expires_at) VALUES
+          ('race-ml-2', 'magic-link:race-2', json_object('type', 'magic-link', 'email', OLD.email, 'name', ''),
+           unixepoch() * 1000 + 300000);
+      END
+    `)
+    env.DB.exec(`
+      CREATE TRIGGER test_fail_second_purge BEFORE DELETE ON verification
+      WHEN NOT EXISTS (SELECT 1 FROM user WHERE id = '${userId}')
+      BEGIN SELECT RAISE(ABORT, 'test: second purge down'); END
+    `)
+    resetLogBudget()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect((await deleteAccount(cookie, userId)).status).toBe(200)
+      expect(JSON.stringify(consoleError.mock.calls)).toContain('post-delete verification purge failed')
+    } finally {
+      consoleError.mockRestore()
+      env.DB.exec('DROP TRIGGER test_write_during_delete')
+      env.DB.exec('DROP TRIGGER test_fail_second_purge')
+    }
+    expect(await rowCounts(userId)).toMatchObject({ user: 0 })
+    // The first purge removed the seeded link and challenge; only the row
+    // written during the delete is left, for expiry to remove.
+    expect(await verificationCount(userId, email)).toBe(1)
   })
 
   it('refuses to resurrect a password: a supplied password is rejected, not honored', async () => {

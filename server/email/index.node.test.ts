@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConsoleEmailSender, outbox } from './console'
 import { createEmailSender } from './index'
 import { ResendEmailSender } from './resend'
+import type { AppEnv } from '../env'
 
 // Which sender a configuration selects. The rule under test: the console
 // sender - which prints a redeemable magic-link URL and reports success - is
@@ -10,14 +11,14 @@ import { ResendEmailSender } from './resend'
 // HTTP-level proof against the real magic-link endpoint is in
 // server/auth-error-logging.test.ts.
 
-// The generated Env types BETTER_AUTH_URL as the production literal; the
+// The generated AppEnv types BETTER_AUTH_URL as the production literal; the
 // selection rule is about its VALUE, so the fixtures are cast.
-function envWith(overrides: Record<string, string | undefined>): Env {
+function envWith(overrides: Record<string, string | undefined>): AppEnv {
   return {
     BETTER_AUTH_SECRET: 'x'.repeat(40),
     EMAIL_FROM: 'grampacker <no-reply@grampacker.app>',
     ...overrides,
-  } as unknown as Env
+  } as unknown as AppEnv
 }
 
 const local = 'http://localhost:5173'

@@ -26,6 +26,7 @@ import {
   FRESH_AGE_SECONDS,
   MAGIC_LINK_PATH,
 } from '../shared/auth'
+import type { AppEnv } from './env'
 
 // WebAuthn relying-party id. Must be the serving origin's registrable
 // domain (or a suffix of it): grampacker.app for the apex and any
@@ -71,7 +72,7 @@ const PASSKEY_UNGATED = new Set([
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
 // plugins) MUST live here so the generated tables cannot drift from runtime.
-export function authOptions(env: Env, incident?: AuthIncident) {
+export function authOptions(env: AppEnv, incident?: AuthIncident) {
   const db = createDb(env.DB)
   const email = createEmailSender(env)
 
@@ -192,6 +193,30 @@ export function authOptions(env: Env, incident?: AuthIncident) {
             deleted.email,
           )
         },
+        // The same purge again, once the user row is gone. better-auth awaits
+        // beforeDelete and then deletes the user in further awaited steps, so
+        // another request can write a verification row in between - a magic
+        // link requested for this address would then survive and recreate
+        // the account.
+        //
+        // Known gap: a magic-link request that is still in flight when this
+        // purge runs stores its row afterwards, and redeeming that link
+        // creates a new, empty account - exactly as a link requested just
+        // after the delete would. Closing it needs a record of deleted
+        // addresses; SECURITY.md has the details.
+        //
+        // FAILS OPEN, unlike the purge above. The account is already deleted,
+        // so throwing here would report a failed delete that succeeded. Rows
+        // it misses expire within minutes. The failure is logged.
+        afterDelete: async (deleted: { id: string; email: string }) => {
+          try {
+            await createUsersRepo(db, deleted.id).purgeVerificationArtifacts(
+              deleted.email,
+            )
+          } catch (err) {
+            authLogger.log('error', 'post-delete verification purge failed', err)
+          }
+        },
       },
     },
     session: {
@@ -228,6 +253,15 @@ export function authOptions(env: Env, incident?: AuthIncident) {
       defaultCookieAttributes: {
         sameSite: 'strict' as const,
       },
+      // Explicit, never left to the default. Unset, better-auth SKIPS its
+      // origin validation whenever NODE_ENV is 'test' or TEST is truthy
+      // (create-context's isTest()). On Node that means a stray TEST=1 in
+      // production would silently drop the forged-Origin 403 and the
+      // cookieless magic-link-send refusal, and under Vitest (which sets
+      // NODE_ENV=test) the check would not run at all. Workers never
+      // matched, because process.env was empty there.
+      // server/auth-origin-validation.test.ts pins the check.
+      disableOriginCheck: false,
     },
     rateLimit: {
       // Rate limiting is owned by our middleware
@@ -350,7 +384,7 @@ export function authOptions(env: Env, incident?: AuthIncident) {
           // a concurrent burst can have several requests pass the peek and then
           // lose the charge. Bounded by burst concurrency, not unbounded; the
           // per-IP and per-address buckets are what bound the burst.
-          const quota = await chargeMagicLinkGlobalQuota(db, Date.now())
+          const quota = chargeMagicLinkGlobalQuota(db, Date.now())
           if (!quota.ok) {
             // Must be an APIError, not a Response: we are inside better-auth's
             // handler, and better-call converts a thrown APIError into the HTTP
@@ -445,7 +479,7 @@ export function authOptions(env: Env, incident?: AuthIncident) {
 
 // Workers get fresh bindings per request, so the auth instance is built per
 // request. This is config wiring only - no I/O happens until a handler runs.
-export function createAuth(env: Env, incident?: AuthIncident) {
+export function createAuth(env: AppEnv, incident?: AuthIncident) {
   return betterAuth(authOptions(env, incident))
 }
 

@@ -282,18 +282,16 @@ export const listItems = sqliteTable(
     index('list_items_list_sort_idx').on(t.listId, t.sortOrder),
     index('list_items_gear_item_user_idx').on(t.gearItemId, t.userId),
     index('list_items_packing_location_idx').on(t.packingLocationId),
-    // UNIQUE, and that is load-bearing rather than tidiness. Validate-then-
-    // batch cannot hold the rank invariant: two concurrent reorders of one
-    // cohort planned from the same read (A=0,B=1,C=2; one plans A=1,B=0, the
-    // other B=2,C=1) both validate, and the second commit leaves A and C both
-    // at 1. Conditional updates do not save it either - the losing statement
-    // matches nothing while its sibling still applies. With a unique index the
-    // loser violates the constraint and D1 rolls the whole batch back, which
-    // the route turns into a 409 and the client refetches.
+    // UNIQUE, and that is load-bearing rather than tidiness: it is the rank
+    // invariant's last line of defense. Every writer reads, plans and writes
+    // inside one immediate transaction (server/repos/pack-reorder.ts), so a
+    // concurrent reorder cannot plan from a stale read; if a writer's plan is
+    // ever wrong, the index makes its transaction fail and roll back rather
+    // than leave two rows on one rank.
     //
     // Consequence: SQLite enforces uniqueness per STATEMENT, so a permutation
     // written as a sequence of updates transiently collides. Every writer that
-    // PERMUTES within a cohort is two-phase inside one batch - shift the
+    // PERMUTES within a cohort is two-phase inside one transaction - shift the
     // touched rows to `-1 - i`, then write finals. Appends skip phase 1.
     uniqueIndex('list_items_pack_cohort_uq').on(
       t.listId,
@@ -524,14 +522,11 @@ export const listFoodItemSlots = sqliteTable(
   ],
 )
 
-// TRANSIENT. Correct only when EMPTY. A row exists solely between the park and
-// settle statements of one `reorderPack` batch, and the same batch deletes it.
-//
-// It exists because a D1 batch cannot branch on an earlier statement's result,
-// and a conditional UPDATE matching zero rows is not an error in SQLite - so
-// "abort if the parks did not all land" has to be expressed as a statement that
-// FAILS. Feeding NULL into `ok` (NOT NULL) is that failure, and D1 rolls the
-// whole batch back with it.
+// UNUSED, and correct only when EMPTY. Pack reorders once wrote here between
+// their park and settle statements, to abort when a park did not land; they
+// now check that in code inside one transaction (server/repos/pack-reorder.ts),
+// and nothing writes the table. It stays declared so drizzle-kit's snapshot
+// matches the deployed schema, until a migration drops it.
 export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
   ok: integer('ok').notNull(),
@@ -561,11 +556,9 @@ export const packingLocationDeleteState = sqliteTable(
   },
 )
 
-// TRANSIENT, same contract as _pack_reorder_guard, for the food half of a
-// union pack reorder. A separate table because one reorder batch parks BOTH
-// list_items and list_food_items rows and each table's park count must be
-// checked independently - and the gear guard's PRIMARY KEY is already the
-// list id. Created by migration 0022.
+// UNUSED, like _pack_reorder_guard above: the food half of the same old
+// check. It stays declared until a migration drops it. Created by migration
+// 0022.
 export const foodPackReorderGuard = sqliteTable('_food_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
   ok: integer('ok').notNull(),

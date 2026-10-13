@@ -353,8 +353,8 @@ export default function GearLibraryPage() {
   const { bulkDelete, bulkMove } = useGearBulkActions()
 
   // Create a list from the current selection. The server assigns the new
-  // list's sort slot and inserts the membership rows atomically (one D1
-  // batch; any foreign gear id rejects the whole call), so the client just
+  // list's sort slot and inserts the membership rows atomically (one
+  // transaction; any foreign gear id rejects the whole call), so the client just
   // posts name + description + ids and navigates into the result.
   const navigate = useNavigate()
   // No meta.errorToast, deliberately, even though this is a NON-optimistic mutation

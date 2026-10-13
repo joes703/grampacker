@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from './node-env'
 import app from '../index'
 import { lastEmailTo } from '../email/console'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
@@ -45,7 +45,7 @@ function tokenFromEmail(email: string): string {
 //
 // The user is created by the redemption itself, with emailVerified: true - the
 // magic link IS the proof of the mailbox, so there is no separate verify step
-// to fake (the old helper had to UPDATE email_verified directly in D1).
+// to fake.
 //
 // `name` is POSTED, deliberately. grampacker collects no display name, but the
 // magic-link plugin's body schema still ACCEPTS one and writes it straight onto
@@ -67,7 +67,7 @@ export async function signUpVerifiedUser(
       headers: {
         'Content-Type': 'application/json',
         Origin: ORIGIN,
-        'cf-connecting-ip': clientIp,
+        'x-forwarded-for': clientIp,
       },
       body: JSON.stringify({ email, name }),
     },
@@ -82,7 +82,7 @@ export async function signUpVerifiedUser(
     `/api/auth/magic-link/verify?token=${encodeURIComponent(tokenFromEmail(email))}`,
     {
       method: 'GET',
-      headers: { Origin: ORIGIN, 'cf-connecting-ip': clientIp },
+      headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp },
     },
     env,
   )
@@ -101,7 +101,7 @@ export async function signUpVerifiedUser(
 // A SECOND session for a user who already exists, from a fresh ceremony.
 // Sessions are fresh only for a window after they are CREATED, so a test that
 // needs to act on a stale session cannot get one by waiting - it has to be
-// aged directly in D1 (see makeSessionStale below).
+// aged directly in SQLite (see makeSessionStale below).
 export async function signInAgain(email: string): Promise<{ cookie: string }> {
   return signUpVerifiedUser(email, '')
 }
@@ -118,7 +118,7 @@ export async function makeSessionStale(cookie: string): Promise<void> {
   if (!sessionToken) throw new Error('cannot age a cookie with no token')
 
   const staleMs = Date.now() - 1000 * 60 * 60 * 48 // 48h: twice freshAge
-  const { meta } = await env.DB.prepare(
+  const { meta } = await testDb.prepare(
     'update session set created_at = ? where token = ?',
   )
     .bind(staleMs, sessionToken)

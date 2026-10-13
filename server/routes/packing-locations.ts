@@ -7,9 +7,10 @@ import {
 } from '../../shared/lists'
 import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
+import type { AppEnv } from '../env'
 
 export const packingLocationRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: SessionVars
 }>()
 
@@ -114,8 +115,9 @@ packingLocationRoutes.delete(
         422,
       )
     }
-    // The dense fallback lost a race with a concurrent move or reorder; the
-    // whole batch rolled back. Retry after a refetch.
+    // The unique index refused the write. No longer reachable by a concurrent
+    // move or reorder (the repo works in one transaction); kept as the
+    // backstop. Everything rolled back; retry after a refetch.
     if (result === 'conflict') {
       return c.json({ error: 'This list changed while deleting. Try again.' }, 409)
     }

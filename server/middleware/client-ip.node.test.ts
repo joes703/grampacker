@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rateLimitIpKey } from './client-ip'
+import { clientIpFromForwardedFor, rateLimitIpKey } from './client-ip'
 
 describe('rateLimitIpKey', () => {
   it('keys IPv4 by the exact address', () => {
@@ -69,5 +69,19 @@ describe('rateLimitIpKey', () => {
   it('maps empty input to a single explicit bucket', () => {
     expect(rateLimitIpKey('')).toBe('unknown')
     expect(rateLimitIpKey('   ')).toBe('unknown')
+  })
+})
+
+describe('clientIpFromForwardedFor', () => {
+  it('takes the rightmost entry, the one Caddy writes', () => {
+    expect(clientIpFromForwardedFor('203.0.113.7')).toBe('203.0.113.7')
+    expect(clientIpFromForwardedFor('192.0.2.1, 198.51.100.2,203.0.113.7')).toBe('203.0.113.7')
+    expect(clientIpFromForwardedFor(' 2001:db8::1 ')).toBe('2001:db8::1')
+  })
+
+  it('is undefined when there is no usable entry', () => {
+    expect(clientIpFromForwardedFor(undefined)).toBeUndefined()
+    expect(clientIpFromForwardedFor('')).toBeUndefined()
+    expect(clientIpFromForwardedFor('192.0.2.1, ')).toBeUndefined()
   })
 })

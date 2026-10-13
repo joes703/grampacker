@@ -74,8 +74,8 @@ export const setFoodDaysRequestSchema = z
 export type SetFoodDaysRequest = z.infer<typeof setFoodDaysRequestSchema>
 
 // Bounded and de-duplicated at the boundary so a write can never name more
-// slots than a trip can hold, and so the D1 param chunking downstream has a
-// known ceiling to work against.
+// slots than a trip can hold, and so the statements downstream that bind
+// them have a known ceiling far below SQLite's parameter limit.
 const slotIdsSchema = z
   .array(idSchema)
   .max(FOOD_SLOT_CAP)

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env, testDb } from './test/node-env'
 import { describe, it, expect } from 'vitest'
 import app from './index'
 import { makeSessionStale, signInAgain, signUpVerifiedUser } from './test/auth-helpers'
@@ -8,11 +8,11 @@ import { CSRF_HEADER } from '../shared/api'
 // one: the WebAuthn ceremony cannot run in a test, and the ownership rule on
 // rename/delete/list is what is under test, not registration.
 async function seedPasskey(email: string, id: string, name: string): Promise<void> {
-  const user = await env.DB.prepare('select id from user where email = ?')
+  const user = await testDb.prepare('select id from user where email = ?')
     .bind(email)
     .first<{ id: string }>()
   if (!user) throw new Error(`no user row for ${email}`)
-  await env.DB.prepare(
+  await testDb.prepare(
     'insert into passkey (id, name, user_id, public_key, credential_id, counter, device_type, backed_up) values (?, ?, ?, ?, ?, 0, ?, 0)',
   )
     .bind(id, name, user.id, 'pub-key', `cred-${id}`, 'singleDevice')
@@ -20,7 +20,7 @@ async function seedPasskey(email: string, id: string, name: string): Promise<voi
 }
 
 async function passkeyRow(id: string): Promise<{ name: string } | null> {
-  return env.DB.prepare('select name from passkey where id = ?').bind(id).first<{ name: string }>()
+  return testDb.prepare('select name from passkey where id = ?').bind(id).first<{ name: string }>()
 }
 
 const ORIGIN = 'http://localhost:5173'
@@ -47,7 +47,7 @@ async function request(
   const headers: Record<string, string> = {
     Origin: ORIGIN,
     [CSRF_HEADER]: '1',
-    'cf-connecting-ip': ip,
+    'x-forwarded-for': ip,
   }
   if (cookie) headers.Cookie = cookie
   if (method !== 'GET') headers['Content-Type'] = 'application/json'
@@ -167,7 +167,7 @@ describe('passkey fresh-auth gate', () => {
       '/api/auth/passkey/list-user-passkeys',
       {
         method: 'GET',
-        headers: { Origin: ORIGIN, Cookie: cookie, 'cf-connecting-ip': '10.60.0.5' },
+        headers: { Origin: ORIGIN, Cookie: cookie, 'x-forwarded-for': '10.60.0.5' },
       },
       env,
     )
@@ -189,7 +189,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         headers: {
           Origin: ORIGIN,
           [CSRF_HEADER]: '1',
-          'cf-connecting-ip': ip,
+          'x-forwarded-for': ip,
           'Content-Type': 'application/json',
           Cookie: cookie,
         },
@@ -242,7 +242,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         headers: {
           Origin: ORIGIN,
           [CSRF_HEADER]: '1',
-          'cf-connecting-ip': '10.61.0.6',
+          'x-forwarded-for': '10.61.0.6',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ id: 'pk-owner-1', name: 'Anonymous' }),
@@ -253,7 +253,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
     const anonList = await app.request(
       '/api/auth/passkey/list-user-passkeys',
-      { headers: { Origin: ORIGIN, 'cf-connecting-ip': '10.61.0.7' } },
+      { headers: { Origin: ORIGIN, 'x-forwarded-for': '10.61.0.7' } },
       env,
     )
     expect(anonList.status).toBe(401)
@@ -261,7 +261,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     // List: only the caller's credential ids.
     const listed = await app.request(
       '/api/auth/passkey/list-user-passkeys',
-      { headers: { Origin: ORIGIN, Cookie: other.cookie, 'cf-connecting-ip': '10.61.0.3' } },
+      { headers: { Origin: ORIGIN, Cookie: other.cookie, 'x-forwarded-for': '10.61.0.3' } },
       env,
     )
     expect(listed.status).toBe(200)

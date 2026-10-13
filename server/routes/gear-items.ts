@@ -21,6 +21,7 @@ import type {
   GearItemRow,
   UpdateGearItemPatch,
 } from '../repos/gear-items'
+import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/gear-items             - session - own rows only
@@ -36,7 +37,7 @@ import type {
 //   PATCH  /api/gear-items/:id         - session - own row or 404
 //   DELETE /api/gear-items/:id         - session - own row or 404
 export const gearItemRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: SessionVars
 }>()
 

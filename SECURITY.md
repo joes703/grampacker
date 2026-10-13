@@ -120,8 +120,11 @@ coverage in `server/routes/me.test.ts`):
   unauthenticated GET that writes a row, and `magic-link/verify` is a GET
   that creates a user and mints a session). Budgets: passkey sign-in
   30/5min, sign-in 10/10min, magic-link verify 10/10min, delete-user
-  5/10min, default 30/10min. Single atomic upsert (no lost updates under
-  concurrency - proven by a 60-way burst test), 429 + Retry-After. The same
+  5/10min, default 30/10min. Each charge is one atomic upsert that decides
+  the count and the window together, so overlapping requests cannot lose an
+  increment, reset one expired window twice, or move a newer window back
+  (burst tests, including one across a window roll; the exact boundary and
+  Retry-After rounding are pinned to the millisecond). 429 + Retry-After. The same
   new-window trigger that sweeps `rate_limits` also sweeps EXPIRED
   `verification` rows. better-auth sweeps them only as a side effect of
   `findVerificationValue`, which several unrelated routes call (for example
@@ -394,7 +397,22 @@ tidier sentence, but tidiness is not a threat model.)
   empty user. The plugin stores the submitted casing and the user row is
   lowercase, so the purge folds case on both sides
   (`server/repos/users.ts`, proven over HTTP in
-  `server/auth-delete-user.test.ts`).
+  `server/auth-delete-user.test.ts`). It runs twice: before the delete
+  (failing that aborts the delete) and again once the user row is gone,
+  because better-auth deletes the user in several awaited steps and
+  another request can write a link or passkey challenge in between. The
+  second purge fails open and logs: by then the account is deleted, and
+  what it could miss expires within minutes.
+
+  Known gap, accepted: a magic-link request still in flight when the
+  second purge runs (better-auth awaits token hashing before it stores the
+  row) stores its link afterwards, and redeeming it creates a new, empty
+  account. That is the same outcome as a link requested a moment after
+  the delete, which is an ordinary sign-up, and it needs the emailed
+  token. No data comes back. Closing it would need a record of deleted
+  addresses checked at redemption: a separate behavior change, and a
+  migration if it gets its own table. Trigger to revisit: a report of an
+  account reappearing after deletion.
 - Deleting the account needs the request to name the account
   (`x-grampacker-delete-user-id`, `shared/auth.ts`). The `beforeDelete`
   hook refuses with 400 `DELETE_ACCOUNT_MISMATCH` when the header is
@@ -447,7 +465,8 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     pin require these prereleases at exact versions, so no stable
     alternative can be installed with them:
     - `miniflare` `5.20261006.1-alpha` (pinned by all three): the local
-      Workers simulator behind `npm run dev` and `npm run test:api`.
+      Workers simulator behind `npm run dev` (the Worker dev server; the API
+      tests no longer use it).
     - `youch` `4.1.0-beta.10` (pinned by miniflare): formats error pages
       in local development.
     - `unenv` `2.0.0-rc.24` (pinned by wrangler and the Vite plugin, and an
@@ -503,9 +522,20 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     drizzle-orm's `SECURITY.md` names a separate announcement channel, and
     hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
     named their advisories.
-- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
-  and `push` to main - never `pull_request_target` (which would run
-  workflows with secrets against fork code); private repo.
+- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`,
+  `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
+  workflows that name no secret - never `pull_request_target` (which would
+  run workflows with secrets against fork code); private repo.
+- `image.yml` publishes the production image to GHCR on a manual dispatch
+  from main, with `packages: write` on its publish job only. Accepted risk:
+  a workflow runs the triggering branch's copy of its file, so a branch that
+  edited a workflow to ask for `packages: write` (on a dispatch or on its own
+  pull request) could push any image to `ghcr.io/joes703/grampacker`, under
+  any tag. Nothing on GitHub stops that on this plan; what does is that only
+  the owner can push workflow-file changes or dispatch (agent tokens: no
+  Workflows permission, Actions read only; `docs/testing-and-ci.md` section
+  12). So a tag proves nothing: deploy only a digest that a successful run
+  on main printed. Fork pull requests get a read-only token.
 - No workflow that names a secret carries `workflow_dispatch`. A manual
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch
@@ -596,9 +626,9 @@ restatement of the general posture.
 - **The gear/food pack union** lets one bag hold rows from two tables under a
   shared ordering. Its risk is not disclosure but integrity: a client-supplied
   id in a reorder payload must be proven to belong to this list before it can
-  move, and a lost race answers 409 with the whole batch rolled back rather
-  than a partial write. Ownership prechecks are owned-set membership in JS,
-  never an unbounded `inArray`, because D1 caps bound parameters at 100.
+  move, and the reorder is one SQLite transaction, so a failure rolls the
+  whole reorder back rather than leaving a partial write. Ownership checks
+  are owned-set membership in JS: one query whatever the payload size.
 
   Two details worth being exact about, because a looser summary invites the
   wrong assumption. Migration **0022** added the union with NO rank
@@ -609,15 +639,14 @@ restatement of the general posture.
   same bag, which the reorder planner accounts for
   (`server/repos/pack-reorder.ts`).
 
-- **Deleting a packing location appends its contents after a rank read
-  taken before the write batch** (`server/repos/packing-locations.ts`,
-  `base`). The census that aborts the batch guards the SOURCE bag only, and
-  the cohort's unique index is per table, so a food row arriving in
-  Unassigned at that rank while gear is being appended there (or the
-  reverse) produces a legal cross-table tie. Nothing is lost or half-written:
-  the order of the appended block degrades to the deterministic tiebreak
-  until the next reorder renumbers the cohort. Accepted; it is the same
-  cross-table-tie class migration 0022 tolerates by design.
+- **Deleting a packing location appended its contents after a rank read
+  taken before the write**: CLOSED. A food row arriving in Unassigned at
+  that rank while gear was being appended there (or the reverse) could
+  produce a legal cross-table tie. The delete now reads `base` and writes
+  inside one immediate SQLite transaction (`server/repos/packing-locations.ts`,
+  `removeInTransaction`), so no arrival can land in between. A cross-table
+  tie remains legal by design (migration 0022) and renders by the
+  deterministic tiebreak.
 
 ## The app has TWO public origins
 
@@ -689,7 +718,7 @@ of it:
   DIRECTLY; the other two delete a parent row and let the placements
   cascade. Two leave the food items themselves alone; one removes an item
   outright. A fourth, server-side path (the day-count race, last in the
-  list) is different in kind and is described on its own terms.
+  list) was different in kind and is now closed.
 
   There were FOUR paths until the Skip feature was removed. Marking a meal
   not needed cleared that slot's placements, and its confirm was skipped
@@ -729,15 +758,15 @@ of it:
     can remove something another client had just rescheduled - and the guard
     in Release B has to cover this delete, not only the trim.
 
-  - **Changing the day count** plans the missing slots from a read taken
-    OUTSIDE the write batch (`setDayCount` in `server/repos/food.ts`). Two
-    day-count writes racing - one trimming, one expanding - can leave the
-    grid with a hole, and two expansions can collide on the slot unique
-    index and surface as a 500. Different from the three paths above in one
-    way worth keeping straight: a missing grid slot self-heals on the next
-    day-count write (the contract repairs holes), whereas placements erased
-    by the paths above do not come back. The revision guard covers this
-    write too.
+  - **Changing the day count** used to plan the missing slots from a read
+    taken outside the write, so two day-count writes racing could leave the
+    grid with a hole or collide on the slot unique index as a 500. CLOSED
+    2026-10-12: `setDayCount` in `server/repos/food.ts` now reads, plans and
+    writes in one immediate SQLite transaction, so two day-count writes run
+    one after the other (`server/repos/food-transactions.test.ts`). Grids
+    written before then may still hold a hole; the next day-count write
+    repairs it. A day-count write from a STALE client is the first bullet
+    above and stays open.
 
   A fifth path exists and is deliberately out of scope: **deleting the list**
   cascades its food entirely (`server/repos/lists.ts`), reachable from three
@@ -749,21 +778,21 @@ of it:
   location only unassigns and re-ranks food; it destroys nothing.
 
   In each of the three client-side cases a second client's work is deleted
-  by a write that never saw it. A conditional UPDATE matching zero rows does
-  not abort the rest of a D1 batch, so nothing stops it today. The day-count
-  race can happen with perfectly fresh clients and may simply abort on the
-  slot unique index rather than delete anything.
+  by a write that never saw it. Nothing stops it today: the server cannot
+  tell a write made from a stale snapshot from a fresh one.
 
   The fix is designed and prototyped but unbuilt, and needs two releases
   separated by a deploy. Release A adds `lists.food_revision` and makes
   **every** food mutation bump it - that part is load-bearing, because a
   revision only some writes touch cannot detect the concurrent create or
-  reschedule this is meant to catch. Release B adds a guard table whose NOT
-  NULL column takes a NULL on mismatch, which forces D1 to roll the whole
-  batch back, mapped to a 409 the client consumes as control flow, the same
-  NOT NULL trick `_pack_reorder_guard` uses. The full design (section N1) is
-  in git history: `git show 89e4f1c:docs/review-remediation-plan.md`. Verify
-  it against the code before trusting any of it.
+  reschedule this is meant to catch. Release B checks the client's revision
+  and answers a 409 the client consumes as control flow. The original design
+  forced the rollback with a NOT NULL guard table, because a D1 batch could
+  not branch; food writes are now SQLite transactions, so Release B can
+  compare the revision inside the write's transaction and return before
+  writing. The full design (section N1) is in git history:
+  `git show 89e4f1c:docs/review-remediation-plan.md`. Verify it against the
+  code before trusting any of it.
 
   Trigger: a second person using the app, or any report of a meal plan losing
   entries. Until then the blast radius is one list, within one account, with
@@ -780,25 +809,24 @@ of it:
   with the same name rather than refusing; promoting gear to a container is
   the one path that does refuse, with "Item is already a container".
 
-  Each now issues its write and its read-back as the two statements of ONE
-  `db.batch`, which is a real transaction on D1: a SQL statement that fails
-  rolls the sequence back, so a failing read-back takes the write with it. The
-  read also runs after the write inside that transaction, so it sees the row.
+  Each now runs its checks, its write and its read-back inside ONE SQLite
+  transaction: a statement that fails rolls the whole sequence back, so a
+  failing read-back takes the write with it. The read runs after the write
+  inside that transaction, so it sees the row.
 
   Scoped claim, deliberately: this closes the read-back-failed case and the
   window between the two round trips. It does not make the write atomic with
   its RESPONSE - a transport failure after the batch commits, or a failure
   mapping the batch's results, still leaves the caller unsure. Nothing at this
   layer can fix that; only an idempotency key would.
-  `rename`'s "the UPDATE matched nothing" branch still answers not_found and
-  is still reachable (a concurrent delete between the pre-read and the
-  write); its read-back-found-nothing branch is now unreachable and throws
-  rather than returning a not_found that would deny a committed rename.
+  `rename`'s pre-read, write and read-back share the transaction, so a
+  concurrent delete can no longer land between them; both "matched nothing"
+  branches are unreachable and throw rather than answer not_found over a
+  committed rename.
 
-  Two repo tests pin the batching itself rather than the rollback, which is
-  D1's to guarantee - split either write back into write-then-read and they
-  fail. Verified by running that mutation, not by inspection. They are
-  structural only; the real-workerd route tests cover the semantics.
+  server/repos/pack-transactions.test.ts proves the packing-location and
+  pack-order transactions are all-or-nothing by injecting a failure partway
+  through; those tests fail when the transaction is removed.
 
 - **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
   mutations and account deletion both require a fresh session. Email
@@ -923,17 +951,16 @@ of it:
   Analytics off at the zone remains the strictly safer option if the RUM data
   ever stops earning its keep.
 
-- **A parent deleted mid-write answers 500, not 4xx.** Gear create, update,
-  import and bulk move, list Quick Add and create-from-selection check
-  ownership of the category or gear first, then write. If another client
-  deletes that parent in between, the foreign key rejects the write and the
-  route answers 500 (`server/repos/gear-items.ts` `create`). Nothing is half
-  written: each write is one statement or one batch. Food, packing
-  locations, add-existing and list import already map this to a 4xx.
-  Separately, list-item `update` re-reads its gear row after committing, so a
-  gear delete landing between the two answers 500 for an update that saved
-  (`server/repos/list-items.ts`, "list item lost its gear row").
-  Trigger: a second concurrent client, or any such 500 in the logs.
+- **A parent deleted mid-write answered 500, not 4xx**: CLOSED 2026-10-12.
+  Repositories used to check ownership of a category, gear row or list,
+  then write in a later call; another client deleting that parent in
+  between made the foreign key reject the write (a 500, or a re-probe that
+  answered 4xx). Every repository now runs its checks, writes and
+  read-back in one immediate SQLite transaction, so a concurrent delete
+  lands before or after the whole operation
+  (`server/repos/gear-transactions.test.ts`,
+  `server/repos/list-transactions.test.ts`). A foreign-key failure inside
+  a transaction can only be a defect, and stays a 500.
 
 - **A list cache can show a deleted gear row.** The gear delete fan-out
   (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches

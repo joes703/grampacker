@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import { createDb } from '../db'
 import { createPublicSharesRepo, type PublicSharesRepo } from '../repos/public-shares'
+import type { AppEnv } from '../env'
 
 export type PublicShareVars = {
   publicShares: PublicSharesRepo
@@ -12,7 +13,7 @@ export type PublicShareVars = {
 // c.get(...), never from the DB factory directly, so the import boundary
 // in eslint.config.js holds for the public surface too.
 export const attachPublicShares = createMiddleware<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: PublicShareVars
 }>(async (c, next) => {
   c.set('publicShares', createPublicSharesRepo(createDb(c.env.DB)))

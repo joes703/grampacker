@@ -17,46 +17,45 @@ document itself was never committed, so nothing in the tree cites it.
 | --- | --- | --- | --- |
 | Node unit | `npm run test:unit` (Vitest, `environment: node`) | `scripts/**`, `shared/**`, `src/**` tests without a jsdom pragma, `server/**/*.node.test.ts` | Pure functions, DTO schemas, repo plumbing, server code with a mocked `Db` |
 | jsdom component | same command; file opens with `// @vitest-environment jsdom` | `src/**` tests that render or need a DOM API | Rendering, DOM APIs, `localStorage` |
-| workerd / D1 API | `npm run test:api` (`@cloudflare/vitest-plugin`) | every other `server/**/*.test.ts` | What the real Hono app, better-auth and D1 do on workerd: routes, middleware, authorization boundaries, constraints, triggers |
+| Node / SQLite API | `npm run test:api` (`vitest.api.config.ts`) | every other `server/**/*.test.ts` | What the real Hono app, better-auth and SQLite do on Node: routes, middleware, authorization boundaries, constraints, triggers, transactions |
 | Migration check | `npm run test:migrations` (static, no database) | `migrations/**` | Drizzle bookkeeping, snapshot matches `schema.ts`, no destructive statement in a new migration. Not that a migration preserves existing rows: nothing proves that before merge (section 7) |
 | Browser / end-to-end | none | none | Not needed today: the API tier drives the real app below the DOM and the jsdom tier covers rendering. Add one only for a cross-layer bug neither can express, in its own config |
 
-`vitest.config.ts` and `vitest.workers.config.ts` are the source of truth
-for membership.
+`vitest.config.ts` and `vitest.api.config.ts` are the source of truth for
+membership. The API tier moved from workerd/D1 to Node/SQLite with the VPS
+migration (`docs/vps-migration-plan.md`); `vitest.workers.config.ts` and its
+setup files are still in the tree but no longer run, and go when the
+Cloudflare tooling is removed.
 
 ## 2. Choosing a tier
 
 Pick the cheapest runner that can prove what the test asserts:
 
-1. Depends on what workerd, Hono-on-workerd, better-auth or D1 actually
-   does (a status code, a constraint or trigger, an authorization boundary,
-   a cookie)? **workerd / D1.** `server/**/*.test.ts`.
+1. Depends on what the real app, better-auth or SQLite actually does (a
+   status code, a constraint or trigger, a transaction, an authorization
+   boundary, a cookie)? **Node / SQLite API.** `server/**/*.test.ts`.
 2. A pure function, or a repository driven through a hand-built fake `Db`,
    with no binding and no app? **Node.** Under `server/`, name it
    `*.node.test.ts`.
 3. Renders React or needs a DOM API? **jsdom** pragma on line 1.
 4. Adds or changes a trigger or other database rule? An API test that
-   exercises it on D1 (`server/**/*.test.ts`). A new constant copied into
+   exercises it on SQLite (`server/**/*.test.ts`). A new constant copied into
    trigger SQL gets a row in `scripts/pack-rank-constants.test.ts`.
 
-A test that would pass on both Node and workerd but was meant to prove
-workerd belongs on workerd. The suffix is a claim the author makes and the
-reviewer checks.
+Both tiers run on Node now, so the difference is what a test may touch, not
+the runtime. The suffix is a claim the author makes and the reviewer checks.
 
-## 3. The Node/workerd boundary and what enforces it
+## 3. The unit/API boundary and what enforces it
 
-`server/**/*.node.test.ts` runs on Node; every other `server/**/*.test.ts`
-runs on workerd with its own D1. The name is the boundary so the runtime is
+`server/**/*.node.test.ts` is a unit test: no app, no database. Every other
+`server/**/*.test.ts` is an API test with its own SQLite database
+(`server/test/node-env.ts`). The name is the boundary so the claim is
 visible without opening a config.
 
-- `vitest.config.ts` includes the glob; `vitest.workers.config.ts` excludes
-  it. A file cannot run in both tiers.
-- Node itself refuses `cloudflare:test` and `cloudflare:workers`, directly
-  or through `server/test/*`, with a module-resolution error, so a test that
-  secretly needs the Worker runtime fails the first time it runs.
-- The one thing Node does not refuse is the app entry: `server/index.ts`
-  loads on Node, so a misnamed API test could pass against Hono-on-Node
-  while meaning to prove workerd. A `no-restricted-imports` rule in
+- `vitest.config.ts` includes the glob; `vitest.api.config.ts` excludes it.
+  A file cannot run in both tiers.
+- A misnamed unit test could import the app entry and quietly become an API
+  test without a database of its own. A `no-restricted-imports` rule in
   `eslint.config.js` refuses, per directory depth, the direct spellings that
   reach `server/index.ts` from a `.node.test.ts` (`..`, `../`, `../index`,
   `../index.ts`, `../index.js`), and leaves a sibling module's own
@@ -66,22 +65,24 @@ visible without opening a config.
 This guards against the accidental misfile, not deliberate evasion. The
 residual is judgment, per section 2.
 
-## 4. Real workerd and D1 where they are used, and not elsewhere
+## 4. A real database where it is used, and not elsewhere
 
 The bugs this app has shipped lived at the seams between Drizzle, Hono,
-better-auth and D1, and none was visible on a fake (`docs/incidents.md`).
-The API tier exists to see them. The same fact runs the other way: a
-workerd test file pays a worker boot and a full migration replay before its
+better-auth and the database, and none was visible on a fake
+(`docs/incidents.md`). The API tier exists to see them. The same fact runs
+the other way: an API test file pays a full migration replay before its
 first assertion, which a pure function or a mocked repository gains nothing
 from. Put each test where its claim needs to be, and nowhere more
 expensive.
 
-## 5. D1 isolation stays per file
+## 5. Database isolation stays per file
 
-Each workerd test file gets its own storage and replays the migrations into
-it. Sharing storage across files (`--no-isolate`, `--max-workers=1`) was
-tried and leaked rows between files; do not repeat it. The answer to the
-per-file cost is fewer workerd files, never shared state.
+Each API test file gets its own in-memory SQLite database with the
+migrations applied (`server/test/node-env.ts`; Vitest gives every file its
+own module graph). Sharing a database across files (`--no-isolate`,
+`--max-workers=1`) was tried on D1 and leaked rows between files; do not
+repeat it. The answer to the per-file cost is fewer API files, never shared
+state.
 
 ## 6. jsdom
 
@@ -198,6 +199,14 @@ workflow that names a secret; main protected by the ruleset (PR required,
 secrets are visible to same-repository `pull_request` runs of any
 workflow; only a `production` environment restricted to `main` would close
 that, and it needs a plan that offers environments on private repositories.
+
+`image.yml` builds the production image and runs `scripts/check-image.sh` on
+every pull request, with a read-only token. It is not a required check. A
+manual dispatch on main also reruns the build, unit, API and migration
+checks, then publishes the image to GHCR. It names no secret; its publish job
+alone has `packages: write`. It never deploys. Procedure: runbook
+(`docs/vps-bootstrap-and-migration-runbook.md`) step 6.1; accepted risk:
+`SECURITY.md`.
 
 ## 11. Deployment
 

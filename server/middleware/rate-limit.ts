@@ -1,12 +1,11 @@
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
-import { createDb } from '../db'
+import { createDb, type Db } from '../db'
 import { rateLimits, verification } from '../db/schema'
-import { rateLimitIpKey } from './client-ip'
+import { clientIpFromForwardedFor, rateLimitIpKey } from './client-ip'
+import type { AppEnv } from '../env'
 
 type Rule = { scope: string; limit: number; windowMs: number }
-
-type Db = ReturnType<typeof createDb>
 
 // The result of charging (or peeking at) a bucket. `retryAfterSeconds` is only
 // meaningful when the bucket is spent, so it lives on that branch of the union
@@ -282,20 +281,25 @@ function retryAfterSeconds(windowStart: number, rule: Rule, now: number): number
 // core: the middleware wraps it into a 429 Response, while server/auth.ts needs
 // the verdict itself (it is inside better-auth, where the answer has to be an
 // APIError, not a Response).
-async function charge(
-  db: Db,
-  rule: Rule,
-  keySuffix: string,
-  now: number,
-): Promise<RateVerdict> {
+//
+// Synchronous on purpose: no other request can run between the statements
+// below. The charge itself does not depend on that, though.
+function charge(db: Db, rule: Rule, keySuffix: string, now: number): RateVerdict {
   const key = `${rule.scope}:${keySuffix}`
   const cutoff = now - rule.windowMs
 
-  // One atomic upsert: no read-modify-write race between concurrent
-  // requests. Rejected attempts count too, so a flood keeps itself
-  // locked out - but the fixed window still expires at
-  // windowStart + windowMs regardless of attempts.
-  const [row] = await db
+  // ONE statement decides the count and the window together, so overlapping
+  // requests cannot lose an increment, both reset the same expired window, or
+  // reset a window another request just started. A read, then a write, could
+  // do all three. Rejected attempts count too, so a flood keeps itself locked
+  // out - but the fixed window still expires at windowStart + windowMs
+  // regardless of attempts.
+  //
+  // Callers read `now` just before charging, but two requests' readings can
+  // still arrive out of order. A charge carrying an older `now` than the one
+  // that started the current window counts in that window: the
+  // `windowStart <= cutoff` test never moves a window backwards.
+  const row = db
     .insert(rateLimits)
     .values({ key, count: 1, windowStart: now })
     .onConflictDoUpdate({
@@ -306,6 +310,7 @@ async function charge(
       },
     })
     .returning()
+    .get()
   if (!row) {
     throw new Error('rate limit upsert returned no row')
   }
@@ -318,7 +323,7 @@ async function charge(
   // day. Deliberately no window_start index: the sweep is rare and
   // the table small, while an index would tax every upsert.
   if (row.count === 1) {
-    await db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS))
+    db.delete(rateLimits).where(lt(rateLimits.windowStart, now - MAX_WINDOW_MS)).run()
     // ...and expired `verification` rows, on the same trigger. better-auth
     // sweeps them only as a side effect of findVerificationValue, which
     // several unrelated routes call (magic-link verify, the reset-password
@@ -346,17 +351,18 @@ async function charge(
     // passing unmetered, because a swallowed charge is a limiter bypass. This
     // is opportunistic garbage collection: the rows it misses are already
     // expired and therefore already inert, and the next bucket to roll a window
-    // sweeps them instead. Letting a D1 hiccup here turn into a failed SIGN-IN
-    // would be trading the thing users need for the thing the table needs.
+    // sweeps them instead. Letting a database error here turn into a failed
+    // SIGN-IN would be trading the thing users need for the thing the table
+    // needs.
     // (Caught by the sabotage suite: auth-error-logging.test.ts dooms every
     // non-limiter statement, and an unguarded sweep took the whole request down
     // with it.)
     try {
-      await db.delete(verification).where(lt(verification.expiresAt, new Date(now)))
+      db.delete(verification).where(lt(verification.expiresAt, new Date(now))).run()
     } catch {
       // Deliberately swallowed - see above. Not logged: this runs on the auth
-      // hot path, and a D1 outage would otherwise write one entry per new
-      // window through the incident budget, crowding out the failure that
+      // hot path, and a failing database would otherwise write one entry per
+      // new window through the incident budget, crowding out the failure that
       // actually matters.
     }
   }
@@ -375,12 +381,12 @@ async function charge(
 // Two callers can both peek "not spent" and both proceed; the atomic charge in
 // the callback is what actually enforces the limit, so no extra mail escapes.
 // A peek must never be the only thing standing between a request and a send.
-async function peek(db: Db, rule: Rule, keySuffix: string, now: number): Promise<RateVerdict> {
-  const [row] = await db
+function peek(db: Db, rule: Rule, keySuffix: string, now: number): RateVerdict {
+  const row = db
     .select()
     .from(rateLimits)
     .where(eq(rateLimits.key, `${rule.scope}:${keySuffix}`))
-    .limit(1)
+    .get()
 
   // No row, or a window that has already rolled: the bucket is not spent.
   if (!row || row.windowStart <= now - rule.windowMs) return { ok: true }
@@ -396,12 +402,12 @@ async function peek(db: Db, rule: Rule, keySuffix: string, now: number): Promise
 // from better-auth's sendMagicLink callback (server/auth.ts) - the first point
 // in the request where the address is known to be real. See the block comment on
 // MAGIC_LINK_SEND_GLOBAL for why it is not charged in the middleware.
-export function chargeMagicLinkGlobalQuota(db: Db, now: number): Promise<RateVerdict> {
+export function chargeMagicLinkGlobalQuota(db: Db, now: number): RateVerdict {
   return charge(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
 }
 
 // Non-charging read of the same bucket, for the middleware's early refusal.
-export function peekMagicLinkGlobalQuota(db: Db, now: number): Promise<RateVerdict> {
+export function peekMagicLinkGlobalQuota(db: Db, now: number): RateVerdict {
   return peek(db, MAGIC_LINK_SEND_GLOBAL, 'all', now)
 }
 
@@ -415,21 +421,17 @@ function tooManyRequests(verdict: { retryAfterSeconds: number }): Response {
 // Charge one request to one bucket. Returns the 429 response if the bucket is
 // spent, or null to continue. Split out because a magic-link send charges TWO
 // buckets (the caller's IP and the target address) and either can reject.
-async function consume(
-  db: Db,
-  rule: Rule,
-  keySuffix: string,
-  now: number,
-): Promise<Response | null> {
-  const verdict = await charge(db, rule, keySuffix, now)
+function consume(db: Db, rule: Rule, keySuffix: string, now: number): Response | null {
+  const verdict = charge(db, rule, keySuffix, now)
   return verdict.ok ? null : tooManyRequests(verdict)
 }
 
 // Limits auth requests per client IP, every method except allowlisted
-// read-only GETs. CF-Connecting-IP is set by Cloudflare's edge and
-// cannot be spoofed through it; it is absent in local dev and tests
-// unless injected, where everything shares one bucket ('local').
-export const authRateLimit = createMiddleware<{ Bindings: Env }>(
+// read-only GETs. The client IP is the rightmost X-Forwarded-For entry, the
+// address Caddy saw (client-ip.ts says why only that entry is trusted). It
+// is absent in local dev and tests unless injected, where everything shares
+// one bucket ('local').
+export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
   async (c, next) => {
     if (
       (c.req.method === 'GET' || c.req.method === 'HEAD') &&
@@ -439,7 +441,7 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     }
 
     const rule = ruleFor(c.req.path)
-    const rawIp = c.req.header('cf-connecting-ip')
+    const rawIp = clientIpFromForwardedFor(c.req.header('x-forwarded-for'))
     // IPv6 is bucketed by /64, not by exact address - see client-ip.ts.
     // Keying the raw address would let any IPv6 client rotate through its
     // own prefix and mint unlimited budget.
@@ -447,7 +449,7 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     const now = Date.now()
     const db = createDb(c.env.DB)
 
-    const byIp = await consume(db, rule, ip, now)
+    const byIp = consume(db, rule, ip, now)
     if (byIp) return byIp
 
     // A magic-link send is metered against three buckets, and the ORDER is
@@ -478,15 +480,15 @@ export const authRateLimit = createMiddleware<{ Bindings: Env }>(
     // today. If something ever does, it is stepping around two of the three
     // buckets and needs to say why.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
-      const byEmail = await consume(
-        db,
-        MAGIC_LINK_SEND_EMAIL,
-        await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c)),
-        now,
-      )
+      const emailKey = await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
+      // Read the clock again after those awaits. Other requests may have
+      // started a newer window meanwhile; Retry-After counted from the
+      // earlier time would be longer than the window.
+      const sendNow = Date.now()
+      const byEmail = consume(db, MAGIC_LINK_SEND_EMAIL, emailKey, sendNow)
       if (byEmail) return byEmail
 
-      const quota = await peekMagicLinkGlobalQuota(db, now)
+      const quota = peekMagicLinkGlobalQuota(db, sendNow)
       if (!quota.ok) return tooManyRequests(quota)
     }
 

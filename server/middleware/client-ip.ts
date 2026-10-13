@@ -107,3 +107,24 @@ export function rateLimitIpKey(rawIp: string): string {
 
   return `${h0}:${h1}:${h2}:${h3}::/64`
 }
+
+// The client address behind Caddy: the RIGHTMOST X-Forwarded-For entry.
+//
+// Caddy's reverse_proxy always writes X-Forwarded-For. With no
+// trusted_proxies configured (our Caddyfile sets none) it REPLACES whatever
+// the client sent with the connection's address; if trusted proxies were
+// ever added, it would append that address to their list instead. Either
+// way the last entry is the peer Caddy itself saw, which the client cannot
+// choose. Earlier entries, and any other header (X-Real-IP passes through
+// Caddy untouched unless the config overwrites it), can be forged.
+//
+// Trusted only because the app port is reachable from localhost alone
+// (docs/vps-migration-plan.md, "Configure Caddy"): anything that reaches the
+// port directly could still write its own header. undefined when the header
+// is absent or empty - local dev and tests - where callers fall back to one
+// shared bucket.
+export function clientIpFromForwardedFor(header: string | undefined): string | undefined {
+  if (header === undefined) return undefined
+  const last = header.split(',').at(-1)?.trim()
+  return last === undefined || last === '' ? undefined : last
+}

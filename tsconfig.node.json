@@ -23,8 +23,11 @@
   // that needs one cannot live there.
   "include": [
     "vite.config.ts",
+    "vite.node.config.ts",
+    "vite.server.config.ts",
     "vitest.config.ts",
     "vitest.workers.config.ts",
+    "vitest.api.config.ts",
     "drizzle.config.ts",
     "scripts/check-action-pins.mjs",
     "scripts/check-migration-immutability.mjs",

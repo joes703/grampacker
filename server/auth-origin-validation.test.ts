@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:test'
+import { env } from './test/node-env'
 import { describe, expect, it } from 'vitest'
 import app from './index'
 import { lastEmailTo } from './email/console'
@@ -51,7 +51,7 @@ function signInFrom(origin: string, ip: string) {
         // A cookie is what makes better-auth run the origin check; its contents
         // are irrelevant because the origin check fires before session parsing.
         Cookie: 'better-auth.session_token=irrelevant',
-        'cf-connecting-ip': ip,
+        'x-forwarded-for': ip,
       },
       body: JSON.stringify({ email: 'nobody@example.com', password: 'a-long-test-password-123' }),
     },
@@ -86,7 +86,7 @@ describe('better-auth origin validation on /api/auth/*', () => {
         headers: {
           'Content-Type': 'application/json',
           Origin: 'https://evil.example.com',
-          'cf-connecting-ip': '198.51.100.9',
+          'x-forwarded-for': '198.51.100.9',
         },
         body: JSON.stringify({ email: 'victim@example.com' }),
       },
@@ -114,7 +114,7 @@ describe('better-auth origin validation on /api/auth/*', () => {
       '/api/auth/sign-in/magic-link',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '198.51.100.10' },
+        headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '198.51.100.10' },
         body: JSON.stringify({ email: to }),
       },
       env,

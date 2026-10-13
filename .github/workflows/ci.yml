@@ -35,10 +35,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (typecheck + lint + vite build)
+      - name: Build (typecheck + lint + vite build + server build)
         run: npm run build
 
-      - name: Test (unit + API on workerd)
+      - name: Test (unit + API on Node/SQLite)
         run: npm test
 
       # Drizzle bookkeeping, snapshot matches schema.ts, and no table rebuild,

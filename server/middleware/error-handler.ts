@@ -2,11 +2,12 @@ import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { isDevEnvironment, securityHeaderMap } from './security-headers'
 import type { ApiErrorBody } from '../../shared/api'
+import type { AppEnv } from '../env'
 
 // The server's single incident handler. Before this existed the whole server
 // held one `console.` call (the dev email sender) and no `onError`, so every
 // unhandled throw became Hono's bare `Internal Server Error`: no correlation id,
-// no route, no way to tell a D1 failure from a programmer mistake.
+// no route, no way to tell a database failure from a programmer mistake.
 //
 // What it covers, stated narrowly because the boundary is not obvious: errors
 // thrown in the Hono dispatch pipeline before the response is finalized. It does
@@ -28,8 +29,8 @@ const STACK_LIMIT_BYTES = 2048
 // Messages and SQL text are bounded for the same reason - and because a
 // message can be user-controlled (a repo throw that quotes a client id).
 const TEXT_LIMIT_BYTES = 2048
-// How far down `.cause` an entry follows. Drizzle -> D1 -> SQLite is three
-// links; anything deeper is noise, and a cycle must not spin.
+// How far down `.cause` an entry follows. Drizzle -> SQLite is two links,
+// and a wrapper adds one; anything deeper is noise, and a cycle must not spin.
 const CAUSE_DEPTH_LIMIT = 5
 
 // What an entry may say about an error. THIS IS THE ONLY SHAPE THAT REACHES
@@ -39,7 +40,7 @@ const CAUSE_DEPTH_LIMIT = 5
 // `Failed query: <sql>\nparams: <every bound value>` (drizzle-orm/errors.js)
 // and whose V8 stack repeats that message as its header. The values are
 // whatever the request carried - gear names, costs, and on a session lookup
-// during a D1 outage, the session token itself. The raw SQLite text on the
+// during a database failure, the session token itself. The raw SQLite text on the
 // cause chain (`UNIQUE constraint failed: lists.slug`, `no such table`) never
 // embeds values, and is the diagnostic that actually matters - yet before this
 // existed only the outermost wrapper was logged, so entries leaked the values
@@ -150,14 +151,13 @@ export function describeError(err: unknown): LoggedError {
 }
 
 // Anonymous routes exist (/api/health, /api/shares/v2/:slug), reachable
-// without a session, so without
-// a ceiling anyone can drive unbounded log writes - and a D1 outage makes every
-// one of those requests fail at once, which is exactly when the logs need to be
-// readable.
+// without a session, so without a ceiling anyone can drive unbounded log
+// writes - and a database failure makes every one of those requests fail at
+// once, which is exactly when the logs need to be readable.
 //
 // Two shapes were tried and rejected before this one, recorded so they are not
-// re-proposed: leaning on PR 7.8's rate limits (unlanded, and D1-backed, so it
-// fails in the same outage it was invoked for), and shrinking each over-budget
+// re-proposed: leaning on the rate limits (database-backed, so they fail in
+// the same outage they were invoked for), and shrinking each over-budget
 // entry (bounds bytes, not entries - the count still tracks request count).
 //
 // The ceiling is 21 entries per window per isolate: 20 detailed, plus one line
@@ -390,7 +390,7 @@ export async function withAuthErrorCorrelation(
   })
 }
 
-export const errorHandler: ErrorHandler<{ Bindings: Env }> = (err, c) => {
+export const errorHandler: ErrorHandler<{ Bindings: AppEnv }> = (err, c) => {
   const httpException = err instanceof HTTPException ? err : null
 
   // A sub-500 HTTPException is a deliberate answer from a middleware, not an

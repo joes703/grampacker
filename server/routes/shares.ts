@@ -6,18 +6,19 @@ import {
   type PublicShareVars,
 } from '../middleware/public-shares'
 import type { PublicShare } from '../repos/public-shares'
+import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET /api/shares/v2/:slug - anon - gated on lists.is_shared; unknown slug
 //                           and unshared list are the same 404
 //
 // The public read surface. GET-only (csrfProtection ignores safe methods),
-// no session, and UNMETERED: a counter here would add a D1 write to every
+// no session, and UNMETERED: a counter here would add a database write to every
 // anonymous view in order to protect a read, and could not stop the
 // invocation it was counting. If this ever needs a budget it belongs at the
 // edge; SECURITY.md records the trigger and the fact that none exists yet.
 export const shareRoutes = new Hono<{
-  Bindings: Env
+  Bindings: AppEnv
   Variables: PublicShareVars
 }>()
 

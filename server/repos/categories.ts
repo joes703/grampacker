@@ -73,54 +73,61 @@ export function createCategoriesRepo(db: Db, userId: string) {
 
     // Deleting a category uncategorizes its gear (the old ON DELETE SET
     // NULL semantics) in the SAME transaction - SQLite cannot column-list
-    // SET NULL on the composite FK, so the repo owns the pair. batch() is
-    // a transaction on D1: both statements or neither.
+    // SET NULL on the composite FK, so the repo owns the pair. The check,
+    // the uncategorize and the delete are one immediate transaction: no gear
+    // can be put back into the category between them, and a failure undoes
+    // both writes.
     async remove(id: string): Promise<boolean> {
-      const [existing] = await db
-        .select({ id: categories.id })
-        .from(categories)
-        .where(and(eq(categories.id, id), eq(categories.userId, userId)))
-        .limit(1)
-      if (!existing) return false
-      await db.batch([
-        db
-          .update(gearItems)
-          .set({ categoryId: null, updatedAt: Date.now() })
-          .where(
-            and(eq(gearItems.categoryId, id), eq(gearItems.userId, userId)),
-          ),
-        db
-          .delete(categories)
-          .where(and(eq(categories.id, id), eq(categories.userId, userId))),
-      ])
-      return true
+      return db.transaction(
+        (tx) => {
+          const existing = tx
+            .select({ id: categories.id })
+            .from(categories)
+            .where(and(eq(categories.id, id), eq(categories.userId, userId)))
+            .limit(1)
+            .get()
+          if (!existing) return false
+          tx.update(gearItems)
+            .set({ categoryId: null, updatedAt: Date.now() })
+            .where(and(eq(gearItems.categoryId, id), eq(gearItems.userId, userId)))
+            .run()
+          tx.delete(categories)
+            .where(and(eq(categories.id, id), eq(categories.userId, userId)))
+            .run()
+          return true
+        },
+        { behavior: 'immediate' },
+      )
     },
 
-    // All-or-nothing: every id must be an owned row (ids are deduped by
-    // the DTO) or nothing is written. The per-row updates are additionally
-    // user-scoped, so a row deleted between check and batch just updates
-    // nothing - no cross-user write is expressible. Owned-set membership,
-    // not inArray over the input: D1 caps bound parameters at 100 per
-    // query and the reorder DTO allows 500 ids (see chunk-ids.ts).
+    // All-or-nothing: every id must be an owned row (ids are deduped by the
+    // DTO) or nothing is written; the check and the writes are one
+    // transaction. Owned-set membership in JS rather than inArray over the
+    // input: one query whatever the input size, bounded by the category cap.
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
-      const ids = updates.map((u) => u.id)
-      const ownedRows = await db
-        .select({ id: categories.id })
-        .from(categories)
-        .where(eq(categories.userId, userId))
-      const owned = new Set(ownedRows.map((r) => r.id))
-      if (!ids.every((id) => owned.has(id))) return false
-      const [first, ...rest] = updates.map((u) =>
-        db
-          .update(categories)
-          .set({ sortOrder: u.sortOrder })
-          .where(and(eq(categories.id, u.id), eq(categories.userId, userId))),
+      return db.transaction(
+        (tx) => {
+          const owned = new Set(
+            tx
+              .select({ id: categories.id })
+              .from(categories)
+              .where(eq(categories.userId, userId))
+              .all()
+              .map((r) => r.id),
+          )
+          if (!updates.every((u) => owned.has(u.id))) return false
+          for (const u of updates) {
+            tx.update(categories)
+              .set({ sortOrder: u.sortOrder })
+              .where(and(eq(categories.id, u.id), eq(categories.userId, userId)))
+              .run()
+          }
+          return true
+        },
+        { behavior: 'immediate' },
       )
-      if (!first) return true // unreachable: DTO enforces min(1)
-      await db.batch([first, ...rest])
-      return true
     },
   }
 }
