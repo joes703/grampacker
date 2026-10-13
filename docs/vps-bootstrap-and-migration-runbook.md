@@ -66,12 +66,13 @@ Placeholders that you replace when you run a command:
 | --- | --- |
 | `<CADDY_VERSION>` | A Caddy 2.x release at least two weeks old, for example `2.10.2` |
 | `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters |
-| `<APP_UID>` | Numeric UID of the image's non-root user (found in step 7.1) |
+| `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
 | `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
 | `<STAMP>` | A UTC time stamp such as `20261101T1530Z`, one per export |
 | `<CADDY_DIGEST>` | The Caddy image digest recorded in step 3.2 |
 | `<WORKERS_SUBDOMAIN>` | The account's `workers.dev` subdomain, shown in the Cloudflare dashboard |
-| `<MIGRATE_COMMAND>`, `<SNAPSHOT_COMMAND>`, `<IMPORT_COMMAND>` | Commands inside the image, named by the implementation (section 4) |
+| `<MIGRATE_COMMAND>` | `migrate`: the image's explicit migration command (`docs/container-image.md`) |
+| `<SNAPSHOT_COMMAND>`, `<IMPORT_COMMAND>` | Commands inside the image, named by the implementation (section 4) |
 
 **Secret values never appear in this file.** Where a secret is needed, the
 command reads it from the keyboard with `read -rs` (not saved in shell
@@ -480,24 +481,26 @@ Rotate or revoke: `[GitHub web]` delete the token, then repeat 6.2 and 6.3.
 
 ## 7. Compose, Caddy and staging (AFTER IMAGE)
 
-### 7.1 Find the image's runtime UID and hand it the data directories
+### 7.1 Check the image's runtime UID and hand it the data directories
 
 ```bash
 # [VPS joe]
 sudo docker run --rm --entrypoint id "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 ```
 
-Expected: a non-zero UID, for example `uid=10001(app) gid=10001(app)`. Use
-that number as `<APP_UID>`. If it prints `uid=0`, stop: the image runs as root.
+Expected: exactly `uid=10001(app) gid=10001(app) groups=10001(app)`. The
+image fixes this identity, and `/srv/grampacker/data` and
+`/srv/grampacker/snapshots` must be owned by `10001:10001`. If it prints
+anything else, stop: the image does not match this runbook.
 
 ```bash
 # [VPS joe]
-sudo chown <APP_UID>:<APP_UID> /srv/grampacker/data /srv/grampacker/snapshots
+sudo chown 10001:10001 /srv/grampacker/data /srv/grampacker/snapshots
 sudo chmod 0700 /srv/grampacker/data /srv/grampacker/snapshots
 sudo stat -c '%u:%g %a %n' /srv/grampacker/data /srv/grampacker/snapshots
 ```
 
-Expected: `<APP_UID>:<APP_UID> 700` for both. `joe` now needs `sudo` to read
+Expected: `10001:10001 700` for both. `joe` now needs `sudo` to read
 them, which is intended. Rerun: safe.
 
 ### 7.2 Write `deploy.env`
@@ -684,8 +687,9 @@ sudo docker compose --env-file deploy.env up -d
 sudo docker compose --env-file deploy.env ps
 ```
 
-`<MIGRATE_COMMAND>` is the migrate command from section 4. On an empty `data/`
-it creates a fresh database.
+`<MIGRATE_COMMAND>` is `migrate`. On an empty `data/` it creates a fresh
+database. `up` never migrates: the server refuses to start while a migration
+is pending.
 
 Expected: `app` shows `(healthy)` within about a minute; `caddy` is `running`.
 
