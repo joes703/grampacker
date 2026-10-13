@@ -1,3 +1,35 @@
+# LEGACY: WORKER DEPLOYMENT IS OFF
+# --------------------------------
+# main is moving to a Node server with SQLite on a VPS, and the Worker cannot
+# run that code. So both jobs below are `if: false`.
+# The trigger still fires after every CI run, and each Deploy run shows both
+# jobs as skipped: no step runs, no secret is read, and nothing reaches
+# Cloudflare or D1. The production Worker keeps serving the last commit this
+# workflow deployed.
+#
+# This file is kept only while that running Worker is the rollback target.
+# Delete it when the Worker is retired.
+#
+# Why `if: false` and not another trigger: a workflow needs a trigger, and
+# `workflow_dispatch` must never be added (see below). A `workflow_run`
+# workflow always runs main's copy, so a branch cannot edit the `if` away.
+#
+# ROLLBACK NEVER RUNS THIS WORKFLOW. Rollback is the Worker that is already
+# deployed: DNS goes back to it (the migration runbook's "Rollback"). For an
+# earlier Worker version, `wrangler rollback` (docs/d1-restore.md step 3).
+# The recovery steps later in this header no longer apply:
+#   * Never re-run an earlier Deploy run, in any form. A re-run uses that
+#     run's OLD copy of this file, which has no `if: false`. A full re-run is
+#     stopped by preflight's stale check, but a re-run of the failed jobs
+#     (`--failed`) or of the deploy job alone keeps preflight's old verdict,
+#     and the deploy job checks out main as it is NOW: it would apply main's
+#     migrations to D1 and deploy main's code to the Worker. Re-running a CI
+#     run is harmless: the Deploy run it starts uses this copy.
+#   * Do not turn this back on once main contains Node/SQLite code.
+#
+# The rest of this header describes the workflow as it ran until it was
+# turned off.
+#
 # Ships grampacker to Cloudflare Workers, but ONLY for a commit CI has proven
 # green.
 #
@@ -109,12 +141,8 @@ jobs:
     name: Verify this SHA is deployable
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: >-
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow.path == '.github/workflows/ci.yml'
+    # Off: see "LEGACY" at the top of this file.
+    if: false
     outputs:
       # Deliberately NOT exporting the SHA. The deploy job must re-resolve it
       # under the lock; handing it one from out here would reintroduce exactly
@@ -184,7 +212,9 @@ jobs:
   deploy:
     name: Deploy to Cloudflare
     needs: preflight
-    if: needs.preflight.outputs.deploy == 'true'
+    # Off: see "LEGACY" at the top of this file. Also off on its own, so it
+    # never depends on preflight being skipped.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Never run two production deploys at once. A second merge queues behind

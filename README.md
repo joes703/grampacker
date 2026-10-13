@@ -51,10 +51,13 @@ D1 binding - the production database is never contacted.
 
 ## Deployment
 
-Merging to `main` deploys. `.github/workflows/deploy.yml` applies remote D1
-migrations and then runs `wrangler deploy`, so a merge is a production database
-migration as well as a code push. The Cloudflare credentials exist only as
-GitHub Actions secrets, never locally.
+Merging to `main` no longer deploys. The app is moving from Cloudflare
+Workers to a Node server with SQLite on a VPS, so
+`.github/workflows/deploy.yml`, which applied remote D1 migrations and then
+ran `wrangler deploy`, is kept only as a legacy record and none of its jobs
+run. The production Worker keeps serving the last commit it deployed until
+the cutover. The Cloudflare credentials exist only as GitHub Actions secrets,
+never locally.
 
 ## Layout
 

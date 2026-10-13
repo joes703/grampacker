@@ -12,10 +12,13 @@ a D1 equivalent, ask rather than assume.
 
 ## Shipping
 
-- **A merge to `main` deploys.** `deploy.yml` applies remote D1 migrations,
-  then deploys the Worker. There is no staging. Never deploy yourself; the
-  Cloudflare token exists only in GitHub Actions. Approving a merge is
-  approving a deploy.
+- **A merge to `main` does not deploy.** `deploy.yml` is legacy and every
+  job in it is `if: false`, because `main` is moving to a Node server with
+  SQLite on a VPS, which the Worker cannot run. The production
+  Worker keeps serving the last commit it deployed, and is the rollback
+  target. Never re-run an old Deploy run and never turn `deploy.yml` back
+  on: either can put `main` on the Worker and D1 (its header says why).
+  Never deploy yourself; the Cloudflare token exists only in GitHub Actions.
 - The human approves each merge, for an exact PR head. Confirm CI is green
   yourself, then `gh pr merge --squash --match-head-commit <sha>` (squash is
   the only method the ruleset allows). Never merge while checks are pending

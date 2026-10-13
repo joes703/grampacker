@@ -510,11 +510,11 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch
   execute an edited privileged workflow. `deploy.yml` carried one as a
-  recovery path until 2026-09-04; recovery is now a re-run of the failed
-  run, which keeps the original commit's workflow file - for any failed
-  step except the marker step, where production is already on the new SHA
-  and the marker is repaired by hand instead (see the header of
-  `deploy.yml`). Narrowly stated: `deploy.yml`'s `workflow_run` trigger
+  recovery path until 2026-09-04. Its replacement, re-running a failed
+  Deploy run, is withdrawn too now that `deploy.yml` is legacy (every job
+  `if: false`, AGENTS.md "Shipping"): never re-run an earlier Deploy run. A
+  re-run uses that run's old copy of the file, which still deploys, and can
+  deploy `main` as it is now (header of `deploy.yml`). Narrowly stated: `deploy.yml`'s `workflow_run` trigger
   still fires on PR-branch CI completions, but its job-level `if` rejects
   them before any step runs, and the copy that runs is always the one on
   main.
