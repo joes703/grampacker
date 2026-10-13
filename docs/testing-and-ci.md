@@ -201,8 +201,7 @@ workflow; only a `production` environment restricted to `main` would close
 that, and it needs a plan that offers environments on private repositories.
 
 `image.yml` builds the production image and runs `scripts/check-image.sh` on
-every pull request, with a read-only token. It is not a required check, and
-`deploy.yml` does not wait for it, so it cannot hold up a Worker deploy. A
+every pull request, with a read-only token. It is not a required check. A
 manual dispatch on main also reruns the build, unit, API and migration
 checks, then publishes the image to GHCR. It names no secret; its publish job
 alone has `packages: write`. It never deploys. Procedure: runbook

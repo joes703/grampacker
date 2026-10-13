@@ -67,7 +67,10 @@ Placeholders that you replace when you run a command:
 | `<CADDY_VERSION>` | A Caddy 2.x release at least two weeks old, for example `2.10.2` |
 | `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (step 6.1) |
 | `<APP_SHA>` | The full 40-character commit SHA an image was built from; its GHCR tag |
-| `<RUN_ID>` | A GitHub Actions run number, from `gh run list` |
+| `<RUN_ID>` | A GitHub Actions run id: `databaseId` in `gh run list --json` |
+| `<MERGE_SHA>` | `main`'s head right after a merge, from `git ls-remote` |
+| `<DEPLOY_RUN_ID>` | The run id (`databaseId`) of a run of the legacy Deploy workflow (`deploy.yml`) |
+| `<BASELINE_TIME>` | The UTC time recorded before the merges in 6.1, such as `2026-10-20T15:30:00Z` |
 | `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
 | `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
 | `<STAMP>` | A UTC time stamp such as `20261101T1530Z`, one per export |
@@ -445,7 +448,148 @@ digest, never the tag.
 A dispatch from any other branch runs no job. The workflow has no inputs.
 
 Prerequisite: `image.yml` is on `main`. GitHub offers "Run workflow" only
-for workflow files on the default branch.
+for workflow files on the default branch. It reaches `main` with the
+Node/SQLite branch, so the merge order below comes first.
+
+#### Merge order: stop Worker deploys, then merge the migration branch
+
+Until this order runs, a merge to `main` deploys `main` to the Worker
+(`deploy.yml`) and applies its migrations to D1. The Worker cannot run the
+Node/SQLite code. The deployment-safety change (branch
+`ci/stop-worker-auto-deploy`) makes `deploy.yml` legacy: every job is
+`if: false`, and `deploy-liveness.yml` loses its schedule. After it merges,
+each CI run on `main` still starts a Deploy run, but both of its jobs are
+skipped. The Worker keeps serving the last commit it deployed, and rollback
+(11.9) uses that running Worker. Rollback never runs `deploy.yml`, and **no
+one ever re-runs an earlier Deploy run**: a re-run uses that run's old copy of
+the workflow, which still deploys, and can deploy `main` as it is now (header
+of `deploy.yml`).
+
+Before you start, make sure no Deploy run is still going, then record the
+baseline. `deploy.yml` deploys the Worker before it writes its GitHub
+deployment record, so the GitHub record alone cannot prove that nothing
+deployed. Cloudflare's own list of Worker deployments is the proof; the
+GitHub checks support it.
+
+```bash
+# [Mac] in a checkout of main, where `wrangler login` already exists
+gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
+gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
+date -u +%Y-%m-%dT%H:%M:%SZ
+gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
+  --jq '.[0] | [.sha, .created_at] | @tsv'
+npx wrangler deployments list --name grampacker
+```
+
+The Deploy runs are read through the REST API, which works for any `gh`
+version and also after the workflow is disabled. Both counts must be `0`; if
+one is not, wait for the run to finish and count again. Never cancel or
+re-run a Deploy run to clear it. The `date` line
+is `<BASELINE_TIME>`. Record the GitHub record's SHA and time, and the
+version id and time of the last (newest) Cloudflare deployment. `wrangler
+deployments list` only reads; it changes nothing. Steps 3 and 4 expect all of
+these unchanged.
+
+1. **Push the migration branch.** From the Mac, because the branch changes
+   workflow files and the agent tokens cannot push those
+   (`docs/testing-and-ci.md` section 12):
+
+   ```bash
+   # [Mac]
+   git push -u origin feat/node-sqlite-foundation
+   ```
+
+   Opening its pull request is safe: pull request CI never deploys. Do not
+   merge it yet.
+
+2. **Merge the deployment-safety change first.** Its pull request merges
+   through the normal process (`AGENTS.md` "Shipping"). The merge itself
+   cannot deploy: the Deploy run that main's CI starts uses the merged copy,
+   whose jobs are `if: false`. Even if it did deploy, it would deploy Worker
+   code: the migration is not on `main` yet. That is why this change goes
+   first.
+
+3. **Confirm that no Cloudflare deployment ran.** Wait for `main`'s CI run
+   for the merge to finish; the Deploy run starts when it does.
+
+   ```bash
+   # [Mac]
+   git ls-remote https://github.com/$GH_REPO refs/heads/main
+   gh run list --repo "$GH_REPO" --workflow ci.yml --branch main --event push --limit 1 \
+     --json databaseId,headSha,status,conclusion
+   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?per_page=100" \
+     --jq '.workflow_runs[] | select(.updated_at >= "<BASELINE_TIME>")
+       | [.id, .run_attempt, .event, .status, .conclusion, .created_at, .html_url] | @tsv'
+   gh api "repos/$GH_REPO/actions/runs/<DEPLOY_RUN_ID>/jobs" \
+     --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'
+   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
+   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
+   gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
+     --jq '.[0] | [.sha, .created_at] | @tsv'
+   npx wrangler deployments list --name grampacker
+   ```
+
+   Expected:
+   - `ls-remote` prints `<MERGE_SHA>`.
+   - The CI run has `headSha` `<MERGE_SHA>` and status `completed`.
+   - The filtered Deploy list (one line per run: id, attempt, event, status,
+     conclusion, created, URL) shows only runs **created** after
+     `<BASELINE_TIME>`, each with attempt `1`. In step 3 it must include at
+     least one run created after main's CI run for `<MERGE_SHA>` finished; if
+     there is none yet, wait a minute and query again. A re-run of an older run does
+     not create a new run: it adds an attempt to the old one, so an older
+     creation time or an attempt above 1 here means someone re-ran a Deploy
+     run. Stop and find out what it did. The list covers the newest 100
+     Deploy runs; an older run re-run now would fall outside it, which the
+     Cloudflare check below still catches.
+   - Run the jobs query for each listed run (its id is `<DEPLOY_RUN_ID>`).
+     Each lists "Verify this SHA is deployable" and "Deploy to Cloudflare",
+     both `completed` and `skipped`. No step ran, so no secret was read.
+     Read the jobs, not the run: GitHub may report a run whose jobs were all
+     skipped as `skipped` or as `success`.
+   - Both counts are `0`.
+   - The GitHub deployment record is unchanged from the baseline.
+   - **The newest Cloudflare deployment is the same version id and time as
+     the baseline.** This is the check that proves no Worker deployment ran.
+   - Optional, read-only:
+     `curl -sS https://grampacker.app/api/health` still prints `{"ok":true}`.
+
+   In the Actions tab, no "Deploy to Cloudflare" job since the baseline has
+   a log. If any job ran, either record changed, or a listed run is older
+   than the baseline, stop: do not merge the migration branch.
+
+   Recommended (CONFIRM): also disable both legacy workflows in GitHub, so
+   they are not even started. Disable them only after the check above,
+   because a disabled workflow starts no run to inspect. This was step 4 of
+   11.0, and it moves here because `main` now receives Node/SQLite code
+   weeks before the cutover:
+
+   ```bash
+   # [Mac]
+   gh workflow disable deploy.yml --repo "$GH_REPO"
+   gh workflow disable deploy-liveness.yml --repo "$GH_REPO"
+   gh workflow list --all --repo "$GH_REPO"
+   ```
+
+   Expected: both show `disabled_manually`. Undo: `gh workflow enable` for
+   each. Enabling deploys nothing, because the jobs stay `if: false`. Whether
+   GitHub also refuses a re-run of an old run of a disabled workflow is not
+   verified here. The "never re-run a Deploy run" rule stands either way.
+
+4. **Merge the migration branch.** If its pull request is behind `main`,
+   merge `main` into it (never rebase or force-push), then let CI pass and
+   merge through the normal process. Then repeat step 3 with the new
+   `<MERGE_SHA>`. The filtered list still shows the runs you checked in
+   step 3; they must be unchanged (same attempt, still skipped). If the
+   legacy workflows are disabled, no run may be added to it; otherwise each
+   added run is checked as in step 3. In both cases the GitHub
+   record and the newest Cloudflare deployment must still match the baseline,
+   and the Worker must still answer `{"ok":true}`.
+
+5. **Run the GHCR publishing workflow by hand from `main`:** "First
+   publish (rehearsal)" below.
+
+Record each merge SHA and the Deploy run URL in section 13.
 
 #### First publish (rehearsal)
 
@@ -1213,26 +1357,23 @@ certificate time (minutes, not seconds).
    `www` and any AAAA record. Screenshot or export the zone.
 3. `[Mac]` `dig +short A grampacker.app; dig +short AAAA grampacker.app` and
    record the output.
-4. **CONFIRM:** stop automatic Worker deployment before the first
-   Node/SQLite change reaches `main` (not weeks earlier):
+4. Confirm Worker deployment is still off. The merge order in 6.1 stopped it
+   before the Node/SQLite code reached `main`. Read-only:
 
    ```bash
    # [Mac]
-   gh workflow disable deploy.yml --repo "$GH_REPO"
-   gh workflow disable deploy-liveness.yml --repo "$GH_REPO"
    gh workflow list --all --repo "$GH_REPO"
-   gh run list --workflow deploy.yml --status in_progress --repo "$GH_REPO"
-   gh run list --workflow deploy.yml --status queued --repo "$GH_REPO"
+   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
+   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
+   gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
+     --jq '.[0] | [.sha, .created_at] | @tsv'
+   npx wrangler deployments list --name grampacker
    ```
 
-   Expected: both workflows show `disabled_manually`, and both run lists are
-   empty. Disabling does not stop a run that already started: if either list
-   shows a run, wait for it to finish or cancel it
-   (`gh run cancel <run-id> --repo "$GH_REPO"`), then list again. Continue
-   only when both lists are empty (the same drain as `docs/d1-restore.md`
-   step 1). The Worker keeps serving its last
-   deployment. Undo (only while `main` is still Worker code):
-   `gh workflow enable` for each.
+   Expected: both counts are `0`, and the GitHub record and the newest
+   Cloudflare deployment are the ones recorded in 6.1. If 6.1's recommended step was done, `deploy.yml`
+   and `deploy-liveness.yml` show `disabled_manually`. If anything else
+   shows, stop and find out why before the window.
 
 5. Have staging (section 7) running the image that will become production,
    with a rehearsal import that passed.
@@ -1532,9 +1673,11 @@ stale** and returning to it loses writes.
    `{"ok":true}` from the Worker.
 4. `[VPS root]` `docker compose --env-file /srv/grampacker/deploy.env stop app`.
    Keep the failed import and its report for diagnosis.
-5. D1 is authoritative and was never written. Do **not** re-enable
-   `deploy.yml` if `main` already contains Node/SQLite code: it would deploy
-   code the Worker cannot run. The Worker keeps serving its last version.
+5. D1 is authoritative and was never written. Rollback is the Worker that
+   is already running; it keeps serving its last version. Do **not** turn
+   `deploy.yml` back on, and never re-run an earlier Deploy run: `main`
+   contains Node/SQLite code, and either can deploy code the Worker cannot
+   run (6.1, "Merge order").
 
 **After 11.8** (real writes on SQLite): do not return to D1. Fix forward, or
 run the previous image (9.4 step 2). Restoring a snapshot follows 9.5 and
@@ -1637,6 +1780,9 @@ Each is its own decision, after the observation period:
 | VPS host key fingerprint (ED25519) | |
 | Caddy version and digest | |
 | Image runtime UID | |
+| Baseline before the merges: `<BASELINE_TIME>`, GitHub record (SHA, time), newest Cloudflare deployment (version id, time) | |
+| Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
+| Migration merge: `<MERGE_SHA>`, Deploy run URL (or none, if disabled) | |
 | First published image: `<APP_SHA>`, `<APP_DIGEST>`, run URL | |
 | Staging memory, idle / busy | |
 | Rehearsal 1: export, transfer, import, validation times | |

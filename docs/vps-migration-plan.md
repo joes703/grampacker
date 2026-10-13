@@ -192,7 +192,9 @@ Before changing code:
   (done 2026-10-11; see "Current infrastructure").
 
 Stop automatic Worker deployment immediately before the first incompatible
-Node/SQLite change reaches `main`. Do not disable it weeks in advance.
+Node/SQLite change reaches `main`. Do not disable it weeks in advance. This
+is the deployment-safety change, merged just before the Node/SQLite branch
+(runbook step 6.1, "Merge order").
 
 ### 2. Port the application to Node and local SQLite
 
@@ -418,6 +420,12 @@ keeps the tag and its digest; the deploy history on the VPS will record
 which digest ran. The publish has no push trigger yet: each one is started
 by hand until the deployment exists.
 
+Merging this branch must not reach the Worker. A separate change, merged to
+`main` first, makes `deploy.yml` legacy: every job in it is `if: false`, so
+the Worker keeps serving its last deployed commit as the rollback target.
+The merge order and how to confirm that nothing deployed are in runbook
+step 6.1.
+
 **Not built:** the deploy step, which connects to the VPS and invokes the
 deployment script with a digest the publish printed. It comes with the
 deployment account and key (runbook section 8).
@@ -465,8 +473,8 @@ the GitHub side. `deploy.yml`'s header must be updated in the same change that
 adds the deploy step, so the two documents do not contradict each other.
 
 `image.yml` already carries `workflow_dispatch`. It names no secret, so the
-rule in `docs/testing-and-ci.md` section 10 still holds, and `deploy.yml` is
-unchanged. Its token can push images, though: a branch that edited the file
+rule in `docs/testing-and-ci.md` section 10 still holds, and `deploy.yml`
+keeps its rule against `workflow_dispatch`. Its token can push images, though: a branch that edited the file
 and was dispatched could push an image to GHCR under any tag. The same
 GitHub-side limit on who can edit or dispatch workflows covers that, and it
 is why a deployment takes a digest printed by a run on `main`, never a tag
@@ -622,8 +630,10 @@ Before the first real SQLite write, rollback is straightforward:
 - discard the rehearsal or failed SQLite import.
 
 Do not re-enable `deploy.yml` as part of that rollback once `main` contains
-Node/SQLite code: it would deploy code the Worker cannot run. The Worker keeps
-serving its last deployed version, which is what rollback needs.
+Node/SQLite code: it would deploy code the Worker cannot run. For the same
+reason, never re-run an earlier Deploy run: a re-run uses that run's old copy
+of the workflow, which still deploys, and can deploy `main` as it is now. The
+Worker keeps serving its last deployed version, which is what rollback needs.
 
 After SQLite accepts real writes, D1 is stale. Prefer fixing forward or running
 the previous container image. Returning to D1 would lose or require manually
