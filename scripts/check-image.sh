@@ -84,6 +84,10 @@ case "$ids" in
   *) fail "runs as: $ids" ;;
 esac
 
+node_env="$(docker run --rm --entrypoint node "$IMAGE" -p process.env.NODE_ENV)"
+[ "$node_env" = production ] || fail "NODE_ENV is '$node_env', expected production"
+pass "NODE_ENV=production"
+
 # --- 3. An unmigrated database refuses to start, and nothing is created ----
 mkdir -p "$DATA"
 docker run --rm --user 0 --entrypoint sh -v "$DATA:/data" "$IMAGE" \
@@ -132,8 +136,11 @@ grep -qi '^content-type: text/html' "$WORK/shell.h" || fail "shell is not HTML"
 grep -q '<div id="root">' <<<"$shell" || fail "shell has no #root"
 pass "GET / -> SPA shell"
 
-deep="$(curl -sS -w '\n%{http_code}' "$BASE/lists/does-not-exist/food")"
-[ "$deep" = "$shell"$'\n200' ] || fail "deep link did not return the shell"
+# Compared as files: $(...) would strip the body's trailing newline.
+curl -sS -o "$WORK/root.html" "$BASE/"
+code="$(curl -sS -o "$WORK/deep.html" -w '%{http_code}' "$BASE/lists/does-not-exist/food")"
+[ "$code" = 200 ] || fail "deep link -> $code"
+cmp -s "$WORK/root.html" "$WORK/deep.html" || fail "deep link did not return the shell"
 pass "GET /lists/does-not-exist/food -> 200, the same shell"
 
 asset="$(grep -oE '/assets/[^"]+\.js' <<<"$shell" | head -n 1)"
@@ -151,6 +158,12 @@ pass "GET /assets/missing-0000.js -> 404"
 nf="$(curl -sS -w '\n%{http_code}' "$BASE/api/no-such-route")"
 [ "$nf" = $'{"error":"Not found"}\n404' ] || fail "API 404: $nf"
 pass "GET /api/no-such-route -> 404 JSON"
+
+# better-auth reads NODE_ENV itself: in production its error page is a
+# redirect to the SPA instead of its own HTML.
+loc="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE/api/auth/error?error=check")"
+[ "$loc" = "302 $BASE/?error=check" ] || fail "auth error page: $loc"
+pass "GET /api/auth/error -> 302 to /?error=check (the server runs in production mode)"
 
 # --- 7. Data survives replacing the container ------------------------------
 # Exhaust one sign-in rate-limit bucket (10 per 10 minutes). The count lives
@@ -172,8 +185,9 @@ logs="$(docker logs "$NAME-a" 2>&1)"
 grep -q 'SIGTERM: shutting down' <<<"$logs" || fail "no shutdown log line"
 grep -q 'shutdown complete' <<<"$logs" || fail "no shutdown-complete log line"
 pass "SIGTERM -> exit 0 in ${took}s, logged shutdown complete"
-[ -z "$(ls "$DATA" | grep -E -- '-(wal|shm)$' || true)" ] && note "no -wal/-shm left after shutdown" \
-  || note "left beside the database: $(ls "$DATA" | tr '\n' ' ')"
+# Listed from inside Docker as root: the directory belongs to the app UID.
+left="$(docker run --rm --user 0 --entrypoint ls -v "$DATA:/data" "$IMAGE" -A /data | tr '\n' ' ')"
+note "data directory after shutdown: $left"
 
 docker rm "$NAME-a" >/dev/null
 start_server "$NAME-b"
@@ -204,17 +218,38 @@ found="$(docker run --rm --entrypoint sh "$IMAGE" -c 'find /app/dist /app/migrat
 [ -z "$found" ] || fail "maps, tests, TypeScript or data in the app: $found"
 pass "no source maps, tests or TypeScript in dist/migrations; /data is empty"
 
-found="$(docker run --rm --entrypoint node "$IMAGE" -e '
+# Development packages. npm's own record of what it installed must hold no
+# dev or devOptional package, and no build or test tool may be present. A
+# devDependency that a production package requires (react-markdown needs
+# @types/react as a peer) is installed by npm as production code; it is
+# allowed, and named.
+result="$(docker run --rm --entrypoint node "$IMAGE" -e '
   const fs = require("node:fs")
   const pkg = JSON.parse(fs.readFileSync("/app/package.json", "utf8"))
-  const present = Object.keys(pkg.devDependencies).filter((n) => fs.existsSync("/app/node_modules/" + n))
-  for (const n of ["vite", "vitest", "wrangler", "typescript", "eslint", "drizzle-kit", "tsx", "miniflare", "workerd", "esbuild"]) {
-    if (fs.existsSync("/app/node_modules/" + n) && !present.includes(n)) present.push(n)
+  const installed = JSON.parse(fs.readFileSync("/app/node_modules/.package-lock.json", "utf8")).packages
+  const bad = Object.entries(installed).filter(([, e]) => e.dev || e.devOptional).map(([k]) => k)
+  for (const n of ["vite", "vitest", "wrangler", "typescript", "eslint", "drizzle-kit", "tsx", "miniflare", "workerd", "esbuild", "jsdom"]) {
+    if (fs.existsSync("/app/node_modules/" + n)) bad.push(n)
   }
-  console.log(present.join(" "))
+  const requiredBy = (n) => Object.entries(installed).filter(([, e]) =>
+    (e.dependencies && n in e.dependencies) ||
+    (e.peerDependencies && n in e.peerDependencies && !(e.peerDependenciesMeta && e.peerDependenciesMeta[n] && e.peerDependenciesMeta[n].optional)))
+    .map(([k]) => k.replace(/^.*node_modules\//, ""))
+  const allowed = []
+  for (const n of Object.keys(pkg.devDependencies)) {
+    if (!fs.existsSync("/app/node_modules/" + n)) continue
+    const by = requiredBy(n)
+    if (by.length) allowed.push(n + " (required by " + by.join(", ") + ")")
+    else bad.push(n)
+  }
+  console.log("bad=" + [...new Set(bad)].join(" "))
+  console.log("allowed=" + allowed.join("; "))
 ')"
-[ -z "$found" ] || fail "development packages present: $found"
-pass "no development dependency in node_modules"
+bad="$(sed -n 's/^bad=//p' <<<"$result")"
+allowed="$(sed -n 's/^allowed=//p' <<<"$result")"
+[ -z "$bad" ] || fail "development packages present: $bad"
+pass "no development-only package in node_modules"
+[ -z "$allowed" ] || note "devDependencies installed because production packages require them: $allowed"
 
 found="$(docker run --rm --entrypoint sh "$IMAGE" -c 'command -v npm npx corepack yarn || true')"
 [ -z "$found" ] || fail "package managers present: $found"

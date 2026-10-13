@@ -12,13 +12,12 @@
 # The base image is pinned by version AND digest, and every stage uses the
 # same one. Build and runtime must share a C library: better-sqlite3 loads a
 # prebuilt glibc binary from its npm package (prebuilds/linux-x64.node), so
-# no compiler is needed and Alpine (musl) is not used. How to update the pin:
-# docs/container-image.md.
-# NOT PINNED YET: the version and digest are chosen with the procedure in
-# docs/container-image.md. Until then the build needs
-# --build-arg NODE_IMAGE=node:<version>-trixie-slim@sha256:<digest>, and
-# fails without it.
-ARG NODE_IMAGE
+# no compiler is needed and Alpine (musl) is not used.
+#
+# Node 24.21.0, Debian 13 (trixie), glibc 2.41. The digest is the
+# multi-platform index; its linux/amd64 manifest is sha256:c83040f7e24b...
+# (docs/container-image.md says how it was chosen and how to update it).
+ARG NODE_IMAGE=node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
 
 # 1. Build: every dependency, then the SPA and the compiled server. Not
 #    `npm run build`: that also runs the Cloudflare build, which copies
@@ -32,10 +31,16 @@ RUN npm run build:client && npm run build:server
 
 # 2. Production dependencies only. .npmrc keeps ignore-scripts, so no
 #    package runs an install script.
+#
+#    --omit=dev alone is not enough. better-auth names vitest, drizzle-kit
+#    and others as OPTIONAL peer dependencies, so the lockfile marks them
+#    devOptional and --omit=dev keeps them. No production package requires an
+#    optional package (docs/container-image.md), so --omit=optional removes
+#    them. scripts/check-image.sh fails if a dev tool is present.
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /src
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --omit=optional
 
 # 3. Runtime: only what `node dist/server/node.js` reads.
 FROM ${NODE_IMAGE} AS runtime
@@ -57,10 +62,12 @@ WORKDIR /app
 # The server reads migrations/ and dist/client relative to /app. Root owns
 # every file here, so the app user cannot change its own code.
 #
-# NODE_ENV is deliberately unset. better-auth changes behavior when it is
-# "production" (its error page, a cookie-name fallback), and the Worker that
-# production runs today never set it, so neither do the tests' expectations.
-ENV HOST=0.0.0.0 \
+# NODE_ENV=production changes one thing this app can see: better-auth's
+# /api/auth/error redirects to /?error=... instead of serving its own HTML
+# page. Its rate limiter is off in server/auth.ts, and the https base URL,
+# not NODE_ENV, chooses the secure cookie names.
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
     PORT=3000 \
     DATABASE_PATH=/data/grampacker.db \
     STATIC_DIR=/app/dist/client

@@ -43,6 +43,18 @@ the exact version tag, plus the digest of the multi-platform index that
 enforces; the tag is there for people. Rebuild and run
 `scripts/check-image.sh` before committing the new pin.
 
+The current pin was chosen on 2026-10-13 that way. `node:24-trixie-slim`
+resolved to Node 24.21.0 on Debian 13.7 with glibc 2.41, and
+`node:24.21.0-trixie-slim` resolved to the same index:
+
+| | Digest |
+| --- | --- |
+| Index (pinned) | `sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66` |
+| linux/amd64 manifest | `sha256:c83040f7e24bacea68e58a0b96a484ba430bf24abb2973eab7ba4701144b7b63` |
+
+A digest names content, so the pin cannot move when the tag does. The
+build's `--platform linux/amd64` selects the amd64 manifest from the index.
+
 ## The runtime user
 
 The server runs as `app`, **UID 10001, GID 10001**, a fixed number the
@@ -62,14 +74,33 @@ Under `/app`, and nothing else from the repository:
 | Path | Why |
 | --- | --- |
 | `package.json` | `"type": "module"` makes Node load `dist/server/*.js` as ES modules |
-| `node_modules/` | production dependencies only (`npm ci --omit=dev`) |
+| `node_modules/` | production dependencies only (`npm ci --omit=dev --omit=optional`, below) |
 | `migrations/*.sql`, `migrations/meta/_journal.json` | what `migrate` applies; the snapshots are not needed |
 | `dist/server/node.js`, `dist/server/healthcheck.js` | the compiled server and health check, no source maps |
 | `dist/client/` | the built SPA |
 
 npm, npx, corepack and yarn are removed: production never runs them.
-`NODE_ENV` is deliberately unset. better-auth changes its error page and a
-cookie-name fallback when it is `production`, and the Worker never set it.
+
+`--omit=dev` alone leaves vitest, vite, drizzle-kit, tsx, jsdom and esbuild
+in the image. better-auth names them as optional peer dependencies, so the
+lockfile marks them `devOptional`, and npm keeps those. `--omit=optional`
+removes them. When this was chosen, every package the production
+dependencies require (193, following required dependencies and required
+peers in the lockfile) was still installed with it. The check script fails
+if npm records any dev package as installed. One devDependency remains on
+purpose: `@types/react`, which `react-markdown` requires as a peer. It holds
+only type declarations.
+
+`node_modules` also holds the SPA's libraries (React and others), because
+they are production dependencies in `package.json`. The server never loads
+them; they are already bundled into `dist/client`.
+
+`NODE_ENV` is `production`. In this app that changes one thing:
+better-auth's `/api/auth/error` redirects to `/?error=...` instead of
+serving its own HTML page. Its rate limiter is off in `server/auth.ts`, and
+the `https` base URL, not `NODE_ENV`, chooses the secure cookie names. The
+API tests run without `NODE_ENV`; the check script proves the redirect from
+the real container.
 
 The build context is an allowlist (`.dockerignore`), so `.git`, `.env*`,
 `.dev.vars`, Wrangler files, `dist/`, `.data/`, SQLite files and tests
@@ -90,14 +121,16 @@ timeout is 5 seconds, so the script's printed reason, not a kill, is what
 It runs the real image with a throwaway data directory and configuration:
 
 1. The image is linux/amd64.
-2. It runs as 10001:10001, not root.
+2. It runs as 10001:10001, not root, with `NODE_ENV=production`.
 3. `serve` on an unmigrated database exits 1 within 30 seconds and
    creates no table.
    `migrate` into a directory the app user cannot write fails.
 4. `migrate` applies every migration, and a second run applies none.
 5. `serve` on that database becomes healthy.
 6. Health, the SPA shell, a deep link, a hashed asset (immutable cache), a
-   missing asset (404) and an unknown API route (404 JSON) answer correctly.
+   missing asset (404), an unknown API route (404 JSON) and better-auth's
+   production error redirect answer correctly. The server runs with a
+   read-only root filesystem and a tmpfs `/tmp`.
 7. Data survives: a sign-in rate-limit bucket filled in one container still
    answers 429 from its replacement on the same directory.
 8. SIGTERM (`docker stop`) exits 0 after a graceful shutdown.
