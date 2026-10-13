@@ -6,6 +6,12 @@ Use this only when a migration that reached production damaged or lost data.
 If a deploy failed without such damage, re-run it instead: the `deploy.yml`
 header says how.
 
+**While `deploy.yml` is legacy** (its jobs are `if: false`; AGENTS.md
+"Shipping"), no deploy can fail, so the re-run advice above does not apply,
+and a restore is steps 1 to 4 only. Skip steps 5 and 6: nothing deploys any more, so nothing would apply the migration
+again, and step 6's re-run would deploy nothing. Never re-run an old Deploy
+run instead: it can deploy `main` as it is now (header of `deploy.yml`).
+
 **How the undo works.** D1 Time Travel is always on and costs nothing. It can
 put the database back to any minute in the last **7 days** (Free plan; 30 on
 Paid). A restore replaces the whole database in place, including

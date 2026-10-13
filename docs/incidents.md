@@ -303,7 +303,8 @@ production, and re-running its deploy job would apply migrations and
 deploy again - that step's own error message says not to. The marker is
 repaired by hand (the same two API calls the step makes). The rule now
 stands in SECURITY.md: no workflow that names a secret carries
-`workflow_dispatch`.
+`workflow_dispatch`. Since `deploy.yml` became legacy, no Deploy run is
+re-run at all: an old run's copy of the file still deploys (its header).
 
 ## If this ever moves off D1 (self-hosted SQLite)
 
