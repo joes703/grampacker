@@ -141,6 +141,16 @@ It runs the real image with a throwaway data directory and configuration:
    which include some `.map` and `.d.ts` files.
 10. It prints the image size and startup memory as measurements, not limits.
 
+## Publishing
+
+`.github/workflows/image.yml` runs the build and `scripts/check-image.sh` on
+every pull request. Started by hand on main, it also pushes the checked
+image to `ghcr.io/joes703/grampacker:<full commit SHA>` with
+`scripts/publish-image.sh`, which refuses to replace an existing tag (a
+check just before the push, not atomic) and prints the digest to deploy. Procedure and checks: runbook step 6.1.
+
+## Notes
+
 A refused `serve` still leaves an empty database file behind: opening
 SQLite creates it before the migration check runs. It has no tables, and
 `migrate` uses it normally.

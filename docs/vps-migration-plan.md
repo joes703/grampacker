@@ -395,18 +395,32 @@ the staging DNS record and Caddy site after cutover.
 
 ### 8. Add GitHub image builds
 
-Pull-request CI should run the normal checks and prove the production image
-builds. It does not need to publish an image.
+**Publishing is built** (`.github/workflows/image.yml`; the procedure is
+runbook step 6.1). On a pull request it builds the image and runs
+`scripts/check-image.sh`, and publishes nothing. Started by hand on `main`,
+it:
 
-Create a manually triggered production workflow that:
+1. checks out the dispatched `main` commit;
+2. runs the build, unit, API and migration checks on that commit itself,
+   instead of asking the API whether `ci.yml` passed: the workflow is
+   self-contained and needs no `actions: read`;
+3. builds a `linux/amd64` image and runs `scripts/check-image.sh` on it;
+4. tags it with the full Git commit, and refuses if that tag already exists;
+5. pushes it to GHCR with the run's `GITHUB_TOKEN` (`packages: write`);
+6. reads it back by digest, checks it is the tested linux/amd64 image, and
+   prints the digest in the log and run summary.
 
-1. checks out the current `main` commit;
-2. verifies CI succeeded for that exact commit;
-3. builds a `linux/amd64` image;
-4. tags it with the full Git commit;
-5. pushes it to GHCR;
-6. records the resulting image digest;
-7. connects to the VPS and invokes the deployment script with that digest.
+The publish never replaces a tag because a rebuild of the same commit is not
+byte-identical: overwriting would let one commit name two images. The check
+runs just before the push and is not atomic, so it guards against a rerun,
+not against another writer pushing at the same moment. GHCR
+keeps the tag and its digest; the deploy history on the VPS will record
+which digest ran. The publish has no push trigger yet: each one is started
+by hand until the deployment exists.
+
+**Not built:** the deploy step, which connects to the VPS and invokes the
+deployment script with a digest the publish printed. It comes with the
+deployment account and key (runbook section 8).
 
 Do not require GitHub Releases. Do not deploy `latest` without also recording
 the immutable digest or commit tag.
@@ -448,7 +462,15 @@ Cloudflare token can do anything to production. The new workflow reverses
 that rule deliberately, for the reasons above: the deploy key's power is
 limited on the VPS side, and who can edit or dispatch workflows is limited on
 the GitHub side. `deploy.yml`'s header must be updated in the same change that
-adds the new workflow, so the two documents do not contradict each other.
+adds the deploy step, so the two documents do not contradict each other.
+
+`image.yml` already carries `workflow_dispatch`. It names no secret, so the
+rule in `docs/testing-and-ci.md` section 10 still holds, and `deploy.yml` is
+unchanged. Its token can push images, though: a branch that edited the file
+and was dispatched could push an image to GHCR under any tag. The same
+GitHub-side limit on who can edit or dispatch workflows covers that, and it
+is why a deployment takes a digest printed by a run on `main`, never a tag
+(`SECURITY.md`).
 
 ### 9. Keep routine deployment simple
 

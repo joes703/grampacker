@@ -522,9 +522,20 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     drizzle-orm's `SECURITY.md` names a separate announcement channel, and
     hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
     named their advisories.
-- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`
-  and `push` to main - never `pull_request_target` (which would run
-  workflows with secrets against fork code); private repo.
+- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`,
+  `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
+  workflows that name no secret - never `pull_request_target` (which would
+  run workflows with secrets against fork code); private repo.
+- `image.yml` publishes the production image to GHCR on a manual dispatch
+  from main, with `packages: write` on its publish job only. Accepted risk:
+  a workflow runs the triggering branch's copy of its file, so a branch that
+  edited a workflow to ask for `packages: write` (on a dispatch or on its own
+  pull request) could push any image to `ghcr.io/joes703/grampacker`, under
+  any tag. Nothing on GitHub stops that on this plan; what does is that only
+  the owner can push workflow-file changes or dispatch (agent tokens: no
+  Workflows permission, Actions read only; `docs/testing-and-ci.md` section
+  12). So a tag proves nothing: deploy only a digest that a successful run
+  on main printed. Fork pull requests get a read-only token.
 - No workflow that names a secret carries `workflow_dispatch`. A manual
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch

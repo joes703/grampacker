@@ -200,6 +200,15 @@ secrets are visible to same-repository `pull_request` runs of any
 workflow; only a `production` environment restricted to `main` would close
 that, and it needs a plan that offers environments on private repositories.
 
+`image.yml` builds the production image and runs `scripts/check-image.sh` on
+every pull request, with a read-only token. It is not a required check, and
+`deploy.yml` does not wait for it, so it cannot hold up a Worker deploy. A
+manual dispatch on main also reruns the build, unit, API and migration
+checks, then publishes the image to GHCR. It names no secret; its publish job
+alone has `packages: write`. It never deploys. Procedure: runbook
+(`docs/vps-bootstrap-and-migration-runbook.md`) step 6.1; accepted risk:
+`SECURITY.md`.
+
 ## 11. Deployment
 
 Principles: CI passes first; production changes are serialized and never

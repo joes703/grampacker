@@ -65,7 +65,9 @@ Placeholders that you replace when you run a command:
 | Placeholder | Meaning |
 | --- | --- |
 | `<CADDY_VERSION>` | A Caddy 2.x release at least two weeks old, for example `2.10.2` |
-| `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters |
+| `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (step 6.1) |
+| `<APP_SHA>` | The full 40-character commit SHA an image was built from; its GHCR tag |
+| `<RUN_ID>` | A GitHub Actions run number, from `gh run list` |
 | `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
 | `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
 | `<STAMP>` | A UTC time stamp such as `20261101T1530Z`, one per export |
@@ -366,8 +368,9 @@ written back into this runbook in the same PR.
 | Deploy script | `/usr/local/sbin/grampacker-deploy <APP_DIGEST>`, run as root. Steps in section 9. Validates its argument against `^sha256:[0-9a-f]{64}$`. Tags the running image `grampacker-local:current` and the one before it `grampacker-local:previous`, so `docker image prune` cannot delete the rollback image. Appends one line per deployment to `/srv/grampacker/deploy-history.log`. |
 | SSH wrapper | `/usr/local/sbin/grampacker-deploy-ssh`, the forced command for the `deploy` key. Reads `SSH_ORIGINAL_COMMAND`, accepts exactly one digest, and runs `sudo /usr/local/sbin/grampacker-deploy "$digest"`. Anything else exits non-zero without side effects. |
 | Maintenance response | Mechanism designed with the real Compose files. Required behavior: 503 for every path including `/api/*` while on; works with the app container stopped; survives a Caddy restart in the state it was left in; switched by one documented command each way; provable with one `curl` from outside. |
-| CI | Pull requests build the image (no push) in addition to today's checks. |
-| Publish-and-deploy workflow | `workflow_dispatch`; checks out `refs/heads/main`; verifies `ci.yml` succeeded for that exact SHA (same API check as today's `deploy.yml`); builds `linux/amd64`; pushes `$IMAGE_REPO:<full SHA>` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; prints the digest; every job carries `if: github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; then, unless the boolean input `deploy` is false, a separate job (in the `production` environment when Pro is available) runs SSH with a pinned host key and sends only the digest. One concurrency group, never canceled in progress. |
+| CI | **Built:** `image.yml` builds the image and runs `scripts/check-image.sh` on pull requests (no push), beside `ci.yml`'s checks. |
+| Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, no inputs; every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Never deploys. |
+| Deploy job | **Not built.** Takes a digest the publish workflow printed, and (in the `production` environment when Pro is available) runs SSH with a pinned host key and sends only that digest. Whether it is a job in `image.yml` or its own workflow is decided with section 8. |
 
 Until these exist and are merged, sections 7 to 12 cannot run.
 
@@ -419,20 +422,114 @@ Rerun: safe; editing an existing environment has the same result.
 
 ### 6.1 Publishing (GitHub Actions, AFTER IMAGE)
 
-`[GitHub Actions]` The publish workflow pushes with its own short-lived
-`GITHUB_TOKEN` (`packages: write`). No personal token is involved.
+`.github/workflows/image.yml` ("Image") publishes; it never deploys. On a
+pull request it builds the image and runs `scripts/check-image.sh`, and
+pushes nothing. Started by hand on `main`, it:
 
-Run it with the input `deploy` set to false until section 8 is complete: the
-VPS cannot accept a deployment before then. That run publishes the image and
-prints its digest only.
+1. runs `npm run build`, `npm test` and `npm run test:migrations` on the
+   dispatched commit (job "Pre-publish checks");
+2. builds `linux/amd64`, runs `scripts/check-image.sh`, then pushes
+   `$IMAGE_REPO:<full commit SHA>` with the run's own short-lived
+   `GITHUB_TOKEN` (`packages: write`); no personal token is involved (job
+   "Publish image to GHCR");
+3. reads the image back from GHCR by digest, checks that it is one
+   linux/amd64 image and the one that was tested, and prints the digest in
+   the log and the run summary.
 
-After its first successful run:
+The tag is never replaced. If `<full commit SHA>` is already in GHCR, the run
+fails and names the digest that tag points to. That check runs just before
+the push and is not atomic; it guards against a rerun, not against another
+writer pushing at the same moment. A deployment always uses the
+digest, never the tag.
 
-`[GHCR]` Your profile, Packages, `grampacker`:
+A dispatch from any other branch runs no job. The workflow has no inputs.
 
-1. Confirm the package is **Private** and linked to `joes703/grampacker`.
-2. Package settings, "Manage Actions access": the `grampacker` repository has
+Prerequisite: `image.yml` is on `main`. GitHub offers "Run workflow" only
+for workflow files on the default branch.
+
+#### First publish (rehearsal)
+
+Nothing on the VPS is needed: this run only publishes.
+
+```bash
+# [Mac] [walnut]
+git ls-remote https://github.com/$GH_REPO refs/heads/main
+gh workflow run image.yml --repo "$GH_REPO" --ref main
+gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 \
+  --json databaseId,headSha,status,url
+```
+
+The first command prints main's head: that is `<APP_SHA>`. Wait a few
+seconds before `gh run list`; the run takes a moment to appear. Its
+`headSha` must equal `<APP_SHA>`, and its `databaseId` is `<RUN_ID>`.
+
+```bash
+# [Mac] [walnut]
+gh run watch <RUN_ID> --repo "$GH_REPO" --exit-status
+gh run view <RUN_ID> --repo "$GH_REPO" --log | grep -E 'published |digest +sha256:|image +ghcr'
+```
+
+Expected: "Pre-publish checks" and "Publish image to GHCR" succeed, and the last command
+prints:
+
+```text
+published ghcr.io/joes703/grampacker:<APP_SHA>
+digest    sha256:<64 hex>
+image     ghcr.io/joes703/grampacker@sha256:<64 hex>
+```
+
+That `sha256:...` is `<APP_DIGEST>`. The run's summary page shows the same
+values. Record both in section 13.
+
+#### Package visibility and access
+
+The package is created by the first push. `[GHCR]` Your profile, Packages,
+`grampacker`:
+
+1. It is **Private**. Do not make it Public: GitHub documents that a public
+   package cannot be made private again (recheck GitHub's "Configuring a
+   package's access control and visibility" before acting). If it shows
+   Public, stop and deploy nothing until it is decided.
+2. It is linked to `joes703/grampacker` (the image's
+   `org.opencontainers.image.source` label asks for that link).
+3. Package settings, "Manage Actions access": the `grampacker` repository has
    **Write**. No other repository is listed.
+
+The VPS pulls with its own read-only token (6.2), never with this one.
+
+#### Verify the published image
+
+From the VPS, once 6.3 has logged Docker in:
+
+```bash
+# [VPS root]
+docker pull "ghcr.io/joes703/grampacker:<APP_SHA>"
+docker pull "ghcr.io/joes703/grampacker@<APP_DIGEST>"
+docker image inspect --format '{{.Os}}/{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}}' \
+  "ghcr.io/joes703/grampacker@<APP_DIGEST>"
+```
+
+Expected: the first pull prints `Digest: <APP_DIGEST>`; the second downloads
+nothing new; the inspect prints `linux/amd64 <APP_SHA>`. Docker checks the
+downloaded content against the digest, so a digest pull cannot return
+another image. Step 7.1 then checks the runtime user.
+
+#### When a run fails
+
+| Where | What it means | What to do |
+| --- | --- | --- |
+| "Pre-publish checks", the image build or `check-image.sh` | Nothing was pushed | Fix it through a pull request, then dispatch again from `main` |
+| "already exists" | That commit is already in GHCR | Use the digest only if an earlier run for this commit **succeeded** and printed it. Otherwise treat it as the next row |
+| After the push (read-back check) | The tag exists but its image was not verified | Deploy nothing from this commit. `[GHCR]` delete that package version, then rerun |
+| "could not check whether ... exists" | GHCR answered the tag lookup with something other than a plain "not found", so nothing was pushed | Read the error it prints. Tested only against a local registry: if the **first** publish stops here because the package does not exist yet, report the exact error and change nothing by hand |
+| Login or push | Usually GHCR access (step above) | Check the package's Actions access, then rerun |
+
+Rerun: `gh run rerun <RUN_ID> --repo "$GH_REPO" --failed`. A rerun keeps
+the original commit and workflow file. After a successful publish a rerun
+stops at "already exists" and changes nothing.
+
+Undo: `[GHCR]` delete the package version (or the whole package). Nothing
+outside GHCR changed.
 
 ### 6.2 Create the VPS's read-only token (AFTER IMAGE)
 
@@ -939,8 +1036,8 @@ Expected: `{"ok":true}` and `200`; the last history line shows the new digest.
 ### 9.3 Deploy by hand (when the deploy job is unavailable)
 
 This deploys an image that is **already published**. Producing a new image
-needs Actions; with Actions up but SSH from GitHub failing, run the workflow
-with `deploy` set to false and use the digest it prints. Otherwise use a
+needs Actions; with Actions up but SSH from GitHub failing, publish with the
+Image workflow (step 6.1) and use the digest it prints. Otherwise use a
 digest recorded in `deploy-history.log` or shown on the GHCR package page.
 
 ```bash
@@ -1540,6 +1637,7 @@ Each is its own decision, after the observation period:
 | VPS host key fingerprint (ED25519) | |
 | Caddy version and digest | |
 | Image runtime UID | |
+| First published image: `<APP_SHA>`, `<APP_DIGEST>`, run URL | |
 | Staging memory, idle / busy | |
 | Rehearsal 1: export, transfer, import, validation times | |
 | Rehearsal 2: same | |
