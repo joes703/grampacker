@@ -23,8 +23,8 @@ specific to working with Claude, and does not override it.
 
 Claude owns the loop: write, get Codex to review adversarially, push a branch,
 open a PR, merge on green once the human approves that exact head (AGENTS.md
-"Shipping"), let CI deploy. Flag destructive or account-affecting changes
-before merging.
+"Shipping"). A merge does not deploy while `deploy.yml` is legacy. Flag
+destructive or account-affecting changes before merging.
 
 ## Getting Codex to review
 

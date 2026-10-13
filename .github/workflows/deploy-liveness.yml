@@ -1,3 +1,14 @@
+# LEGACY: NO SCHEDULE
+# -------------------
+# deploy.yml no longer deploys (see "LEGACY" at its top), so main moves ahead
+# of production after every merge and this check would always report it.
+# So it has no schedule, and its job is `if: false`: a manual run does
+# nothing either. The issue it filed would also tell you to re-run Deploy
+# runs, which deploy.yml's header now forbids. Delete this file with
+# deploy.yml.
+#
+# The rest of this header describes the check as it ran until then.
+#
 # Alerts when main has moved ahead of what is actually running in production.
 #
 # WHY THIS EXISTS
@@ -18,12 +29,9 @@
 # git refs, and opens an issue. That is all it can do.
 name: Deploy liveness
 
+# No schedule: see "LEGACY" above. A workflow needs a trigger, and a manual
+# run reaches no step.
 on:
-  # Every 6 hours. Deliberately not tighter: this is a single-user app where a
-  # missed deploy is an inconvenience rather than an outage, and a noisy
-  # watchdog is one that gets muted.
-  schedule:
-    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +43,8 @@ permissions:
 jobs:
   check:
     name: Check production is current
+    # Off: see "LEGACY" at the top of this file.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

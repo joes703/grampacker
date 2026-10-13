@@ -210,6 +210,16 @@ alone has `packages: write`. It never deploys. Procedure: runbook
 
 ## 11. Deployment
 
+**Worker deployment is off.** `main` is moving to a Node server with SQLite
+on a VPS, which the Worker cannot run. Every job in `deploy.yml` and
+`deploy-liveness.yml` is `if: false`, and the liveness check has no schedule.
+After each CI run on main, a Deploy run still appears, with both jobs
+skipped. The production Worker keeps serving the last commit it deployed and
+is the rollback target; rollback never runs `deploy.yml`. The recovery below
+(re-running a Deploy run) must not be used: a re-run uses the old copy of the
+workflow file, without `if: false`, and can deploy main as it is now (header
+of `deploy.yml`). The rest of this section describes the workflow as it ran.
+
 Principles: CI passes first; production changes are serialized and never
 canceled mid-flight; a database change works with the deployed Worker and
 the next one (deploy migrates, then swaps the Worker; expand first,
