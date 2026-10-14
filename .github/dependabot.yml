@@ -77,3 +77,32 @@ updates:
       non-major:
         patterns: ['*']
         update-types: [minor, patch]
+
+  # The Node base image: the Dockerfile's `FROM node:<version>-trixie-slim@
+  # sha256:...` line, which production runs. Dependabot moves the version tag
+  # and the digest together. It reads only a literal FROM line, never an
+  # image named through an ARG.
+  #
+  # Daily and with no cooldown, unlike the two entries above. No Dependabot
+  # security update ever covers a container image, so these version updates
+  # are the only way Node and Debian security fixes arrive; a wait would
+  # delay exactly those. The image comes from Docker's official-images
+  # build, not from a package anyone can publish, and the PR is still
+  # reviewed and merged by hand. There is one dependency, so a newer update
+  # replaces an open PR rather than adding one.
+  #
+  # Majors are ignored: an odd major is never LTS, and moving to the next
+  # LTS major is a planned change, due before Node 24's end of life
+  # (2028-04-30).
+  #
+  # Dependabot may not raise a PR when the SAME tag is rebuilt for Debian
+  # fixes (dependabot-core #15103 can turn those off). The monthly check in
+  # the runbook (docs/vps-bootstrap-and-migration-runbook.md 9.6) catches a
+  # rebuilt tag that no PR has moved.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]

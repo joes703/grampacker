@@ -7,22 +7,25 @@
 #
 # Migrating and serving are separate commands on purpose. `serve` (the
 # default) never changes the schema: it refuses to start while a migration
-# is pending, so the deploy runs `migrate` explicitly, after a snapshot.
+# is pending, so the deploy runs `migrate` explicitly, after it has copied
+# the data directory.
 #
 # The base image is pinned by version AND digest, and every stage uses the
 # same one. Build and runtime must share a C library: better-sqlite3 loads a
 # prebuilt glibc binary from its npm package (prebuilds/linux-x64.node), so
 # no compiler is needed and Alpine (musl) is not used.
 #
-# Node 24.21.0, Debian 13 (trixie), glibc 2.41. The digest is the
-# multi-platform index; its linux/amd64 manifest is sha256:c83040f7e24b...
-# (docs/container-image.md says how it was chosen and how to update it).
-ARG NODE_IMAGE=node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+# The pin keeps builds reproducible, so it must also be kept moving: this
+# image carries the Node and Debian security fixes that production runs.
+# Dependabot updates this FROM line (.github/dependabot.yml). It cannot
+# update an image named through an ARG, so keep it a literal FROM line.
+# The digest is the multi-platform index (docs/container-image.md).
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS base
 
 # 1. Build: every dependency, then the SPA and the compiled server. Not
 #    `npm run build`: that also runs the Cloudflare build, which copies
 #    .dev.vars into dist/. Typecheck, lint and tests run in CI, not here.
-FROM ${NODE_IMAGE} AS build
+FROM base AS build
 WORKDIR /src
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
@@ -37,13 +40,13 @@ RUN npm run build:client && npm run build:server
 #    devOptional and --omit=dev keeps them. No production package requires an
 #    optional package (docs/container-image.md), so --omit=optional removes
 #    them. scripts/check-image.sh fails if a dev tool is present.
-FROM ${NODE_IMAGE} AS deps
+FROM base AS deps
 WORKDIR /src
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev --omit=optional
 
 # 3. Runtime: only what `node dist/server/node.js` reads.
-FROM ${NODE_IMAGE} AS runtime
+FROM base AS runtime
 
 # npm, npx and corepack are not used at runtime; removing them removes their
 # code and their advisories from the image. The app user has a fixed numeric

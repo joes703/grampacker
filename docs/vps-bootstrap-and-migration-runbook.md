@@ -288,13 +288,15 @@ runbook runs every Docker command with `sudo`. Rerun: safe.
 
 ### 3.2 Pull the Caddy image
 
-Caddy is the official `caddy:latest` image, not pinned. It changes only when
-you run `grampacker-deploy caddy-update` (9.4), never during an app deploy.
+Caddy is the official `caddy:2` image: the major version only, so every
+Caddy 2.x release arrives (Caddy supports only its newest 2.x). It changes
+only when you run `grampacker-deploy caddy-update` (9.4), never during an app
+deploy.
 
 ```bash
 # [VPS joe]
-sudo docker pull caddy:latest
-sudo docker run --rm caddy:latest caddy version
+sudo docker pull caddy:2
+sudo docker run --rm caddy:2 caddy version
 ```
 
 Expected: a `v2.x.y` version line. Rerun: safe.
@@ -307,7 +309,7 @@ has no rule for it. This test proves the `127.0.0.1:` form is not.
 
 ```bash
 # [VPS joe]
-sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:latest caddy respond --listen :80 "bindtest ok"
+sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:2 caddy respond --listen :80 "bindtest ok"
 curl -sS http://127.0.0.1:8099/
 sudo ss -ltnp | grep 8099
 ```
@@ -347,6 +349,56 @@ root; these hold the certificates and the ACME account key. Rerun: safe.
 `sudo apt-get install -y sqlite3`. The checks in this runbook avoid `jq` on
 the VPS; install it only for your own inspection:
 `sudo apt-get install -y jq`. Rerun: safe.
+
+### 3.6 Operating system and Docker updates (NOW)
+
+The containers bring their own operating system files, so apt on the host
+never updates the app or Caddy; their images do (9.6). The host's updates
+cover the kernel, Docker and everything else installed on the VPS:
+
+| Packages | Updated by |
+| --- | --- |
+| Ubuntu's own packages, including the kernel | `unattended-upgrades`, daily, from Ubuntu's security pocket |
+| Docker Engine, containerd, runc and Compose from Docker's apt repository (`docker-ce`, `containerd.io` (it includes runc), `docker-compose-plugin`) | By hand: the monthly check (9.6), and promptly after a Docker, containerd or runc security release |
+| Any other repository, for example Kopia's | By hand, the monthly check |
+
+By default `unattended-upgrades` installs only from Ubuntu's archive, never
+from other repositories. Docker stays manual on purpose: an upgrade restarts
+the Docker daemon and both containers, and nothing coordinates that with
+`grampacker-deploy`. Check:
+
+```bash
+# [VPS joe]
+systemctl is-enabled unattended-upgrades
+cat /etc/apt/apt.conf.d/20auto-upgrades
+apt-cache policy docker-ce containerd.io docker-compose-plugin docker.io kopia
+sudo unattended-upgrade --dry-run
+```
+
+Expected:
+
+- `enabled`, and both `APT::Periodic` lines set to `"1"`. If not:
+  `sudo dpkg-reconfigure -plow unattended-upgrades`, answer Yes, and check
+  again.
+- Docker's packages show `download.docker.com` as their source. If `docker.io`
+  is installed from Ubuntu's archive instead, Ubuntu's security pocket covers
+  it, and the Docker row above does not apply. `kopia` shows its own
+  repository once it is installed.
+- The dry run ends without an error.
+
+Reboots: a kernel or C library update takes effect only after a reboot.
+Ubuntu creates `/var/run/reboot-required` when one is needed, and the login
+message says `*** System restart required ***`. Automatic reboots stay off,
+so a person sees the VPS come back:
+
+```bash
+# [VPS joe]
+cat /var/run/reboot-required.pkgs
+```
+
+`No such file` means no reboot is needed. If it lists packages, reboot within seven days, and sooner for a kernel
+security fix (`sudo reboot`). Both containers restart by themselves
+(`restart: unless-stopped`). Afterward, check that the site answers (9.6).
 
 ## 4. Implementation deliverables this runbook depends on (sandbox)
 
@@ -724,7 +776,7 @@ repository:
 
 | Repository file | Installed as | What it is |
 | --- | --- | --- |
-| `deploy/compose.yaml` | `/srv/grampacker/compose.yaml` | The app (exact image digest, `127.0.0.1` only, UID/GID 10001, read-only root filesystem, `/tmp` tmpfs) and Caddy (`caddy:latest`, host networking) |
+| `deploy/compose.yaml` | `/srv/grampacker/compose.yaml` | The app (exact image digest, `127.0.0.1` only, UID/GID 10001, read-only root filesystem, `/tmp` tmpfs) and Caddy (`caddy:2`, host networking) |
 | `deploy/Caddyfile` | `/srv/grampacker/Caddyfile` | `grampacker.app`: HTTPS, maintenance switch, proxy to the app |
 | `deploy/Caddyfile.rehearsal` | `/srv/grampacker-rehearsal/Caddyfile.rehearsal` | The same, on `http://127.0.0.1:8081` only, for the rehearsal |
 | `deploy/grampacker-deploy` | `/usr/local/sbin/grampacker-deploy` | `deploy`, `rollback`, `maintenance`, `caddy-update` |
@@ -734,10 +786,12 @@ answers 503 to every path, including `/api/*`, whether or not the app runs,
 and it stays on after a Caddy restart. `grampacker-deploy maintenance on|off`
 switches it and proves the result through Caddy.
 
-**Caddy is not pinned.** It changes only through `grampacker-deploy
-caddy-update`, which pulls `caddy:latest`, validates the Caddyfile with the
-new image, recreates only Caddy and checks it answers. An app deploy never
-pulls or restarts Caddy.
+**Caddy follows every 2.x release** (`caddy:2`). It changes only through
+`grampacker-deploy caddy-update`, which pulls `caddy:2`, validates the
+Caddyfile with the new image, recreates only Caddy and checks it answers.
+Compose pulls an image only when it is missing, so an app deploy, a
+rollback or any other `docker compose` command never pulls or replaces
+Caddy.
 
 **Before changing any file in `deploy/`**, rehearse it (7.4) in the sandbox
 or on the VPS. The rehearsal is the required check for deployment changes;
@@ -855,7 +909,7 @@ grampacker-deploy deploy <APP_DIGEST>
 curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
 ```
 
-Expected: `caddy-update` ends with `Caddy updated: sha256:..., answering
+Expected: `caddy-update` ends with `Caddy updated: v2.x.y ..., answering
 503`. `deploy` prints `maintenance is on`, `data copied to
 /srv/grampacker-rehearsal/rollback/<stamp>`, `applied N migration(s)`, `app
 is healthy`, `maintenance is off`, `deployed ...`. The `curl` prints
@@ -959,8 +1013,20 @@ Verify:
 curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
 ```
 
-Expected: `{"ok":true} 200`. Rerun: safe; the same digest redeploys and
-makes a new rollback directory.
+Expected: `{"ok":true} 200`. Then check what is running:
+
+```bash
+# [VPS root]
+cd /srv/grampacker
+docker inspect -f '{{.Config.Image}} {{index .Config.Labels "org.opencontainers.image.revision"}}' \
+  "$(docker compose --env-file deploy.env ps -q app)"
+docker compose --env-file deploy.env exec -T app node --version
+```
+
+Expected: `ghcr.io/joes703/grampacker@<APP_DIGEST>`, then the `main` commit
+the Image run built, and the Node version in that commit's `Dockerfile`
+`FROM` line. Rerun: safe; the same digest redeploys and makes a new rollback
+directory.
 
 ### 9.2 When a deploy fails
 
@@ -1023,10 +1089,12 @@ by accident.
 grampacker-deploy caddy-update
 ```
 
-It pulls `caddy:latest`, validates `/srv/grampacker/Caddyfile` with that
-image, recreates only Caddy, and waits up to a minute for the site to answer
-200 (or 503 while maintenance is on). If validation fails, the running Caddy
-is not touched.
+It pulls `caddy:2`, validates `/srv/grampacker/Caddyfile` with that image,
+recreates only Caddy, and waits up to a minute for the site to answer 200
+(or 503 while maintenance is on). It prints the running Caddy's version;
+record it in section 13. If validation fails, the running Caddy is not
+touched, and `caddy:2` points back at the image it runs. Run it at least monthly (9.6), and within a few days of a Caddy
+security release.
 
 ### 9.5 Disk space and image cleanup
 
@@ -1053,6 +1121,97 @@ docker image prune -f
 app image. A later rollback then pulls it from GHCR again by digest, which
 needs GHCR to answer. Prune only when the current deploy is known good.
 Never use `prune -a` here.
+
+### 9.6 Keeping production patched
+
+A merge changes `main`, not production. Merged fixes reach the VPS only like
+this:
+
+| Component | What brings the fix | What puts it into production |
+| --- | --- | --- |
+| npm packages | A Dependabot PR (or SECURITY.md's manual path) changing `package-lock.json` | Publish an image from `main` (6.1), deploy it (9.1) |
+| Node and Debian in the image | A Dependabot PR changing the `Dockerfile`'s `FROM` line | Publish and deploy |
+| Caddy | Caddy's own release of `caddy:2` | `grampacker-deploy caddy-update` (9.4) |
+| The VPS itself | Ubuntu and Docker packages | 3.6 |
+
+Rebuilding an unchanged commit gains almost nothing: the fixes come in when a
+PR moves a pinned version or digest. Targets:
+
+- **A security fix** (a Dependabot security PR, the manual path, a Node
+  security release, a Caddy or Docker security release): publish and deploy,
+  or update, as soon as practical, the same day when possible.
+- **Any other merged change to `Dockerfile`, `package.json` or
+  `package-lock.json`:** publish and deploy within seven days. A change only
+  to development packages does not need a deploy; when unsure, deploy.
+
+After every deploy, check what is running (9.1).
+
+**Monthly check** (first week of the month):
+
+1. **Is production behind `main`?**
+
+   ```bash
+   # [VPS root]
+   cd /srv/grampacker
+   docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+     "$(docker compose --env-file deploy.env ps -q app)"
+   ```
+
+   ```bash
+   # [Mac] in the repository
+   git fetch origin
+   git log --oneline <REVISION>..origin/main -- Dockerfile package.json package-lock.json
+   ```
+
+   Empty output: production has every merged dependency and base-image
+   change. Otherwise publish and deploy.
+2. **Did the base-image updates arrive?**
+
+   ```bash
+   # [Mac]
+   git show origin/main:Dockerfile | grep '^FROM node:'
+   docker buildx imagetools inspect node:24-trixie-slim \
+     --format '{{json .Manifest.Digest}} {{range (index .Image "linux/amd64").Config.Env}}{{.}} {{end}}'
+   gh pr list --repo joes703/grampacker --author app/dependabot
+   ```
+
+   `node:24-trixie-slim` is always the newest Node 24 build; the second
+   command prints its digest and `NODE_VERSION`. If that digest is the one
+   after `@` in the `FROM` line, the pin is current. If not, a Dependabot PR
+   for `node` should be open. If none is open:
+   - Same Node version, different digest: the tag was rebuilt (usually for
+     Debian fixes), and Dependabot may not raise those
+     (`.github/dependabot.yml`). Update the line by hand
+     (`docs/container-image.md`).
+   - A newer Node version, released more than two days ago: Dependabot has
+     stopped. Read its log (Insights, Dependency graph, Dependabot), and
+     update the line by hand meanwhile.
+
+   Merge or close Dependabot PRs older than a week.
+3. **Caddy:** `grampacker-deploy caddy-update` (9.4).
+4. **The host:**
+
+   ```bash
+   # [VPS joe]
+   sudo apt-get update
+   apt list --upgradable
+   sudo apt-get upgrade --with-new-pkgs
+   cat /var/run/reboot-required.pkgs
+   ```
+
+   This applies what `unattended-upgrades` leaves (Docker's packages, Kopia).
+   `No such file` from `cat` means no reboot is needed.
+   Upgrading Docker restarts both containers for a few seconds; do it at a
+   quiet time. Reboot if 3.6 says so. Then check:
+
+   ```bash
+   # [VPS root]
+   cd /srv/grampacker
+   docker compose --env-file deploy.env ps
+   curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
+   ```
+
+   Expected: both services running, and `{"ok":true} 200`.
 
 ## 10. Staging with a copy of production (CONFIRM, production data)
 
@@ -1523,6 +1682,7 @@ Each is its own decision, after the observation period:
 | --- | --- |
 | VPS host key fingerprint (ED25519) | |
 | Caddy version after each `caddy-update` | |
+| Worker hotfixes: branch, commit, Cloudflare version id and time (`docs/testing-and-ci.md` section 11) | |
 | Image runtime UID | |
 | Baseline before the merges: `<BASELINE_TIME>`, GitHub record (SHA, time), newest Cloudflare deployment (version id, time) | |
 | Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |

@@ -115,7 +115,7 @@ Use:
 - a multi-stage Docker build using a glibc-based Node image, not Alpine.
 - Docker Compose on the VPS.
 - Caddy on the VPS for TLS and reverse proxying. Run it as a second Compose
-  service from the official `caddy:latest` image, changed only by an explicit
+  service from the official `caddy:2` image, changed only by an explicit
   update that validates the configuration first, with host networking. Host networking
   lets Caddy see the real client address (Docker's port proxy can hide it)
   and reach the application on `127.0.0.1`. It also means Docker publishes no

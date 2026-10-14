@@ -39,11 +39,15 @@ services:
         max-file: "3"
 
   caddy:
-    # Not pinned on purpose. It changes only through
-    # `grampacker-deploy caddy-update`, which validates the configuration
-    # with the new image first. An app deploy never starts or pulls Caddy.
-    image: caddy:latest
-    pull_policy: always
+    # The major version only, so every Caddy 2.x release arrives: upstream
+    # supports only the newest 2.x, so a minor or digest pin would stop
+    # security fixes. The image changes only through
+    # `grampacker-deploy caddy-update`, which pulls it and validates the
+    # configuration with it first; if validation fails, it points the tag
+    # back at the running image. Docker's default pull policy pulls only a
+    # missing image, so no other `docker compose` command replaces Caddy,
+    # and an app deploy never starts or pulls it.
+    image: caddy:2
     # Host networking: Caddy sees the real client address and reaches the app
     # on 127.0.0.1. Docker publishes no port for it, so UFW's rules for 80
     # and 443 apply normally.

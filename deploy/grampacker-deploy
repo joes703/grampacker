@@ -7,7 +7,7 @@
 #   grampacker-deploy rollback <rollback dir>   restore a saved data directory
 #                                               and the image it ran with
 #   grampacker-deploy maintenance on|off        close or reopen the site
-#   grampacker-deploy caddy-update              pull caddy:latest, validate,
+#   grampacker-deploy caddy-update              pull caddy:2, validate,
 #                                               recreate only Caddy
 #
 # It works on /srv/grampacker, or on GRAMPACKER_ROOT when that is set (the
@@ -234,9 +234,20 @@ cmd_maintenance() {
 cmd_caddy_update() {
   [ "$#" = 0 ] || usage
   take_lock
+  # The image name comes from compose.yaml, not from the container, which
+  # may have been created under an older name.
+  local id ref running=""
+  ref="$(compose config --images caddy)"
+  id="$(compose ps -a -q caddy)"
+  [ -z "$id" ] || running="$(docker inspect -f '{{.Image}}' "$id")"
   compose pull caddy
-  compose run --rm --no-deps --pull never caddy \
-    caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  if ! compose run --rm --no-deps --pull never caddy \
+    caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    # The pull already moved the local tag to the rejected image. Point it
+    # back, or a later `docker compose up` would start the rejected image.
+    [ -z "$running" ] || docker tag "$running" "$ref"
+    die "the new Caddy image rejects the Caddyfile; the running Caddy was not changed"
+  fi
   compose up -d --no-deps --force-recreate --pull never caddy
 
   # While maintenance is on Caddy must answer 503, otherwise 200. A new
@@ -249,7 +260,7 @@ cmd_caddy_update() {
     sleep 2
   done
   [ "$status" = "$want" ] || die "Caddy answers $status, expected $want"
-  say "Caddy updated: $(docker image inspect -f '{{.Id}}' caddy:latest), answering $status"
+  say "Caddy updated: $(compose exec -T caddy caddy version), answering $status"
 }
 
 [ "$#" -ge 1 ] || usage
