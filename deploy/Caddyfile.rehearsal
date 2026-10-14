@@ -1,0 +1,28 @@
+# Caddy configuration for the empty-database rehearsal in
+# /srv/grampacker-rehearsal. Local only: plain HTTP on 127.0.0.1:8081, no
+# public site, so Caddy requests no certificate and binds nothing on ports
+# 80 or 443. The maintenance and proxy parts match the production Caddyfile.
+{
+	auto_https off
+	# The production Caddy uses the admin port; this one needs none.
+	admin off
+}
+
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+
+	@maintenance file {
+		root /srv/maintenance
+		try_files /on
+	}
+	handle @maintenance {
+		header Cache-Control no-store
+		header Retry-After 120
+		header X-Content-Type-Options nosniff
+		respond "Grampacker is down for maintenance. Please try again in a few minutes." 503
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:{$APP_PORT}
+	}
+}

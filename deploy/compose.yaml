@@ -1,0 +1,65 @@
+# Production Compose file for the VPS. It is installed as
+# /srv/grampacker/compose.yaml, next to deploy.env, secrets/app.env, data/,
+# maintenance/ and caddy/ (docs/vps-bootstrap-and-migration-runbook.md
+# section 7). Every host path is relative to this file.
+#
+# Run it through deploy/grampacker-deploy, or by hand with
+#   docker compose --env-file deploy.env <command>
+#
+# The project name is the directory's name, so the empty-database rehearsal
+# in /srv/grampacker-rehearsal (project grampacker-rehearsal) uses the same
+# file without touching production's containers.
+
+services:
+  app:
+    # Always an exact digest, ghcr.io/joes703/grampacker@sha256:..., never a
+    # tag. Only grampacker-deploy changes it.
+    image: ${APP_IMAGE:?set APP_IMAGE in deploy.env}
+    # The secrets live only on the VPS, never in Git.
+    env_file:
+      - ./secrets/app.env
+    # The image's fixed non-root user. data/ is owned by 10001:10001.
+    user: "10001:10001"
+    ports:
+      # 127.0.0.1 only. Docker's own firewall rules run before UFW, so a
+      # bare "3000:3000" would be reachable from the internet.
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    # The server finishes in-flight requests and closes SQLite on SIGTERM.
+    stop_grace_period: 20s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    # Not pinned on purpose. It changes only through
+    # `grampacker-deploy caddy-update`, which validates the configuration
+    # with the new image first. An app deploy never starts or pulls Caddy.
+    image: caddy:latest
+    pull_policy: always
+    # Host networking: Caddy sees the real client address and reaches the app
+    # on 127.0.0.1. Docker publishes no port for it, so UFW's rules for 80
+    # and 443 apply normally.
+    network_mode: host
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      APP_PORT: ${APP_PORT:-3000}
+    volumes:
+      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+      # Maintenance is on while maintenance/on exists (see the Caddyfile).
+      - ./maintenance:/srv/maintenance:ro
+    restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"

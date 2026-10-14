@@ -15,7 +15,8 @@ scripts/check-image.sh grampacker                               # test a built i
 The entrypoint is `node /app/dist/server/node.js`. Its argument is the
 command: `serve` (the default `CMD`) or `migrate`. `serve` never changes the
 schema. It exits 1 while a migration is pending, so a deploy runs `migrate`
-explicitly, after a snapshot.
+explicitly, after it has stopped the app and copied the data directory
+(`deploy/grampacker-deploy`).
 
 ## Base image
 

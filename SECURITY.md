@@ -536,6 +536,18 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   Workflows permission, Actions read only; `docs/testing-and-ci.md` section
   12). So a tag proves nothing: deploy only a digest that a successful run
   on main printed. Fork pull requests get a read-only token.
+- The VPS deployment (`deploy/`, runbook section 7) runs by hand: the owner
+  logs in over SSH and runs `grampacker-deploy` as root through `sudo`. No
+  deploy account, deploy key or forced command exists yet; they come with
+  the GitHub deploy job (runbook section 8). The script accepts only an
+  exact `sha256:` app image digest, never a tag. The app listens on
+  `127.0.0.1` only, as UID/GID 10001, with a read-only root filesystem;
+  its secrets stay in `/srv/grampacker/secrets/app.env`, outside Git.
+  Accepted risk: Caddy is `caddy:latest`, not pinned, so an upstream
+  regression or compromise reaches production at the next
+  `grampacker-deploy caddy-update`. Updates are explicit, never part of an
+  app deploy, and the new image must validate the Caddyfile before it
+  replaces the running one.
 - No workflow that names a secret carries `workflow_dispatch`. A manual
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch

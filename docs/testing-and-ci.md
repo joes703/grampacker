@@ -210,6 +210,22 @@ alone has `packages: write`. It never deploys. Procedure: runbook
 
 ## 11. Deployment
 
+**VPS deployment** is `deploy/`: the Compose file, the production and
+rehearsal Caddyfiles, and `grampacker-deploy` (runbook section 7). CI does not
+test these files yet. Before a change to any of them merges, run:
+
+- shellcheck on `deploy/grampacker-deploy` (for example
+  `docker run --rm -v "$PWD/deploy:/mnt:ro" koalaman/shellcheck:v0.10.0 /mnt/grampacker-deploy`);
+- `docker compose config` with a production-shaped and a rehearsal
+  `deploy.env`;
+- `caddy validate` on both Caddyfiles with `caddy:latest`;
+- the empty-database rehearsal (runbook 7.4): deploy, restart, maintenance
+  and rollback against a built image. It needs Docker and root, and runs in
+  an agent sandbox or on the VPS.
+
+A CI job that runs these only when `deploy/`, the Dockerfile, migrations or
+the server's startup code change is a possible later step.
+
 **Worker deployment is off.** `main` is moving to a Node server with SQLite
 on a VPS, which the Worker cannot run. Every job in `deploy.yml` and
 `deploy-liveness.yml` is `if: false`, and the liveness check has no schedule.

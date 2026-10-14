@@ -64,7 +64,6 @@ Placeholders that you replace when you run a command:
 
 | Placeholder | Meaning |
 | --- | --- |
-| `<CADDY_VERSION>` | A Caddy 2.x release at least two weeks old, for example `2.10.2` |
 | `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (step 6.1) |
 | `<APP_SHA>` | The full 40-character commit SHA an image was built from; its GHCR tag |
 | `<RUN_ID>` | A GitHub Actions run id: `databaseId` in `gh run list --json` |
@@ -74,10 +73,8 @@ Placeholders that you replace when you run a command:
 | `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
 | `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
 | `<STAMP>` | A UTC time stamp such as `20261101T1530Z`, one per export |
-| `<CADDY_DIGEST>` | The Caddy image digest recorded in step 3.2 |
 | `<WORKERS_SUBDOMAIN>` | The account's `workers.dev` subdomain, shown in the Cloudflare dashboard |
-| `<MIGRATE_COMMAND>` | `migrate`: the image's explicit migration command (`docs/container-image.md`) |
-| `<SNAPSHOT_COMMAND>`, `<IMPORT_COMMAND>` | Commands inside the image, named by the implementation (section 4) |
+| `<IMPORT_COMMAND>` | The D1 import command inside the image, named by its implementation (section 4) |
 
 **Secret values never appear in this file.** Where a secret is needed, the
 command reads it from the keyboard with `read -rs` (not saved in shell
@@ -140,7 +137,7 @@ If any line differs, stop and fix the base setup first.
 
 ### 1.2 Record the SSH host key fingerprint (NOW)
 
-GitHub Actions will pin this key later (step 8.4). Read it from the console,
+GitHub Actions will pin this key in the deferred deploy job (section 8). Read it from the console,
 which does not depend on the network path, and compare it with what the Mac
 already trusts.
 
@@ -169,7 +166,7 @@ row for another.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Administrator SSH keys | the Mac and walnut | `joe` | everything, through `sudo` | DONE |
 | 2 | Temporary provisioning key | the agent sandbox, only while approved | `provision` (temporary account) | what that session needs; removed afterward | not created; not needed now |
-| 3 | Deployment SSH key | GitHub: `production` environment secret (Pro) or repository secret (no Pro) | `deploy` | run the deploy wrapper with one image digest; nothing else | step 8 |
+| 3 | Deployment SSH key | GitHub: `production` environment secret (Pro) or repository secret (no Pro) | `deploy` | run the deploy wrapper with one image digest; nothing else | deferred (section 8) |
 | 4 | Read-only GHCR credential | `/root/.docker/config.json` on the VPS | Docker (as root) | pull Grampacker images; cannot push or delete | step 6 |
 
 ### 2.1 Administrator keys (DONE)
@@ -289,21 +286,18 @@ sudo -v && echo "sudo OK"
 Expected: `sudo OK`. `joe` does not need to be in the `docker` group: this
 runbook runs every Docker command with `sudo`. Rerun: safe.
 
-### 3.2 Choose and pin the Caddy image
+### 3.2 Pull the Caddy image
 
-Pick a Caddy 2.x release at least two weeks old from
-<https://github.com/caddyserver/caddy/releases>. Then record its digest.
+Caddy is the official `caddy:latest` image, not pinned. It changes only when
+you run `grampacker-deploy caddy-update` (9.4), never during an app deploy.
 
 ```bash
 # [VPS joe]
-sudo docker pull caddy:<CADDY_VERSION>
-sudo docker image inspect --format '{{index .RepoDigests 0}}' caddy:<CADDY_VERSION>
+sudo docker pull caddy:latest
+sudo docker run --rm caddy:latest caddy version
 ```
 
-Expected: a line such as `caddy@sha256:...`. The full pinned reference used
-below is `caddy:<CADDY_VERSION>@sha256:<that digest>`.
-
-Rerun: safe. Pulling again changes nothing for the same version.
+Expected: a `v2.x.y` version line. Rerun: safe.
 
 ### 3.3 Prove that a Docker port bound to 127.0.0.1 is not public
 
@@ -313,7 +307,7 @@ has no rule for it. This test proves the `127.0.0.1:` form is not.
 
 ```bash
 # [VPS joe]
-sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:<CADDY_VERSION> caddy respond --listen :80 "bindtest ok"
+sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:latest caddy respond --listen :80 "bindtest ok"
 curl -sS http://127.0.0.1:8099/
 sudo ss -ltnp | grep 8099
 ```
@@ -347,10 +341,12 @@ sudo stat -c '%U:%G %a %n' /srv/grampacker/caddy /srv/grampacker/caddy/data /srv
 Expected: `root:root 700` for all three. The official Caddy image runs as
 root; these hold the certificates and the ACME account key. Rerun: safe.
 
-### 3.5 Install `jq` (optional)
+### 3.5 Install `sqlite3`, and `jq` (optional)
 
-The checks below avoid `jq` on the VPS. If you want it for your own
-inspection: `sudo apt-get install -y jq`. Rerun: safe.
+`sqlite3` checks a rollback copy's integrity (12.2):
+`sudo apt-get install -y sqlite3`. The checks in this runbook avoid `jq` on
+the VPS; install it only for your own inspection:
+`sudo apt-get install -y jq`. Rerun: safe.
 
 ## 4. Implementation deliverables this runbook depends on (sandbox)
 
@@ -364,20 +360,20 @@ written back into this runbook in the same PR.
 | Dockerfile | Multi-stage, glibc Node base, non-root numeric UID, `EXPOSE 3000`, no secrets, no database, no `.dev.vars` copy. |
 | Image health check | Passes only on HTTP 200 **and** a JSON body whose `ok` is exactly `true`, within a timeout (3 seconds is a reasonable start). Any other status, a non-JSON body, `{"ok":false}`, or a timeout is unhealthy. |
 | Migrate command | Runs inside the image, applies pending Drizzle migrations to `/data/grampacker.db`, prints what it applied, exits non-zero on any failure. Safe to rerun: applied migrations are skipped. |
-| Snapshot command | Runs inside the image, uses SQLite's backup API to copy `/data/grampacker.db` to a named file under `/snapshots`, then runs `PRAGMA integrity_check` on the copy and exits non-zero unless it returns `ok`. |
 | D1 import command | Runs inside the image with `--network none`. Implements the plan's "Import" steps 1 to 15, writes a new database file (never overwrites an existing one), and prints a report: schema comparison, `integrity_check`, `foreign_key_check`, invariant checks, rows in the export against rows loaded per table (must always match), per-table counts against the D1 counts (must match, except with `--rehearsal`, where a difference is reported for the operator to review but does not fail the run), deleted transient rows, passkey field comparison. Before reporting success it checkpoints, closes every connection, and leaves a self-contained file: no `-wal` or `-shm` file beside it. Exits non-zero if any check fails. |
 | Client address | The application reads the last `X-Forwarded-For` entry, which Caddy writes, and no longer reads `cf-connecting-ip`. |
 | Configuration | A documented list of environment variables. Known today: `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. The database path and port are expected to have fixed defaults (`/data/grampacker.db`, `3000`). |
-| Deploy script | `/usr/local/sbin/grampacker-deploy <APP_DIGEST>`, run as root. Steps in section 9. Validates its argument against `^sha256:[0-9a-f]{64}$`. Tags the running image `grampacker-local:current` and the one before it `grampacker-local:previous`, so `docker image prune` cannot delete the rollback image. Appends one line per deployment to `/srv/grampacker/deploy-history.log`. |
-| SSH wrapper | `/usr/local/sbin/grampacker-deploy-ssh`, the forced command for the `deploy` key. Reads `SSH_ORIGINAL_COMMAND`, accepts exactly one digest, and runs `sudo /usr/local/sbin/grampacker-deploy "$digest"`. Anything else exits non-zero without side effects. |
-| Maintenance response | Mechanism designed with the real Compose files. Required behavior: 503 for every path including `/api/*` while on; works with the app container stopped; survives a Caddy restart in the state it was left in; switched by one documented command each way; provable with one `curl` from outside. |
+| Deployment files | **Built:** `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/Caddyfile.rehearsal`, `deploy/grampacker-deploy` (section 7). The script runs as root: `deploy <APP_DIGEST>` (accepts only `^sha256:[0-9a-f]{64}$`), `rollback <dir>`, `maintenance on\|off`, `caddy-update`. A rollback point is `rollback/<UTC time>/` with the stopped `data/` directory and `previous-image`. |
+| SSH wrapper | **Deferred** with the deploy job (section 8). |
+| Maintenance response | **Built:** the file `maintenance/on`, checked by Caddy on every request. 503 for every path including `/api/*`; works with the app stopped; survives a Caddy restart; `grampacker-deploy maintenance on\|off`; provable with one `curl`. |
 | CI | **Built:** `image.yml` builds the image and runs `scripts/check-image.sh` on pull requests (no push), beside `ci.yml`'s checks. |
 | Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, no inputs; every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Never deploys. |
-| Deploy job | **Not built.** Takes a digest the publish workflow printed, and (in the `production` environment when Pro is available) runs SSH with a pinned host key and sends only that digest. Whether it is a job in `image.yml` or its own workflow is decided with section 8. |
+| Deploy job | **Deferred** (section 8). Takes a digest the publish workflow printed, and (in the `production` environment when Pro is available) runs SSH with a pinned host key and sends only that digest. Whether it is a job in `image.yml` or its own workflow is decided with section 8. |
 
-Until these exist and are merged, sections 7 to 12 cannot run.
+Section 7 needs only what is built. Sections 10 and 11 also need the D1
+import command, which is not built.
 
-## 5. GitHub settings (GitHub web)
+## 5. GitHub settings for the deferred deploy job (GitHub web)
 
 ### 5.1 Check whether the account has GitHub Pro (NOW)
 
@@ -401,8 +397,8 @@ an image digest.
 
 `[GitHub web]` Check: your account Settings, Billing and licensing (Plans).
 
-- **Pro:** do 5.2, and in 8.4 use the environment commands.
-- **No Pro:** skip 5.2, and in 8.4 use the repository-secret commands.
+- **Pro:** do 5.2 when the deploy job (section 8) is built.
+- **No Pro:** skip 5.2; the deploy job will use a repository secret.
 
 ### 5.2 Create the `production` environment (CONFIRM, needs Pro)
 
@@ -413,7 +409,7 @@ an image digest.
    `main` only.
 3. Required reviewers: optional. Adding yourself means each deploy waits for
    one more click; useful, not required.
-4. Leave secrets empty for now; step 8 adds them.
+4. Leave secrets empty; the deploy job (section 8) adds them.
 
 Verify: the environment page shows "1 branch rule: main".
 
@@ -720,547 +716,351 @@ Rerun: safe; a new login replaces the stored credential.
 Rotate or revoke: `[GitHub web]` delete the token, then repeat 6.2 and 6.3.
 `[VPS root]` `docker logout ghcr.io` removes it from the VPS.
 
-## 7. Compose, Caddy and staging (AFTER IMAGE)
+## 7. Deployment files and the empty-database rehearsal (AFTER IMAGE)
 
-### 7.1 Check the image's runtime UID and hand it the data directories
+The deployment is two containers (the app and Caddy), one SQLite data
+directory, and one script. All three files come from `deploy/` in the
+repository:
+
+| Repository file | Installed as | What it is |
+| --- | --- | --- |
+| `deploy/compose.yaml` | `/srv/grampacker/compose.yaml` | The app (exact image digest, `127.0.0.1` only, UID/GID 10001, read-only root filesystem, `/tmp` tmpfs) and Caddy (`caddy:latest`, host networking) |
+| `deploy/Caddyfile` | `/srv/grampacker/Caddyfile` | `grampacker.app`: HTTPS, maintenance switch, proxy to the app |
+| `deploy/Caddyfile.rehearsal` | `/srv/grampacker-rehearsal/Caddyfile.rehearsal` | The same, on `http://127.0.0.1:8081` only, for the rehearsal |
+| `deploy/grampacker-deploy` | `/usr/local/sbin/grampacker-deploy` | `deploy`, `rollback`, `maintenance`, `caddy-update` |
+
+**Maintenance** is on while the file `maintenance/on` exists. Caddy then
+answers 503 to every path, including `/api/*`, whether or not the app runs,
+and it stays on after a Caddy restart. `grampacker-deploy maintenance on|off`
+switches it and proves the result through Caddy.
+
+**Caddy is not pinned.** It changes only through `grampacker-deploy
+caddy-update`, which pulls `caddy:latest`, validates the Caddyfile with the
+new image, recreates only Caddy and checks it answers. An app deploy never
+pulls or restarts Caddy.
+
+**Before changing any file in `deploy/`**, rehearse it (7.4) in the sandbox
+or on the VPS. The rehearsal is the required check for deployment changes;
+CI does not run it.
+
+### 7.1 Check the image's runtime UID and hand it the data directory
 
 ```bash
-# [VPS joe]
-sudo docker run --rm --entrypoint id "ghcr.io/joes703/grampacker@<APP_DIGEST>"
+# [VPS root]
+docker run --rm --entrypoint id "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 ```
 
-Expected: exactly `uid=10001(app) gid=10001(app) groups=10001(app)`. The
-image fixes this identity, and `/srv/grampacker/data` and
-`/srv/grampacker/snapshots` must be owned by `10001:10001`. If it prints
-anything else, stop: the image does not match this runbook.
+Expected: exactly `uid=10001(app) gid=10001(app) groups=10001(app)`. If it
+prints anything else, stop: the image does not match this runbook.
 
 ```bash
-# [VPS joe]
-sudo chown 10001:10001 /srv/grampacker/data /srv/grampacker/snapshots
-sudo chmod 0700 /srv/grampacker/data /srv/grampacker/snapshots
-sudo stat -c '%u:%g %a %n' /srv/grampacker/data /srv/grampacker/snapshots
+# [VPS root]
+cd /srv/grampacker
+chown 10001:10001 data
+chmod 0700 data
+install -d -m 0755 maintenance
+install -d -m 0700 rollback
+stat -c '%u:%g %a %n' data maintenance rollback caddy/data caddy/config
 ```
 
-Expected: `10001:10001 700` for both. `joe` now needs `sudo` to read
-them, which is intended. Rerun: safe.
+Expected: `10001:10001 700 data`, `0:0 755 maintenance`, `0:0 700` for
+`rollback`, `caddy/data` and `caddy/config`. `joe` needs `sudo` to read
+`data`, which is intended. Rerun: safe.
 
-### 7.2 Write `deploy.env`
+`snapshots/` from the base setup is no longer used. Leave it empty.
 
-No secrets; it records which images run.
+### 7.2 Install the files from a merged `main` commit
 
 ```bash
-# [VPS joe]
+# [Mac] in a clean checkout of main
+git -C ~/code/grampacker fetch origin
+git -C ~/code/grampacker switch --detach origin/main
+git -C ~/code/grampacker status --short
+cd ~/code/grampacker/deploy
+shasum -a 256 compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy
+scp compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy joe@"$VPS_HOST":/tmp/
+```
+
+```bash
+# [VPS root]
+cd /tmp
+sha256sum compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy
+install -o root -g root -m 0755 grampacker-deploy /usr/local/sbin/grampacker-deploy
+install -o root -g root -m 0644 compose.yaml Caddyfile /srv/grampacker/
+```
+
+Expected: the two hash lists match exactly; `status --short` printed
+nothing. Keep `/tmp/compose.yaml` and `/tmp/Caddyfile.rehearsal` for 7.4.
+Rerun: safe. Repeat this step whenever a file in `deploy/` changes on
+`main`.
+
+### 7.3 Write `deploy.env`
+
+No secrets. It records which app image runs; only `grampacker-deploy`
+changes `APP_IMAGE` after this.
+
+```bash
+# [VPS root]
 tee /srv/grampacker/deploy.env >/dev/null <<'EOF'
 APP_IMAGE=ghcr.io/joes703/grampacker@<APP_DIGEST>
-CADDY_IMAGE=caddy:<CADDY_VERSION>@sha256:<CADDY_DIGEST>
 ACME_EMAIL=<ACME_EMAIL>
+SITE_URL=https://grampacker.app/
 EOF
 chmod 0644 /srv/grampacker/deploy.env
 cat /srv/grampacker/deploy.env
 ```
 
-Replace the three placeholders in the heredoc before running it. Expected: the
-file shows the real values and no `<...>` remains. Rerun: safe; it overwrites
-the file with the same contents. After the first deploy, only the deploy
-script edits `APP_IMAGE`.
+Replace the two placeholders first. Expected: no `<...>` remains. The
+production secrets (`secrets/app.env`) are written at cutover, in 11.5.
+Production does not start before then.
 
-### 7.3 Write `compose.yaml`
+### 7.4 Empty-database rehearsal (NOW, no DNS, no production data)
 
-The application port names `127.0.0.1`; that is what keeps it off the
-internet (step 3.3). Caddy uses host networking, so Docker publishes nothing
-for it and UFW's 80/443 rules apply normally.
+Runs the real script against a separate directory,
+`/srv/grampacker-rehearsal` (Compose project `grampacker-rehearsal`), with
+the app on `127.0.0.1:3001` and a local-only Caddy on `127.0.0.1:8081`.
+It requests no certificate, binds nothing on ports 80 or 443, and does not
+touch `/srv/grampacker`, DNS, Cloudflare or production data. Run 7.2 first.
+
+Set up:
 
 ```bash
-# [VPS joe]
-tee /srv/grampacker/compose.yaml >/dev/null <<'EOF'
-name: grampacker
-
-services:
-  app:
-    image: ${APP_IMAGE:?set APP_IMAGE in deploy.env}
-    env_file:
-      - ./secrets/app.env
-    ports:
-      # 127.0.0.1 only. A bare "3000:3000" would bypass UFW and be public.
-      - "127.0.0.1:3000:3000"
-    volumes:
-      - ./data:/data
-    read_only: true
-    tmpfs:
-      - /tmp
-    restart: unless-stopped
-    stop_grace_period: 20s
-    logging:
-      driver: local
-      options:
-        max-size: 10m
-        max-file: "3"
-
-  caddy:
-    image: ${CADDY_IMAGE:?set CADDY_IMAGE in deploy.env}
-    # Host networking: Caddy sees the real client address and reaches the
-    # app on 127.0.0.1:3000. Docker publishes no port for it.
-    network_mode: host
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy.env}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/data:/data
-      - ./caddy/config:/config
-    restart: unless-stopped
-    logging:
-      driver: local
-      options:
-        max-size: 10m
-        max-file: "3"
+# [VPS root]
+R=/srv/grampacker-rehearsal
+install -d -m 0755 "$R" "$R/maintenance"
+install -d -m 0700 "$R/data" "$R/secrets" "$R/rollback" "$R/caddy" "$R/caddy/data" "$R/caddy/config"
+chown 10001:10001 "$R/data"
+install -m 0644 /tmp/compose.yaml /tmp/Caddyfile.rehearsal "$R/"
+tee "$R/deploy.env" >/dev/null <<'EOF'
+APP_IMAGE=ghcr.io/joes703/grampacker@<APP_DIGEST>
+APP_PORT=3001
+CADDYFILE=Caddyfile.rehearsal
+SITE_URL=http://127.0.0.1:8081/
 EOF
+( umask 077
+  printf 'BETTER_AUTH_URL=https://grampacker.app\nBETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > "$R/secrets/app.env" )
+touch "$R/maintenance/on"
+export GRAMPACKER_ROOT="$R"
 ```
 
-The file is validated at the end of 7.5, because it refers to
-`secrets/app.env`, which does not exist yet. No memory limit yet: measure
-first (section 13).
+The secret is a throwaway, generated here. With no `RESEND_API_KEY`,
+magic-link email fails closed, which the rehearsal does not need.
 
-The maintenance mechanism (section 4) may add a mount or a file to this
-Compose file. Add it here when it is designed, in the same PR that writes it.
-
-Rerun: safe.
-
-### 7.4 Write the staging `Caddyfile`
+Start Caddy closed, then deploy onto the empty database:
 
 ```bash
-# [VPS joe]
-tee /srv/grampacker/Caddyfile >/dev/null <<'EOF'
-{
-	email {$ACME_EMAIL}
-	servers {
-		# UDP 443 is closed on purpose; do not advertise HTTP/3.
-		protocols h1 h2
-	}
-}
-
-staging.grampacker.app {
-	# Above the app's largest limit (2 MB on the import routes), so the app
-	# still decides and reports 413 itself.
-	request_body {
-		max_size 4MB
-	}
-	# Caddy sets X-Forwarded-For to the connection's address, replacing what
-	# the client sent; the app reads only its last entry. Do not add
-	# trusted_proxies: it would make Caddy keep client-supplied entries.
-	reverse_proxy 127.0.0.1:3000
-}
-EOF
-sudo docker run --rm -v /srv/grampacker/Caddyfile:/etc/caddy/Caddyfile:ro -e ACME_EMAIL=test@example.invalid caddy:<CADDY_VERSION> caddy validate --config /etc/caddy/Caddyfile
+# [VPS root] same shell (GRAMPACKER_ROOT is set)
+grampacker-deploy caddy-update
+grampacker-deploy deploy <APP_DIGEST>
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
 ```
 
-Expected: `Valid configuration`. Rerun: safe.
+Expected: `caddy-update` ends with `Caddy updated: sha256:..., answering
+503`. `deploy` prints `maintenance is on`, `data copied to
+/srv/grampacker-rehearsal/rollback/<stamp>`, `applied N migration(s)`, `app
+is healthy`, `maintenance is off`, `deployed ...`. The `curl` prints
+`{"ok":true} 200`.
 
-### 7.5 Write the staging secrets
-
-Staging has its own `BETTER_AUTH_SECRET`, generated on the VPS so it never
-travels. The Resend key is typed, not pasted into a file or the history.
+Restart, and maintenance:
 
 ```bash
-# [VPS joe]
-umask 077
-read -rsp 'Resend API key: ' RESEND_KEY; echo
-{
-  printf 'BETTER_AUTH_URL=%s\n' 'https://staging.grampacker.app'
-  printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)"
-  printf 'RESEND_API_KEY=%s\n' "$RESEND_KEY"
-  printf 'EMAIL_FROM=%s\n' 'grampacker <no-reply@grampacker.app>'
-} > /srv/grampacker/secrets/app.env
-unset RESEND_KEY
-stat -c '%U:%G %a %n' /srv/grampacker/secrets/app.env
-grep -c '=' /srv/grampacker/secrets/app.env
+# [VPS root] same shell
+cd "$R"
+docker compose --env-file deploy.env restart app caddy
+sleep 30
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
+grampacker-deploy maintenance on
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/api/categories
+docker compose --env-file deploy.env restart caddy
+sleep 3
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/
+docker compose --env-file deploy.env stop app
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/lists/x
+docker compose --env-file deploy.env start app
+sleep 30
+grampacker-deploy maintenance off
 ```
 
-Expected: `joe:joe 600`, and `4`. Do not `cat` the file.
+Expected: `{"ok":true} 200`, `maintenance is on`, then `503` three times
+(an API path, after a Caddy restart, with the app stopped), then
+`maintenance is off`.
 
-Now validate the Compose file from 7.3:
+Rollback. The first deploy had no previous image, so deploy once more,
+then roll back to the point that deploy made:
 
 ```bash
-# [VPS joe]
-cd /srv/grampacker && sudo docker compose --env-file deploy.env config --quiet && echo "compose OK"
+# [VPS root] same shell
+grampacker-deploy deploy <APP_DIGEST>
+ls "$R/rollback"
+cat "$R/rollback/<newest stamp>/previous-image"
+grampacker-deploy rollback "$R/rollback/<newest stamp>"
+grampacker-deploy maintenance on
+grampacker-deploy rollback "$R/rollback/<newest stamp>"
+grampacker-deploy maintenance off
 ```
 
-Expected: `compose OK`.
+Expected: `previous-image` holds `ghcr.io/joes703/grampacker@<APP_DIGEST>`.
+The first `rollback` refuses with `turn maintenance on first`. The second
+prints `current data moved to .../failed-data-<time>`, `app is healthy`,
+`rolled back to ...` and `maintenance is still on`. Then `maintenance is
+off`.
 
-Add any further variable the implementation documents (section 4,
-"Configuration") the same way.
+Tear down:
 
-Use a new Resend key restricted to sending for `grampacker.app`, not the key
-the Worker uses, so the two can be revoked separately.
+```bash
+# [VPS root]
+cd /srv/grampacker-rehearsal && docker compose --env-file deploy.env down
+unset GRAMPACKER_ROOT
+rm -rf /srv/grampacker-rehearsal
+```
 
-Rerun: **not idempotent**: it replaces the staging secret, which signs out
-every staging session. That is harmless on staging.
+Rerun: safe after the tear-down. Record the time it took in section 13.
 
-### 7.6 Create the staging DNS record (CONFIRM)
+## 8. GitHub-to-VPS deployment (DEFERRED)
 
-Changes DNS. Does not touch `grampacker.app` itself.
+Deploying from GitHub Actions (a `deploy` account, an SSH key limited by a
+forced command, the key in GitHub) is a later slice. Until then every
+deployment is the manual command in 9.1. That slice will call
+`grampacker-deploy deploy <APP_DIGEST>` and nothing else.
 
-`[Cloudflare]` DNS, Records, Add record:
+## 9. Routine deployments (AFTER CUTOVER)
 
-- Type `A`, Name `staging`, IPv4 address: the value of `$VPS_HOST`.
-- Proxy status: **DNS only** (grey cloud).
-- TTL: 1 min (60 s).
-- No AAAA record.
+### 9.1 Deploy
+
+The digest is one the Image workflow printed for a run on `main` (6.1).
+
+```bash
+# [Mac]
+ssh -t joe@"$VPS_HOST" 'sudo /usr/local/sbin/grampacker-deploy deploy <APP_DIGEST>'
+```
+
+`-t` lets `sudo` ask for `joe`'s password. The script refuses anything but a
+bare `sha256:` digest. In order, it:
+
+1. takes a lock (`/srv/grampacker/.deploy.lock`), so two commands never
+   overlap;
+2. pulls the image, unless that exact digest is already on the VPS;
+3. turns maintenance on and proves the 503 through Caddy; if it cannot, it
+   stops before anything else changes;
+4. stops the app, so nothing writes to SQLite;
+5. copies the whole `data/` directory (database, WAL and SHM files) to
+   `rollback/<UTC time>/data`, and writes the image that was running to
+   `rollback/<UTC time>/previous-image`;
+6. runs `migrate` with the new image;
+7. writes the new digest into `deploy.env`, starts the app, waits for
+   Docker's health check, then checks `/api/health` (200 and exactly
+   `{"ok":true}`) and the homepage (200, HTML);
+8. turns maintenance off and proves a 200 through Caddy.
 
 Verify:
 
 ```bash
 # [Mac]
-dig +short A staging.grampacker.app
-dig +short AAAA staging.grampacker.app
+curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
 ```
 
-Expected: the VPS address, then nothing.
+Expected: `{"ok":true} 200`. Rerun: safe; the same digest redeploys and
+makes a new rollback directory.
 
-Undo: delete the record.
+### 9.2 When a deploy fails
 
-### 7.7 Start staging
+The script prints `DEPLOY FAILED`, whether maintenance is still on, and the
+rollback directory (or that none was made, in which case `data/` was not
+changed). No public write has happened since the copy, so restoring it is
+safe:
 
 ```bash
-# [VPS joe]
+# [VPS root]
+grampacker-deploy rollback /srv/grampacker/rollback/<stamp>
+```
+
+It stops the app, moves the failed `data/` to
+`rollback/<stamp>/failed-data-<time>` (kept), restores the saved directory,
+starts the image named in `previous-image`, and checks health. Maintenance
+stays on. Look at the site through Caddy, then:
+
+```bash
+# [VPS root]
+grampacker-deploy maintenance off
+```
+
+If no rollback directory was made (the failure came before the copy), the
+data is untouched: start the image that was running and reopen.
+
+```bash
+# [VPS root]
 cd /srv/grampacker
-sudo docker compose --env-file deploy.env run --rm --no-deps app <MIGRATE_COMMAND>
-sudo docker compose --env-file deploy.env up -d
-sudo docker compose --env-file deploy.env ps
+docker compose --env-file deploy.env up -d --no-deps app
+grampacker-deploy maintenance off
 ```
 
-`<MIGRATE_COMMAND>` is `migrate`. On an empty `data/` it creates a fresh
-database. `up` never migrates: the server refuses to start while a migration
-is pending.
+The script refuses to roll back the first deploy (its `previous-image` is
+empty). If the message said the maintenance file was already removed, the
+site may have reopened: 9.3 applies.
 
-Expected: `app` shows `(healthy)` within about a minute; `caddy` is `running`.
+### 9.3 Rolling back after traffic has reopened
+
+**Manual judgment, every time.** A rollback directory holds the data from
+before the deploy, so restoring it after the public has written to the new
+database deletes those writes from the live database (they stay in
+`failed-data-<time>`). Before doing it, decide in writing: what is broken,
+what writes would be lost (the time since reopening), and whether a
+fix-forward is possible instead. If the answer is still "restore":
 
 ```bash
-# [VPS joe]
-sudo docker compose --env-file deploy.env logs --tail 50 caddy
+# [VPS root]
+grampacker-deploy maintenance on
+grampacker-deploy rollback /srv/grampacker/rollback/<stamp>
 ```
 
-Expected: a line saying the certificate for `staging.grampacker.app` was
-obtained. If it failed, check DNS (7.6) and that UFW allows TCP 80 and 443.
+`rollback` refuses unless maintenance is on, so that step cannot be skipped
+by accident.
 
-Rerun: safe. `up -d` changes only what differs.
-
-Stop staging: `sudo docker compose --env-file deploy.env down` (keeps `data/`
-and the certificates).
-
-### 7.8 Verify staging
-
-Health, with the strict rule (status 200 **and** body exactly `{"ok":true}`):
+### 9.4 Update Caddy
 
 ```bash
-# [VPS joe]
-curl -sS -o /tmp/health.json -w '%{http_code}\n' -H 'Host: staging.grampacker.app' http://127.0.0.1:3000/api/health
-cat /tmp/health.json; echo
+# [VPS root]
+grampacker-deploy caddy-update
 ```
 
-Expected: `200`, then `{"ok":true}`.
+It pulls `caddy:latest`, validates `/srv/grampacker/Caddyfile` with that
+image, recreates only Caddy, and waits up to a minute for the site to answer
+200 (or 503 while maintenance is on). If validation fails, the running Caddy
+is not touched.
 
-From outside:
+### 9.5 Disk space and image cleanup
 
-```bash
-# [Mac]
-curl -sS -o /dev/null -w '%{http_code} %{http_version}\n' https://staging.grampacker.app/
-curl -sS -w '\n%{http_code}\n' https://staging.grampacker.app/api/health
-curl -sS -o /dev/null -w '%{http_code}\n' https://staging.grampacker.app/api/categories
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://staging.grampacker.app/api/categories
-curl -sS -o /dev/null -w '%{http_code}\n' http://staging.grampacker.app/
-curl -sSI https://staging.grampacker.app/ | grep -iE '^(strict-transport-security|content-security-policy|x-content-type-options|alt-svc):'
-nc -vz -w 5 "$VPS_HOST" 3000; echo "exit=$?"
-```
-
-Expected, in order:
-
-1. `200 2` (HTTP/2).
-2. `{"ok":true}` then `200`.
-3. `401` (anonymous API read refused).
-4. `403` (CSRF: no `x-grampacker-request` header; refused before auth).
-5. `308` (HTTP redirects to HTTPS).
-6. The security headers the app sets today, and **no** `alt-svc: h3` line.
-7. Port 3000 refused or timed out, `exit=1`.
-
-Also in a browser: open `https://staging.grampacker.app/`, follow a deep link
-(for example `/lists/anything`), and confirm a static asset under `/assets/`
-loads.
-
-Measure memory now and after a few minutes of use:
+Each deploy leaves one rollback directory, about the size of the database.
+Nothing deletes them. Kopia is the long-term backup; a rollback directory
+is only the immediate way back from one deploy. When a deploy has run well
+for a while, delete older rollback directories by hand, keeping the newest
+few:
 
 ```bash
-# [VPS joe]
-sudo docker stats --no-stream
-free -h
-```
-
-Record the numbers in section 13.
-
-## 8. Deployment account and GitHub deployment key (CONFIRM, needs section 4)
-
-### 8.1 Install the deploy script and wrapper
-
-The two scripts come from the repository at a merged `main` commit. Copy them
-from a checkout on the Mac, then install them as root-owned files that
-`deploy` cannot change.
-
-```bash
-# [Mac] in a clean checkout of main
-git -C ~/code/grampacker fetch origin && git -C ~/code/grampacker status --short
-scp <PATH_TO_DEPLOY_SCRIPT> <PATH_TO_SSH_WRAPPER> joe@"$VPS_HOST":/tmp/
-shasum -a 256 <PATH_TO_DEPLOY_SCRIPT> <PATH_TO_SSH_WRAPPER>
+# [VPS root]
+ls -l /srv/grampacker/rollback
+du -sh /srv/grampacker/rollback/*
+rm -rf /srv/grampacker/rollback/<old stamp>
 ```
 
 ```bash
 # [VPS root]
-sha256sum /tmp/<deploy script name> /tmp/<wrapper name>
-install -o root -g root -m 0755 /tmp/<deploy script name> /usr/local/sbin/grampacker-deploy
-install -o root -g root -m 0755 /tmp/<wrapper name> /usr/local/sbin/grampacker-deploy-ssh
-rm -f /tmp/<deploy script name> /tmp/<wrapper name>
+docker image ls
+docker image prune -f
 ```
 
-Expected: both hash lists match exactly. Rerun: safe; it reinstalls the same
-files. Repeat this step whenever either script changes on `main`.
-
-### 8.2 Create the `deploy` account
-
-```bash
-# [VPS root]
-adduser --disabled-password --gecos 'grampacker GitHub deploy' deploy
-tee /etc/sudoers.d/80-grampacker-deploy >/dev/null <<'EOF'
-# The deploy key may run exactly one root command. The script validates its
-# own argument; sudo does not.
-deploy ALL=(root) NOPASSWD: /usr/local/sbin/grampacker-deploy
-EOF
-chmod 0440 /etc/sudoers.d/80-grampacker-deploy
-visudo -c
-id deploy
-```
-
-Expected: `parsed OK` for every file; `deploy` is in no group except its own
-(not `sudo`, not `docker`).
-
-Rerun: `adduser` fails if the account exists; that is harmless. The `tee`
-lines are safe to rerun.
-
-### 8.3 Generate and install the deployment key
-
-Generated on the Mac in a temporary folder; the private half goes to GitHub
-and is then deleted from the Mac.
-
-```bash
-# [Mac]
-KEYDIR=$(mktemp -d)
-ssh-keygen -t ed25519 -N '' -C 'grampacker-github-deploy' -f "$KEYDIR/gha_deploy"
-cat "$KEYDIR/gha_deploy.pub"
-```
-
-```bash
-# [VPS root] paste the .pub line where shown; it is not a secret
-install -d -o deploy -g deploy -m 0700 /home/deploy/.ssh
-tee /home/deploy/.ssh/authorized_keys >/dev/null <<'EOF'
-restrict,command="/usr/local/sbin/grampacker-deploy-ssh" PASTE_THE_DEPLOY_PUBLIC_KEY_LINE_HERE
-EOF
-chown deploy:deploy /home/deploy/.ssh/authorized_keys
-chmod 0600 /home/deploy/.ssh/authorized_keys
-```
-
-`restrict` turns off shells, port forwarding, agent forwarding and X11;
-`command=` makes the wrapper the only thing the key can run.
-
-Test from the Mac before the key goes anywhere:
-
-```bash
-# [Mac]
-ssh -o IdentitiesOnly=yes -i "$KEYDIR/gha_deploy" deploy@"$VPS_HOST" 'bash -i'; echo "exit=$?"
-ssh -o IdentitiesOnly=yes -i "$KEYDIR/gha_deploy" deploy@"$VPS_HOST" 'not-a-digest'; echo "exit=$?"
-ssh -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -i "$KEYDIR/gha_deploy" -N -R 9000:127.0.0.1:22 deploy@"$VPS_HOST"; echo "exit=$?"
-```
-
-Expected: the first two print the wrapper's refusal and a non-zero exit with
-no shell; the third prints `remote port forwarding failed` and `exit=255`.
-Nothing deploys.
-
-### 8.4 Store the key and pinned host key in GitHub
-
-```bash
-# [Mac]
-ssh-keyscan -t ed25519 "$VPS_HOST" 2>/dev/null | tee "$KEYDIR/known_hosts"
-ssh-keygen -lf "$KEYDIR/known_hosts"
-```
-
-Expected: the fingerprint equals the one recorded from the console in 1.2. If
-not, stop.
-
-`[GitHub web]` With Pro: Settings, Environments, `production`. Without Pro:
-Settings, Secrets and variables, Actions. Add:
-
-- Secret `VPS_SSH_KEY`: the full contents of `$KEYDIR/gha_deploy`.
-- Secret `VPS_KNOWN_HOSTS`: the one line in `$KEYDIR/known_hosts`.
-- Variable `VPS_HOST`: the VPS address.
-- Variable `VPS_DEPLOY_USER`: `deploy`.
-
-Or from the Mac with `gh` (no copy-paste of the private key). With Pro:
-
-```bash
-# [Mac]
-gh secret set VPS_SSH_KEY --env production --repo "$GH_REPO" < "$KEYDIR/gha_deploy"
-gh secret set VPS_KNOWN_HOSTS --env production --repo "$GH_REPO" < "$KEYDIR/known_hosts"
-gh variable set VPS_HOST --env production --repo "$GH_REPO" --body "$VPS_HOST"
-gh variable set VPS_DEPLOY_USER --env production --repo "$GH_REPO" --body deploy
-```
-
-Without Pro, the same four commands without `--env production`.
-
-Then delete the Mac copy:
-
-```bash
-# [Mac]
-rm -rf "$KEYDIR"; unset KEYDIR
-```
-
-Rotate or revoke: `[VPS root]` remove the line from
-`/home/deploy/.ssh/authorized_keys` (this alone stops the key), then repeat
-8.3 and 8.4. Verify revocation with the first test command in 8.3, which must
-now fail with `Permission denied (publickey)`.
-
-## 9. Routine deployments (AFTER IMAGE)
-
-### 9.1 What the deploy script does
-
-`/usr/local/sbin/grampacker-deploy <APP_DIGEST>`, as root:
-
-1. Take a lock (`flock` on `/srv/grampacker/.deploy.lock`); exit if another
-   deploy holds it.
-2. Pull `ghcr.io/joes703/grampacker@<APP_DIGEST>`.
-3. Turn the maintenance response on; prove it with one request.
-4. Stop the `app` service.
-5. Snapshot `data/grampacker.db` to
-   `snapshots/pre-deploy-<UTC stamp>-<old digest prefix>.db` with the
-   snapshot command, which also checks `integrity_check`.
-6. Run the migrate command with the **candidate** image.
-7. Write the candidate into `deploy.env` and start it with
-   `docker compose up -d app`.
-8. Check, against `127.0.0.1:3000` with the production `Host` header:
-   health (200 and exactly `{"ok":true}`), the SPA shell, one static asset,
-   anonymous API read refused with 401, and a write without the CSRF header
-   refused with 403.
-9. Retag `current` and `previous`, and append a line to
-   `deploy-history.log`: time, new digest, previous digest, snapshot path.
-10. Turn the maintenance response off. This is the last step, so every
-    earlier failure happens while the site is still closed.
-
-If any of steps 1 to 9 fails, the script stops, **leaves maintenance on**, and
-prints the failed step, the previous digest, the snapshot path, and the
-recovery commands from 9.4. It does not restore anything by itself.
-
-If step 10 itself fails, the script cannot tell whether traffic reopened. It
-says so. Check with `curl` from outside: if the site answers normally, treat
-it as reopened (9.5 applies to any database restore); if it still answers 503,
-9.4 applies.
-
-Rerun: safe for the same digest. Pending migrations are applied once; a
-second run takes a new snapshot and restarts the same image.
-
-### 9.2 Deploy through GitHub Actions
-
-`[GitHub Actions]` Actions, the publish-and-deploy workflow, Run workflow, on
-`main`. Watch both jobs. The run summary prints the digest it deployed.
-
-Verify:
-
-```bash
-# [Mac]
-curl -sS -w '\n%{http_code}\n' https://grampacker.app/api/health
-ssh joe@"$VPS_HOST" 'tail -n 3 /srv/grampacker/deploy-history.log'
-```
-
-Expected: `{"ok":true}` and `200`; the last history line shows the new digest.
-
-### 9.3 Deploy by hand (when the deploy job is unavailable)
-
-This deploys an image that is **already published**. Producing a new image
-needs Actions; with Actions up but SSH from GitHub failing, publish with the
-Image workflow (step 6.1) and use the digest it prints. Otherwise use a
-digest recorded in `deploy-history.log` or shown on the GHCR package page.
-
-```bash
-# [Mac]
-ssh -t joe@"$VPS_HOST" 'sudo /usr/local/sbin/grampacker-deploy <APP_DIGEST>'
-```
-
-`-t` gives `sudo` a terminal so it can ask for `joe`'s password. Same
-verification as 9.2.
-
-### 9.4 When a deploy fails (maintenance is still on)
-
-No public write has happened since the snapshot, so restoring it is safe.
-
-1. Read the script's output: failed step, previous digest, snapshot path.
-2. If the failure was before step 6 (no migration ran), only the image needs
-   to go back:
-
-   ```bash
-   # [VPS root]
-   cd /srv/grampacker
-   sed -i "s|^APP_IMAGE=.*|APP_IMAGE=ghcr.io/joes703/grampacker@<PREVIOUS_DIGEST>|" deploy.env
-   docker compose --env-file deploy.env up -d app
-   ```
-
-3. If a migration ran, restore the snapshot too. Move the current files aside
-   rather than deleting them; the WAL and SHM files must not be left next to
-   the restored database, or SQLite would apply them to it.
-
-   ```bash
-   # [VPS root]
-   cd /srv/grampacker
-   docker compose --env-file deploy.env stop app
-   DEST=snapshots/failed-<STAMP>
-   install -d -o <APP_UID> -g <APP_UID> -m 0700 "$DEST"
-   mv data/grampacker.db "$DEST"/ && echo "database moved"
-   for x in -wal -shm; do [ ! -e "data/grampacker.db$x" ] || mv "data/grampacker.db$x" "$DEST"/ || echo "FAILED to move grampacker.db$x"; done
-   ls -la data/
-   ```
-
-   Expected: `database moved`, no `FAILED` line, and `ls` shows no
-   `grampacker.db`, `grampacker.db-wal` or `grampacker.db-shm` file. If
-   anything differs, stop here. Only then restore and start:
-
-   ```bash
-   # [VPS root]
-   cd /srv/grampacker
-   install -o <APP_UID> -g <APP_UID> -m 0600 snapshots/<SNAPSHOT_FILE> data/grampacker.db
-   sed -i "s|^APP_IMAGE=.*|APP_IMAGE=ghcr.io/joes703/grampacker@<PREVIOUS_DIGEST>|" deploy.env
-   docker compose --env-file deploy.env up -d app
-   ```
-
-4. Check health exactly as in 7.8 (200 and `{"ok":true}`) and the other
-   step-8 checks of 9.1.
-5. Only then turn maintenance off.
-
-### 9.5 Restoring the database after traffic has reopened
-
-**Manual judgment, every time.** Restoring a pre-deployment snapshot after
-the public has written to the new database deletes those writes. Before
-doing it, decide in writing: what is broken, what writes would be lost (the
-time since reopening), and whether a fix-forward is possible instead. If the
-answer is still "restore", turn maintenance on first, take a fresh snapshot
-of the current state (it preserves the writes for manual recovery), then
-follow 9.4 step 3.
-
-### 9.6 Image cleanup
-
-```bash
-# [VPS joe]
-sudo docker image ls
-sudo docker image prune -f
-```
-
-`prune -f` (without `-a`) removes only untagged, unused images. The
-`grampacker-local:current` and `:previous` tags keep the rollback image.
-Never use `prune -a` here. Rerun: safe.
+`prune -f` removes images no container uses, which can include the previous
+app image. A later rollback then pulls it from GHCR again by digest, which
+needs GHCR to answer. Prune only when the current deploy is known good.
+Never use `prune -a` here.
 
 ## 10. Staging with a copy of production (CONFIRM, production data)
+
+**Not ready.** Staging needs a DNS record and a Caddy site of its own, and
+neither is built: the deployment files in section 7 hold only production and
+the local rehearsal. Staging is designed together with the D1 import
+command, and the commands below are revised then. Do not run them as they
+are.
 
 Needed so an existing passkey can be tested on staging before cutover. This
 reads production data and puts a copy on the VPS. The copy is protected like
@@ -1375,8 +1175,8 @@ certificate time (minutes, not seconds).
    and `deploy-liveness.yml` show `disabled_manually`. If anything else
    shows, stop and find out why before the window.
 
-5. Have staging (section 7) running the image that will become production,
-   with a rehearsal import that passed.
+5. Have the empty-database rehearsal (7.4) passed with the image that will
+   become production, and two import rehearsals (section 10) passed.
 6. Confirm backups. They are set up outside this runbook, but the cutover
    depends on them: the existing setup must copy a backup-API snapshot of
    `/srv/grampacker/data` (never the live database and WAL files) to B2, and
@@ -1465,8 +1265,7 @@ Expected: every line `OK`. Rerun: safe.
 
 ### 11.4 Import into a new SQLite file
 
-The production `app` is stopped; staging must not be serving the staging
-copy while production is prepared.
+The production `app` must not be running while production is prepared.
 
 ```bash
 # [VPS root]
@@ -1513,40 +1312,37 @@ read -rsp 'Resend API key: ' RESEND_KEY; echo
   printf 'BETTER_AUTH_SECRET=%s\n' "$AUTH_SECRET"
   printf 'RESEND_API_KEY=%s\n' "$RESEND_KEY"
   printf 'EMAIL_FROM=%s\n' 'grampacker <no-reply@grampacker.app>'
-} > /srv/grampacker/secrets/app.env.new
+} > /srv/grampacker/secrets/app.env
 unset AUTH_SECRET RESEND_KEY
-mv /srv/grampacker/secrets/app.env /srv/grampacker/secrets/app.env.staging
-mv /srv/grampacker/secrets/app.env.new /srv/grampacker/secrets/app.env
+stat -c '%U:%G %a %n' /srv/grampacker/secrets/app.env
+grep -c '=' /srv/grampacker/secrets/app.env
 ```
+
+Expected: `joe:joe 600` and `4`. Do not `cat` the file.
 
 ```bash
 # [VPS root]
 cd /srv/grampacker
-DEST=snapshots/staging-retired-<STAMP>
-install -d -o <APP_UID> -g <APP_UID> -m 0700 "$DEST"
-mv data/grampacker.db "$DEST"/ && echo "database moved"
-for x in -wal -shm; do [ ! -e "data/grampacker.db$x" ] || mv "data/grampacker.db$x" "$DEST"/ || echo "FAILED to move grampacker.db$x"; done
 ls -la data/
-ls -la data/grampacker.db.import*
 ```
 
-Expected: exactly as in 10.2. If anything differs, stop. Then promote the
-import and take the first snapshot of it:
+Expected: only `grampacker.db.import` (no `.import-wal` or `.import-shm`,
+and no `grampacker.db`, `-wal` or `-shm`). If anything else is there, stop.
+Then promote the import and keep a copy of it, made while nothing runs:
 
 ```bash
 # [VPS root]
 cd /srv/grampacker
 mv data/grampacker.db.import data/grampacker.db
-. ./deploy.env
-docker run --rm --network none --user <APP_UID>:<APP_UID> -v /srv/grampacker/data:/data -v /srv/grampacker/snapshots:/snapshots "$APP_IMAGE" <SNAPSHOT_COMMAND> /data/grampacker.db /snapshots/cutover-imported-<STAMP>.db
+mkdir rollback/cutover-imported-<STAMP>
+cp -a data rollback/cutover-imported-<STAMP>/data
+ls -la rollback/cutover-imported-<STAMP>/data
 ```
 
-Caddy still serves only the staging site. The production site is added in
-11.7, after DNS points here: adding it earlier makes Caddy request a
-certificate that cannot succeed, and its retry backoff (and Let's Encrypt's
-failed-validation limit) could then delay the real request. While
-`BETTER_AUTH_URL` is the production URL, staging still loads but its writes and
-sign-ins fail the origin checks. That is expected.
+Caddy is not started yet. It starts in 11.7, after DNS points here: starting
+it earlier makes Caddy request a certificate that cannot succeed, and its
+retry backoff (and Let's Encrypt's failed-validation limit) could then delay
+the real request.
 
 ### 11.6 Start and test locally on the VPS
 
@@ -1582,34 +1378,16 @@ dig +short AAAA grampacker.app @1.1.1.1
 
 Expected: the VPS address, then nothing.
 
-Now add the production site to the Caddyfile, keeping staging until section 12,
-and reload Caddy:
+Now start Caddy with the production Caddyfile installed in 7.2:
 
 ```bash
-# [VPS joe]
-tee /srv/grampacker/Caddyfile >/dev/null <<'EOF'
-{
-	email {$ACME_EMAIL}
-	servers {
-		# UDP 443 is closed on purpose; do not advertise HTTP/3.
-		protocols h1 h2
-	}
-}
-
-grampacker.app, staging.grampacker.app {
-	# Above the app's largest limit (2 MB on the import routes), so the app
-	# still decides and reports 413 itself.
-	request_body {
-		max_size 4MB
-	}
-	# Caddy sets X-Forwarded-For to the connection's address, replacing what
-	# the client sent; the app reads only its last entry. Do not add
-	# trusted_proxies: it would make Caddy keep client-supplied entries.
-	reverse_proxy 127.0.0.1:3000
-}
-EOF
-cd /srv/grampacker && sudo docker compose --env-file deploy.env exec caddy caddy reload --config /etc/caddy/Caddyfile
+# [VPS root]
+grampacker-deploy caddy-update
 ```
+
+Expected: `Caddy updated: sha256:..., answering 200`. It waits one minute for
+the certificate. If it reports another status, Caddy is still running; read
+its log (below) before anything else.
 
 **Check, do not assume: `www`.** This runbook does not know whether
 `www.grampacker.app` exists. Look at the Cloudflare DNS records recorded in
@@ -1679,50 +1457,15 @@ stale** and returning to it loses writes.
    contains Node/SQLite code, and either can deploy code the Worker cannot
    run (6.1, "Merge order").
 
-**After 11.8** (real writes on SQLite): do not return to D1. Fix forward, or
-run the previous image (9.4 step 2). Restoring a snapshot follows 9.5 and
-needs a deliberate decision.
+**After 11.8** (real writes on SQLite): do not return to D1. Fix forward,
+or follow 9.3, which needs a written decision first.
 
 ## 12. After cutover
 
-### 12.1 Retire staging (CONFIRM: DNS)
+### 12.1 Delete copies of production data
 
-```bash
-# [VPS joe]
-tee /srv/grampacker/Caddyfile >/dev/null <<'EOF'
-{
-	email {$ACME_EMAIL}
-	servers {
-		# UDP 443 is closed on purpose; do not advertise HTTP/3.
-		protocols h1 h2
-	}
-}
-
-grampacker.app {
-	# Above the app's largest limit (2 MB on the import routes), so the app
-	# still decides and reports 413 itself.
-	request_body {
-		max_size 4MB
-	}
-	# Caddy sets X-Forwarded-For to the connection's address, replacing what
-	# the client sent; the app reads only its last entry. Do not add
-	# trusted_proxies: it would make Caddy keep client-supplied entries.
-	reverse_proxy 127.0.0.1:3000
-}
-EOF
-cd /srv/grampacker && sudo docker compose --env-file deploy.env exec caddy caddy reload --config /etc/caddy/Caddyfile
-```
-
-`[Cloudflare]` Delete the `staging` A record.
-
-```bash
-# [VPS root]
-rm -f /srv/grampacker/secrets/app.env.staging
-rm -rf /srv/grampacker/snapshots/staging-retired-*
-```
-
-The last two lines delete the staging copy of production data, as the plan
-requires. They do not touch `data/` or any pre-deploy or cutover snapshot.
+Staging (section 10) is not built. If it is built and used, its retirement
+is written together with it.
 
 The rehearsal export folders under `/srv/grampacker/import/` are also copies of
 production data. Delete them now (`rm -rf /srv/grampacker/import/<rehearsal
@@ -1749,16 +1492,17 @@ sudo docker compose --env-file /srv/grampacker/deploy.env logs --since 24h app |
 sudo docker image ls
 ```
 
-Integrity, on a fresh snapshot (never on the live file):
+Integrity, on the newest rollback copy (never on the live file, whose
+`-wal` and `-shm` files belong to the running app):
 
 ```bash
 # [VPS root]
-cd /srv/grampacker
-. ./deploy.env
-docker run --rm --network none --user <APP_UID>:<APP_UID> -v /srv/grampacker/data:/data -v /srv/grampacker/snapshots:/snapshots "$APP_IMAGE" <SNAPSHOT_COMMAND> /data/grampacker.db /snapshots/check-$(date -u +%Y%m%dT%H%MZ).db
+ls /srv/grampacker/rollback
+sqlite3 -readonly /srv/grampacker/rollback/<newest stamp>/data/grampacker.db 'PRAGMA integrity_check'
 ```
 
-Expected: exit 0 (the snapshot command runs `integrity_check`). Also confirm
+Expected: `ok`. The copy is from the last deploy; Kopia's backups cover
+the time since. Also confirm
 Kopia's B2 backups arrive, and do one restore test.
 
 ### 12.3 Decommission (separate approvals)
@@ -1778,7 +1522,7 @@ Each is its own decision, after the observation period:
 | Item | Value |
 | --- | --- |
 | VPS host key fingerprint (ED25519) | |
-| Caddy version and digest | |
+| Caddy version after each `caddy-update` | |
 | Image runtime UID | |
 | Baseline before the merges: `<BASELINE_TIME>`, GitHub record (SHA, time), newest Cloudflare deployment (version id, time) | |
 | Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
