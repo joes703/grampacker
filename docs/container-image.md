@@ -15,12 +15,13 @@ scripts/check-image.sh grampacker                               # test a built i
 The entrypoint is `node /app/dist/server/node.js`. Its argument is the
 command: `serve` (the default `CMD`) or `migrate`. `serve` never changes the
 schema. It exits 1 while a migration is pending, so a deploy runs `migrate`
-explicitly, after a snapshot.
+explicitly, after it has stopped the app and copied the data directory
+(`deploy/grampacker-deploy`).
 
 ## Base image
 
 Every stage uses the same official Node image, pinned by version and
-digest in the Dockerfile's `NODE_IMAGE`:
+digest in the Dockerfile's first `FROM` line (the `base` stage):
 
 - **Node 24**, the current LTS line.
 - **Debian (glibc), `-slim`.** better-sqlite3 loads a prebuilt glibc binary
@@ -29,7 +30,10 @@ digest in the Dockerfile's `NODE_IMAGE`:
   and runtime stages must share the C library, so they share the image.
 - **linux/amd64**, the VPS's platform.
 
-To choose or update the pin:
+Dependabot updates that line daily (`.github/dependabot.yml`), within
+Node 24. It changes the tag and the digest together. Because Dependabot may
+skip a rebuild of the same tag, the runbook's monthly check (9.6) compares
+the pin with the newest image. To choose or update the pin by hand:
 
 ```bash
 docker pull --platform linux/amd64 node:24-trixie-slim
@@ -37,20 +41,15 @@ docker run --rm --platform linux/amd64 node:24-trixie-slim node --version
 docker buildx imagetools inspect node:24-trixie-slim
 ```
 
-Set `NODE_IMAGE` to `node:<that version>-trixie-slim@sha256:<index digest>`:
+Set the `FROM` line to `node:<that version>-trixie-slim@sha256:<index digest>`:
 the exact version tag, plus the digest of the multi-platform index that
 `imagetools inspect` prints as `Digest:`. The digest is what Docker
 enforces; the tag is there for people. Rebuild and run
 `scripts/check-image.sh` before committing the new pin.
 
-The current pin was chosen on 2026-10-13 that way. `node:24-trixie-slim`
-resolved to Node 24.21.0 on Debian 13.7 with glibc 2.41, and
-`node:24.21.0-trixie-slim` resolved to the same index:
-
-| | Digest |
-| --- | --- |
-| Index (pinned) | `sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66` |
-| linux/amd64 manifest | `sha256:c83040f7e24bacea68e58a0b96a484ba430bf24abb2973eab7ba4701144b7b63` |
+The `Dockerfile` is the record of the current pin; this page does not
+repeat it, so an update leaves nothing here out of date. `trixie` is
+Debian 13, with glibc 2.41.
 
 A digest names content, so the pin cannot move when the tag does. The
 build's `--platform linux/amd64` selects the amd64 manifest from the index.

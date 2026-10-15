@@ -495,9 +495,19 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     works, not that it is harmless.
   - *Dependabot security updates* already bypass the cooldown and the weekly
     schedule. They need the dependency graph, Dependabot alerts and Dependabot
-    security updates all enabled in the repository's settings. The agent token
-    can confirm only the dependency graph (`/dependency-graph/sbom` answers);
-    the other two need admin read, so the owner checks them.
+    security updates all enabled in the repository's settings. Not verified
+    from an agent: reading the last two needs admin, and on 2026-10-14 the
+    sandbox's API calls were refused (401). The owner checks, from the Mac:
+    `gh api repos/joes703/grampacker/vulnerability-alerts` must exit 0 with
+    no output (HTTP 204; `HTTP 404` means alerts are off), and
+    `gh api repos/joes703/grampacker/automated-security-fixes` must print
+    `"enabled":true` and `"paused":false`. If either is off, turn it on in
+    the repository's settings, in the Dependabot section.
+  - *Container images get no security updates* from Dependabot (GitHub's
+    supported-ecosystems table). The Node base image moves only through
+    Dependabot's daily version updates (`.github/dependabot.yml`) and the
+    monthly check (runbook 9.6). Caddy moves only through
+    `grampacker-deploy caddy-update`.
   - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
     advisory database, and Dependabot raises vulnerability alerts and
     security updates only from GitHub-reviewed entries. A vulnerability a
@@ -506,7 +516,8 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
     still outside it on 2026-10-04.
   - *Manual path,* for a credible announcement (the project's own advisory or
-    release notes) that Dependabot has not acted on: confirm the affected
+    release notes) that Dependabot has not acted on (for the Worker before
+    cutover, `docs/testing-and-ci.md` section 11): confirm the affected
     versions against the lockfile and whether our config is exposed; choose
     the smallest suitable fix, usually the patched release plus the sibling
     packages released with it; review the lockfile diff and the release's
@@ -517,10 +528,10 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     Take the fix promptly even if our config is not exposed.
   - *Hearing about it:* Watch → Custom → Security alerts on someone else's
     repository is not a reliable advisory subscription. The owner watches
-    Releases on `better-auth/better-auth`, `honojs/hono` and
-    `drizzle-team/drizzle-orm`. As of 2026-10-04, neither better-auth's nor
-    drizzle-orm's `SECURITY.md` names a separate announcement channel, and
-    hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
+    Releases on `better-auth/better-auth`, `honojs/hono`,
+    `drizzle-team/drizzle-orm` and `caddyserver/caddy`. As of 2026-10-04,
+    neither better-auth's nor drizzle-orm's `SECURITY.md` names a separate
+    announcement channel, and hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
     named their advisories.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`,
   `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
@@ -536,6 +547,25 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   Workflows permission, Actions read only; `docs/testing-and-ci.md` section
   12). So a tag proves nothing: deploy only a digest that a successful run
   on main printed. Fork pull requests get a read-only token.
+- The VPS deployment (`deploy/`, runbook section 7) runs by hand: the owner
+  logs in over SSH and runs `grampacker-deploy` as root through `sudo`. No
+  deploy account, deploy key or forced command exists yet; they come with
+  the GitHub deploy job (runbook section 8). The script accepts only an
+  exact `sha256:` app image digest, never a tag. The app listens on
+  `127.0.0.1` only, as UID/GID 10001, with a read-only root filesystem;
+  its secrets stay in `/srv/grampacker/secrets/app.env`, outside Git.
+  Accepted risk: Caddy is `caddy:2`, which follows every 2.x release,
+  because Caddy supports only its newest 2.x (its SECURITY.md); a minor or
+  digest pin would stop its security fixes. So an upstream regression or
+  compromise reaches production at the next `grampacker-deploy
+  caddy-update`. Updates are explicit, never part of an app deploy, run at
+  least monthly and promptly after a Caddy security release (runbook 9.6),
+  and the new image must validate the Caddyfile before it replaces the
+  running one.
+- A merge changes `main`, not production. A dependency or base-image fix
+  reaches the VPS only when an image is published from `main` and deployed:
+  within 7 days of a routine update, and as soon as practical for a security
+  fix (runbook 9.6, which also checks what production runs).
 - No workflow that names a secret carries `workflow_dispatch`. A manual
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch

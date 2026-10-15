@@ -22,6 +22,8 @@ boundary. When unsure of a D1 equivalent, ask rather than assume.
   target. Never re-run an old Deploy run and never turn `deploy.yml` back
   on: either can put `main` on the Worker and D1 (its header says why).
   Never deploy yourself; the Cloudflare token exists only in GitHub Actions.
+  An emergency security fix for the running Worker is the owner's procedure
+  in `docs/testing-and-ci.md` section 11.
 - The human approves each merge, for an exact PR head. Confirm CI is green
   yourself, then `gh pr merge --squash --match-head-commit <sha>` (squash is
   the only method the ruleset allows). Never merge while checks are pending

@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+# Deploys Grampacker on the VPS. Run as root; installed as
+# /usr/local/sbin/grampacker-deploy (docs/vps-bootstrap-and-migration-runbook.md
+# section 7).
+#
+#   grampacker-deploy deploy sha256:<64 hex>    deploy that exact image
+#   grampacker-deploy rollback <rollback dir>   restore a saved data directory
+#                                               and the image it ran with
+#   grampacker-deploy maintenance on|off        close or reopen the site
+#   grampacker-deploy caddy-update              pull caddy:2, validate,
+#                                               recreate only Caddy
+#
+# It works on /srv/grampacker, or on GRAMPACKER_ROOT when that is set (the
+# empty-database rehearsal uses /srv/grampacker-rehearsal). That directory
+# holds compose.yaml, deploy.env, secrets/app.env, data/, maintenance/,
+# rollback/ and caddy/. The Compose project name is the directory's name.
+#
+# A deploy:
+#   1. turns maintenance on and proves it through Caddy;
+#   2. stops the app, so nothing writes to SQLite;
+#   3. copies the whole data/ directory (database, WAL and SHM files) to
+#      rollback/<UTC time>/data, with the previous image digest in
+#      rollback/<UTC time>/previous-image;
+#   4. runs `migrate` with the new image;
+#   5. starts the new image and checks health and the homepage;
+#   6. turns maintenance off, only after those checks pass.
+# If any step fails, maintenance stays on and the script prints the rollback
+# directory. A rollback directory is the immediate way back from one deploy;
+# long-term backups are Kopia's job.
+set -euo pipefail
+
+ROOT="${GRAMPACKER_ROOT:-/srv/grampacker}"
+REPO=ghcr.io/joes703/grampacker
+ENV_FILE="$ROOT/deploy.env"
+DIGEST_RE='^sha256:[0-9a-f]{64}$'
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  sed -n '6,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+compose() {
+  docker compose --project-directory "$ROOT" -f "$ROOT/compose.yaml" \
+    --env-file "$ENV_FILE" "$@"
+}
+
+# One value from deploy.env. The file is read, never sourced.
+env_get() {
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
+}
+
+# Replaces APP_IMAGE in deploy.env and keeps every other line.
+set_app_image() {
+  local tmp="$ENV_FILE.tmp"
+  grep -v '^APP_IMAGE=' "$ENV_FILE" >"$tmp" || true
+  printf 'APP_IMAGE=%s\n' "$1" >>"$tmp"
+  chmod 0644 "$tmp"
+  mv "$tmp" "$ENV_FILE"
+}
+
+# Deploy, rollback, maintenance and caddy-update never run at the same time.
+take_lock() {
+  exec 9>"$ROOT/.deploy.lock"
+  flock -n 9 || die "another grampacker-deploy command is running"
+}
+
+# The HTTP status Caddy answers for the site. SITE_URL is in deploy.env;
+# --connect-to sends the request to this machine whatever DNS says.
+site_status() {
+  curl -s -o /dev/null -w '%{http_code}' -m 10 --connect-to ::127.0.0.1: \
+    "$(env_get SITE_URL)" || true
+}
+
+maintenance_on() {
+  touch "$ROOT/maintenance/on"
+  [ "$(site_status)" = 503 ] ||
+    die "maintenance file is set, but Caddy does not answer 503 at $(env_get SITE_URL). Is Caddy running?"
+  say "maintenance is on"
+}
+
+maintenance_off() {
+  rm -f "$ROOT/maintenance/on"
+  local status
+  status="$(site_status)"
+  [ "$status" = 200 ] ||
+    die "maintenance file removed, but Caddy answers $status, not 200"
+  say "maintenance is off"
+}
+
+maintenance_is_on() {
+  [ -e "$ROOT/maintenance/on" ] && [ "$(site_status)" = 503 ]
+}
+
+# Waits for Docker's health check, then checks the two things a person
+# would: the health endpoint and the homepage. The app's CI covers the API.
+check_app() {
+  local port id state=""
+  port="$(env_get APP_PORT)"
+  port="${port:-3000}"
+  id="$(compose ps -q app)"
+  [ -n "$id" ] || die "the app container is not running"
+  for _ in $(seq 1 60); do
+    [ "$(docker inspect -f '{{.State.Running}}' "$id")" = true ] ||
+      die "the app container stopped; see: docker compose logs app"
+    state="$(docker inspect -f '{{.State.Health.Status}}' "$id")"
+    [ "$state" = healthy ] && break
+    [ "$state" = unhealthy ] && die "the app container is unhealthy"
+    sleep 2
+  done
+  [ "$state" = healthy ] || die "the app did not become healthy within 120 seconds"
+
+  local body
+  body="$(curl -sS -m 10 -f "http://127.0.0.1:$port/api/health")" ||
+    die "/api/health did not answer 200"
+  [ "$body" = '{"ok":true}' ] || die "/api/health answered $body"
+  curl -sS -m 10 -f -o /dev/null -w '%{content_type}' "http://127.0.0.1:$port/" |
+    grep -q '^text/html' || die "the homepage did not answer 200 text/html"
+  say "app is healthy"
+}
+
+# Runs when a deploy exits before it finished.
+deploy_failed() {
+  say "DEPLOY FAILED." >&2
+  if [ -e "$ROOT/maintenance/on" ]; then
+    say "Maintenance is still on." >&2
+  else
+    say "The maintenance file was already removed, so the site may be open (runbook 9.3)." >&2
+  fi
+  if [ -n "$saved" ]; then
+    say "Rollback directory: $saved" >&2
+  else
+    say "No rollback directory was made; data/ was not changed." >&2
+  fi
+}
+
+cmd_deploy() {
+  if [ "$#" != 1 ] || [[ ! "$1" =~ $DIGEST_RE ]]; then
+    die "deploy takes exactly one image digest, sha256:<64 hex>. Tags are refused."
+  fi
+  local image="$REPO@$1"
+  take_lock
+
+  # A digest names fixed content, so an image already here is the same one.
+  docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
+
+  # The image the app container was started from. Empty on the first deploy.
+  local previous="" id
+  id="$(compose ps -a -q app)"
+  [ -z "$id" ] || previous="$(docker inspect -f '{{.Config.Image}}' "$id")"
+
+  maintenance_on
+
+  local stamp
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  # Two deploys in the same second would otherwise share a name.
+  [ ! -e "$ROOT/rollback/$stamp" ] ||
+    die "rollback/$stamp already exists; wait a second and run the deploy again"
+  saved=""
+  trap deploy_failed EXIT
+
+  compose stop app
+
+  # Copied under a temporary name and renamed when complete, so a rollback
+  # directory is never half a copy.
+  mkdir -p "$ROOT/rollback"
+  local partial="$ROOT/rollback/.partial-$stamp"
+  mkdir "$partial"
+  cp -a "$ROOT/data" "$partial/data"
+  printf '%s\n' "$previous" >"$partial/previous-image"
+  # -T: never move into an existing directory of that name.
+  mv -T "$partial" "$ROOT/rollback/$stamp"
+  saved="$ROOT/rollback/$stamp"
+  say "data copied to $saved"
+
+  # migrate runs only here, explicitly; the server never migrates itself.
+  APP_IMAGE="$image" compose run --rm --no-deps app migrate
+
+  set_app_image "$image"
+  compose up -d --no-deps --force-recreate app
+  check_app
+  maintenance_off
+  trap - EXIT
+  say "deployed $image"
+  say "rollback directory: $saved"
+}
+
+cmd_rollback() {
+  [ "$#" = 1 ] || die "rollback takes one rollback directory"
+  local dir="${1%/}" previous
+  if [ ! -d "$dir/data" ] || [ ! -f "$dir/previous-image" ]; then
+    die "$dir is not a rollback directory (no data/ or previous-image)"
+  fi
+  previous="$(cat "$dir/previous-image")"
+  [[ "$previous" =~ ^$REPO@sha256:[0-9a-f]{64}$ ]] ||
+    die "$dir has no previous image; it was the first deploy, so there is nothing to roll back to"
+  take_lock
+
+  # Restoring discards every write since the copy was made. After a failed
+  # deploy maintenance is already on. If the site has reopened since, the
+  # decision is a person's (runbook 9.3): they turn maintenance on first.
+  maintenance_is_on || die "turn maintenance on first (runbook 9.3)"
+
+  docker image inspect "$previous" >/dev/null 2>&1 || docker pull "$previous"
+  compose stop app
+
+  local failed
+  failed="$dir/failed-data-$(date -u +%Y%m%dT%H%M%SZ)"
+  mv "$ROOT/data" "$failed"
+  say "current data moved to $failed"
+  cp -a "$dir/data" "$ROOT/data"
+
+  set_app_image "$previous"
+  compose up -d --no-deps --force-recreate app
+  check_app
+  say "rolled back to $previous with the data from $dir"
+  say "maintenance is still on. Check the site, then: grampacker-deploy maintenance off"
+}
+
+cmd_maintenance() {
+  [ "$#" = 1 ] || usage
+  take_lock
+  case "$1" in
+    on) maintenance_on ;;
+    off) maintenance_off ;;
+    *) usage ;;
+  esac
+}
+
+# Caddy changes only here, never during an app deploy. The new image
+# validates the configuration before it replaces the running Caddy.
+cmd_caddy_update() {
+  [ "$#" = 0 ] || usage
+  take_lock
+  # The image name comes from compose.yaml, not from the container, which
+  # may have been created under an older name.
+  local id ref running=""
+  ref="$(compose config --images caddy)"
+  id="$(compose ps -a -q caddy)"
+  [ -z "$id" ] || running="$(docker inspect -f '{{.Image}}' "$id")"
+  compose pull caddy
+  if ! compose run --rm --no-deps --pull never caddy \
+    caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+    # The pull already moved the local tag to the rejected image. Point it
+    # back, or a later `docker compose up` would start the rejected image.
+    [ -z "$running" ] || docker tag "$running" "$ref"
+    die "the new Caddy image rejects the Caddyfile; the running Caddy was not changed"
+  fi
+  compose up -d --no-deps --force-recreate --pull never caddy
+
+  # While maintenance is on Caddy must answer 503, otherwise 200. A new
+  # certificate can take a little while, so allow a minute.
+  local want=200 status=""
+  [ ! -e "$ROOT/maintenance/on" ] || want=503
+  for _ in $(seq 1 30); do
+    status="$(site_status)"
+    [ "$status" = "$want" ] && break
+    sleep 2
+  done
+  [ "$status" = "$want" ] || die "Caddy answers $status, expected $want"
+  say "Caddy updated: $(compose exec -T caddy caddy version), answering $status"
+}
+
+[ "$#" -ge 1 ] || usage
+if [ ! -f "$ROOT/compose.yaml" ] || [ ! -f "$ENV_FILE" ]; then
+  die "$ROOT has no compose.yaml or deploy.env"
+fi
+command="$1"
+shift
+case "$command" in
+  deploy) cmd_deploy "$@" ;;
+  rollback) cmd_rollback "$@" ;;
+  maintenance) cmd_maintenance "$@" ;;
+  caddy-update) cmd_caddy_update "$@" ;;
+  *) usage ;;
+esac

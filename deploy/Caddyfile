@@ -1,0 +1,37 @@
+# Production Caddy configuration, installed as /srv/grampacker/Caddyfile.
+# DNS for grampacker.app is Cloudflare DNS-only (no proxy), so Caddy gets
+# the certificate itself and sees the real client address.
+{
+	email {$ACME_EMAIL}
+	servers {
+		# UDP 443 is closed on purpose; do not advertise HTTP/3.
+		protocols h1 h2
+	}
+}
+
+grampacker.app {
+	# Maintenance is on while /srv/grampacker/maintenance/on exists on the
+	# host. Caddy checks the file on every request, so no reload is needed,
+	# it does not depend on the app running, and it survives a restart.
+	# The matcher needs an explicit root: a bare path is joined to Caddy's
+	# working directory.
+	@maintenance file {
+		root /srv/maintenance
+		try_files /on
+	}
+	handle @maintenance {
+		header Cache-Control no-store
+		header Retry-After 120
+		header X-Content-Type-Options nosniff
+		respond "Grampacker is down for maintenance. Please try again in a few minutes." 503
+	}
+
+	# The app sets every security header itself (server/middleware/
+	# security-headers.ts), so Caddy adds none. Caddy's default
+	# X-Forwarded-For is what the rate limiter needs: it is written from the
+	# connection, and what the client sent is dropped because no
+	# trusted_proxies are set (server/middleware/client-ip.ts).
+	handle {
+		reverse_proxy 127.0.0.1:{$APP_PORT}
+	}
+}

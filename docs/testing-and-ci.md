@@ -210,6 +210,22 @@ alone has `packages: write`. It never deploys. Procedure: runbook
 
 ## 11. Deployment
 
+**VPS deployment** is `deploy/`: the Compose file, the production and
+rehearsal Caddyfiles, and `grampacker-deploy` (runbook section 7). CI does not
+test these files yet. Before a change to any of them merges, run:
+
+- shellcheck on `deploy/grampacker-deploy` (for example
+  `docker run --rm -v "$PWD/deploy:/mnt:ro" koalaman/shellcheck:v0.10.0 /mnt/grampacker-deploy`);
+- `docker compose config` with a production-shaped and a rehearsal
+  `deploy.env`;
+- `caddy validate` on both Caddyfiles with `caddy:2`;
+- the empty-database rehearsal (runbook 7.4): deploy, restart, maintenance
+  and rollback against a built image. It needs Docker and root, and runs in
+  an agent sandbox or on the VPS.
+
+A CI job that runs these only when `deploy/`, the Dockerfile, migrations or
+the server's startup code change is a possible later step.
+
 **Worker deployment is off.** `main` is moving to a Node server with SQLite
 on a VPS, which the Worker cannot run. Every job in `deploy.yml` and
 `deploy-liveness.yml` is `if: false`, and the liveness check has no schedule.
@@ -218,7 +234,70 @@ skipped. The production Worker keeps serving the last commit it deployed and
 is the rollback target; rollback never runs `deploy.yml`. The recovery below
 (re-running a Deploy run) must not be used: a re-run uses the old copy of the
 workflow file, without `if: false`, and can deploy main as it is now (header
-of `deploy.yml`). The rest of this section describes the workflow as it ran.
+of `deploy.yml`). The rest of this section, after the emergency procedure
+below, describes the workflow as it ran.
+
+**Emergency security fix for the running Worker** (until cutover). Nothing
+merged to `main` reaches the Worker, and Dependabot no longer reads the
+Worker's lockfile. So when an advisory names a package, check the Worker's
+copy as well. Use this only for a security fix that cannot wait for the
+cutover. The owner runs it from the Mac; it never uses `deploy.yml`.
+
+1. Find the commit the Worker runs. It is the latest GitHub deployment record,
+   or the newest hotfix branch recorded in runbook section 13. The newest
+   Cloudflare deployment must be the one recorded with it:
+
+   ```bash
+   gh api "repos/joes703/grampacker/deployments?environment=production&per_page=1" \
+     --jq '.[0] | [.sha, .created_at] | @tsv'
+   npx wrangler deployments list --name grampacker
+   ```
+
+2. Check that the Worker is affected:
+   `git show <WORKER_SHA>:package-lock.json | grep -A1 '"node_modules/<pkg>"'`.
+3. Make the fix in a clean worktree. A new worktree has no `.dev.vars`.
+   Change only what the fix needs, usually the patched release
+   (SECURITY.md "Supply chain", manual path):
+
+   ```bash
+   git fetch origin
+   git worktree add -b hotfix/worker-<name> ../grampacker-hotfix <WORKER_SHA>
+   cd ../grampacker-hotfix
+   npm ci
+   npm install --save-exact <pkg>@<fixed version>
+   git add package.json package-lock.json
+   git commit -m "fix(deps): <pkg> <fixed version> for <advisory>"
+   ```
+
+   No migration ever runs. If the fix needs a schema change (a better-auth
+   release can need one, STACK.md), stop: the owner decides what to do
+   instead.
+4. Run that commit's gates: `npm run build`, `npm run test:unit` and
+   `npm run test:api`. Read the lockfile diff. Have Codex review
+   `git diff <WORKER_SHA>...HEAD`.
+5. The owner approves this exact commit (`git rev-parse HEAD`). Push the
+   branch as the record (`git push -u origin hotfix/worker-<name>`). Never
+   open a pull request from it into `main`.
+6. Deploy, from the worktree, after that approval. `git status --porcelain`
+   must print nothing and `git rev-parse HEAD` must be the approved commit,
+   so what deploys is what was reviewed:
+
+   ```bash
+   git status --porcelain
+   git rev-parse HEAD
+   npm run build
+   npx wrangler deploy
+   npx wrangler deployments list --name grampacker
+   curl -sS https://grampacker.app/api/health
+   ```
+
+   Expected: a new newest deployment, and `{"ok":true}`. Never run
+   `wrangler d1 migrations apply`.
+7. In runbook section 13, record the branch, its commit, and the new
+   Cloudflare version id and time. The patched Worker is now the rollback
+   target and the new baseline. To undo the hotfix:
+   `npx wrangler rollback <previous version id>` (`docs/d1-restore.md`
+   step 3).
 
 Principles: CI passes first; production changes are serialized and never
 canceled mid-flight; a database change works with the deployed Worker and

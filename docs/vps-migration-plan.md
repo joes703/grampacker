@@ -115,7 +115,8 @@ Use:
 - a multi-stage Docker build using a glibc-based Node image, not Alpine.
 - Docker Compose on the VPS.
 - Caddy on the VPS for TLS and reverse proxying. Run it as a second Compose
-  service from a pinned official image, with host networking. Host networking
+  service from the official `caddy:2` image, changed only by an explicit
+  update that validates the configuration first, with host networking. Host networking
   lets Caddy see the real client address (Docker's port proxy can hide it)
   and reach the application on `127.0.0.1`. It also means Docker publishes no
   port for Caddy, so UFW's rules for 80 and 443 apply to it normally.
@@ -302,19 +303,21 @@ Use a small production layout:
 /srv/grampacker/          joe:joe 0755 (exists)
   compose.yaml
   Caddyfile
-  deploy.env              image references to run; no secrets
+  deploy.env              the app image digest to run; no secrets
   secrets/                joe:joe 0700 (exists)
     app.env               application secrets, mode 0600
   data/                   0700 (exists); owned by the image's runtime UID
-  snapshots/              0700 (exists); owned by the image's runtime UID
+  maintenance/            maintenance is on while maintenance/on exists
+  rollback/               0700; one stopped copy of data/ per deploy
   caddy/data/             certificates and ACME account
   caddy/config/
 ```
 
 `secrets/app.env` contains application secrets and is mode `0600`.
-`deploy.env` contains the exact image digests to run (application and Caddy).
-`data/` and `snapshots/` must be writable by the container's non-root user, so
-they are owned by that user's numeric UID, whatever `joe`'s UID is.
+`deploy.env` contains the exact application image digest to run.
+`data/` must be writable by the container's non-root user, so it is owned
+by that user's numeric UID, whatever `joe`'s UID is. The files themselves
+are in `deploy/` in the repository.
 
 The Compose service should:
 
@@ -349,9 +352,6 @@ Caddy should:
 - redirect HTTP to HTTPS;
 - proxy to `127.0.0.1:3000`;
 - pass the real client address in a header accepted only from the local proxy;
-- enforce a small outer request-body ceiling, above the application's own
-  largest limit (2 MB on the two import routes; 128 KB elsewhere), so the
-  application stays the component that decides and reports 413;
 - serve HTTP/1.1 and HTTP/2 only (UDP 443 is closed on purpose);
 - return a simple 503 maintenance response while a deployment is changing the
   database.
@@ -482,30 +482,26 @@ is why a deployment takes a digest printed by a run on `main`, never a tag
 
 ### 9. Keep routine deployment simple
 
-The deployment script should be short and readable:
+The deployment script (`deploy/grampacker-deploy`) is short and readable.
+A deploy, under one lock:
 
-1. take a deployment lock;
-2. pull the exact candidate image;
-3. enable Caddy's maintenance response;
-4. stop the application;
-5. create and verify a SQLite snapshot;
-6. run pending migrations explicitly with the candidate image;
-7. start the candidate through Compose;
-8. check health, the SPA, one static asset, anonymous API rejection, and CSRF
-   rejection;
-9. record the current and previous image digests;
-10. disable maintenance mode, as the last step.
+1. turns maintenance on;
+2. stops the application, so nothing can write to SQLite;
+3. copies the complete data directory, including any database, WAL and SHM
+   files, to a timestamped rollback directory, with the previous image
+   digest in a text file beside it;
+4. runs migrations with the new image;
+5. starts it and verifies health and the homepage;
+6. turns maintenance off only after verification succeeds.
 
-Disabling maintenance comes last so that every earlier failure happens while
-the site is closed. If a step fails, leave maintenance mode enabled and report:
-
-- the failed step;
-- the previous image digest;
-- the snapshot path;
-- the commands required to recover.
+If a step fails, maintenance stays on and the script prints the rollback
+directory. A rollback stops the app, keeps the failed data directory,
+restores the saved directory, starts the previous digest and verifies
+health. The rollback directory is only the immediate way back from one
+deploy; Kopia remains responsible for long-term backups.
 
 Do not build an automatic disaster-recovery state machine. Before public
-traffic reopens, restoring the snapshot and previous image is safe because no
+traffic reopens, restoring the copy and previous image is safe because no
 new writes were accepted. After traffic reopens, database restoration is a
 manual decision because it would discard subsequent writes.
 
@@ -642,8 +638,8 @@ copying those new writes.
 For later deployments:
 
 - application rollback means running the previous image;
-- database rollback means restoring the pre-deployment snapshot;
-- restoring a snapshot after reopening public traffic loses later writes and
+- database rollback means restoring the deploy's rollback directory;
+- restoring it after reopening public traffic loses later writes and
   therefore always requires a deliberate operator decision.
 
 Keep migrations backward-compatible with the previous image whenever
@@ -664,7 +660,8 @@ The migration is ready for production only when:
 - two D1 import rehearsals pass every integrity, relationship, and row-count
   check;
 - a manually started GitHub workflow publishes and deploys an immutable image;
-- the SQLite snapshot and previous image recovery procedure has been tested;
+- the rollback-directory and previous-image recovery has been tested (the
+  empty-database rehearsal, runbook 7.4);
 - the existing B2 backup copies a backup-API snapshot of the database, and one
   has been restored from B2 and passed `integrity_check`;
 - final DNS, HTTPS, cookie, security-header, private-data, and public-share
@@ -696,5 +693,5 @@ After the observation period:
 
 Routine maintenance afterward is ordinary Linux administration: operating
 system and Docker updates, dependency updates, backup verification, occasional
-restore tests, certificate monitoring, and pruning old local images while
-retaining the current and previous versions.
+restore tests, certificate monitoring, Caddy updates, and deleting old
+rollback directories and unused images.
