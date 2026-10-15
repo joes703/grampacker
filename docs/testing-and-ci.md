@@ -193,29 +193,36 @@ decisions a workflow change must respect: least permissions per workflow
 and job, with production credentials only on the steps that use them; SHA
 pins with the tag in a comment, checked by `npm run check:action-pins`;
 `pull_request`, never `pull_request_target`; no `workflow_dispatch` on a
-workflow that names a secret; main protected by the ruleset (PR required,
+workflow that names a secret, except `image.yml`'s deploy job
+(`SECURITY.md`); main protected by the ruleset (PR required,
 `Verify` required and strict, squash only, no bypass), merged with
 `--match-head-commit <sha>` after confirming CI yourself. Repository
 secrets are visible to same-repository `pull_request` runs of any
-workflow; only a `production` environment restricted to `main` would close
-that, and it needs a plan that offers environments on private repositories.
+workflow; only a `production` environment restricted to `main` closes
+that. The VPS deploy key is such an environment secret; the Cloudflare
+credentials are not (`SECURITY.md`, "Deferred").
 
 `image.yml` builds the production image and runs `scripts/check-image.sh` on
 every pull request, with a read-only token. It is not a required check. A
 manual dispatch on main also reruns the build, unit, API and migration
-checks, then publishes the image to GHCR. It names no secret; its publish job
-alone has `packages: write`. It never deploys. Procedure: runbook
-(`docs/vps-bootstrap-and-migration-runbook.md`) step 6.1; accepted risk:
-`SECURITY.md`.
+checks, then publishes the image to GHCR; its publish job alone has
+`packages: write`. Only when the dispatch sets `deploy`, a last job, in the
+`production` environment, deploys that digest over SSH with the one secret
+in the workflow, the deploy key. Procedure: runbook
+(`docs/vps-bootstrap-and-migration-runbook.md`) step 6.1 and section 8;
+accepted risk: `SECURITY.md`.
 
 ## 11. Deployment
 
 **VPS deployment** is `deploy/`: the Compose file, the production and
-rehearsal Caddyfiles, and `grampacker-deploy` (runbook section 7). CI does not
-test these files yet. Before a change to any of them merges, run:
+rehearsal Caddyfiles, `grampacker-deploy` (runbook section 7), and the
+GitHub deploy key's forced command, `grampacker-deploy-ssh` (section 8). CI
+does not test these files yet. Before a change to any of them merges, run:
 
-- shellcheck on `deploy/grampacker-deploy` (for example
-  `docker run --rm -v "$PWD/deploy:/mnt:ro" koalaman/shellcheck:v0.10.0 /mnt/grampacker-deploy`);
+- shellcheck on the three scripts in `deploy/` (for example
+  `docker run --rm -v "$PWD/deploy:/mnt:ro" koalaman/shellcheck:v0.10.0 /mnt/grampacker-deploy /mnt/grampacker-deploy-ssh /mnt/test-grampacker-deploy-ssh.sh`);
+- `deploy/test-grampacker-deploy-ssh.sh`, the forced command's accepted and
+  refused requests (Linux; no root, no network, no VPS);
 - `docker compose config` with a production-shaped and a rehearsal
   `deploy.env`;
 - `caddy validate` on both Caddyfiles with `caddy:2`;

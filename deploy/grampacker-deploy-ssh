@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# The forced command of the `deploy` account's SSH key. Installed as
+# /usr/local/sbin/grampacker-deploy-ssh, owned by root
+# (docs/vps-bootstrap-and-migration-runbook.md section 8).
+#
+# It runs twice:
+#   1. As `deploy`, with no arguments: sshd starts it in place of whatever
+#      the client asked for, and puts that request in SSH_ORIGINAL_COMMAND.
+#      The request must be exactly `deploy sha256:<64 lowercase hex>`. It
+#      then runs itself again through sudo, passing only the digest.
+#   2. As root, with the digest as its only argument: it checks the digest
+#      again, because sudo lets `deploy` pass this program any argument,
+#      and runs `grampacker-deploy deploy <digest>`.
+# Nothing else is possible: no rollback, maintenance or caddy-update, no
+# image tag, no shell.
+#
+# The deploy runs in its own session and writes to a log file. A dropped SSH
+# connection, or a canceled GitHub job, then cannot stop it halfway; the
+# connection only shows the log while it lasts. A failed deploy leaves
+# maintenance on and prints the rollback directory, as a manual one does.
+set -euo pipefail
+
+# Fixed values, never taken from the environment. The local test
+# (deploy/test-grampacker-deploy-ssh.sh) replaces these lines in a copy.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SUDO=/usr/bin/sudo
+SELF=/usr/local/sbin/grampacker-deploy-ssh
+DEPLOY=/usr/local/sbin/grampacker-deploy
+LOG_DIR=/var/log/grampacker-deploy
+export PATH LC_ALL=C
+
+DIGEST_RE='^sha256:[0-9a-f]{64}$'
+REQUEST_RE='^deploy (sha256:[0-9a-f]{64})$'
+
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+
+if [ "$#" = 0 ]; then
+  # Step 1, as `deploy`. Bash's =~ matches the whole string: a trailing
+  # newline, a second command or extra spaces are refused.
+  request="${SSH_ORIGINAL_COMMAND-}"
+  [[ "$request" =~ $REQUEST_RE ]] ||
+    die "refused. The only accepted command is: deploy sha256:<64 lowercase hex>"
+  exec "$SUDO" -n "$SELF" "${BASH_REMATCH[1]}"
+fi
+
+# Step 2, as root.
+[ "$(id -u)" = 0 ] || die "the digest form runs only as root, through sudo"
+if [ "$#" != 1 ] || [[ ! "$1" =~ $DIGEST_RE ]]; then
+  die "refused. Expected one argument: sha256:<64 lowercase hex>"
+fi
+# Docker reads root's GHCR login from $HOME/.docker (runbook 6.3).
+export HOME=/root
+
+# Only the log is private. The deploy keeps root's usual umask, so the files
+# it writes look the same as after a manual deploy.
+[ -d "$LOG_DIR" ] || mkdir -m 0700 "$LOG_DIR"
+log="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+(umask 077 && : >"$log")
+printf 'grampacker-deploy-ssh: deploy %s, log %s\n' "$1" "$log"
+
+# setsid -w: a new session, not tied to this connection, and its exit status.
+setsid -w "$DEPLOY" deploy "$1" </dev/null >"$log" 2>&1 &
+pid=$!
+# Shows the log until the deploy ends. If the connection drops, only this
+# stops.
+tail -n +1 --pid="$pid" -f "$log" || true
+status=0
+wait "$pid" || status=$?
+printf 'grampacker-deploy-ssh: exit %s\n' "$status"
+exit "$status"

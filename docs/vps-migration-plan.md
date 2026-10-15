@@ -168,7 +168,7 @@ Four separate credentials. None is reused for another purpose.
 | --- | --- | --- | --- |
 | Administrator SSH keys | the Mac and walnut, logging in as `joe` | full administration through `sudo` | permanent; already installed |
 | Temporary provisioning key (optional) | the agent sandbox | log in as a separate temporary account, only during an approved provisioning session | removed after that session; none exists now |
-| Deployment SSH key | GitHub: a `production` environment secret (with Pro) or a repository secret (without Pro) | run the deployment wrapper as `deploy`, nothing else | permanent; rotated if exposed |
+| Deployment SSH key | GitHub: a `production` environment secret | run the deployment wrapper as `deploy`, nothing else | permanent; rotated if exposed |
 | Read-only GHCR credential | root's Docker configuration on the VPS | pull Grampacker images | long-lived token with an expiry date and a reminder |
 
 The coding sandbox does not need VPS access for the Node/SQLite conversion or
@@ -188,7 +188,8 @@ Before changing code:
 - record the production D1 migration ledger;
 - identify any Pages project, redirect rule, or old Worker route that could
   continue answering for the domain;
-- confirm the GitHub plan and whether the repository is private;
+- check the complete history, make the repository public, then move to
+  GitHub Free (runbook section 5);
 - confirm the VPS distribution, SSH setup, IPv6 availability, and firewall
   (done 2026-10-11; see "Current infrastructure").
 
@@ -426,32 +427,22 @@ the Worker keeps serving its last deployed commit as the rollback target.
 The merge order and how to confirm that nothing deployed are in runbook
 step 6.1.
 
-**Not built:** the deploy step, which connects to the VPS and invokes the
-deployment script with a digest the publish printed. It comes with the
-deployment account and key (runbook section 8).
+**Built:** the deploy step, the job "Deploy to the VPS" in `image.yml`. A
+dispatch with its `deploy` input set deploys the digest that run's publish
+job pushed, over SSH as a `deploy` account whose key can only run
+`grampacker-deploy deploy <digest>` (runbook section 8).
 
 Do not require GitHub Releases. Do not deploy `latest` without also recording
 the immutable digest or commit tag.
 
-Deployment can be automated with or without GitHub Pro. Pro decides only
-where the SSH key is stored and what enforces "main only":
+The repository becomes public and the account moves to GitHub Free, which
+offers environments on public repositories. The SSH key is a secret of a
+`production` environment whose deployment-branch rule allows `main` alone,
+so GitHub itself refuses the environment, and its secrets, to a run from any
+other branch. Make the repository public, after checking its complete
+history for secrets and data, before cancelling Pro (runbook section 5).
 
-- **With Pro** (environments and environment secrets work on a private
-  repository): store the key as a secret of a `production` environment whose
-  deployment-branch rule allows `main` alone. GitHub itself refuses the
-  environment, and its secrets, to a run from any other branch.
-- **Without Pro:** store the key as a repository secret. The workflow refuses
-  to run unless `github.ref` is `refs/heads/main`, as a job-level condition on
-  every job, so no step of a branch's code runs. This is enforced by the
-  workflow file, not by GitHub: a branch whose copy of the workflow drops the
-  condition and is then dispatched would receive the secret. That is
-  acceptable here because only two kinds of identity could do it, and neither
-  can today: the agent tokens have no Workflows permission (cannot push
-  workflow-file changes) and only Actions read access (cannot dispatch), per
-  `docs/testing-and-ci.md` section 12; and Joe, who already holds every
-  credential. Recheck those token permissions before storing the key.
-
-In both cases the VPS limits the key with a forced command (below), so even a
+The VPS also limits the key with a forced command (below), so even a
 leaked key can only deploy an image digest.
 
 The VPS uses a read-only GHCR credential. It may prune unused images from its
@@ -468,13 +459,14 @@ The current `deploy.yml` forbids `workflow_dispatch` because a dispatch runs
 the chosen branch's copy of the workflow with repository secrets, and its
 Cloudflare token can do anything to production. The new workflow reverses
 that rule deliberately, for the reasons above: the deploy key's power is
-limited on the VPS side, and who can edit or dispatch workflows is limited on
-the GitHub side. `deploy.yml`'s header must be updated in the same change that
-adds the deploy step, so the two documents do not contradict each other.
+limited on the VPS side, and the `production` environment refuses the key to
+any branch but `main` on the GitHub side. `deploy.yml` keeps its own rule
+against `workflow_dispatch`: its header speaks only of its Cloudflare token,
+so it needs no change.
 
-`image.yml` already carries `workflow_dispatch`. It names no secret, so the
-rule in `docs/testing-and-ci.md` section 10 still holds, and `deploy.yml`
-keeps its rule against `workflow_dispatch`. Its token can push images, though: a branch that edited the file
+`image.yml` carries `workflow_dispatch` and, in its deploy job, the deploy
+key: the one exception to the rule in `docs/testing-and-ci.md` section 10,
+recorded in `SECURITY.md`. Its token can also push images: a branch that edited the file
 and was dispatched could push an image to GHCR under any tag. The same
 GitHub-side limit on who can edit or dispatch workflows covers that, and it
 is why a deployment takes a digest printed by a run on `main`, never a tag

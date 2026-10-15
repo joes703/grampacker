@@ -1,9 +1,9 @@
 # Builds the production container image, tests it as a running container,
-# and, when started by hand on main, publishes it to GHCR.
+# and, when started by hand on main, publishes it to GHCR and, only if the
+# dispatch asks, deploys that image to the VPS.
 #
-# It NEVER deploys. It holds no secret and no SSH key, and nothing here talks
-# to the VPS, DNS or Cloudflare. The Worker deployment is deploy.yml, and this
-# workflow does not touch it.
+# Nothing here talks to DNS or Cloudflare. The Worker deployment is
+# deploy.yml, and this workflow does not touch it.
 #
 # TRIGGERS
 # --------
@@ -12,7 +12,10 @@
 #   * workflow_dispatch: on main only, runs the build, unit, API and migration
 #     checks, builds and checks the image, then pushes it as
 #     ghcr.io/joes703/grampacker:<full commit SHA> and prints its digest.
-#     There is no input: nothing a person types reaches a command.
+#     With the `deploy` input set, a last job deploys that digest to the VPS.
+#     The input is one true/false value, read only by a job's `if`: nothing
+#     a person types reaches a command, and no one can name an image or a
+#     digest.
 #
 # There is no push trigger yet: each publish is started by hand
 # (docs/vps-bootstrap-and-migration-runbook.md step 6.1).
@@ -27,7 +30,13 @@
 # workflow file at all: only Joe; the agent tokens have no Workflows permission
 # (docs/testing-and-ci.md section 12). The token here can push images, which
 # is why a deployment uses the digest this workflow prints for a main run,
-# never a tag. It cannot reach any secret, because there is none.
+# never a tag.
+#
+# The deploy job is the only one that reads a secret, the deploy SSH key. It
+# runs in the `production` environment. The key is a secret of that
+# environment, which allows only main, so GitHub itself refuses the key to
+# any other branch (runbook section 5). On the VPS the key can do one thing:
+# deploy one image digest (deploy/grampacker-deploy-ssh, runbook section 8).
 #
 # The checkout is `github.sha`, the commit the dispatch started on, in every
 # job. Both jobs therefore test and publish the same commit even if main moves
@@ -41,6 +50,11 @@ name: Image
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Also deploy the published image to the VPS
+        type: boolean
+        default: false
 
 # Nothing by default. Each job asks for what it needs.
 permissions: {}
@@ -168,3 +182,55 @@ jobs:
       - name: Log out of GHCR
         if: always()
         run: docker logout ghcr.io
+
+  # Manual publish, step 3, only when the dispatch set `deploy`: deploys the
+  # digest the publish job above pushed and checked, never a tag or a typed
+  # value. A failed deploy is not rolled back: the VPS leaves maintenance on
+  # and prints the rollback directory, and a person decides (runbook 9.2).
+  deploy:
+    name: Deploy to the VPS
+    needs: publish
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'joes703/grampacker' &&
+      inputs.deploy == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    # One deploy at a time, and never canceled once started. GitHub keeps at
+    # most one more waiting; a newer dispatch replaces it before it starts.
+    # Canceling the run, or the timeout, ends only the SSH connection: the
+    # deploy itself goes on to the end on the VPS.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    # No GITHUB_TOKEN permissions, no checkout: this job only runs ssh.
+    permissions: {}
+    steps:
+      - name: Deploy the published digest over SSH
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::the publish job gave no digest"; exit 1; }
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::error::DEPLOY_HOST, DEPLOY_KNOWN_HOSTS or DEPLOY_SSH_KEY is not set (runbook section 8)"
+            exit 1
+          fi
+          dir="$(mktemp -d)"
+          trap 'rm -rf "$dir"' EXIT
+          ( umask 077
+            printf '%s\n' "$DEPLOY_SSH_KEY" >"$dir/key"
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$dir/known_hosts" )
+          # The host key is the one pinned in DEPLOY_KNOWN_HOSTS. Never
+          # ssh-keyscan: that trusts whatever answers.
+          ssh -F none -T -i "$dir/key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=30 -o ServerAliveInterval=30 \
+            "deploy@$DEPLOY_HOST" "deploy $DIGEST"

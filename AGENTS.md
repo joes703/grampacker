@@ -56,7 +56,7 @@ boundary. When unsure of a D1 equivalent, ask rather than assume.
 | Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
 | Dev server | `npm run dev:node` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. `npm run dev` is the old Worker path. |
 | Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
-| Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR and never deploys (runbook step 6.1). |
+| Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR, and deploys to the VPS only when its `deploy` input is set (runbook 6.1, section 8). |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 8.
