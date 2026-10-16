@@ -1,9 +1,10 @@
 # Grampacker VPS bootstrap and migration runbook
 
 **Status:** Partly executed. Section 1 records what is done on the VPS,
-including the empty-database rehearsal of 2026-10-15 (1.3). Production has
-not started. Sections 10 to 12 are future production operations and must
-not run now.
+including the empty-database rehearsal of 2026-10-15 (1.3). The import
+rehearsal (section 10) passed on 2026-10-16 and its copies are deleted.
+Production has not started. Sections 11 and 12 are future production
+operations and must not run now.
 
 This is the executable companion to `docs/vps-migration-plan.md`. The plan
 explains what and why. This runbook gives the exact commands, where each one
@@ -68,6 +69,7 @@ Placeholders that you replace when you run a command:
 | --- | --- |
 | `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (step 6.1) |
 | `<APP_SHA>` | The full 40-character commit SHA an image was built from; its GHCR tag |
+| `<REHEARSED_SHA>` | The `<APP_SHA>` of the image the import rehearsal used (section 10); for 11.0, item 5 |
 | `<RUN_ID>` | A GitHub Actions run id: `databaseId` in `gh run list --json` |
 | `<MERGE_SHA>` | `main`'s head right after a merge, from `git ls-remote` |
 | `<DEPLOY_RUN_ID>` | The run id (`databaseId`) of a run of the legacy Deploy workflow (`deploy.yml`) |
@@ -195,6 +197,11 @@ Done and checked:
   up, and the GitHub-to-VPS test (8.6) passed. The run published
   `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52`,
   and the deploy stopped at the missing `deploy.env` as intended.
+- Section 10 (2026-10-16): the import rehearsal passed on the real D1 data
+  with image
+  `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`,
+  and every rehearsal copy was deleted. The results are at the start of
+  section 10.
 
 Not done: production has not started; there is still no `deploy.env`, no
 production container and no production database, and the production
@@ -1575,24 +1582,35 @@ After every deploy, check what is running (9.1).
 
    Expected: both services running, and `{"ok":true} 200`.
 
-## 10. Import rehearsal (CONFIRM: reads production data)
+## 10. Import rehearsal (DONE, 2026-10-16)
 
-One rehearsal of the D1 import, while production stays live on the Worker
-and D1. It reads D1 and changes nothing there, builds the SQLite database in
-the rehearsal directory of 7.4, and looks at it through that directory's
+One rehearsal of the D1 import, while production stayed live on the Worker
+and D1. It read D1 and changed nothing there, built the SQLite database in
+the rehearsal directory of 7.4, and served it through that directory's
 local-only Caddy. No DNS, no certificate, no public site, no production
 database.
 
-It proves: the export, transfer and import work on the real data; every
-count, relationship and integrity check passes; and the app serves that
-data. It cannot prove that existing passkeys sign in: a passkey works only
+### Result (2026-10-16)
+
+| Item | Result |
+| --- | --- |
+| Image | `ghcr.io/joes703/grampacker@sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f` |
+| Export (10.1) | about 8 seconds |
+| Import (10.3) | about 17 seconds; `result: OK` |
+| Importer checks | D1 ledger, schema identical to `migrations/`, every row count against D1, foreign keys, integrity, and every kept row value by value: all passed |
+| Imported app (10.4) | healthy; `401` for an authenticated endpoint while signed out; `200` JSON for an existing public share |
+| Per-account summary (10.4) | D1 and SQLite matched exactly |
+| Cleanup (10.5) | done: the rehearsal stack, database and export are deleted on the VPS and on walnut |
+
+The rest of this section is the procedure as run. Repeat it only if the
+cutover image changes the import (11.0, item 5), with a new `<STAMP>`. A
+rehearsal cannot prove that existing passkeys sign in: a passkey works only
 on `https://grampacker.app`, so 11.8 tests passkeys and magic links first,
 with the Worker ready to take traffic back.
 
-Run it with the image that will become production: published from `main`
-after the import command (`import-d1`) merged. Then do 7.2 again from that
-`main` commit, which puts `compose.yaml` and `Caddyfile.rehearsal` in
-`/tmp` on the VPS.
+Before a repeat, do 7.2 again from the `main` commit of the image under
+test, which puts `compose.yaml` and `Caddyfile.rehearsal` in `/tmp` on the
+VPS.
 
 **The export and the counts are production data.** They hold every user's
 email address, passkey public keys and all lists:
@@ -1604,6 +1622,12 @@ email address, passkey public keys and all lists:
 - never `cat`, `less` or paste them, and never paste the database. The
   import report holds only table names, counts and checks, and is safe to
   keep in notes;
+- **`wrangler d1 export` prints a temporary signed URL.** Anyone who has
+  that URL can download the whole export for one hour. Never paste, share
+  or log the export command's output, or put it in notes, an issue or a
+  chat. Wrangler also writes it to a debug log file on disk by default;
+  `WRANGLER_WRITE_LOGS=false`, set in 10.1 and 11.2, stops that. If the URL
+  was copied anywhere within the hour, treat that as a leak of the export;
 - the rehearsal copies are deleted at the end of this section (10.5); the
   cutover copies are kept as 11.2 and 12.1 say.
 
@@ -1617,19 +1641,21 @@ Read-only on D1. Uses walnut's `wrangler login`.
 ```bash
 # [walnut] in the repository checkout, on main
 umask 077
+export WRANGLER_WRITE_LOGS=false
 STAMP=rehearsal-$(date -u +%Y%m%dT%H%MZ)
 OUT=~/grampacker-d1-export/$STAMP
 mkdir -p "$OUT"
 time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
 npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
-(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS && cat SHA256SUMS)
+(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS)
 ls -la ~/grampacker-d1-export "$OUT"
 echo "$STAMP"
 ```
 
-Expected: the export finishes with `Done!`; three files, each
-`-rw-------`, in a `drwx------` directory. Record the export time and
-`<STAMP>` in section 13. Rerun: safe (read-only), with a new `<STAMP>`.
+Expected: the export finishes with `Done!` (its output includes the signed
+URL: do not copy it); three files, each `-rw-------`, in a `drwx------`
+directory. Record the export time and `<STAMP>` in section 13. Rerun: safe
+(read-only), with a new `<STAMP>`.
 
 ### 10.2 Transfer to the VPS
 
@@ -1670,10 +1696,9 @@ then start its Caddy closed:
 ```bash
 # [VPS root] same shell (R and GRAMPACKER_ROOT are set)
 grampacker-deploy caddy-update
-ls -A "$R/data"
 ```
 
-Expected: `answering 503`; `data` is empty.
+Expected: `answering 503`.
 
 ```bash
 # [VPS root] same shell
@@ -1696,34 +1721,32 @@ Expected: `exit=0` and a report ending `result: OK`, with:
   equals the export`;
 - in `data`, exactly one file, `grampacker.db`, owned by `10001`.
 
-If it fails, the report says why and nothing is left in `data`. A
-`schema ... differs` line names the tables, indexes or triggers whose SQL in
-D1 is not the SQL `migrations/` creates: stop and decide before the
-cutover. A `row counts differ from D1` line means something wrote between
-the export and the counts: repeat 10.1 to 10.3. Record the import time.
+The import refuses to start if `data` already holds the database or a
+`-wal`, `-shm` or `-journal` file beside it. If it fails, the report says
+why and nothing is left in `data`. A `schema ... differs` line names the
+tables, indexes or triggers whose SQL in D1 is not the SQL `migrations/`
+creates: stop and decide before the cutover. A `row counts differ from D1`
+line means something wrote between the export and the counts: repeat 10.1
+to 10.3. Record the import time.
 
-### 10.4 Look at the imported data
+### 10.4 Serve the imported data
 
-Serve it through the rehearsal stack. With no app running yet, `deploy`
-copies the imported database to a rollback point, applies no migration (the
-import already applied them), and starts the app on it:
+With no app running yet, `deploy` copies the imported database to a
+rollback point, applies no migration (the import already applied them),
+starts the app on it and waits for it to be healthy:
 
 ```bash
 # [VPS root] same shell
 grampacker-deploy deploy <APP_DIGEST>
-curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/api/categories
 curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:8081/api/shares/v2/<SHARED_SLUG>
 ```
 
 `<SHARED_SLUG>` is the last part of one of your existing public share
 links. Expected: `applied 0 migration(s)`, `app is healthy`, `maintenance
-is off`; then `{"ok":true} 200`; `401` (signed out); `200
-application/json`. The share's contents are not printed here; to look at
-them, open the same path through an SSH tunnel
-(`ssh -L 8081:127.0.0.1:8081 joe@"$VPS_HOST"`, then
-`http://127.0.0.1:8081/api/shares/v2/<SHARED_SLUG>` in a browser on
-walnut) and compare with the same share on `https://grampacker.app`.
+is off`; then `401` (signed out) and `200 application/json`. The share's
+contents are not printed, and need not be compared by hand: the importer
+already proved every kept row equal to the export.
 
 Then compare a per-account summary of the imported copy with D1. The
 summary holds counts and the first 8 characters of each user id, no names
@@ -1755,9 +1778,10 @@ rollback copy that `deploy` just made, never the live file.
 
 ### 10.5 Record, tear down and delete the copies
 
-Record in section 13: the date, the export, transfer and import times, and
-`result: OK` (keep `$R/import-report.txt` in your notes: it holds no data).
-Then remove the rehearsal, its database and the export, everywhere:
+Record in section 13: the date, the image digest, the export and import
+times, and `result: OK` (keep `$R/import-report.txt` in your notes: it
+holds no data). Then remove the rehearsal, its database and the export,
+everywhere:
 
 ```bash
 # [VPS root]
@@ -1776,14 +1800,11 @@ ls -la ~/grampacker-d1-export
 Expected: no `grampacker-rehearsal` in `/srv`; no `<STAMP>` folder on
 walnut. No rehearsal copy is kept anywhere: the cutover makes its own.
 
-Rerun: the whole section, with a new `<STAMP>`.
-
 ## 11. One-time D1 to SQLite move (FUTURE PRODUCTION - DO NOT RUN NOW)
 
 Every step in this section is a production operation. It runs once, in an
-announced maintenance window, after the import rehearsal (section 10)
-passed with the image that will run production. Each CONFIRM step needs
-its own "yes".
+announced maintenance window, after the import rehearsal (section 10).
+Each CONFIRM step needs its own "yes".
 
 The plan in one line: freeze D1 writes, export and count, import into a new
 SQLite database on the VPS, start the app, point DNS at the VPS, test on
@@ -1791,8 +1812,9 @@ SQLite database on the VPS, start the app, point DNS at the VPS, test on
 the Worker and D1, which nothing here changed (11.9).** D1 and the Worker
 are retired only after the observation period (12.3).
 
-Expected downtime: the rehearsal's export, transfer and import times, plus
-DNS cache and certificate time (minutes, not seconds).
+Expected downtime: in the rehearsal the export took about 8 seconds and the
+import about 17; add the transfer, the checks in 11.6 to 11.8, and DNS cache
+and certificate time (minutes, not seconds).
 
 ### 11.0 Before the window
 
@@ -1821,16 +1843,38 @@ DNS cache and certificate time (minutes, not seconds).
    and `deploy-liveness.yml` show `disabled_manually`. If anything else
    shows, stop and find out why before the window.
 
-5. The empty-database rehearsal (7.4) and the import rehearsal (section 10)
-   passed with the image that will become production (`<APP_DIGEST>`).
+5. Choose the image that will become production (`<APP_DIGEST>`). The
+   import rehearsal (section 10) passed with
+   `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`.
+   If `<APP_DIGEST>` is a different image, list what changed between the
+   two images' commits (each image's GHCR tag is its full commit SHA, 6.1):
+   `git diff --name-only <REHEARSED_SHA> <APP_SHA>`. Repeat section 10 with
+   the new image if any of these changed, since each is part of the
+   import: `migrations/`, `server/db/`, `server/node.ts`,
+   `deploy/d1-row-counts.sql`, `Dockerfile`, `package.json`,
+   `package-lock.json` or `vite.server.config.ts`. If unsure, repeat it.
+   Repeat 7.4 if any other file in `deploy/` changed. Otherwise the 11.5
+   import's own checks are enough.
 6. Confirm backups. They are set up outside this runbook, but the cutover
    depends on them: the existing setup must copy a backup-API snapshot of
    `/srv/grampacker/data` (never the live database and WAL files) to B2, and
    one such snapshot must have been restored from B2 and passed
    `integrity_check`. If not, do not start the cutover.
-7. Have the existing production `BETTER_AUTH_SECRET` and the Resend API key
-   ready in your password manager (11.4). If there is no copy of the secret,
-   stop: the move would then force a rotation, which needs its own decision.
+7. Generate the VPS's new `BETTER_AUTH_SECRET` and save it in your password
+   manager, as "grampacker VPS BETTER_AUTH_SECRET", before the window. The
+   cutover rotates this secret on purpose: there is no copy of the Worker's,
+   and Cloudflare cannot show it. Generate it once:
+
+   ```bash
+   # [admin workstation]
+   openssl rand -hex 32
+   ```
+
+   Expected: 64 hexadecimal characters (256 bits). Copy them into the
+   password-manager entry, check that the entry saved, then clear the
+   terminal and its scrollback. Never put the value in a file, a note or a
+   chat. Have the Resend API key ready in the password manager too (11.4).
+   The consequences of the rotation are in 11.4.
 8. Have an encrypted place for the cutover export archive ready (11.2): the
    same protected backup storage that holds other production secrets, not a
    plain folder or a cloud drive.
@@ -1870,20 +1914,22 @@ which `docs/d1-restore.md` needs if D1 itself ever has to be restored:
 ```bash
 # [walnut] in the repository checkout, on main
 umask 077
+export WRANGLER_WRITE_LOGS=false
 STAMP=cutover-$(date -u +%Y%m%dT%H%MZ)
 OUT=~/grampacker-d1-export/$STAMP
 mkdir -p "$OUT"
 npx wrangler d1 time-travel info grampacker > "$OUT/time-travel-bookmark.txt"
 time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
 npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
-(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS && cat SHA256SUMS)
+(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS)
 cat "$OUT/time-travel-bookmark.txt"
 ls -la ~/grampacker-d1-export "$OUT"
 echo "$STAMP"
 ```
 
 Expected: a bookmark; `Done!`; four `-rw-------` files in a `drwx------`
-directory.
+directory. The export's output includes a temporary signed URL to the
+whole export: never paste, share or log it (section 10, data rules).
 
 Now copy the whole `$OUT` folder into the encrypted backup storage from
 11.0. That copy is the untouched record of what moved, kept as 12.1 says.
@@ -1921,19 +1967,49 @@ Rerun: safe.
 
 ### 11.4 Write the production configuration
 
-`deploy.env` (no secrets): do 7.3 now, with `<APP_DIGEST>` the image the
-rehearsal used.
+`deploy.env` (no secrets): do 7.3 now, with the `<APP_DIGEST>` chosen in
+11.0, item 5.
 
-The app's secrets. Production keeps the **existing**
-`BETTER_AUTH_SECRET`; rotating it is a separate, later operation.
-Cloudflare cannot show a Worker secret after it is set, so type it from
-your password manager:
+The app's secrets. **`BETTER_AUTH_SECRET` is rotated at cutover, on
+purpose.** The VPS uses the new secret generated and saved in 11.0, item 7.
+Do not write `app.env` until that password-manager entry exists. The
+consequences:
+
+- Nothing imported depends on the old secret. Sessions, verification
+  records (magic-link tokens) and rate-limit records are already removed
+  by the import; the rate limiter's email buckets are keyed with this
+  secret, so they start empty in any case.
+- Everyone signs in again on the VPS. (The import removes sessions, so
+  this would happen without the rotation too.)
+- A magic link requested before the cutover does not work; request a new
+  one. Its token was in the removed verification records, and it expires
+  after 5 minutes anyway.
+- Existing passkeys keep working: their credential IDs, public keys and
+  counters are imported, and a sign-in checks the authenticator's
+  signature against the stored public key. The secret only signs the
+  short-lived challenge cookie that each sign-in creates fresh. The RP ID
+  stays `grampacker.app` and the origin `https://grampacker.app`, both
+  from `BETTER_AUTH_URL` below. 11.8 tests this before the site opens.
+- The Worker is not changed. It keeps its own hidden Cloudflare secret, so
+  after a rollback (11.9) D1's sessions are valid again as they were at the
+  freeze. A browser that signed in on the VPS during 11.8 has replaced its
+  session cookie, and signs in again on the Worker.
+
+Type both values from your password manager:
 
 ```bash
 # [VPS joe]
 umask 077
-read -rsp 'Existing production BETTER_AUTH_SECRET: ' AUTH_SECRET; echo
+read -rsp 'New BETTER_AUTH_SECRET (11.0, item 7): ' AUTH_SECRET; echo
 read -rsp 'Resend API key: ' RESEND_KEY; echo
+echo "secret length: ${#AUTH_SECRET}"
+```
+
+Expected: `secret length: 64`. If not, the value was mistyped or
+truncated: run that block again. Only then, in the same shell:
+
+```bash
+# [VPS joe] same shell
 {
   printf 'BETTER_AUTH_URL=%s\n' 'https://grampacker.app'
   printf 'BETTER_AUTH_SECRET=%s\n' "$AUTH_SECRET"
@@ -1988,8 +2064,8 @@ echo "exit=${PIPESTATUS[0]}"
 ls -la data
 ```
 
-Expected: exactly what 10.3 expects. There is no rehearsal allowance: every
-count must match, and `result: OK` must be the last line.
+Expected: exactly what 10.3 expects: every count matches, and `result: OK`
+is the last line.
 
 If `exit` is not 0: stop. Nothing was written to `data`, D1 is unchanged
 and still authoritative. Go to 11.9.
@@ -2018,12 +2094,11 @@ docker compose --env-file deploy.env up -d app
 docker compose --env-file deploy.env ps
 curl -sS -o /tmp/health.json -w '%{http_code}\n' -H 'Host: grampacker.app' http://127.0.0.1:3000/api/health; cat /tmp/health.json; echo
 curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' -H 'Host: grampacker.app' http://127.0.0.1:3000/
-curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: grampacker.app' http://127.0.0.1:3000/api/categories
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST -H 'Host: grampacker.app' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:3000/api/categories
 ```
 
-Expected: `app (healthy)`; `200` and `{"ok":true}`; `200 text/html...`;
-`401`; `403`.
+Expected: `app (healthy)`; `200` and `{"ok":true}`; `200 text/html...`.
+The signed-out `401` and the CSRF `403` are checked once, through Caddy
+and the public address, in 11.8.
 
 ### 11.7 Point DNS at the VPS (CONFIRM: production DNS)
 
@@ -2152,7 +2227,7 @@ or follow 9.3, which needs a written decision first.
 
 | Copy | Where | Deleted or kept |
 | --- | --- | --- |
-| Rehearsal export, counts and database | walnut, `/srv/grampacker-rehearsal` | deleted at the end of the rehearsal (10.5) |
+| Rehearsal export, counts and database | walnut, `/srv/grampacker-rehearsal` | deleted at the end of the rehearsal (10.5); done 2026-10-16 |
 | Cutover export folder (`d1-full.sql`, `d1-counts.json`, `SHA256SUMS`, bookmark) | encrypted backup storage (11.2) | kept until D1 is deleted (12.3), then 30 days more; then deleted |
 | Cutover export folder | walnut `~/grampacker-d1-export/<STAMP>` | deleted at the end of the observation period (12.2) |
 | Cutover export | VPS `/srv/grampacker/import/<STAMP>` | deleted at the end of the observation period |
@@ -2237,6 +2312,6 @@ Each is its own decision, after the observation period:
 | Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
 | Migration merge: `<MERGE_SHA>`, Deploy run URL (or none, if disabled) | |
 | First published image: `<APP_SHA>`, `<APP_DIGEST>`, run URL | |
-| Import rehearsal (section 10): date, export, transfer, import and check times, result | |
+| Import rehearsal (section 10): date, image, export and import times, result | 2026-10-16, `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`, export about 8 s, import about 17 s; every importer check passed, the app served the data, the per-account summaries matched; copies deleted |
 | Cutover window start / site open / D1 stale from | |
 | GHCR token expiry date | |
