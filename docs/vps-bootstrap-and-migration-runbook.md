@@ -1,14 +1,15 @@
-# Grampacker VPS bootstrap and migration runbook
+# Grampacker VPS operations runbook
 
-**Status:** Partly executed. Section 1 records what is done on the VPS,
-including the empty-database rehearsal of 2026-10-15 (1.3). The import
-rehearsal (section 10) passed on 2026-10-16 and its copies are deleted.
-Production has not started. Sections 11 and 12 are future production
-operations and must not run now.
+**Status:** Production has run on the VPS since 2026-10-16. This runbook is
+for operating it: deploying, maintaining, rolling back and troubleshooting.
+The one-time setup, the rehearsals and the move from Cloudflare Workers and
+D1 are done; section 4 records them. The old Worker and D1 remain, unchanged
+and serving no traffic, as rollback targets until they are decommissioned
+(12.3); 11.2 is the procedure for returning to them.
 
-This is the executable companion to `docs/vps-migration-plan.md`. The plan
-explains what and why. This runbook gives the exact commands, where each one
-runs, what it should print, how to check it, and how to undo it.
+The file keeps its old name, and its section numbers are kept, because code
+comments and other documents cite them. `docs/vps-migration-plan.md` is the
+dated record of why the move was made.
 
 ## 0. How to use this runbook
 
@@ -19,7 +20,7 @@ Every command block starts with a location tag. Run it only there.
 | Tag | Meaning |
 | --- | --- |
 | `[admin workstation]` | Terminal on walnut or the Mac, either one |
-| `[walnut]` | Terminal on walnut: the step needs its `wrangler login`, or a file made in an earlier walnut step |
+| `[walnut]` | Terminal on walnut: the step needs its `wrangler login` |
 | `[Mac]` | Terminal on the Mac |
 | `[RackNerd console]` | The provider's VNC/serial console in the RackNerd control panel. Works when SSH does not. |
 | `[VPS joe]` | SSH session on the VPS as `joe`, ordinary shell |
@@ -30,26 +31,14 @@ Every command block starts with a location tag. Run it only there.
 | `[Cloudflare]` | Cloudflare dashboard, or `wrangler` on walnut where noted |
 | `[sandbox]` | The coding agent's sandbox |
 
-Walnut is the admin workstation. Most steps run on either administration
-machine and say `[admin workstation]`. Steps that need the Cloudflare login
-(`wrangler`, authenticated on walnut) or the D1 export files say `[walnut]`.
-
-### Step labels
-
-| Label | Meaning |
-| --- | --- |
-| **DONE** | Already completed (1.3 says when). Listed so it can be re-verified. |
-| **NOW** | Safe to run before implementation. Touches no production system. |
-| **AFTER IMAGE** | Needs a Grampacker image that the Node/SQLite work has not produced yet. |
-| **CONFIRM** | Stop. Changes DNS, a Worker route, D1, production data, or a GitHub security setting. Run only after you have said "yes" to that exact step. |
-| **FUTURE PRODUCTION - DO NOT RUN NOW** | Part of the one-time D1 move. Runs only in the approved maintenance window. |
-
-Every step also says whether it is safe to rerun.
+A step marked **CONFIRM** changes DNS, a Worker route, D1, production data or
+a GitHub security setting. Run it only after you have said "yes" to that
+exact step. Approval of one CONFIRM step does not approve the next one.
 
 ### Names used in commands
 
-Set these at the top of a shell before running that section's commands. The
-address appears literally only here; commands use `$VPS_HOST`.
+Set these at the top of a shell. The address appears literally only here;
+commands use `$VPS_HOST`.
 
 ```bash
 # [admin workstation]
@@ -58,60 +47,84 @@ GH_REPO=joes703/grampacker
 IMAGE_REPO=ghcr.io/joes703/grampacker
 ```
 
-```bash
-# [VPS joe] [VPS root]
-cd /srv/grampacker
-```
-
 Placeholders that you replace when you run a command:
 
 | Placeholder | Meaning |
 | --- | --- |
-| `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (step 6.1) |
+| `<APP_DIGEST>` | A Grampacker image digest, `sha256:` plus 64 hex characters, as the Image workflow prints it (6.1) |
 | `<APP_SHA>` | The full 40-character commit SHA an image was built from; its GHCR tag |
-| `<REHEARSED_SHA>` | The `<APP_SHA>` of the image the import rehearsal used (section 10); for 11.0, item 5 |
 | `<RUN_ID>` | A GitHub Actions run id: `databaseId` in `gh run list --json` |
-| `<MERGE_SHA>` | `main`'s head right after a merge, from `git ls-remote` |
-| `<DEPLOY_RUN_ID>` | The run id (`databaseId`) of a run of the legacy Deploy workflow (`deploy.yml`) |
-| `<BASELINE_TIME>` | The UTC time recorded before the merges in 6.1, such as `2026-10-20T15:30:00Z` |
-| `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
-| `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
-| `<STAMP>` | One per export: `rehearsal-` or `cutover-` and a UTC time, such as `cutover-20261101T1530Z` (10.1, 11.2 print it) |
+| `<STAMP>` | A rollback directory's name, or a UTC time such as `20261101T1530Z` |
 | `<WORKERS_SUBDOMAIN>` | The account's `workers.dev` subdomain, shown in the Cloudflare dashboard |
-| `<SHARED_SLUG>` | The last part of one of your existing public share links (10.4) |
 
 **Secret values never appear in this file.** Where a secret is needed, the
 command reads it from the keyboard with `read -rs` (not saved in shell
-history, not shown on screen), or generates it on the VPS so it never travels.
+history, not shown on screen).
+
+### Production root shells
+
+`grampacker-deploy` works on `/srv/grampacker`, or on `GRAMPACKER_ROOT` when
+that variable is set. Only the empty-database rehearsal (7.4) sets it. Run
+production commands in a new root shell, and check first:
+
+```bash
+# [VPS root]
+unset GRAMPACKER_ROOT
+echo "GRAMPACKER_ROOT=${GRAMPACKER_ROOT:-unset}"
+```
+
+Expected: `GRAMPACKER_ROOT=unset`. A shell that still has it set sends every
+`grampacker-deploy` command to the rehearsal directory, and the production
+checks that follow then test the wrong thing.
+
+### Wait for the app to be healthy
+
+After anything that starts or restarts the app container outside
+`grampacker-deploy` (which waits by itself), wait for Docker's health check
+before any HTTP check. An HTTP check made while the app is still starting
+fails for no real reason.
+
+```bash
+# [VPS root]
+cd /srv/grampacker
+APP="$(docker compose --env-file deploy.env ps -q app)"
+for i in $(seq 60); do
+  STATE="$(docker inspect -f '{{.State.Health.Status}}' "$APP")"
+  [ "$STATE" = healthy ] && break
+  sleep 2
+done
+echo "app: $STATE"
+```
+
+Expected: `app: healthy` within two minutes. For the rehearsal (7.4), run it
+with `cd "$R"` in place of `cd /srv/grampacker`.
 
 ### Stop rules
 
 - If a command's output differs from "Expected", stop. Do not continue to the
   next step until the difference is understood.
-- A **CONFIRM** step names exactly what it changes. Approval of one CONFIRM
-  step does not approve the next one.
-- Never delete the D1 database, a snapshot, or the export archive as part of
-  this runbook. Deleting D1 is a separate, later decision.
+- Never delete the D1 database. Deleting it is a separate, later decision
+  (12.3).
 
-## 1. Completed VPS base setup (DONE)
+## 1. Production as it runs
 
-These were completed before 2026-10-11. Re-verify them from an
-`[admin workstation]` before starting section 3. All checks are read-only and safe to rerun.
-
-| Done | Fact |
+| Item | State |
 | --- | --- |
-| DONE | RackNerd KVM, Ubuntu 26.04.1 LTS, kernel `7.0.0-31-generic`, x86-64 |
-| DONE | 1.9 GiB RAM, 1 GiB swap, about 32 GB free of about 34 GB |
-| DONE | No global IPv6 address (link-local `fe80::` only) |
-| DONE | Docker Engine, containerd and Compose from Docker's apt repository; Docker active (versions in 1.3) |
-| DONE | User `joe`, key login from the Mac and walnut |
-| DONE | Root SSH login off; password and keyboard-interactive login off |
-| DONE | UFW: deny incoming, allow outgoing, SSH rate-limited, TCP 80 and 443 allowed |
-| DONE | `/srv/grampacker` (`joe:joe 0755`) with `data`, `secrets`, `snapshots` (`joe:joe 0700`) |
-| DONE | GitHub-to-VPS deployment (section 8), tested 2026-10-15/16 (1.3) |
-| NOT DONE | Production start, production secrets and `deploy.env`, DNS and Cloudflare changes |
+| VPS | RackNerd KVM, Ubuntu 26.04.1 LTS, x86-64, 1.9 GiB RAM, 1 GiB swap, no global IPv6 address |
+| Docker | Docker Engine, containerd and Compose from Docker's apt repository |
+| Login | `joe`, key login from the Mac and walnut; root SSH login, password and keyboard-interactive login off |
+| Firewall | UFW: deny incoming, allow outgoing, SSH rate-limited, TCP 80 and 443 allowed, no UDP 443 |
+| Application | `ghcr.io/joes703/grampacker@sha256:453b52ee9d2976efce708906536d78062cf50459da3ef0127398754bde4a5c49` (since 2026-10-16), on `127.0.0.1:3000` only, as UID/GID 10001 |
+| Database | `/srv/grampacker/data/grampacker.db`, `data/` owned by 10001, mode 0700 |
+| Secrets | `/srv/grampacker/secrets/app.env`, `root:root`, mode 0600 |
+| HTTPS | Caddy (`caddy:2`, host networking), certificate from Let's Encrypt |
+| DNS | Cloudflare DNS, an A record for `grampacker.app` to the VPS, DNS only (not proxied); no AAAA record. The Worker's custom domain is removed. |
+| Deploys | `image.yml` dispatched with `deploy` set (9.1), through the `deploy` account's forced command (section 8); or by hand as root |
+| Rollback targets | Each deploy's rollback directory (9.2, 9.3); and, until decommissioned, the old Worker and D1 (11.2) |
 
-### 1.1 Re-verify the base setup
+### 1.1 Re-verify the host
+
+Read-only and safe to rerun.
 
 ```bash
 # [admin workstation]
@@ -121,31 +134,38 @@ ssh joe@"$VPS_HOST" 'ip -6 addr show scope global'
 ssh -t joe@"$VPS_HOST" 'sudo sshd -T | grep -E "^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication) "'
 ssh -t joe@"$VPS_HOST" 'sudo ufw status verbose'
 ssh -t joe@"$VPS_HOST" 'sudo ss -tulpn'
-ssh joe@"$VPS_HOST" 'stat -c "%U:%G %a %n" /srv/grampacker /srv/grampacker/*'
+ssh -t joe@"$VPS_HOST" 'sudo stat -c "%U:%G %a %n" /srv/grampacker /srv/grampacker/data /srv/grampacker/secrets/app.env'
+curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://grampacker.<WORKERS_SUBDOMAIN>.workers.dev/api/health
 ```
 
 Expected:
 
-- Ubuntu 26.04.1 LTS, `x86_64`, Docker and Compose at or above the versions
-  in 1.3, `active`.
+- Ubuntu 26.04.1 LTS, `x86_64`, Docker `active`.
 - `ip -6 addr show scope global` prints nothing.
 - `permitrootlogin no`, `passwordauthentication no`,
   `kbdinteractiveauthentication no`.
 - UFW `Status: active`, `Default: deny (incoming), allow (outgoing)`, rules for
   `22/tcp LIMIT`, `80/tcp ALLOW`, `443/tcp ALLOW` (and their `(v6)` copies),
   and no UDP 443 rule.
-- `ss` shows only SSH on a public address. Local-only listeners such as
-  `127.0.0.53` (systemd-resolved) are fine.
-- `joe:joe 755 /srv/grampacker`, and `joe:joe 700` for `data`, `secrets`,
-  `snapshots`.
+- `ss`: on a public address, only SSH and Caddy's TCP 80 and 443. The app on
+  `127.0.0.1:3000`, and other local-only listeners such as `127.0.0.53`
+  (systemd-resolved), are fine.
+- `joe:joe 755 /srv/grampacker`, `10001:10001 700` for `data` (shown as
+  numbers or as `UNKNOWN`: the host has no account 10001), and
+  `root:root 600` for `app.env`.
+- The `workers.dev` request fails or returns a Cloudflare error, never
+  `200`. A `200` means the old Worker can still write to D1 there: turn its
+  `workers.dev` route off (`[Cloudflare]` Workers & Pages, `grampacker`,
+  Settings, Domains & Routes; CONFIRM).
 
-If any line differs, stop and fix the base setup first.
+If any line differs, stop and find out why.
 
-### 1.2 Record the SSH host key fingerprint (NOW)
+### 1.2 SSH host key fingerprint
 
-GitHub Actions pins this key for the deploy job (section 8). Read it from the console,
-which does not depend on the network path, and compare it with what the admin
-workstation already trusts.
+GitHub Actions pins this key for the deploy job (section 8). Section 13
+records it. To check it again, read it from the console, which does not
+depend on the network path, and compare it with what the admin workstation
+trusts:
 
 ```bash
 # [RackNerd console] logged in as joe
@@ -157,76 +177,29 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ssh-keygen -lF "$VPS_HOST"
 ```
 
-Expected: both print the same `SHA256:...` fingerprint for the ED25519 key.
-Write it down in your password manager as "grampacker VPS host key". If they
-differ, stop: the workstation may be talking to a different machine.
-
-Rerun: safe.
-
-### 1.3 Preparation and rehearsal (DONE, 2026-10-15)
-
-Versions after the VPS was updated and rebooted:
-
-| Component | Version |
-| --- | --- |
-| Ubuntu, kernel | 26.04.1 LTS, `7.0.0-31-generic` |
-| Docker Engine, Compose, containerd | 29.9.1, 5.6.0, 2.4.2 (Docker's apt repository, current when checked) |
-| Caddy (`caddy:2`) | 2.11.7 |
-| SQLite: host `sqlite3`, and inside the app image (`better-sqlite3`) | 3.46.1, 3.53.4 |
-
-Done and checked:
-
-- 3.2: Caddy pulled; its configuration validated.
-- 3.3: the test port was bound to `127.0.0.1` only, proved by `docker port`,
-  `docker inspect` and `ss`.
-- 3.6: unattended security updates enabled; the dry run exited 0.
-- 7.1 and 7.2: the image runs as UID/GID 10001; the deployment files are
-  under `/srv/grampacker`.
-- 7.4: the empty-database rehearsal passed: first deploy, app and Caddy
-  restarts, maintenance (503 on API and frontend paths, after a Caddy
-  restart, and with the app stopped), rollback refused while maintenance was
-  off, and with it on, a rollback that kept the failed data, restored the
-  saved database and image, came back healthy and left maintenance on. After
-  `maintenance off`, `/api/health` answered `{"ok":true} 200`.
-- Teardown: the rehearsal containers, network, database, rollback data and
-  throwaway secrets were removed; `docker ps` showed no containers.
-
-- 1.2: the VPS's ED25519 host key fingerprint is
-  `SHA256:6R0gvuvxXgw7m7zjTJrouxWooIcVlnLI6IAxtUQth48` (also in section 13).
-- Section 8 (2026-10-15/16): the `deploy` account, sudo rule and key are set
-  up, and the GitHub-to-VPS test (8.6) passed. The run published
-  `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52`,
-  and the deploy stopped at the missing `deploy.env` as intended.
-- Section 10 (2026-10-16): the import rehearsal passed on the real D1 data
-  with image
-  `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`,
-  and every rehearsal copy was deleted. The results are at the start of
-  section 10.
-
-Not done: production has not started; there is still no `deploy.env`, no
-production container and no production database, and the production
-secrets are not written; DNS and Cloudflare are unchanged.
+Expected: both print the fingerprint in section 13. If they differ, stop:
+the workstation may be talking to a different machine.
 
 ## 2. Access and credentials
 
 There are four kinds of access. Keep them separate. Never reuse a key from one
 row for another.
 
-| # | Credential | Where the secret lives | Logs in as / used by | Allowed to | Status |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Administrator SSH keys | the Mac and walnut | `joe` | everything, through `sudo` | DONE |
-| 2 | Temporary provisioning key | the agent sandbox, only while approved | `provision` (temporary account) | what that session needs; removed afterward | not created; not needed now |
-| 3 | Deployment SSH key | GitHub: `production` environment secret | `deploy` | run the deploy wrapper with one image digest; nothing else | built; not set up (section 8) |
-| 4 | Read-only GHCR credential | `/root/.docker/config.json` on the VPS | Docker (as root) | pull Grampacker images; cannot push or delete | step 6 |
+| # | Credential | Where the secret lives | Logs in as / used by | Allowed to |
+| --- | --- | --- | --- | --- |
+| 1 | Administrator SSH keys | the Mac and walnut | `joe` | everything, through `sudo` |
+| 2 | Temporary provisioning key | the agent sandbox, only while approved; none exists | `provision` (temporary account) | what that session needs; removed afterward |
+| 3 | Deployment SSH key | GitHub: `production` environment secret | `deploy` | run the deploy wrapper with one image digest; nothing else (section 8) |
+| 4 | Read-only GHCR credential | `/root/.docker/config.json` on the VPS | Docker (as root) | pull Grampacker images; cannot push or delete (6.2, 6.3) |
 
-### 2.1 Administrator keys (DONE)
+### 2.1 Administrator keys
 
 `joe` logs in from the Mac and walnut with key authentication. Recovery when
 SSH is lost (wrong firewall rule, broken `sshd_config`): the RackNerd console
 still works, because it is a virtual screen and keyboard, not SSH.
 
-Check before any change to `sshd` or UFW: keep a second SSH session open, and
-test the change from a new session before closing the old one.
+Before any change to `sshd` or UFW, keep a second SSH session open, and test
+the change from a new session before closing the old one.
 
 ```bash
 # [Mac] and again from [walnut]
@@ -235,12 +208,10 @@ ssh -o PasswordAuthentication=no -o BatchMode=yes joe@"$VPS_HOST" true && echo O
 
 Expected: `OK` from both machines.
 
-### 2.2 Temporary sandbox provisioning key (not now)
+### 2.2 Temporary sandbox provisioning key (only if needed)
 
-The coding sandbox does not need VPS access for the Node/SQLite conversion or
-for building the image. **Do not create or install this key now.**
-
-If direct sandbox access is needed later, use only this process.
+The coding sandbox does not need VPS access. If direct sandbox access is ever
+needed, use only this process.
 
 1. `[sandbox]` Generate a new, dedicated key. It is never reused as your
    personal key or as the deployment key.
@@ -254,15 +225,14 @@ If direct sandbox access is needed later, use only this process.
 
    The agent shows you only the `.pub` line and the fingerprint. The private
    key never leaves the sandbox. Outbound SSH from the sandbox to `$VPS_HOST`
-   also needs your approval in the sandbox network policy; this runbook does
-   not change that policy.
+   also needs your approval in the sandbox network policy.
 
 2. `[VPS root]` Create a separate temporary account and install the key.
    Paste the `.pub` line where shown; it is a public key, not a secret.
 
    ```bash
    # [VPS root]
-   adduser --disabled-password --gecos 'temporary provisioning' provision
+   adduser --disabled-password --comment 'temporary provisioning' provision
    install -d -o provision -g provision -m 0700 /home/provision/.ssh
    tee /home/provision/.ssh/authorized_keys >/dev/null <<'EOF'
    restrict,pty PASTE_THE_SANDBOX_PUBLIC_KEY_LINE_HERE
@@ -313,105 +283,7 @@ If direct sandbox access is needed later, use only this process.
 
 6. `[sandbox]` Delete the key pair: `rm -f ~/.ssh/grampacker_provision ~/.ssh/grampacker_provision.pub`.
 
-Rerun: step 1 creates a new key each time (do not reuse an old one); steps 4
-and 5 are safe to rerun.
-
-### 2.3 Deployment key and GHCR credential
-
-Set up in section 8 and step 6. They are listed in the table above so their
-limits are clear before they exist.
-
-## 3. VPS preparation that needs no Grampacker image (NOW)
-
-Nothing here touches production, DNS or Cloudflare.
-
-### 3.1 Check `joe`'s groups and sudo
-
-```bash
-# [VPS joe]
-id
-sudo -v && echo "sudo OK"
-```
-
-Expected: `sudo OK`. `joe` does not need to be in the `docker` group: this
-runbook runs every Docker command with `sudo`. Rerun: safe.
-
-### 3.2 Pull the Caddy image
-
-Caddy is the official `caddy:2` image: the major version only, so every
-Caddy 2.x release arrives (Caddy supports only its newest 2.x). It changes
-only when you run `grampacker-deploy caddy-update` (9.4), never during an app
-deploy.
-
-```bash
-# [VPS joe]
-sudo docker pull caddy:2
-sudo docker run --rm caddy:2 caddy version
-```
-
-Expected: a `v2.x.y` version line. Rerun: safe.
-
-### 3.3 Prove that a Docker port bound to 127.0.0.1 is not public
-
-Docker writes its own packet-filter rules, and they run before UFW's. A port
-published as `"8099:80"` would be reachable from the internet even though UFW
-has no rule for it. This test proves the `127.0.0.1:` form is not.
-
-```bash
-# [VPS joe]
-sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:2 caddy respond --listen :80 "bindtest ok"
-curl -sS http://127.0.0.1:8099/
-sudo docker port bindtest
-sudo docker inspect -f '{{json (index .NetworkSettings.Ports "80/tcp")}}' bindtest
-sudo ss -ltnp | grep 8099
-```
-
-Expected: `bindtest ok`, then the proof, three times:
-
-- `docker port`: `80/tcp -> 127.0.0.1:8099`, and no other line;
-- `docker inspect`: `[{"HostIp":"127.0.0.1","HostPort":"8099"}]`;
-- `ss`: the local address `127.0.0.1:8099` only (no `0.0.0.0`, no `*`, no
-  `[::]`).
-
-Defense in depth, not proof:
-
-```bash
-# [admin workstation]
-nc -vz -w 5 "$VPS_HOST" 8099; echo "exit=$?"
-```
-
-Expected: the connection fails, `exit=1`. This shows only that something
-blocks the port from outside. UFW may block it too, so a refusal or a
-timeout does not show which layer stopped it. A connection that succeeds is
-a stop.
-
-```bash
-# [VPS joe]
-sudo docker stop bindtest
-```
-
-`--rm` removes the container when it stops. Rerun: safe; if `bindtest`
-already exists, stop it first.
-
-### 3.4 Create Caddy's directories
-
-```bash
-# [VPS joe]
-sudo install -d -o root -g root -m 0700 /srv/grampacker/caddy /srv/grampacker/caddy/data /srv/grampacker/caddy/config
-sudo stat -c '%U:%G %a %n' /srv/grampacker/caddy /srv/grampacker/caddy/data /srv/grampacker/caddy/config
-```
-
-Expected: `root:root 700` for all three. The official Caddy image runs as
-root; these hold the certificates and the ACME account key. Rerun: safe.
-
-### 3.5 Install `sqlite3`, and `jq` (optional)
-
-`sqlite3` checks a rollback copy's integrity (12.2):
-`sudo apt-get install -y sqlite3`. The checks in this runbook avoid `jq` on
-the VPS; install it only for your own inspection:
-`sudo apt-get install -y jq`. Rerun: safe.
-
-### 3.6 Operating system and Docker updates (NOW)
+## 3. VPS host maintenance
 
 The containers bring their own operating system files, so apt on the host
 never updates the app or Caddy; their images do (9.6). The host's updates
@@ -421,7 +293,7 @@ cover the kernel, Docker and everything else installed on the VPS:
 | --- | --- |
 | Ubuntu's own packages, including the kernel | `unattended-upgrades`, daily, from Ubuntu's security pocket |
 | Docker Engine, containerd, runc and Compose from Docker's apt repository (`docker-ce`, `containerd.io` (it includes runc), `docker-compose-plugin`) | By hand: the monthly check (9.6), and promptly after a Docker, containerd or runc security release |
-| Any other repository, for example Kopia's | By hand, the monthly check |
+| Any other apt repository | By hand, the monthly check |
 
 By default `unattended-upgrades` installs only from Ubuntu's archive, never
 from other repositories. Docker stays manual on purpose: an upgrade restarts
@@ -432,7 +304,7 @@ the Docker daemon and both containers, and nothing coordinates that with
 # [VPS joe]
 systemctl is-enabled unattended-upgrades
 cat /etc/apt/apt.conf.d/20auto-upgrades
-apt-cache policy docker-ce containerd.io docker-compose-plugin docker.io kopia
+apt-cache policy docker-ce containerd.io docker-compose-plugin docker.io
 sudo unattended-upgrade --dry-run
 ```
 
@@ -441,13 +313,10 @@ Expected:
 - `enabled`, and both `APT::Periodic` lines set to `"1"`. If not:
   `sudo dpkg-reconfigure -plow unattended-upgrades`, answer Yes, and check
   again.
-- Docker's packages show `download.docker.com` as their source. If `docker.io`
-  is installed from Ubuntu's archive instead, Ubuntu's security pocket covers
-  it, and the Docker row above does not apply. `kopia` shows its own
-  repository once it is installed.
+- Docker's packages show `download.docker.com` as their source.
 - The dry run ends without an error.
 
-Reboots: a kernel or C library update takes effect only after a reboot.
+**Reboots:** a kernel or C library update takes effect only after a reboot.
 Ubuntu creates `/var/run/reboot-required` when one is needed, and the login
 message says `*** System restart required ***`. Automatic reboots stay off,
 so a person sees the VPS come back:
@@ -457,33 +326,106 @@ so a person sees the VPS come back:
 cat /var/run/reboot-required.pkgs
 ```
 
-`No such file` means no reboot is needed. If it lists packages, reboot within seven days, and sooner for a kernel
-security fix (`sudo reboot`). Both containers restart by themselves
-(`restart: unless-stopped`). Afterward, check that the site answers (9.6).
+`No such file` means no reboot is needed. If it lists packages, reboot within
+seven days, and sooner for a kernel security fix (`sudo reboot`). Both
+containers restart by themselves (`restart: unless-stopped`). Afterward, in a
+production root shell (section 0), wait for the app to be healthy (section
+0), then:
 
-## 4. Implementation deliverables this runbook depends on (sandbox)
+```bash
+# [VPS root]
+cd /srv/grampacker
+docker compose --env-file deploy.env ps
+curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
+```
 
-`[sandbox]` work, reviewed and merged through the normal PR process. The
-sandbox needs no VPS, Cloudflare or production access for any of it. Each item
-is a contract; the exact file names are chosen during implementation and then
-written back into this runbook in the same PR.
+Expected: both services running, and `{"ok":true} 200`.
 
-| Item | Contract the runbook relies on |
+`sqlite3` is installed on the host for integrity checks of rollback copies
+(12.2).
+
+## 4. Migration record (done)
+
+A short record of the one-time work. The full procedures are in Git history
+(this file at `46aa1b8`).
+
+**Base setup (before 2026-10-11).** The VPS, `joe`, SSH hardening, UFW and
+Docker from Docker's apt repository, as in section 1. The repository's
+complete Git history was reviewed for secrets and data before it was made
+public (5.1).
+
+**Preparation (2026-10-15).** Versions after the VPS was updated and
+rebooted:
+
+| Component | Version |
 | --- | --- |
-| Dockerfile | Multi-stage, glibc Node base, non-root numeric UID, `EXPOSE 3000`, no secrets, no database, no `.dev.vars` copy. |
-| Image health check | Passes only on HTTP 200 **and** a JSON body whose `ok` is exactly `true`, within a timeout (3 seconds is a reasonable start). Any other status, a non-JSON body, `{"ok":false}`, or a timeout is unhealthy. |
-| Migrate command | Runs inside the image, applies pending Drizzle migrations to `/data/grampacker.db`, prints what it applied, exits non-zero on any failure. Safe to rerun: applied migrations are skipped. |
-| D1 import command | **Built:** `import-d1` in the image (`server/db/import-d1.ts`, sections 10 and 11). Takes the full Wrangler export, the counts from `deploy/d1-row-counts.sql`, and a new output path it never overwrites; checks D1's ledger and schema against `migrations/`, every count against D1, foreign keys, integrity and every kept row; removes sessions, verification rows and rate-limit buckets; leaves one file in rollback journal mode. Its report holds names and counts, never data. Tests: `server/db/import-d1.test.ts`, `scripts/check-image.sh`. |
-| Client address | The application reads the last `X-Forwarded-For` entry, which Caddy writes, and no longer reads `cf-connecting-ip`. |
-| Configuration | A documented list of environment variables. Known today: `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. The database path and port are expected to have fixed defaults (`/data/grampacker.db`, `3000`). |
-| Deployment files | **Built:** `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/Caddyfile.rehearsal`, `deploy/grampacker-deploy` (section 7). The script runs as root: `deploy <APP_DIGEST>` (accepts only `^sha256:[0-9a-f]{64}$`), `rollback <dir>`, `maintenance on\|off`, `caddy-update`. A rollback point is `rollback/<UTC time>/` with the stopped `data/` directory and `previous-image`. |
-| SSH wrapper | **Built:** `deploy/grampacker-deploy-ssh`, the `deploy` key's forced command (section 8). Accepts only `deploy sha256:<64 hex>`, checks the digest again as root, runs `grampacker-deploy deploy`. Local test: `deploy/test-grampacker-deploy-ssh.sh`. |
-| Maintenance response | **Built:** the file `maintenance/on`, checked by Caddy on every request. 503 for every path including `/api/*`; works with the app stopped; survives a Caddy restart; `grampacker-deploy maintenance on\|off`; provable with one `curl`. |
-| CI | **Built:** `image.yml` builds the image and runs `scripts/check-image.sh` on pull requests (no push), beside `ci.yml`'s checks. |
-| Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, one input, `deploy` (default false; section 8); every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Deploys only when `deploy` is set. |
-| Deploy job | **Built:** job "Deploy to the VPS" in `image.yml`, run only when a dispatch sets `deploy`. Takes the digest its own publish job pushed, in the `production` environment, and runs SSH with a pinned host key, sending only that digest (section 8). |
+| Ubuntu, kernel | 26.04.1 LTS, `7.0.0-31-generic` |
+| Docker Engine, Compose, containerd | 29.9.1, 5.6.0, 2.4.2 |
+| Caddy (`caddy:2`) | 2.11.7 |
+| SQLite: host `sqlite3`, and inside the app image (`better-sqlite3`) | 3.46.1, 3.53.4 |
 
-Sections 7 to 11 need only the items marked **Built**.
+- A Docker port published on `127.0.0.1` was proved not public (`docker
+  port`, `docker inspect`, `ss`, and a refused connection from outside).
+  Docker's own packet-filter rules run before UFW's, so a port published
+  without `127.0.0.1:` would be public whatever UFW says.
+- Unattended security updates were enabled.
+- The image runs as UID/GID 10001; the deployment files were installed.
+- The empty-database rehearsal (7.4) passed: first deploy, restarts,
+  maintenance and rollback.
+- The VPS's ED25519 host key fingerprint was recorded (section 13).
+
+**Worker deployment stopped.** `deploy.yml` was made legacy (every job
+`if: false`) before the Node/SQLite code reached `main`.
+
+**GitHub-to-VPS deployment (2026-10-15/16).** The `production` environment,
+the `deploy` account, its sudo rule and its key were set up (sections 5 and
+8), and a test run reached the VPS's forced command.
+
+**Import rehearsal (2026-10-16).** On the real D1 data, with image
+`sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`:
+the export took about 8 seconds and the import about 17; every importer
+check passed; the imported app served the data; the per-account summaries
+of D1 and SQLite matched exactly.
+
+**Cutover (2026-10-16), completed successfully.**
+
+- D1 writes were frozen by removing the Worker's custom domain, then D1 was
+  exported and counted on walnut.
+- The import's checks passed: schema, migration ledger, row counts, foreign
+  keys, integrity, and every kept row compared value by value. Sessions,
+  verification rows and rate-limit buckets were not imported.
+- `BETTER_AUTH_SECRET` was rotated on purpose: there was no copy of the
+  Worker's, and Cloudflare cannot show it. Everyone signs in again once;
+  passkeys keep working, because their public keys were imported and the
+  RP ID and origin stayed `grampacker.app`.
+- DNS was pointed directly at the VPS (an A record, DNS only). Caddy
+  obtained the certificate.
+- Health, existing data, public shares, passkey sign-in and magic-link
+  sign-in all passed on `https://grampacker.app`.
+- The final deployment, GitHub Actions run 38957454976, succeeded through the build, the image checks, GHCR publication and the
+  forced-SSH deployment. Production runs
+  `ghcr.io/joes703/grampacker@sha256:453b52ee9d2976efce708906536d78062cf50459da3ef0127398754bde4a5c49`.
+- Clean-up: the plaintext rehearsal and cutover exports were deleted from
+  walnut and the VPS; the temporary deployment files and the rehearsal
+  directory were removed. `secrets/app.env` is `root:root`, mode 0600.
+
+**Lessons, now built into this runbook:**
+
+- Unset `GRAMPACKER_ROOT` after rehearsal work and before production
+  commands (section 0).
+- Wait for Docker's health check before HTTP checks: a check made while
+  the app is still starting fails for no real reason (section 0).
+- Public-share slugs need not be typed, prompted for or printed: the
+  importer's row-by-row comparison already proved the imported content.
+- `wrangler d1 export` prints a signed download URL and, by default, also
+  writes it to Wrangler's log file on disk: every export runs with
+  `WRANGLER_WRITE_LOGS=false` (10.2).
+- Ubuntu's `adduser` may put a new account in the `users` group (8.2).
+- With PTY allocation disabled, `ssh -tt` may fail before the forced
+  command runs (8.4). That is a secure result.
+- After the DNS change, Tailscale on an admin machine kept a stale "no
+  such name" answer for `grampacker.app` until Tailscale was reconnected
+  (9.7; reported as tailscale/tailscale#21816).
 
 ## 5. GitHub settings for the deploy job (GitHub web)
 
@@ -493,57 +435,51 @@ the key to a run from any other branch, even one that edits the workflow.
 GitHub Free offers environments on public repositories, so the environment
 and its `main` rule do not depend on GitHub Pro.
 
-### 5.1 History review before publication (DONE)
+### 5.1 History review before publication (done)
 
 Before the repository was made public, the owner reviewed its complete Git
 history (every branch, tag and pull request ref, not only the current tree)
 for committed secrets, environment files, database exports and user data.
-The review is complete and recorded in section 13. It was a one-time check;
-no scanning tool is kept in the repository.
+It was a one-time check; no scanning tool is kept in the repository.
 
 If a credential is ever found in the history later, rotate it at its
 provider at once, and never paste it into a chat, an issue or a pull
 request. Rewriting published history does not remove copies already made.
 
-### 5.2 Create the `production` environment (CONFIRM)
+### 5.2 The `production` environment
 
-`[GitHub web]` Repository Settings, Environments, New environment:
+`[GitHub web]` Repository Settings, Environments, `production`:
 
-1. Name: `production`.
-2. Deployment branches and tags: **Selected branches and tags**, add the rule
-   `main` only.
-3. Required reviewers: optional. Adding yourself means each deploy waits for
-   one more click; useful, not required.
-4. Leave secrets empty; section 8 adds them.
+- Deployment branches and tags: **Selected branches and tags**, the rule
+  `main` only. The page shows "1 branch rule: main".
+- Secret `DEPLOY_SSH_KEY`; variables `DEPLOY_HOST` and `DEPLOY_KNOWN_HOSTS`
+  (8.5).
+- Required reviewers: optional. Adding yourself means each deploy waits for
+  one more click.
 
-Verify: the environment page shows "1 branch rule: main".
+If the environment is ever deleted, re-create it with the `main` rule
+(CONFIRM) before any deploy run: a deploy run would otherwise create it
+without the rule. Deleting it deletes its secrets.
 
-Undo: delete the environment (its secrets go with it).
+### 5.3 Cancelling Pro (CONFIRM)
 
-Rerun: safe; editing an existing environment has the same result.
-
-### 5.3 Public repository (DONE); cancelling Pro (CONFIRM)
-
-The repository is public. Before and after moving the account to GitHub
-Free (your account Settings, Billing and licensing, Plans), check:
+Before and after moving the account to GitHub Free (your account Settings,
+Billing and licensing, Plans), check:
 
 1. `[GHCR]` Your profile, Packages, `grampacker`: it still shows
    **Private** (6.1, "Package visibility and access"). If it shows Public,
    stop.
 2. `[GitHub web]` Repository Settings, Environments, `production`: still
-   "1 branch rule: main" and, once section 8 is done, its `DEPLOY_SSH_KEY`
-   secret is listed.
-
-Cancelling Pro is independent of section 8: do it before or after.
+   "1 branch rule: main", and `DEPLOY_SSH_KEY` is listed.
 
 ## 6. GHCR access
 
-### 6.1 Publishing (GitHub Actions, AFTER IMAGE)
+### 6.1 Publishing (GitHub Actions)
 
-`.github/workflows/image.yml` ("Image") publishes. It deploys only when a
-dispatch sets its `deploy` input (section 8); this step leaves it unset. On a
-pull request it builds the image and runs `scripts/check-image.sh`, and
-pushes nothing. Started by hand on `main`, it:
+`.github/workflows/image.yml` ("Image") publishes, and deploys when a
+dispatch sets its `deploy` input (section 8). On a pull request it builds the
+image and runs `scripts/check-image.sh`, and pushes nothing. Started by hand
+on `main`, it:
 
 1. runs `npm run build`, `npm test` and `npm run test:migrations` on the
    dispatched commit (job "Pre-publish checks");
@@ -558,159 +494,10 @@ pushes nothing. Started by hand on `main`, it:
 The tag is never replaced. If `<full commit SHA>` is already in GHCR, the run
 fails and names the digest that tag points to. That check runs just before
 the push and is not atomic; it guards against a rerun, not against another
-writer pushing at the same moment. A deployment always uses the
-digest, never the tag.
+writer pushing at the same moment. A deployment always uses the digest,
+never the tag. A dispatch from any other branch runs no job.
 
-A dispatch from any other branch runs no job. The workflow's one input,
-`deploy`, defaults to false; with it false the run only publishes.
-
-Prerequisite: `image.yml` is on `main`. GitHub offers "Run workflow" only
-for workflow files on the default branch. It reaches `main` with the
-Node/SQLite branch, so the merge order below comes first.
-
-#### Merge order: stop Worker deploys, then merge the migration branch
-
-Until this order runs, a merge to `main` deploys `main` to the Worker
-(`deploy.yml`) and applies its migrations to D1. The Worker cannot run the
-Node/SQLite code. The deployment-safety change (branch
-`ci/stop-worker-auto-deploy`) makes `deploy.yml` legacy: every job is
-`if: false`, and `deploy-liveness.yml` loses its schedule. After it merges,
-each CI run on `main` still starts a Deploy run, but both of its jobs are
-skipped. The Worker keeps serving the last commit it deployed, and rollback
-(11.9) uses that running Worker. Rollback never runs `deploy.yml`, and **no
-one ever re-runs an earlier Deploy run**: a re-run uses that run's old copy of
-the workflow, which still deploys, and can deploy `main` as it is now (header
-of `deploy.yml`).
-
-Before you start, make sure no Deploy run is still going, then record the
-baseline. `deploy.yml` deploys the Worker before it writes its GitHub
-deployment record, so the GitHub record alone cannot prove that nothing
-deployed. Cloudflare's own list of Worker deployments is the proof; the
-GitHub checks support it.
-
-```bash
-# [walnut] in a checkout of main
-gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
-gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
-date -u +%Y-%m-%dT%H:%M:%SZ
-gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
-  --jq '.[0] | [.sha, .created_at] | @tsv'
-npx wrangler deployments list --name grampacker
-```
-
-The Deploy runs are read through the REST API, which works for any `gh`
-version and also after the workflow is disabled. Both counts must be `0`; if
-one is not, wait for the run to finish and count again. Never cancel or
-re-run a Deploy run to clear it. The `date` line
-is `<BASELINE_TIME>`. Record the GitHub record's SHA and time, and the
-version id and time of the last (newest) Cloudflare deployment. `wrangler
-deployments list` only reads; it changes nothing. Steps 3 and 4 expect all of
-these unchanged.
-
-1. **Push the migration branch.** From an admin workstation, because the branch changes
-   workflow files and the agent tokens cannot push those
-   (`docs/testing-and-ci.md` section 12):
-
-   ```bash
-   # [admin workstation]
-   git push -u origin feat/node-sqlite-foundation
-   ```
-
-   Opening its pull request is safe: pull request CI never deploys. Do not
-   merge it yet.
-
-2. **Merge the deployment-safety change first.** Its pull request merges
-   through the normal process (`AGENTS.md` "Shipping"). The merge itself
-   cannot deploy: the Deploy run that main's CI starts uses the merged copy,
-   whose jobs are `if: false`. Even if it did deploy, it would deploy Worker
-   code: the migration is not on `main` yet. That is why this change goes
-   first.
-
-3. **Confirm that no Cloudflare deployment ran.** Wait for `main`'s CI run
-   for the merge to finish; the Deploy run starts when it does.
-
-   ```bash
-   # [walnut]
-   git ls-remote https://github.com/$GH_REPO refs/heads/main
-   gh run list --repo "$GH_REPO" --workflow ci.yml --branch main --event push --limit 1 \
-     --json databaseId,headSha,status,conclusion
-   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?per_page=100" \
-     --jq '.workflow_runs[] | select(.updated_at >= "<BASELINE_TIME>")
-       | [.id, .run_attempt, .event, .status, .conclusion, .created_at, .html_url] | @tsv'
-   gh api "repos/$GH_REPO/actions/runs/<DEPLOY_RUN_ID>/jobs" \
-     --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'
-   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
-   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
-   gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
-     --jq '.[0] | [.sha, .created_at] | @tsv'
-   npx wrangler deployments list --name grampacker
-   ```
-
-   Expected:
-   - `ls-remote` prints `<MERGE_SHA>`.
-   - The CI run has `headSha` `<MERGE_SHA>` and status `completed`.
-   - The filtered Deploy list (one line per run: id, attempt, event, status,
-     conclusion, created, URL) shows only runs **created** after
-     `<BASELINE_TIME>`, each with attempt `1`. In step 3 it must include at
-     least one run created after main's CI run for `<MERGE_SHA>` finished; if
-     there is none yet, wait a minute and query again. A re-run of an older run does
-     not create a new run: it adds an attempt to the old one, so an older
-     creation time or an attempt above 1 here means someone re-ran a Deploy
-     run. Stop and find out what it did. The list covers the newest 100
-     Deploy runs; an older run re-run now would fall outside it, which the
-     Cloudflare check below still catches.
-   - Run the jobs query for each listed run (its id is `<DEPLOY_RUN_ID>`).
-     Each lists "Verify this SHA is deployable" and "Deploy to Cloudflare",
-     both `completed` and `skipped`. No step ran, so no secret was read.
-     Read the jobs, not the run: GitHub may report a run whose jobs were all
-     skipped as `skipped` or as `success`.
-   - Both counts are `0`.
-   - The GitHub deployment record is unchanged from the baseline.
-   - **The newest Cloudflare deployment is the same version id and time as
-     the baseline.** This is the check that proves no Worker deployment ran.
-   - Optional, read-only:
-     `curl -sS https://grampacker.app/api/health` still prints `{"ok":true}`.
-
-   In the Actions tab, no "Deploy to Cloudflare" job since the baseline has
-   a log. If any job ran, either record changed, or a listed run is older
-   than the baseline, stop: do not merge the migration branch.
-
-   Recommended (CONFIRM): also disable both legacy workflows in GitHub, so
-   they are not even started. Disable them only after the check above,
-   because a disabled workflow starts no run to inspect. This was step 4 of
-   11.0, and it moves here because `main` now receives Node/SQLite code
-   weeks before the cutover:
-
-   ```bash
-   # [admin workstation]
-   gh workflow disable deploy.yml --repo "$GH_REPO"
-   gh workflow disable deploy-liveness.yml --repo "$GH_REPO"
-   gh workflow list --all --repo "$GH_REPO"
-   ```
-
-   Expected: both show `disabled_manually`. Undo: `gh workflow enable` for
-   each. Enabling deploys nothing, because the jobs stay `if: false`. Whether
-   GitHub also refuses a re-run of an old run of a disabled workflow is not
-   verified here. The "never re-run a Deploy run" rule stands either way.
-
-4. **Merge the migration branch.** If its pull request is behind `main`,
-   merge `main` into it (never rebase or force-push), then let CI pass and
-   merge through the normal process. Then repeat step 3 with the new
-   `<MERGE_SHA>`. The filtered list still shows the runs you checked in
-   step 3; they must be unchanged (same attempt, still skipped). If the
-   legacy workflows are disabled, no run may be added to it; otherwise each
-   added run is checked as in step 3. In both cases the GitHub
-   record and the newest Cloudflare deployment must still match the baseline,
-   and the Worker must still answer `{"ok":true}`.
-
-5. **Run the GHCR publishing workflow by hand from `main`:** "First
-   publish (rehearsal)" below.
-
-Record each merge SHA and the Deploy run URL in section 13.
-
-#### First publish (rehearsal)
-
-Nothing on the VPS is needed: this run only publishes.
+To publish without deploying:
 
 ```bash
 # [admin workstation]
@@ -730,8 +517,8 @@ gh run watch <RUN_ID> --repo "$GH_REPO" --exit-status
 gh run view <RUN_ID> --repo "$GH_REPO" --log | grep -E 'published |digest +sha256:|image +ghcr'
 ```
 
-Expected: "Pre-publish checks" and "Publish image to GHCR" succeed, and the last command
-prints:
+Expected: "Pre-publish checks" and "Publish image to GHCR" succeed, and the
+last command prints:
 
 ```text
 published ghcr.io/joes703/grampacker:<APP_SHA>
@@ -740,17 +527,15 @@ image     ghcr.io/joes703/grampacker@sha256:<64 hex>
 ```
 
 That `sha256:...` is `<APP_DIGEST>`. The run's summary page shows the same
-values. Record both in section 13.
+values.
 
 #### Package visibility and access
 
-The package is created by the first push. `[GHCR]` Your profile, Packages,
-`grampacker`:
+`[GHCR]` Your profile, Packages, `grampacker`:
 
 1. It is **Private**. Do not make it Public: GitHub documents that a public
-   package cannot be made private again (recheck GitHub's "Configuring a
-   package's access control and visibility" before acting). If it shows
-   Public, stop and deploy nothing until it is decided.
+   package cannot be made private again. If it shows Public, stop and deploy
+   nothing until it is decided.
 2. It is linked to `joes703/grampacker` (the image's
    `org.opencontainers.image.source` label asks for that link).
 3. Package settings, "Manage Actions access": the `grampacker` repository has
@@ -758,22 +543,17 @@ The package is created by the first push. `[GHCR]` Your profile, Packages,
 
 The VPS pulls with its own read-only token (6.2), never with this one.
 
-#### Verify the published image
-
-From the VPS, once 6.3 has logged Docker in:
+#### Verify a published image
 
 ```bash
 # [VPS root]
-docker pull "ghcr.io/joes703/grampacker:<APP_SHA>"
 docker pull "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 docker image inspect --format '{{.Os}}/{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}}' \
   "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 ```
 
-Expected: the first pull prints `Digest: <APP_DIGEST>`; the second downloads
-nothing new; the inspect prints `linux/amd64 <APP_SHA>`. Docker checks the
-downloaded content against the digest, so a digest pull cannot return
-another image. Step 7.1 then checks the runtime user.
+Expected: `linux/amd64 <APP_SHA>`. Docker checks the downloaded content
+against the digest, so a digest pull cannot return another image.
 
 #### When a run fails
 
@@ -782,32 +562,30 @@ another image. Step 7.1 then checks the runtime user.
 | "Pre-publish checks", the image build or `check-image.sh` | Nothing was pushed | Fix it through a pull request, then dispatch again from `main` |
 | "already exists" | That commit is already in GHCR | Use the digest only if an earlier run for this commit **succeeded** and printed it. Otherwise treat it as the next row |
 | After the push (read-back check) | The tag exists but its image was not verified | Deploy nothing from this commit. `[GHCR]` delete that package version, then rerun |
-| "could not check whether ... exists" | GHCR answered the tag lookup with something other than a plain "not found", so nothing was pushed | Read the error it prints. Tested only against a local registry: if the **first** publish stops here because the package does not exist yet, report the exact error and change nothing by hand |
-| Login or push | Usually GHCR access (step above) | Check the package's Actions access, then rerun |
+| "could not check whether ... exists" | GHCR answered the tag lookup with something other than a plain "not found", so nothing was pushed | Read the error it prints, and change nothing by hand until it is understood |
+| Login or push | Usually GHCR access (above) | Check the package's Actions access, then rerun |
 
 Rerun: `gh run rerun <RUN_ID> --repo "$GH_REPO" --failed`. A rerun keeps
 the original commit and workflow file. After a successful publish a rerun
 stops at "already exists" and changes nothing.
 
-Undo: `[GHCR]` delete the package version (or the whole package). Nothing
-outside GHCR changed.
+### 6.2 Renew the VPS's read-only token
 
-### 6.2 Create the VPS's read-only token (AFTER IMAGE)
-
-`[GitHub web]` Settings, Developer settings, Personal access tokens, Tokens
-(classic), Generate new token (classic):
+The token expires after one year (section 13 records the date; keep a
+calendar reminder two weeks before). To renew it, `[GitHub web]` Settings,
+Developer settings, Personal access tokens, Tokens (classic), Generate new
+token (classic):
 
 - Note: `grampacker VPS GHCR pull`
-- Expiration: one year. Add a calendar reminder two weeks before.
+- Expiration: one year.
 - Scopes: **`read:packages` only.** Nothing else.
 
-A classic token is used because GHCR does not accept fine-grained tokens for
-pulls at the time of writing; recheck that when you create it. `read:packages`
-cannot push or delete images.
+A classic token is used because GHCR did not accept fine-grained tokens for
+pulls when this was set up; recheck that when you renew it. `read:packages`
+cannot push or delete images. Copy the token once; it goes straight to 6.3.
+Then delete the old token.
 
-Copy the token once. It goes straight to the next step.
-
-### 6.3 Log Docker in to GHCR on the VPS (AFTER IMAGE)
+### 6.3 Log Docker in to GHCR on the VPS
 
 The deploy script runs as root, so the credential lives in root's Docker
 configuration, which `deploy` cannot read.
@@ -818,38 +596,39 @@ read -rsp 'GHCR read-only token: ' GHCR_TOKEN; echo
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u joes703 --password-stdin
 unset GHCR_TOKEN
 stat -c '%U:%G %a %n' /root/.docker/config.json
-```
-
-Expected: `Login Succeeded`, and `root:root 600 /root/.docker/config.json`.
-Docker warns that the credential is stored unencrypted; that is expected here.
-
-Verify:
-
-```bash
-# [VPS root]
 docker pull "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 ```
 
-Expected: the image downloads, or "Image is up to date".
+Expected: `Login Succeeded`, `root:root 600 /root/.docker/config.json`, and
+the pull downloads the image or says it is up to date. Docker warns that the
+credential is stored unencrypted; that is expected here. Rerun: safe; a new
+login replaces the stored credential. `docker logout ghcr.io` removes it.
 
-Rerun: safe; a new login replaces the stored credential.
-
-Rotate or revoke: `[GitHub web]` delete the token, then repeat 6.2 and 6.3.
-`[VPS root]` `docker logout ghcr.io` removes it from the VPS.
-
-## 7. Deployment files and the empty-database rehearsal (AFTER IMAGE)
+## 7. Deployment files
 
 The deployment is two containers (the app and Caddy), one SQLite data
-directory, and one script. The files come from `deploy/` in the
-repository:
+directory, and one script. The files come from `deploy/` in the repository:
 
 | Repository file | Installed as | What it is |
 | --- | --- | --- |
 | `deploy/compose.yaml` | `/srv/grampacker/compose.yaml` | The app (exact image digest, `127.0.0.1` only, UID/GID 10001, read-only root filesystem, `/tmp` tmpfs) and Caddy (`caddy:2`, host networking) |
 | `deploy/Caddyfile` | `/srv/grampacker/Caddyfile` | `grampacker.app`: HTTPS, maintenance switch, proxy to the app |
-| `deploy/Caddyfile.rehearsal` | `/srv/grampacker-rehearsal/Caddyfile.rehearsal` | The same, on `http://127.0.0.1:8081` only, for the rehearsal |
+| `deploy/Caddyfile.rehearsal` | only in the rehearsal directory (7.4) | The same, on `http://127.0.0.1:8081` only |
 | `deploy/grampacker-deploy` | `/usr/local/sbin/grampacker-deploy` | `deploy`, `rollback`, `maintenance`, `caddy-update` |
-| `deploy/grampacker-deploy-ssh` | `/usr/local/sbin/grampacker-deploy-ssh` | The GitHub deploy key's forced command (section 8); does nothing until that is set up |
+| `deploy/grampacker-deploy-ssh` | `/usr/local/sbin/grampacker-deploy-ssh` | The GitHub deploy key's forced command (section 8) |
+
+Beside them in `/srv/grampacker`, on the VPS only:
+
+- `deploy.env` (no secrets, mode 0644): `APP_IMAGE` (the running digest; only
+  `grampacker-deploy` changes it), `ACME_EMAIL` and `SITE_URL`. Never
+  rewrite it by hand while production runs: a wrong `APP_IMAGE` is what the
+  next start or rollback uses.
+- `secrets/app.env` (`root:root`, mode 0600): `BETTER_AUTH_URL`,
+  `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. Never `cat` it. The
+  values are in the password manager.
+- `data/` (the database), `maintenance/`, `rollback/`, `caddy/` (Caddy's
+  certificates and ACME account key, `root:root 700`). `snapshots/` is not
+  used.
 
 **Maintenance** is on while the file `maintenance/on` exists. Caddy then
 answers 503 to every path, including `/api/*`, whether or not the app runs,
@@ -857,17 +636,18 @@ and it stays on after a Caddy restart. `grampacker-deploy maintenance on|off`
 switches it and proves the result through Caddy.
 
 **Caddy follows every 2.x release** (`caddy:2`). It changes only through
-`grampacker-deploy caddy-update`, which pulls `caddy:2`, validates the
-Caddyfile with the new image, recreates only Caddy and checks it answers.
-Compose pulls an image only when it is missing, so an app deploy, a
-rollback or any other `docker compose` command never pulls or replaces
-Caddy.
+`grampacker-deploy caddy-update` (9.4). Compose pulls an image only when it
+is missing, so an app deploy, a rollback or any other `docker compose`
+command never pulls or replaces Caddy.
 
 **Before changing any file in `deploy/`**, rehearse it (7.4) in the sandbox
 or on the VPS. The rehearsal is the required check for deployment changes;
 CI does not run it.
 
-### 7.1 Check the image's runtime UID and hand it the data directory
+### 7.1 Check a new image's runtime user
+
+Every image so far runs as UID/GID 10001, which owns `data/`. If a change to
+the `Dockerfile` might change that, check before deploying:
 
 ```bash
 # [VPS root]
@@ -875,25 +655,11 @@ docker run --rm --entrypoint id "ghcr.io/joes703/grampacker@<APP_DIGEST>"
 ```
 
 Expected: exactly `uid=10001(app) gid=10001(app) groups=10001(app)`. If it
-prints anything else, stop: the image does not match this runbook.
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-chown 10001:10001 data
-chmod 0700 data
-install -d -m 0755 maintenance
-install -d -m 0700 rollback
-stat -c '%u:%g %a %n' data maintenance rollback caddy/data caddy/config
-```
-
-Expected: `10001:10001 700 data`, `0:0 755 maintenance`, `0:0 700` for
-`rollback`, `caddy/data` and `caddy/config`. `joe` needs `sudo` to read
-`data`, which is intended. Rerun: safe.
-
-`snapshots/` from the base setup is no longer used. Leave it empty.
+prints anything else, do not deploy that image.
 
 ### 7.2 Install the files from a merged `main` commit
+
+Repeat this whenever a file in `deploy/` changes on `main`, after 7.4.
 
 ```bash
 # [admin workstation] in a clean checkout of main
@@ -914,37 +680,38 @@ install -o root -g root -m 0644 compose.yaml Caddyfile /srv/grampacker/
 ```
 
 Expected: the two hash lists match exactly; `status --short` printed
-nothing. Keep `/tmp/compose.yaml` and `/tmp/Caddyfile.rehearsal` for 7.4.
-Rerun: safe. Repeat this step whenever a file in `deploy/` changes on
-`main`.
+nothing. A changed `Caddyfile` takes effect at the next `caddy-update`
+(9.4); a changed `compose.yaml` at the next deploy. Keep the `/tmp` copies
+only if 7.4 runs next on the VPS; otherwise delete them:
+`rm /tmp/compose.yaml /tmp/Caddyfile /tmp/Caddyfile.rehearsal /tmp/grampacker-deploy /tmp/grampacker-deploy-ssh`.
 
-### 7.3 Write `deploy.env`
+### 7.3 `deploy.env`
 
-No secrets. It records which app image runs; only `grampacker-deploy`
-changes `APP_IMAGE` after this.
+It exists and is described in the list above. It is written only when the
+VPS is set up again (a new VPS), with these three lines, and is then left to
+`grampacker-deploy`:
 
-```bash
-# [VPS root]
-tee /srv/grampacker/deploy.env >/dev/null <<'EOF'
+```text
 APP_IMAGE=ghcr.io/joes703/grampacker@<APP_DIGEST>
-ACME_EMAIL=<ACME_EMAIL>
+ACME_EMAIL=<the address Let's Encrypt uses for expiry notices>
 SITE_URL=https://grampacker.app/
-EOF
-chmod 0644 /srv/grampacker/deploy.env
-cat /srv/grampacker/deploy.env
 ```
 
-Replace the two placeholders first. Expected: no `<...>` remains. The
-production secrets (`secrets/app.env`) are written at cutover, in 11.5.
-Production does not start before then.
-
-### 7.4 Empty-database rehearsal (NOW, no DNS, no production data)
+### 7.4 Empty-database rehearsal (for changes to `deploy/`)
 
 Runs the real script against a separate directory,
 `/srv/grampacker-rehearsal` (Compose project `grampacker-rehearsal`), with
-the app on `127.0.0.1:3001` and a local-only Caddy on `127.0.0.1:8081`.
-It requests no certificate, binds nothing on ports 80 or 443, and does not
-touch `/srv/grampacker`, DNS, Cloudflare or production data. Run 7.2 first.
+the app on `127.0.0.1:3001` and a local-only Caddy on `127.0.0.1:8081`. It
+requests no certificate, binds nothing on ports 80 or 443, and does not
+touch `/srv/grampacker`, DNS, Cloudflare or production data. Prefer an agent
+sandbox. On the VPS, it runs beside production: watch every block's
+`GRAMPACKER_ROOT` check, because without it the same commands act on
+production. Copy the changed files to `/tmp` first: on the VPS, 7.2's
+first block and its `sha256sum` line, not its `install` lines, because the
+rehearsal comes before installing. The rehearsal tests the change before it
+merges, so in that first block switch to the pull request's head commit
+(`git -C ~/code/grampacker switch --detach <PR head commit>`), not
+`origin/main`.
 
 Set up:
 
@@ -955,6 +722,8 @@ install -d -m 0755 "$R" "$R/maintenance"
 install -d -m 0700 "$R/data" "$R/secrets" "$R/rollback" "$R/caddy" "$R/caddy/data" "$R/caddy/config"
 chown 10001:10001 "$R/data"
 install -m 0644 /tmp/compose.yaml /tmp/Caddyfile.rehearsal "$R/"
+install -m 0755 /tmp/grampacker-deploy "$R/grampacker-deploy"
+D="$R/grampacker-deploy"
 tee "$R/deploy.env" >/dev/null <<'EOF'
 APP_IMAGE=ghcr.io/joes703/grampacker@<APP_DIGEST>
 APP_PORT=3001
@@ -965,35 +734,49 @@ EOF
   printf 'BETTER_AUTH_URL=https://grampacker.app\nBETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > "$R/secrets/app.env" )
 touch "$R/maintenance/on"
 export GRAMPACKER_ROOT="$R"
+echo "GRAMPACKER_ROOT=$GRAMPACKER_ROOT"
 ```
 
-The secret is a throwaway, generated here. With no `RESEND_API_KEY`,
-magic-link email fails closed, which the rehearsal does not need.
+Expected: `GRAMPACKER_ROOT=/srv/grampacker-rehearsal`. `$D` is the
+candidate script from `/tmp`, not the installed one: the rehearsal tests the
+change before it is installed. The secret is a
+throwaway, generated here. With no `RESEND_API_KEY`, magic-link email fails
+closed, which the rehearsal does not need. (`chown` with the number, not
+`install -o`: the host has no account 10001, and `install -o 10001` fails
+with the uutils coreutils that recent Ubuntu releases use.)
 
 Start Caddy closed, then deploy onto the empty database:
 
 ```bash
-# [VPS root] same shell (GRAMPACKER_ROOT is set)
-grampacker-deploy caddy-update
-grampacker-deploy deploy <APP_DIGEST>
+# [VPS root] same shell
+echo "GRAMPACKER_ROOT=$GRAMPACKER_ROOT"
+"$D" caddy-update
+"$D" deploy <APP_DIGEST>
 curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
 ```
 
-Expected: `caddy-update` ends with `Caddy updated: v2.x.y ..., answering
-503`. `deploy` prints `maintenance is on`, `data copied to
-/srv/grampacker-rehearsal/rollback/<stamp>`, `applied N migration(s)`, `app
-is healthy`, `maintenance is off`, `deployed ...`. The `curl` prints
-`{"ok":true} 200`.
+Expected: `GRAMPACKER_ROOT=/srv/grampacker-rehearsal`. `caddy-update` ends
+with `Caddy updated: v2.x.y ..., answering 503`. `deploy` prints
+`maintenance is on`, `data copied to /srv/grampacker-rehearsal/rollback/<stamp>`,
+`applied N migration(s)`, `app is healthy`, `maintenance is off`,
+`deployed ...`. The `curl` prints `{"ok":true} 200`.
 
-Restart, and maintenance:
+Restart, and maintenance. After each app start, wait for the app to be
+healthy (section 0, with `cd "$R"`) where the block says so:
 
 ```bash
 # [VPS root] same shell
+echo "GRAMPACKER_ROOT=$GRAMPACKER_ROOT"
 cd "$R"
 docker compose --env-file deploy.env restart app caddy
-sleep 30
+```
+
+Wait for health, then:
+
+```bash
+# [VPS root] same shell
 curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
-grampacker-deploy maintenance on
+"$D" maintenance on
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/api/categories
 docker compose --env-file deploy.env restart caddy
 sleep 3
@@ -1001,9 +784,9 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/
 docker compose --env-file deploy.env stop app
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/lists/x
 docker compose --env-file deploy.env start app
-sleep 30
-grampacker-deploy maintenance off
 ```
+
+Wait for health, then `"$D" maintenance off`.
 
 Expected: `{"ok":true} 200`, `maintenance is on`, then `503` three times
 (an API path, after a Caddy restart, with the app stopped), then
@@ -1014,13 +797,14 @@ then roll back to the point that deploy made:
 
 ```bash
 # [VPS root] same shell
-grampacker-deploy deploy <APP_DIGEST>
+echo "GRAMPACKER_ROOT=$GRAMPACKER_ROOT"
+"$D" deploy <APP_DIGEST>
 ls "$R/rollback"
 cat "$R/rollback/<newest stamp>/previous-image"
-grampacker-deploy rollback "$R/rollback/<newest stamp>"
-grampacker-deploy maintenance on
-grampacker-deploy rollback "$R/rollback/<newest stamp>"
-grampacker-deploy maintenance off
+"$D" rollback "$R/rollback/<newest stamp>"
+"$D" maintenance on
+"$D" rollback "$R/rollback/<newest stamp>"
+"$D" maintenance off
 ```
 
 Expected: `previous-image` holds `ghcr.io/joes703/grampacker@<APP_DIGEST>`.
@@ -1029,18 +813,23 @@ prints `current data moved to .../failed-data-<time>`, `app is healthy`,
 `rolled back to ...` and `maintenance is still on`. Then `maintenance is
 off`.
 
-Tear down:
+Tear down, and leave no rehearsal state in the shell:
 
 ```bash
-# [VPS root]
-cd /srv/grampacker-rehearsal && docker compose --env-file deploy.env down
-unset GRAMPACKER_ROOT
+# [VPS root] same shell
+cd "$R" && docker compose --env-file deploy.env down
+cd /
+unset GRAMPACKER_ROOT R D
 rm -rf /srv/grampacker-rehearsal
+rm -f /tmp/compose.yaml /tmp/Caddyfile /tmp/Caddyfile.rehearsal /tmp/grampacker-deploy /tmp/grampacker-deploy-ssh
+echo "GRAMPACKER_ROOT=${GRAMPACKER_ROOT:-unset}"
+ls /srv
 ```
 
-Rerun: safe after the tear-down. Record the time it took in section 13.
+Expected: `GRAMPACKER_ROOT=unset`, and no `grampacker-rehearsal` in `/srv`.
+Close this root shell anyway; use a new one for production (section 0).
 
-## 8. GitHub-to-VPS deployment (NOW to set up; deploys only after cutover)
+## 8. GitHub-to-VPS deployment
 
 One dispatch of the Image workflow publishes `main`'s head and, when its
 `deploy` box is ticked, deploys exactly that digest:
@@ -1078,13 +867,13 @@ and the log names the rollback directory. Decide as for a manual deploy
 when GitHub, the key or the account does not work, and the way to deploy an
 image published earlier.
 
+8.2 to 8.5 are already done. Run them again only to rotate the key (8.7),
+after a VPS move, or if the account was removed.
+
 ### 8.1 Before you start
 
-- 5.1 and 5.2 are done and the repository is public: `production` exists
-  with its `main` rule. If the environment did not exist, the first deploy
-  run would create it without the `main` rule. Cancelling Pro (5.3) is not
-  required first.
-- The host key fingerprint from 1.2 is recorded in section 13.
+- The `production` environment exists with its `main` rule (5.2).
+- The host key fingerprint is recorded in section 13 (1.2).
 - 7.2 has installed `/usr/local/sbin/grampacker-deploy-ssh` from the same
   `main` commit as `grampacker-deploy`.
 - Keep a second `joe` SSH session open while changing sudo (2.1).
@@ -1094,7 +883,6 @@ image published earlier.
 ```bash
 # [VPS root]
 adduser --disabled-password --comment 'GitHub Actions deploy' --shell /bin/bash deploy
-usermod -G '' deploy
 tee /etc/sudoers.d/50-grampacker-deploy >/dev/null <<'RULE'
 # GitHub deploy (runbook section 8): only the forced command, which accepts one image digest.
 deploy ALL=(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh
@@ -1110,9 +898,9 @@ ls -l /usr/local/sbin/grampacker-deploy-ssh
 Expected:
 
 - `visudo -c` reports `parsed OK` for every file.
-- `id` shows `groups=` with only `deploy`. Ubuntu 26.04.1's `adduser` also
-  puts a new account in `users`; `usermod -G ''` removes every
-  supplementary group, so no `users`, `sudo`, `docker` or `adm`.
+- `id`: the primary group is `deploy`. Ubuntu's `adduser` may also add the
+  account to `users`, which grants nothing here. No `sudo`, `docker` or
+  `adm`: any of those is a stop.
 - `passwd -S` shows `deploy L` (no password; keys only).
 - `sudo -l -U deploy` lists exactly one command:
   `(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh`.
@@ -1120,8 +908,6 @@ Expected:
 
 The shell is bash, not `nologin`, because sshd runs even a forced command
 through the account's shell. The forced command is what refuses a shell.
-
-Rerun: `adduser` refuses an existing account; the rest is safe.
 
 ### 8.3 Create the key and install it
 
@@ -1179,25 +965,25 @@ Expected:
 
 - The first three print `ERROR: refused. The only accepted command is:
   deploy sha256:<64 lowercase hex>` and `exit=2`.
-- `-tt`: `PTY allocation request failed on channel 0` and `exit=255`.
-  sshd refuses the PTY (`restrict`), and the client gives up before the
-  wrapper runs, so no `ERROR: refused` line appears.
+- `-tt`: sshd refuses the PTY (`restrict`), and the client may then give up
+  before the wrapper runs: `PTY allocation request failed on channel 0`
+  and `exit=255`, with no `ERROR: refused` line. That is a secure result:
+  nothing ran. The wrapper's refusal and `exit=2` is also acceptable.
+  Output from `id` is a stop.
 - `-R`: `remote port forwarding failed`, `exit=255`.
 - `scp` fails, and `/tmp/deploy-wrote-this` does not exist on the VPS.
 - The all-zero digest passes the wrapper and sudo, and `grampacker-deploy`
-  stops it before it changes anything. It prints `grampacker-deploy-ssh:
-  deploy sha256:000..., log /var/log/grampacker-deploy/...`; then, before
-  cutover, `ERROR: /srv/grampacker has no compose.yaml or deploy.env`,
-  because `deploy.env` is absent (after cutover, a failed pull: that image
-  does not exist); then
-  `grampacker-deploy-ssh: exit 1` and `exit=1`.
+  stops it before it changes anything: it prints `grampacker-deploy-ssh:
+  deploy sha256:000..., log /var/log/grampacker-deploy/...`, then a failed
+  pull (that image does not exist), then `grampacker-deploy-ssh: exit 1`
+  and `exit=1`. Maintenance is not touched: the pull comes first.
 
-Any other result: stop, and remove the access (8.7). Rerun: safe.
+Any other result: stop, and remove the access (8.7).
 
 ### 8.5 Store the key and pin the host key in GitHub
 
-Read the host key over the `joe` connection, which the workstation already checks
-against the key it trusts (1.2):
+Read the host key over the `joe` connection, which the workstation already
+checks against the key it trusts (1.2):
 
 ```bash
 # [admin workstation]
@@ -1205,7 +991,7 @@ HOSTKEY="$(ssh joe@"$VPS_HOST" cat /etc/ssh/ssh_host_ed25519_key.pub | cut -d' '
 printf '%s %s\n' "$VPS_HOST" "$HOSTKEY" | ssh-keygen -lf -
 ```
 
-Expected: the fingerprint recorded in 1.2. If it differs, stop.
+Expected: the fingerprint in section 13. If it differs, stop.
 
 ```bash
 # [admin workstation]
@@ -1214,81 +1000,17 @@ gh variable set DEPLOY_HOST --repo "$GH_REPO" --env production --body "$VPS_HOST
 gh variable set DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production --body "$VPS_HOST $HOSTKEY"
 gh secret list --repo "$GH_REPO" --env production
 gh variable list --repo "$GH_REPO" --env production
-```
-
-Expected: `DEPLOY_SSH_KEY` listed as a secret; `DEPLOY_HOST` and
-`DEPLOY_KNOWN_HOSTS` with the values above. Then delete the key from the
-workstation:
-
-```bash
-# [admin workstation]
 rm -f ~/grampacker-deploy-key ~/grampacker-deploy-key.pub
 ```
 
-A lost key is never recovered from GitHub: make a new one (8.7, "Rotate").
-Rerun: safe; `set` replaces a value. After a VPS move, set `DEPLOY_HOST`
-and `DEPLOY_KNOWN_HOSTS` again.
+Expected: `DEPLOY_SSH_KEY` listed as a secret; `DEPLOY_HOST` and
+`DEPLOY_KNOWN_HOSTS` with the values above. A lost key is never recovered
+from GitHub: make a new one (8.7). After a VPS move, set `DEPLOY_HOST` and
+`DEPLOY_KNOWN_HOSTS` again.
 
-### 8.6 Test a deployment
+### 8.6 Test
 
-Before cutover, this proves GitHub's side (environment, key, pinned host
-key) and the VPS's side, and changes nothing on the VPS.
-`/srv/grampacker/compose.yaml` is already installed (7.2); 7.3 has not run,
-so `/srv/grampacker/deploy.env` is absent, and `grampacker-deploy` stops on
-that before it does anything else.
-
-Record the state first, in one root shell kept open until the end of this
-test:
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-test -f compose.yaml && echo "compose.yaml installed"
-test -e deploy.env && echo "STOP: deploy.env exists" || echo "no deploy.env"
-docker ps -a --filter label=com.docker.compose.project=grampacker --format '{{.Names}} {{.Status}}' >/root/8.6-before.txt
-ls -la --time-style=full-iso maintenance data >>/root/8.6-before.txt
-cat /root/8.6-before.txt
-```
-
-Expected: `compose.yaml installed`, `no deploy.env`, no container lines, and
-`data` with no database file. If `deploy.env` exists, stop and skip this
-test; after cutover, 9.1 is the test.
-
-```bash
-# [admin workstation]
-gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
-gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 --json databaseId,headSha,url
-gh run watch <RUN_ID> --repo "$GH_REPO"
-gh run view <RUN_ID> --repo "$GH_REPO" --log-failed | grep -E 'grampacker-deploy|ERROR'
-```
-
-Expected: the image is published as in 6.1. "Deploy to the VPS" fails with
-`grampacker-deploy-ssh: deploy sha256:...`, `ERROR: /srv/grampacker has no
-compose.yaml or deploy.env` (here it is `deploy.env` that is missing) and
-`grampacker-deploy-ssh: exit 1`. Any other `ERROR` means the run reached
-further than intended: stop and check the VPS. `Host key verification
-failed` means `DEPLOY_KNOWN_HOSTS` is wrong; `Permission denied (publickey)`
-means the key or `authorized_keys` is.
-
-Then prove the failure changed nothing, in the same root shell:
-
-```bash
-# [VPS root]
-docker ps -a --filter label=com.docker.compose.project=grampacker --format '{{.Names}} {{.Status}}' >/root/8.6-after.txt
-ls -la --time-style=full-iso maintenance data >>/root/8.6-after.txt
-diff /root/8.6-before.txt /root/8.6-after.txt && echo "unchanged"
-test -e deploy.env && echo "STOP: deploy.env exists" || echo "no deploy.env"
-ls -l /var/log/grampacker-deploy/
-rm /root/8.6-before.txt /root/8.6-after.txt
-```
-
-Expected: `unchanged` (no production container started, `maintenance/` did
-not change, nothing in `data/` was created or modified), `no deploy.env`,
-and one new log for this run. Any difference: stop and report it.
-
-Rerun: safe before cutover. It publishes `main`'s head; if that commit is
-already in GHCR, the publish job stops at "already exists" and the deploy
-job is skipped.
+A deploy from GitHub (9.1) is the test. It deploys `main`'s head.
 
 ### 8.7 Rotate or remove
 
@@ -1326,27 +1048,28 @@ ssh -o BatchMode=yes deploy@"$VPS_HOST" true; echo "exit=$?"
 
 Expected: `Permission denied (publickey)`, `exit=255`. Publishing still
 works; a dispatch with `deploy` ticked now fails in the deploy job with
-`... is not set`. Rerun: safe.
+`... is not set`. Deploy by hand (9.1, "Manual") until it is set up again.
 
-## 9. Routine deployments (AFTER CUTOVER)
+## 9. Routine operations
 
 ### 9.1 Deploy
 
-**From GitHub** (once section 8 is set up): publish `main`'s head and deploy
-it in one run.
+**From GitHub:** publish `main`'s head and deploy it in one run.
 
 ```bash
 # [admin workstation]
 gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
+gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 --json databaseId,headSha,url
+gh run watch <RUN_ID> --repo "$GH_REPO" --exit-status
 ```
 
-Find `<RUN_ID>` and watch it as in 8.6. The deploy job prints the VPS's
-log, which ends `grampacker-deploy-ssh: exit 0` on success. A failed deploy
-job is handled like a failed manual deploy (9.2). Rerunning that job
+The deploy job prints the VPS's log, which ends
+`grampacker-deploy-ssh: exit 0` on success. A failed deploy job is handled
+like a failed manual deploy (9.2). Rerunning that job
 (`gh run rerun <RUN_ID> --repo "$GH_REPO" --failed`) sends the same digest
-again; do it only when you would run the same manual deploy again. If the run was
-canceled or timed out, the deploy may still be running: read the newest
-`/var/log/grampacker-deploy/*.log` as root.
+again; do it only when you would run the same manual deploy again. If the
+run was canceled or timed out, the deploy may still be running: read the
+newest `/var/log/grampacker-deploy/*.log` as root.
 
 **Manual** (recovery, or an image published earlier, whose commit GitHub
 will not publish again). The digest is one the Image workflow printed for a
@@ -1357,8 +1080,9 @@ run on `main` (6.1).
 ssh -t joe@"$VPS_HOST" 'sudo /usr/local/sbin/grampacker-deploy deploy <APP_DIGEST>'
 ```
 
-`-t` lets `sudo` ask for `joe`'s password. Both paths run the same script,
-which refuses anything but a bare `sha256:` digest. In order, it:
+`-t` lets `sudo` ask for `joe`'s password. `sudo` here starts from a clean
+environment, so `GRAMPACKER_ROOT` cannot leak in. Both paths run the same
+script, which refuses anything but a bare `sha256:` digest. In order, it:
 
 1. takes a lock (`/srv/grampacker/.deploy.lock`), so two commands never
    overlap;
@@ -1402,7 +1126,7 @@ directory.
 The script prints `DEPLOY FAILED`, whether maintenance is still on, and the
 rollback directory (or that none was made, in which case `data/` was not
 changed). No public write has happened since the copy, so restoring it is
-safe:
+safe. In a production root shell (section 0):
 
 ```bash
 # [VPS root]
@@ -1420,18 +1144,20 @@ grampacker-deploy maintenance off
 ```
 
 If no rollback directory was made (the failure came before the copy), the
-data is untouched: start the image that was running and reopen.
+data is untouched: start the image that was running.
 
 ```bash
 # [VPS root]
 cd /srv/grampacker
 docker compose --env-file deploy.env up -d --no-deps app
-grampacker-deploy maintenance off
 ```
 
-The script refuses to roll back the first deploy (its `previous-image` is
-empty). If the message said the maintenance file was already removed, the
-site may have reopened: 9.3 applies.
+Wait for the app to be healthy (section 0), then
+`grampacker-deploy maintenance off`.
+
+The script refuses to roll back a deploy whose `previous-image` is empty.
+If the message said the maintenance file was already removed, the site may
+have reopened: 9.3 applies.
 
 ### 9.3 Rolling back after traffic has reopened
 
@@ -1462,16 +1188,15 @@ It pulls `caddy:2`, validates `/srv/grampacker/Caddyfile` with that image,
 recreates only Caddy, and waits up to a minute for the site to answer 200
 (or 503 while maintenance is on). It prints the running Caddy's version;
 record it in section 13. If validation fails, the running Caddy is not
-touched, and `caddy:2` points back at the image it runs. Run it at least monthly (9.6), and within a few days of a Caddy
-security release.
+touched, and `caddy:2` points back at the image it runs. Run it at least
+monthly (9.6), and within a few days of a Caddy security release.
 
 ### 9.5 Disk space and image cleanup
 
 Each deploy leaves one rollback directory, about the size of the database.
-Nothing deletes them. Kopia is the long-term backup; a rollback directory
-is only the immediate way back from one deploy. When a deploy has run well
-for a while, delete older rollback directories by hand, keeping the newest
-few:
+Nothing deletes them. A rollback directory is only the immediate way back
+from one deploy. When a deploy has run well for a while, delete older
+rollback directories by hand, keeping the newest few:
 
 ```bash
 # [VPS root]
@@ -1498,20 +1223,20 @@ this:
 
 | Component | What brings the fix | What puts it into production |
 | --- | --- | --- |
-| npm packages | A Dependabot PR (or SECURITY.md's manual path) changing `package-lock.json` | Publish an image from `main` (6.1), deploy it (9.1) |
-| Node and Debian in the image | A Dependabot PR changing the `Dockerfile`'s `FROM` line | Publish and deploy |
+| npm packages | A Dependabot PR (or SECURITY.md's manual path) changing `package-lock.json` | Deploy `main` (9.1) |
+| Node and Debian in the image | A Dependabot PR changing the `Dockerfile`'s `FROM` line | Deploy `main` |
 | Caddy | Caddy's own release of `caddy:2` | `grampacker-deploy caddy-update` (9.4) |
-| The VPS itself | Ubuntu and Docker packages | 3.6 |
+| The VPS itself | Ubuntu and Docker packages | Section 3 |
 
 Rebuilding an unchanged commit gains almost nothing: the fixes come in when a
 PR moves a pinned version or digest. Targets:
 
 - **A security fix** (a Dependabot security PR, the manual path, a Node
-  security release, a Caddy or Docker security release): publish and deploy,
-  or update, as soon as practical, the same day when possible.
+  security release, a Caddy or Docker security release): deploy, or update,
+  as soon as practical, the same day when possible.
 - **Any other merged change to `Dockerfile`, `package.json` or
-  `package-lock.json`:** publish and deploy within seven days. A change only
-  to development packages does not need a deploy; when unsure, deploy.
+  `package-lock.json`:** deploy within seven days. A change only to
+  development packages does not need a deploy; when unsure, deploy.
 
 After every deploy, check what is running (9.1).
 
@@ -1532,8 +1257,9 @@ After every deploy, check what is running (9.1).
    git log --oneline <REVISION>..origin/main -- Dockerfile package.json package-lock.json
    ```
 
-   Empty output: production has every merged dependency and base-image
-   change. Otherwise publish and deploy.
+   `<REVISION>` is the commit the first command printed. Empty output:
+   production has every merged dependency and base-image change. Otherwise
+   deploy.
 2. **Did the base-image updates arrive?**
 
    ```bash
@@ -1568,73 +1294,60 @@ After every deploy, check what is running (9.1).
    cat /var/run/reboot-required.pkgs
    ```
 
-   This applies what `unattended-upgrades` leaves (Docker's packages, Kopia).
-   `No such file` from `cat` means no reboot is needed.
+   This applies what `unattended-upgrades` leaves (Docker's packages).
    Upgrading Docker restarts both containers for a few seconds; do it at a
-   quiet time. Reboot if 3.6 says so. Then check:
+   quiet time. Reboot if section 3 says so. Then do section 3's check: wait
+   for health, then `ps` and the health request.
 
-   ```bash
-   # [VPS root]
-   cd /srv/grampacker
-   docker compose --env-file deploy.env ps
-   curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
-   ```
+### 9.7 Troubleshooting
 
-   Expected: both services running, and `{"ok":true} 200`.
+| Symptom | Check | What to do |
+| --- | --- | --- |
+| The site does not answer | `curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health`; on the VPS, `docker compose --env-file deploy.env ps` | A stopped container: read its log (below), then start it and wait for health (section 0). A `503` with the maintenance text: maintenance is on; find out why before `maintenance off` |
+| `grampacker.app` does not resolve, or resolves to an old address, on one machine | `dig +short A grampacker.app` and `dig +short A grampacker.app @1.1.1.1` | If only the first is wrong and the machine runs Tailscale, Tailscale is holding a stale answer (tailscale/tailscale#21816): disconnect and reconnect Tailscale, then check again. If `@1.1.1.1` is wrong too, check the record in Cloudflare |
+| A check fails right after a start or restart | The app's health state (section 0) | Wait for `healthy`, then check again. `unhealthy` is a real failure: read the log |
+| A `grampacker-deploy` command acts on the wrong directory | `echo "${GRAMPACKER_ROOT:-unset}"` | Use a new root shell (section 0) |
+| Certificate errors | `docker compose --env-file /srv/grampacker/deploy.env logs --since 1h caddy` | DNS must point at the VPS, DNS only (not proxied), and ports 80 and 443 must be open |
+| A deploy run fails | The run's log, and the newest `/var/log/grampacker-deploy/*.log` | 9.2. `Host key verification failed`: `DEPLOY_KNOWN_HOSTS` is wrong (8.5). `Permission denied (publickey)`: the key or `authorized_keys` is (8.3) |
+| `ssh -tt deploy@...` fails with `PTY allocation request failed` | none | Expected and secure (8.4) |
 
-## 10. Import rehearsal (DONE, 2026-10-16)
+App and Caddy logs:
 
-One rehearsal of the D1 import, while production stayed live on the Worker
-and D1. It read D1 and changed nothing there, built the SQLite database in
-the rehearsal directory of 7.4, and served it through that directory's
-local-only Caddy. No DNS, no certificate, no public site, no production
-database.
+```bash
+# [VPS root]
+cd /srv/grampacker
+docker compose --env-file deploy.env logs --since 1h app
+docker compose --env-file deploy.env logs --since 1h caddy
+```
 
-### Result (2026-10-16)
+## 10. D1 export and import (done)
 
-| Item | Result |
-| --- | --- |
-| Image | `ghcr.io/joes703/grampacker@sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f` |
-| Export (10.1) | about 8 seconds |
-| Import (10.3) | about 17 seconds; `result: OK` |
-| Importer checks | D1 ledger, schema identical to `migrations/`, every row count against D1, foreign keys, integrity, and every kept row value by value: all passed |
-| Imported app (10.4) | healthy; `401` for an authenticated endpoint while signed out; `200` JSON for an existing public share |
-| Per-account summary (10.4) | D1 and SQLite matched exactly |
-| Cleanup (10.5) | done: the rehearsal stack, database and export are deleted on the VPS and on walnut |
+The import ran once, at cutover (section 4), with `import-d1`
+(`server/db/import-d1.ts`). It is not run again: production's SQLite
+database is the source of truth, and D1 has been stale since the cutover.
 
-The rest of this section is the procedure as run. Repeat it only if the
-cutover image changes the import (11.0, item 5), with a new `<STAMP>`. A
-rehearsal cannot prove that existing passkeys sign in: a passkey works only
-on `https://grampacker.app`, so 11.8 tests passkeys and magic links first,
-with the Worker ready to take traffic back.
+What remains is reading D1 while it exists, for example the optional final
+archive export before D1 is deleted (12.3).
 
-Before a repeat, do 7.2 again from the `main` commit of the image under
-test, which puts `compose.yaml` and `Caddyfile.rehearsal` in `/tmp` on the
-VPS.
+### 10.1 D1 data rules
 
-**The export and the counts are production data.** They hold every user's
-email address, passkey public keys and all lists:
+**An export of D1 is production data.** It holds every user's email address,
+passkey public keys and all lists as they were at the cutover:
 
-- they live only in a `0700` directory as `0600` files, on walnut and on the
-  VPS, never in a repository checkout, never in GitHub (no issue, no
-  Actions artifact), never in an image (`.gitignore` and `.dockerignore`
-  name `d1-full*.sql` and `d1-counts*.json` as a second guard);
-- never `cat`, `less` or paste them, and never paste the database. The
-  import report holds only table names, counts and checks, and is safe to
-  keep in notes;
+- keep it only in a `0700` directory as `0600` files, never in a repository
+  checkout, never in GitHub (no issue, no Actions artifact), never in an
+  image (`.gitignore` and `.dockerignore` name `d1-full*.sql` and
+  `d1-counts*.json` as a second guard);
+- never `cat`, `less` or paste it;
 - **`wrangler d1 export` prints a temporary signed URL.** Anyone who has
   that URL can download the whole export for one hour. Never paste, share
   or log the export command's output, or put it in notes, an issue or a
   chat. Wrangler also writes it to a debug log file on disk by default;
-  `WRANGLER_WRITE_LOGS=false`, set in 10.1 and 11.2, stops that. If the URL
-  was copied anywhere within the hour, treat that as a leak of the export;
-- the rehearsal copies are deleted at the end of this section (10.5); the
-  cutover copies are kept as 11.2 and 12.1 say.
+  `WRANGLER_WRITE_LOGS=false` stops that, and every export below sets it.
+  If the URL was copied anywhere within the hour, treat that as a leak of
+  the export.
 
-Do not use grampacker between 10.1's export and its counts. If anything
-writes to D1 in between, the import refuses the counts; export again.
-
-### 10.1 Export and count (walnut)
+### 10.2 Export D1 (walnut)
 
 Read-only on D1. Uses walnut's `wrangler login`.
 
@@ -1642,616 +1355,94 @@ Read-only on D1. Uses walnut's `wrangler login`.
 # [walnut] in the repository checkout, on main
 umask 077
 export WRANGLER_WRITE_LOGS=false
-STAMP=rehearsal-$(date -u +%Y%m%dT%H%MZ)
+STAMP=final-$(date -u +%Y%m%dT%H%MZ)
 OUT=~/grampacker-d1-export/$STAMP
 mkdir -p "$OUT"
-time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
-npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
-(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS)
+npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
+(cd "$OUT" && sha256sum d1-full.sql > SHA256SUMS)
 ls -la ~/grampacker-d1-export "$OUT"
-echo "$STAMP"
 ```
 
 Expected: the export finishes with `Done!` (its output includes the signed
-URL: do not copy it); three files, each `-rw-------`, in a `drwx------`
-directory. Record the export time and `<STAMP>` in section 13. Rerun: safe
-(read-only), with a new `<STAMP>`.
+URL: do not copy it); two `-rw-------` files in a `drwx------` directory.
+Where the export goes next is the owner's decision (12.3); delete the
+plaintext copy on walnut once it is stored:
+`rm -rf ~/grampacker-d1-export/<STAMP>`.
 
-### 10.2 Transfer to the VPS
+## 11. Cutover (done) and return to the Worker
 
-```bash
-# [VPS joe]
-install -d -m 0700 ~/import-<STAMP>
-```
+### 11.1 Cutover
 
-```bash
-# [walnut] same shell as 10.1
-scp -p "$OUT/d1-full.sql" "$OUT/d1-counts.json" "$OUT/SHA256SUMS" joe@"$VPS_HOST":import-<STAMP>/
-```
+Done on 2026-10-16 (section 4). D1 has been stale since then: every write
+since is only in the VPS's SQLite database.
 
-```bash
-# [VPS root]
-R=/srv/grampacker-rehearsal
-cd ~joe/import-<STAMP> && sha256sum -c SHA256SUMS
-install -d -m 0755 "$R"
-install -d -m 0700 "$R/import"
-install -m 0600 d1-full.sql d1-counts.json SHA256SUMS "$R/import/"
-chown -R 10001:10001 "$R/import"
-cd / && rm -rf ~joe/import-<STAMP>
-ls -la "$R/import"
-```
+### 11.2 Rollback to the Worker and D1
 
-Expected: `OK` for both files; in `$R/import`, three `-rw-------` files
-owned by `10001`. The copy in `joe`'s home is gone. (`chown` with the
-number, not `install -o`: the host has no account 10001, only the image
-does, and `install -o 10001` failed in testing with uutils coreutils, which
-recent Ubuntu releases use.)
+While the Worker and D1 exist, they can take traffic back. **This loses
+data:** D1 holds the state of 2026-10-16, and nothing copies the VPS's later
+writes back to it. It is a last resort for a VPS that cannot be fixed or
+restored in time, and needs a written decision first: what is broken, why a
+fix-forward or 9.3 cannot work, and which writes are lost.
 
-### 10.3 Import
-
-Set up the rest of the 7.4 directory (its "Set up" block, from the line
-`install -d -m 0755 "$R" "$R/maintenance"` to `export GRAMPACKER_ROOT="$R"`),
-then start its Caddy closed:
-
-```bash
-# [VPS root] same shell (R and GRAMPACKER_ROOT are set)
-grampacker-deploy caddy-update
-```
-
-Expected: `answering 503`.
-
-```bash
-# [VPS root] same shell
-time docker run --rm --network none --read-only --tmpfs /tmp \
-  -v "$R/import:/import:ro" -v "$R/data:/data" \
-  ghcr.io/joes703/grampacker@<APP_DIGEST> import-d1 \
-  --export /import/d1-full.sql --d1-counts /import/d1-counts.json --out /data/grampacker.db \
-  | tee "$R/import-report.txt"
-echo "exit=${PIPESTATUS[0]}"
-ls -la "$R/data"
-```
-
-Expected: `exit=0` and a report ending `result: OK`, with:
-
-- `d1 ledger: ok` and `schema: identical to migrations/`;
-- for every table, the same number under `export` and `d1`; `imported`
-  equal to them for every `kept` table, and `0` for `session`,
-  `verification` and `rate_limits` (`removed`);
-- `foreign keys: ok`, `integrity: ok`, and `content: every kept table
-  equals the export`;
-- in `data`, exactly one file, `grampacker.db`, owned by `10001`.
-
-The import refuses to start if `data` already holds the database or a
-`-wal`, `-shm` or `-journal` file beside it. If it fails, the report says
-why and nothing is left in `data`. A `schema ... differs` line names the
-tables, indexes or triggers whose SQL in D1 is not the SQL `migrations/`
-creates: stop and decide before the cutover. A `row counts differ from D1`
-line means something wrote between the export and the counts: repeat 10.1
-to 10.3. Record the import time.
-
-### 10.4 Serve the imported data
-
-With no app running yet, `deploy` copies the imported database to a
-rollback point, applies no migration (the import already applied them),
-starts the app on it and waits for it to be healthy:
-
-```bash
-# [VPS root] same shell
-grampacker-deploy deploy <APP_DIGEST>
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/api/categories
-curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:8081/api/shares/v2/<SHARED_SLUG>
-```
-
-`<SHARED_SLUG>` is the last part of one of your existing public share
-links. Expected: `applied 0 migration(s)`, `app is healthy`, `maintenance
-is off`; then `401` (signed out) and `200 application/json`. The share's
-contents are not printed, and need not be compared by hand: the importer
-already proved every kept row equal to the export.
-
-Then compare a per-account summary of the imported copy with D1. The
-summary holds counts and the first 8 characters of each user id, no names
-or email addresses:
-
-```bash
-# [VPS root] same shell
-sqlite3 -readonly "$R/rollback/$(ls "$R/rollback" | sort | tail -n 1)/data/grampacker.db" \
-  "$(cat <<'SQL'
-SELECT substr(u.id, 1, 8) AS user,
-  (SELECT count(*) FROM lists l WHERE l.user_id = u.id) AS lists,
-  (SELECT count(*) FROM gear_items g WHERE g.user_id = u.id) AS gear,
-  (SELECT count(*) FROM list_items i WHERE i.user_id = u.id) AS list_items,
-  (SELECT count(*) FROM list_food_items f WHERE f.user_id = u.id) AS food,
-  (SELECT count(*) FROM passkey p WHERE p.user_id = u.id) AS passkeys,
-  (SELECT count(*) FROM lists s WHERE s.user_id = u.id AND s.is_shared = 1) AS shared
-FROM "user" u ORDER BY u.id
-SQL
-)"
-```
-
-```bash
-# [walnut] in the repository checkout
-npx wrangler d1 execute grampacker --remote --command "SELECT substr(u.id, 1, 8) AS user, (SELECT count(*) FROM lists l WHERE l.user_id = u.id) AS lists, (SELECT count(*) FROM gear_items g WHERE g.user_id = u.id) AS gear, (SELECT count(*) FROM list_items i WHERE i.user_id = u.id) AS list_items, (SELECT count(*) FROM list_food_items f WHERE f.user_id = u.id) AS food, (SELECT count(*) FROM passkey p WHERE p.user_id = u.id) AS passkeys, (SELECT count(*) FROM lists s WHERE s.user_id = u.id AND s.is_shared = 1) AS shared FROM \"user\" u ORDER BY u.id"
-```
-
-Expected: the same rows, in the same order, from both. It reads the
-rollback copy that `deploy` just made, never the live file.
-
-### 10.5 Record, tear down and delete the copies
-
-Record in section 13: the date, the image digest, the export and import
-times, and `result: OK` (keep `$R/import-report.txt` in your notes: it
-holds no data). Then remove the rehearsal, its database and the export,
-everywhere:
-
-```bash
-# [VPS root]
-cd /srv/grampacker-rehearsal && docker compose --env-file deploy.env down
-unset GRAMPACKER_ROOT
-cd / && rm -rf /srv/grampacker-rehearsal
-ls /srv
-```
-
-```bash
-# [walnut]
-rm -rf ~/grampacker-d1-export/<STAMP>
-ls -la ~/grampacker-d1-export
-```
-
-Expected: no `grampacker-rehearsal` in `/srv`; no `<STAMP>` folder on
-walnut. No rehearsal copy is kept anywhere: the cutover makes its own.
-
-## 11. One-time D1 to SQLite move (FUTURE PRODUCTION - DO NOT RUN NOW)
-
-Every step in this section is a production operation. It runs once, in an
-announced maintenance window, after the import rehearsal (section 10).
-Each CONFIRM step needs its own "yes".
-
-The plan in one line: freeze D1 writes, export and count, import into a new
-SQLite database on the VPS, start the app, point DNS at the VPS, test on
-`https://grampacker.app`. **If the checks in 11.8 fail, traffic goes back to
-the Worker and D1, which nothing here changed (11.9).** D1 and the Worker
-are retired only after the observation period (12.3).
-
-Expected downtime: in the rehearsal the export took about 8 seconds and the
-import about 17; add the transfer, the checks in 11.6 to 11.8, and DNS cache
-and certificate time (minutes, not seconds).
-
-### 11.0 Before the window
-
-1. `[walnut]` Re-read `wrangler.jsonc` and record the Worker's current routes and
-   custom domains, and whether `workers.dev` and preview URLs are on
-   (`[Cloudflare]` Workers & Pages, `grampacker`, Settings, Domains & Routes).
-2. `[Cloudflare]` Record every DNS record for `grampacker.app`, including
-   `www` and any AAAA record. Screenshot or export the zone.
-3. `[admin workstation]` `dig +short A grampacker.app; dig +short AAAA grampacker.app` and
-   record the output.
-4. Confirm Worker deployment is still off. The merge order in 6.1 stopped it
-   before the Node/SQLite code reached `main`. Read-only:
-
-   ```bash
-   # [walnut]
-   gh workflow list --all --repo "$GH_REPO"
-   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
-   gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
-   gh api "repos/$GH_REPO/deployments?environment=production&per_page=1" \
-     --jq '.[0] | [.sha, .created_at] | @tsv'
-   npx wrangler deployments list --name grampacker
-   ```
-
-   Expected: both counts are `0`, and the GitHub record and the newest
-   Cloudflare deployment are the ones recorded in 6.1. If 6.1's recommended step was done, `deploy.yml`
-   and `deploy-liveness.yml` show `disabled_manually`. If anything else
-   shows, stop and find out why before the window.
-
-5. Choose the image that will become production (`<APP_DIGEST>`). The
-   import rehearsal (section 10) passed with
-   `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`.
-   If `<APP_DIGEST>` is a different image, list what changed between the
-   two images' commits (each image's GHCR tag is its full commit SHA, 6.1):
-   `git diff --name-only <REHEARSED_SHA> <APP_SHA>`. Repeat section 10 with
-   the new image if any of these changed, since each is part of the
-   import: `migrations/`, `server/db/`, `server/node.ts`,
-   `deploy/d1-row-counts.sql`, `Dockerfile`, `package.json`,
-   `package-lock.json` or `vite.server.config.ts`. If unsure, repeat it.
-   Repeat 7.4 if any other file in `deploy/` changed. Otherwise the 11.5
-   import's own checks are enough.
-6. Confirm backups. They are set up outside this runbook, but the cutover
-   depends on them: the existing setup must copy a backup-API snapshot of
-   `/srv/grampacker/data` (never the live database and WAL files) to B2, and
-   one such snapshot must have been restored from B2 and passed
-   `integrity_check`. If not, do not start the cutover.
-7. Generate the VPS's new `BETTER_AUTH_SECRET` and save it in your password
-   manager, as "grampacker VPS BETTER_AUTH_SECRET", before the window. The
-   cutover rotates this secret on purpose: there is no copy of the Worker's,
-   and Cloudflare cannot show it. Generate it once:
-
-   ```bash
-   # [admin workstation]
-   openssl rand -hex 32
-   ```
-
-   Expected: 64 hexadecimal characters (256 bits). Copy them into the
-   password-manager entry, check that the entry saved, then clear the
-   terminal and its scrollback. Never put the value in a file, a note or a
-   chat. Have the Resend API key ready in the password manager too (11.4).
-   The consequences of the rotation are in 11.4.
-8. Have an encrypted place for the cutover export archive ready (11.2): the
-   same protected backup storage that holds other production secrets, not a
-   plain folder or a cloud drive.
-
-### 11.1 Freeze writes to D1 (CONFIRM: Worker route)
-
-`[Cloudflare]` Workers & Pages, `grampacker`, Settings, Domains & Routes:
-
-1. Remove the custom domain `grampacker.app`. Cloudflare deletes the DNS
-   record it manages for it.
-2. Disable the `workers.dev` route and preview URLs. Its CSRF origin check
-   stops browsers, but a non-browser client can send any `Origin`, so the
-   route itself must go.
-
-Verify:
-
-```bash
-# [admin workstation]
-dig +short A grampacker.app
-dig +short AAAA grampacker.app
-curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://grampacker.app/api/health
-curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://grampacker.<WORKERS_SUBDOMAIN>.workers.dev/api/health
-```
-
-Expected: no A or AAAA answer (or only caches expiring within minutes); the
-two `curl` commands fail or return a Cloudflare error, never `200`. Wait for
-any cached answer to expire before 11.2. From this moment users see an
-outage. D1 itself is unchanged.
-
-Undo: re-add the custom domain and re-enable `workers.dev` (11.9).
-
-### 11.2 Final export and counts (walnut)
-
-Read-only on D1. The same commands as 10.1, plus the Time Travel bookmark,
-which `docs/d1-restore.md` needs if D1 itself ever has to be restored:
-
-```bash
-# [walnut] in the repository checkout, on main
-umask 077
-export WRANGLER_WRITE_LOGS=false
-STAMP=cutover-$(date -u +%Y%m%dT%H%MZ)
-OUT=~/grampacker-d1-export/$STAMP
-mkdir -p "$OUT"
-npx wrangler d1 time-travel info grampacker > "$OUT/time-travel-bookmark.txt"
-time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
-npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
-(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS)
-cat "$OUT/time-travel-bookmark.txt"
-ls -la ~/grampacker-d1-export "$OUT"
-echo "$STAMP"
-```
-
-Expected: a bookmark; `Done!`; four `-rw-------` files in a `drwx------`
-directory. The export's output includes a temporary signed URL to the
-whole export: never paste, share or log it (section 10, data rules).
-
-Now copy the whole `$OUT` folder into the encrypted backup storage from
-11.0. That copy is the untouched record of what moved, kept as 12.1 says.
-Never edit `d1-full.sql`.
-
-Rerun: safe (read-only), with a new `<STAMP>`. Writes are frozen, so
-there is no reason for counts to differ; if the import says they do, find
-out what is still writing before going on.
-
-### 11.3 Transfer to the VPS
-
-```bash
-# [VPS joe]
-install -d -m 0700 ~/import-<STAMP>
-```
-
-```bash
-# [walnut] same shell as 11.2
-scp -p "$OUT/d1-full.sql" "$OUT/d1-counts.json" "$OUT/SHA256SUMS" joe@"$VPS_HOST":import-<STAMP>/
-```
-
-```bash
-# [VPS root]
-cd ~joe/import-<STAMP> && sha256sum -c SHA256SUMS
-install -d -m 0700 /srv/grampacker/import
-install -d -m 0700 /srv/grampacker/import/<STAMP>
-install -m 0600 d1-full.sql d1-counts.json SHA256SUMS /srv/grampacker/import/<STAMP>/
-chown -R 10001:10001 /srv/grampacker/import/<STAMP>
-cd / && rm -rf ~joe/import-<STAMP>
-ls -la /srv/grampacker/import/<STAMP>
-```
-
-Expected: `OK` for both files; three `-rw-------` files owned by `10001`.
-Rerun: safe.
-
-### 11.4 Write the production configuration
-
-`deploy.env` (no secrets): do 7.3 now, with the `<APP_DIGEST>` chosen in
-11.0, item 5.
-
-The app's secrets. **`BETTER_AUTH_SECRET` is rotated at cutover, on
-purpose.** The VPS uses the new secret generated and saved in 11.0, item 7.
-Do not write `app.env` until that password-manager entry exists. The
-consequences:
-
-- Nothing imported depends on the old secret. Sessions, verification
-  records (magic-link tokens) and rate-limit records are already removed
-  by the import; the rate limiter's email buckets are keyed with this
-  secret, so they start empty in any case.
-- Everyone signs in again on the VPS. (The import removes sessions, so
-  this would happen without the rotation too.)
-- A magic link requested before the cutover does not work; request a new
-  one. Its token was in the removed verification records, and it expires
-  after 5 minutes anyway.
-- Existing passkeys keep working: their credential IDs, public keys and
-  counters are imported, and a sign-in checks the authenticator's
-  signature against the stored public key. The secret only signs the
-  short-lived challenge cookie that each sign-in creates fresh. The RP ID
-  stays `grampacker.app` and the origin `https://grampacker.app`, both
-  from `BETTER_AUTH_URL` below. 11.8 tests this before the site opens.
-- The Worker is not changed. It keeps its own hidden Cloudflare secret, so
-  after a rollback (11.9) D1's sessions are valid again as they were at the
-  freeze. A browser that signed in on the VPS during 11.8 has replaced its
-  session cookie, and signs in again on the Worker.
-
-Type both values from your password manager:
-
-```bash
-# [VPS joe]
-umask 077
-read -rsp 'New BETTER_AUTH_SECRET (11.0, item 7): ' AUTH_SECRET; echo
-read -rsp 'Resend API key: ' RESEND_KEY; echo
-echo "secret length: ${#AUTH_SECRET}"
-```
-
-Expected: `secret length: 64`. If not, the value was mistyped or
-truncated: run that block again. Only then, in the same shell:
-
-```bash
-# [VPS joe] same shell
-{
-  printf 'BETTER_AUTH_URL=%s\n' 'https://grampacker.app'
-  printf 'BETTER_AUTH_SECRET=%s\n' "$AUTH_SECRET"
-  printf 'RESEND_API_KEY=%s\n' "$RESEND_KEY"
-  printf 'EMAIL_FROM=%s\n' 'grampacker <no-reply@grampacker.app>'
-} > /srv/grampacker/secrets/app.env
-unset AUTH_SECRET RESEND_KEY
-stat -c '%U:%G %a %n' /srv/grampacker/secrets/app.env
-grep -c '=' /srv/grampacker/secrets/app.env
-```
-
-Expected: `joe:joe 600` and `4`. Do not `cat` the file.
-
-### 11.5 Import into the production data directory
-
-The import writes `/srv/grampacker/data/grampacker.db` itself and refuses
-if any database file is already there. Check that the directory is empty,
-and that no app container exists:
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-docker compose --env-file deploy.env ps -a
-ls -A data
-```
-
-Expected: no container, and nothing in `data`. If a file is there (for
-example from an earlier attempt), do not delete it: move it aside, then
-check again.
-
-```bash
-# [VPS root] only if `ls -A data` listed something
-cd /srv/grampacker
-ASIDE=rollback/moved-aside-$(date -u +%Y%m%dT%H%M%SZ)
-install -d -m 0700 "$ASIDE"
-find data -mindepth 1 -maxdepth 1 -exec mv -t "$ASIDE" {} +
-ls -A data
-ls -la "$ASIDE"
-```
-
-Then import:
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-time docker run --rm --network none --read-only --tmpfs /tmp \
-  -v /srv/grampacker/import/<STAMP>:/import:ro -v /srv/grampacker/data:/data \
-  ghcr.io/joes703/grampacker@<APP_DIGEST> import-d1 \
-  --export /import/d1-full.sql --d1-counts /import/d1-counts.json --out /data/grampacker.db \
-  | tee /srv/grampacker/import/<STAMP>-import-report.txt
-echo "exit=${PIPESTATUS[0]}"
-ls -la data
-```
-
-Expected: exactly what 10.3 expects: every count matches, and `result: OK`
-is the last line.
-
-If `exit` is not 0: stop. Nothing was written to `data`, D1 is unchanged
-and still authoritative. Go to 11.9.
-
-Keep a copy of the imported database, made while nothing runs:
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-install -d -m 0700 rollback/cutover-imported-<STAMP>
-cp -a data rollback/cutover-imported-<STAMP>/data
-ls -la rollback/cutover-imported-<STAMP>/data
-```
-
-Caddy is not started yet. It starts in 11.7, after DNS points here: starting
-it earlier makes Caddy request a certificate that cannot succeed, and its
-retry backoff (and Let's Encrypt's failed-validation limit) could then delay
-the real request.
-
-### 11.6 Start and test locally on the VPS
-
-```bash
-# [VPS root]
-cd /srv/grampacker
-docker compose --env-file deploy.env up -d app
-docker compose --env-file deploy.env ps
-curl -sS -o /tmp/health.json -w '%{http_code}\n' -H 'Host: grampacker.app' http://127.0.0.1:3000/api/health; cat /tmp/health.json; echo
-curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' -H 'Host: grampacker.app' http://127.0.0.1:3000/
-```
-
-Expected: `app (healthy)`; `200` and `{"ok":true}`; `200 text/html...`.
-The signed-out `401` and the CSRF `403` are checked once, through Caddy
-and the public address, in 11.8.
-
-### 11.7 Point DNS at the VPS (CONFIRM: production DNS)
-
-`[Cloudflare]` DNS, Records, Add record:
-
-- Type `A`, Name `@` (`grampacker.app`), IPv4 address: the value of
-  `$VPS_HOST`.
-- Proxy status: **DNS only**.
-- TTL: 1 min.
-- **No AAAA record.** Confirm none remains from the Worker.
-
-```bash
-# [admin workstation]
-dig +short A grampacker.app @1.1.1.1
-dig +short AAAA grampacker.app @1.1.1.1
-```
-
-Expected: the VPS address, then nothing.
-
-Now start Caddy with the production Caddyfile installed in 7.2:
-
-```bash
-# [VPS root]
-grampacker-deploy caddy-update
-```
-
-Expected: `Caddy updated: sha256:..., answering 200`. It waits one minute for
-the certificate. If it reports another status, Caddy is still running; read
-its log (below) before anything else.
-
-**Check, do not assume: `www`.** This runbook does not know whether
-`www.grampacker.app` exists. Look at the Cloudflare DNS records recorded in
-11.0. If there is no `www` record, do nothing. If there is one, stop and
-decide what it should do before continuing; do not create one.
-
-```bash
-# [VPS root]
-docker compose --env-file /srv/grampacker/deploy.env logs -f caddy
-```
-
-Expected: within a few minutes, "certificate obtained successfully" for
-`grampacker.app`. Press Ctrl-C to stop following.
-
-Undo: delete the A record (11.9).
-
-### 11.8 Verify production, then open
-
-From now on the site is reachable, with no maintenance bypass. That is
-acceptable: there are only three test accounts, and the checks below are
-their writes. If 11.9 rollback happens, those test writes are discarded.
-
-```bash
-# [admin workstation]
-curl -sS -w '\n%{http_code}\n' https://grampacker.app/api/health
-curl -sS -o /dev/null -w '%{http_code} %{http_version}\n' https://grampacker.app/
-curl -sS -o /dev/null -w '%{http_code}\n' http://grampacker.app/
-curl -sS -o /dev/null -w '%{http_code}\n' https://grampacker.app/api/categories
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' https://grampacker.app/api/categories
-curl -sSI https://grampacker.app/ | grep -iE '^(strict-transport-security|content-security-policy|x-content-type-options|alt-svc):'
-nc -vz -w 5 "$VPS_HOST" 3000; echo "exit=$?"
-```
-
-Expected: `{"ok":true}` `200`; `200 2`; `308`; `401`; `403`; the security
-headers and no `alt-svc: h3`; port 3000 closed.
-
-In a browser (a fresh private window, since old sessions are deliberately
-invalid):
-
-1. Sign in with an existing passkey. Expected: works.
-2. Sign out; sign in with a magic link. Expected: the link points to
-   `https://grampacker.app/` and works.
-3. Open lists, gear and food pages, and follow a deep link directly.
-4. Open an existing public share link signed out. Expected: it shows the
-   shared list only.
-5. Inspect the session cookie: `Secure`, `HttpOnly`, `SameSite=Strict`, host
-   `grampacker.app`.
-
-When all pass, the site is open. Record the time: **after this moment, D1 is
-stale** and returning to it loses writes.
-
-### 11.9 Rollback
-
-Use this when the import fails (11.5) or any check in 11.6 to 11.8 fails:
-an existing passkey, a magic link, the lists, or a public share. **Before
-11.8 finishes** (no real writes on SQLite yet), it is safe: D1 and the
-Worker were never changed, only taken off the domain.
-
-1. `[Cloudflare]` Delete the VPS A record, if 11.7 created it (CONFIRM).
-2. `[Cloudflare]` Re-add the Worker custom domain `grampacker.app`, and
-   restore `workers.dev` and preview URLs to the state recorded in 11.0
-   (CONFIRM). This reopens writes to D1.
-3. `[admin workstation]` `curl -sS https://grampacker.app/api/health`
-   returns `{"ok":true}` from the Worker. Sign in once to confirm.
-4. Stop the VPS and keep its data for diagnosis, out of `data/`, so the
-   next attempt starts from an empty directory:
+1. `[VPS root]` In a production root shell (section 0), stop writes and
+   keep the VPS's data as it is. Do not move or delete anything in `data/`
+   or `rollback/`: it is the newest copy of production.
 
    ```bash
    # [VPS root]
-   cd /srv/grampacker
-   docker compose --env-file deploy.env stop caddy app
-   FAILED=rollback/failed-cutover-<STAMP>
-   install -d -m 0700 "$FAILED"
-   find data -mindepth 1 -maxdepth 1 -exec mv -t "$FAILED" {} +
-   cp -a /srv/grampacker/import/<STAMP>-import-report.txt "$FAILED"/ 2>/dev/null || true
-   ls -A data
-   ls -la "$FAILED"
+   grampacker-deploy maintenance on
    ```
 
-   Expected: `data` is empty; the database (and any `-wal`/`-shm`) and the
-   import report are in `$FAILED`. Nothing is deleted here.
-5. D1 is authoritative. Rollback is the Worker that is already running; it
-   keeps serving its last version. Do **not** turn `deploy.yml` back on,
-   and never re-run an earlier Deploy run: `main` contains Node/SQLite code,
-   and either can deploy code the Worker cannot run (6.1, "Merge order").
-6. Find the cause from the report, the app log
-   (`docker compose --env-file deploy.env logs app`) and the kept data,
-   before planning another window. A new attempt starts again at 11.1,
-   with a new export and a new `<STAMP>`.
+   If that fails (Caddy broken), stop the app instead:
+   `cd /srv/grampacker && docker compose --env-file deploy.env stop app`.
+   If the VPS cannot be reached at all, power it off from the RackNerd
+   control panel; its disk is kept. Never reopen D1 (step 3) while the VPS
+   might still accept writes.
 
-**After 11.8** (real writes on SQLite): do not return to D1. Fix forward,
-or follow 9.3, which needs a written decision first.
+2. `[Cloudflare]` Delete the `grampacker.app` A record that points at the
+   VPS (CONFIRM: production DNS).
+3. `[Cloudflare]` Workers & Pages, `grampacker`, Settings, Domains &
+   Routes: add the custom domain `grampacker.app` (CONFIRM: Worker route).
+   Cloudflare creates its own DNS record. This reopens writes to D1. Leave
+   `workers.dev` and preview URLs off.
+4. Verify:
+
+   ```bash
+   # [admin workstation]
+   dig +short A grampacker.app @1.1.1.1
+   curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
+   ```
+
+   Expected: Cloudflare addresses, not `$VPS_HOST`, and `{"ok":true} 200`
+   from the Worker. If the admin workstation still reaches the VPS, see 9.7
+   (Tailscale). Then sign in once in a browser to confirm. Users sign in
+   again on the Worker.
+
+5. The Worker keeps serving the last version it deployed. Do **not** turn
+   `deploy.yml` back on, and never re-run an earlier Deploy run: `main`
+   contains Node/SQLite code, and either can deploy code the Worker cannot
+   run (`AGENTS.md` "Shipping"). A security fix for the Worker:
+   `docs/testing-and-ci.md` section 11.
+
+Returning to the VPS later is a new migration from D1 with its own plan.
+`import-d1` refuses an existing database, so the kept VPS data must first
+be moved out of `data/`, never deleted.
 
 ## 12. After cutover
 
-### 12.1 Copies of production data: when each is deleted
+### 12.1 Copies of production data
 
-| Copy | Where | Deleted or kept |
+| Copy | Where | State |
 | --- | --- | --- |
-| Rehearsal export, counts and database | walnut, `/srv/grampacker-rehearsal` | deleted at the end of the rehearsal (10.5); done 2026-10-16 |
-| Cutover export folder (`d1-full.sql`, `d1-counts.json`, `SHA256SUMS`, bookmark) | encrypted backup storage (11.2) | kept until D1 is deleted (12.3), then 30 days more; then deleted |
-| Cutover export folder | walnut `~/grampacker-d1-export/<STAMP>` | deleted at the end of the observation period (12.2) |
-| Cutover export | VPS `/srv/grampacker/import/<STAMP>` | deleted at the end of the observation period |
-| Imported database, as imported | VPS `rollback/cutover-imported-<STAMP>` | deleted at the end of the observation period; Kopia's backups cover the time since |
-| A failed attempt's data | VPS `rollback/failed-cutover-<STAMP>`, `rollback/moved-aside-*` | deleted once the cause is understood, and before the next window |
+| Rehearsal export, counts and database | walnut, `/srv/grampacker-rehearsal` | deleted, 2026-10-16 |
+| Cutover export (plaintext) | walnut, VPS `/srv/grampacker/import/` | deleted, 2026-10-16 |
+| Rollback directories, including any `cutover-imported-*` copy of the database as imported | VPS `/srv/grampacker/rollback/` | kept until deleted by hand (9.5) |
+| D1 | Cloudflare | kept until decommissioned (12.3) |
 
 The import reports (`*-import-report.txt`) hold no user data and may be
 kept with your notes.
 
-At the end of the observation period:
-
-```bash
-# [VPS root]
-rm -rf /srv/grampacker/import/<STAMP> /srv/grampacker/rollback/cutover-imported-<STAMP>
-ls -la /srv/grampacker/import /srv/grampacker/rollback
-```
-
-```bash
-# [walnut]
-rm -rf ~/grampacker-d1-export/<STAMP>
-ls -la ~/grampacker-d1-export
-```
-
-### 12.2 Observe for two weeks
+### 12.2 Observe for two weeks (until 2026-10-30)
 
 Daily for the first week, then weekly:
 
@@ -2279,39 +1470,35 @@ ls /srv/grampacker/rollback
 sqlite3 -readonly /srv/grampacker/rollback/<newest stamp>/data/grampacker.db 'PRAGMA integrity_check'
 ```
 
-Expected: `ok`. The copy is from the last deploy; Kopia's backups cover
-the time since. Also confirm
-Kopia's B2 backups arrive, and do one restore test.
+Expected: `ok`. The copy is from the last deploy.
 
 ### 12.3 Decommission (separate approvals)
 
-Each is its own decision, after the observation period:
+Each is its own decision, after the observation period. Until the Worker and
+D1 are deleted, 11.2 stays available.
 
-- Remove Worker deployment code, `wrangler`, and Cloudflare-only dependencies
-  (a normal PR).
+- Optionally, archive a final D1 export (10.2) in protected storage.
+- Remove the Worker deployment code (`deploy.yml`), `wrangler` and Cloudflare-only
+  dependencies (a normal PR).
 - `[GitHub web]` Delete `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - `[Resend]` Revoke the old Worker's API key.
 - Replace `docs/d1-restore.md` with the SQLite restore procedure.
-- Archive a final D1 export (11.2 commands, new `<STAMP>`), kept like the
-  cutover export (12.1).
-- Delete the D1 database: **only** with separate, explicit approval.
+- Delete the Worker, then the D1 database: **only** with separate, explicit
+  approval. After that, remove 11.2 from this runbook.
 
-## 13. Records to fill in
+## 13. Records
 
 | Item | Value |
 | --- | --- |
 | VPS host key fingerprint (ED25519) | `SHA256:6R0gvuvxXgw7m7zjTJrouxWooIcVlnLI6IAxtUQth48` |
-| History review before publication (5.1) | completed before the repository was made public |
+| Cutover | completed 2026-10-16 |
+| Production image | `ghcr.io/joes703/grampacker@sha256:453b52ee9d2976efce708906536d78062cf50459da3ef0127398754bde4a5c49`, deployed by run 38957454976 |
+| Import rehearsal image | `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f` (2026-10-16) |
+| GitHub-to-VPS test image | `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52` (2026-10-15/16) |
+| Image runtime UID | 10001 |
 | GitHub deploy key: fingerprint, created | |
-| GitHub-to-VPS test (8.6): date, published digest, result | 2026-10-15/16, `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52`, passed |
-| Caddy version after each `caddy-update` | |
-| Worker hotfixes: branch, commit, Cloudflare version id and time (`docs/testing-and-ci.md` section 11) | |
-| Image runtime UID | 10001 (checked 2026-10-15) |
-| Empty-database rehearsal (7.4): date, result, time it took | 2026-10-15, passed (1.3); time: |
-| Baseline before the merges: `<BASELINE_TIME>`, GitHub record (SHA, time), newest Cloudflare deployment (version id, time) | |
-| Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
-| Migration merge: `<MERGE_SHA>`, Deploy run URL (or none, if disabled) | |
-| First published image: `<APP_SHA>`, `<APP_DIGEST>`, run URL | |
-| Import rehearsal (section 10): date, image, export and import times, result | 2026-10-16, `sha256:e36ab22844e9dece0e4b60f6e973b919bcc61a4e00102ffbb81f230d5fca518f`, export about 8 s, import about 17 s; every importer check passed, the app served the data, the per-account summaries matched; copies deleted |
-| Cutover window start / site open / D1 stale from | |
 | GHCR token expiry date | |
+| Caddy version after each `caddy-update` | 2.11.7 (2026-10-15) |
+| Worker rollback target: commit, Cloudflare version id (`docs/testing-and-ci.md` section 11, step 1) | commit `5ba1d5b635948d24f5196c0f21192750bd2f954d`; version `3a21d4fe-d237-4273-83f3-1a0d0c963229` |
+| Worker hotfixes: branch, commit, Cloudflare version id and time (`docs/testing-and-ci.md` section 11) | |
+| Known issue | Tailscale held a stale negative DNS answer for `grampacker.app` after the cutover until reconnected: tailscale/tailscale#21816 |

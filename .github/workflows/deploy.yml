@@ -1,13 +1,14 @@
 # LEGACY: WORKER DEPLOYMENT IS OFF
 # --------------------------------
-# main is moving to a Node server with SQLite on a VPS, and the Worker cannot
-# run that code. So both jobs below are `if: false`.
+# Production runs on a Node server with SQLite on a VPS since 2026-10-16,
+# and the Worker cannot run main's code. So both jobs below are `if: false`.
 # The trigger still fires after every CI run, and each Deploy run shows both
 # jobs as skipped: no step runs, no secret is read, and nothing reaches
-# Cloudflare or D1. The production Worker keeps serving the last commit this
-# workflow deployed.
+# Cloudflare or D1. The Worker no longer serves production. It keeps the
+# last commit this workflow deployed (5ba1d5b6) and is retained only as a
+# rollback target.
 #
-# This file is kept only while that running Worker is the rollback target.
+# This file is kept only while the Worker is that rollback target.
 # Delete it when the Worker is retired.
 #
 # Why `if: false` and not another trigger: a workflow needs a trigger, and

@@ -233,30 +233,34 @@ does not test these files yet. Before a change to any of them merges, run:
 A CI job that runs these only when `deploy/`, the Dockerfile, migrations or
 the server's startup code change is a possible later step.
 
-**Worker deployment is off.** `main` is moving to a Node server with SQLite
-on a VPS, which the Worker cannot run. Every job in `deploy.yml` and
-`deploy-liveness.yml` is `if: false`, and the liveness check has no schedule.
-After each CI run on main, a Deploy run still appears, with both jobs
-skipped. The production Worker keeps serving the last commit it deployed and
-is the rollback target; rollback never runs `deploy.yml`. The recovery below
+**Worker deployment is off.** Production runs `main` on a Node server with
+SQLite on the VPS since 2026-10-16, and the Worker cannot run it. Every
+job in `deploy.yml` is `if: false`. The Deploy liveness workflow, which
+compared main with the newest `production` deployment record, was deleted:
+the VPS deploy job writes those records too, so they no longer describe the
+Worker. After each CI run on main, a Deploy run still appears, with both jobs
+skipped. The old Worker keeps the last commit it deployed, serves no
+traffic, and is a rollback target (runbook 11.2); rollback never runs
+`deploy.yml`. The recovery below
 (re-running a Deploy run) must not be used: a re-run uses the old copy of the
 workflow file, without `if: false`, and can deploy main as it is now (header
 of `deploy.yml`). The rest of this section, after the emergency procedure
 below, describes the workflow as it ran.
 
-**Emergency security fix for the running Worker** (until cutover). Nothing
+**Emergency security fix for the old Worker** (only while it is a rollback
+target, and needed only if traffic returns to it). Nothing
 merged to `main` reaches the Worker, and Dependabot no longer reads the
 Worker's lockfile. So when an advisory names a package, check the Worker's
-copy as well. Use this only for a security fix that cannot wait for the
-cutover. The owner runs it from the Mac; it never uses `deploy.yml`.
+copy as well. The owner runs it from the Mac; it never uses `deploy.yml`.
 
-1. Find the commit the Worker runs. It is the latest GitHub deployment record,
-   or the newest hotfix branch recorded in runbook section 13. The newest
-   Cloudflare deployment must be the one recorded with it:
+1. The Worker runs `5ba1d5b635948d24f5196c0f21192750bd2f954d`, the last
+   commit `deploy.yml` deployed, as version
+   `3a21d4fe-d237-4273-83f3-1a0d0c963229` (runbook section 13). After a
+   hotfix, use the hotfix commit and version that section 13 records
+   instead. Use that commit as `<WORKER_SHA>` below. Check that the newest
+   Cloudflare deployment is that version; if it is not, stop:
 
    ```bash
-   gh api "repos/joes703/grampacker/deployments?environment=production&per_page=1" \
-     --jq '.[0] | [.sha, .created_at] | @tsv'
    npx wrangler deployments list --name grampacker
    ```
 
@@ -295,10 +299,10 @@ cutover. The owner runs it from the Mac; it never uses `deploy.yml`.
    npm run build
    npx wrangler deploy
    npx wrangler deployments list --name grampacker
-   curl -sS https://grampacker.app/api/health
    ```
 
-   Expected: a new newest deployment, and `{"ok":true}`. Never run
+   Expected: a new newest deployment. `grampacker.app` now reaches the VPS,
+   not the Worker, so a `curl` there does not test the Worker. Never run
    `wrangler d1 migrations apply`.
 7. In runbook section 13, record the branch, its commit, and the new
    Cloudflare version id and time. The patched Worker is now the rollback
@@ -317,15 +321,7 @@ Mechanism today: a push to main runs `ci.yml`; its completion triggers
 `deploy.yml` (`workflow_run`); a preflight job drops stale events; the
 deploy job, inside the `deploy-production` concurrency group, re-verifies
 through the API that `ci.yml` is green for main's head, builds, migrates,
-deploys, records a deployment marker; `deploy-liveness.yml` compares main
-against that marker every six hours, via `scripts/deployed-sha.mjs`. The
-watchdog trusts only the NEWEST deployment record in the page the API returns,
-and only when that record's LATEST status is a success - the marker step
-creates the record before posting its status, so a record alone is not
-evidence that a SHA reached production. Anything else - no status, an
-unsuccessful one, or records or statuses tied at the same second that
-disagree - is reported as `unverified`, naming no deployed SHA, rather than
-falling back to an older success that cannot speak for the newer deploy. Recovery is a
+deploys, records a deployment marker. Recovery is a
 re-run of the failed run, never a manual dispatch; the header of `deploy.yml`
 says which failures may be re-run and which must not. A migration that
 APPLIED and damaged data is a different recovery whatever the run's final

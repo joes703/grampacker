@@ -3,11 +3,11 @@
 Shared instructions for every coding agent in this repo. CLAUDE.md imports
 this file and adds Claude-specific notes.
 
-**Stack:** Cloudflare Workers + D1 (SQLite), Hono, Vite, React, TypeScript,
-Drizzle, better-auth. **Moving to Node + better-sqlite3 on a VPS**
-(`docs/vps-migration-plan.md`): on a branch that has the Node server
-(`server/node.ts`), the API tests and local dev already run on Node and
-SQLite, and the Worker no longer runs. This is a rewrite of a Supabase app,
+**Stack:** Node + better-sqlite3 (SQLite) on a VPS, Hono, Vite, React,
+TypeScript, Drizzle, better-auth. Production moved there from Cloudflare
+Workers + D1 on 2026-10-16 (operations:
+`docs/vps-bootstrap-and-migration-runbook.md`); the old Worker and D1 serve
+no traffic and remain only as rollback targets. This is a rewrite of a Supabase app,
 and Supabase or Postgres patterns do not exist here: no RLS (`auth.uid()`,
 `WITH CHECK`), no PostgREST `.upsert()`, no `SECURITY DEFINER` RPCs or
 `supabase.rpc()`, no pgTAP. The scoped repositories are the authorization
@@ -15,14 +15,14 @@ boundary. When unsure of a D1 equivalent, ask rather than assume.
 
 ## Shipping
 
-- **A merge to `main` does not deploy.** `deploy.yml` is legacy and every
-  job in it is `if: false`, because `main` is moving to a Node server with
-  SQLite on a VPS, which the Worker cannot run. The production
-  Worker keeps serving the last commit it deployed, and is the rollback
-  target. Never re-run an old Deploy run and never turn `deploy.yml` back
+- **A merge to `main` does not deploy.** The owner deploys to the VPS by
+  dispatching `image.yml` with `deploy` set (runbook 9.1). `deploy.yml` is
+  legacy and every job in it is `if: false`, because the Worker cannot run
+  `main`. The old Worker keeps the last commit it deployed, serves no
+  traffic, and is a rollback target until it is retired. Never re-run an old Deploy run and never turn `deploy.yml` back
   on: either can put `main` on the Worker and D1 (its header says why).
   Never deploy yourself; the Cloudflare token exists only in GitHub Actions.
-  An emergency security fix for the running Worker is the owner's procedure
+  An emergency security fix for the old Worker is the owner's procedure
   in `docs/testing-and-ci.md` section 11.
 - The human approves each merge, for an exact PR head. Confirm CI is green
   yourself, then `gh pr merge --squash --match-head-commit <sha>` (squash is

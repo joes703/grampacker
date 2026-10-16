@@ -1,7 +1,9 @@
 # Grampacker VPS migration plan
 
-**Status:** Planning only. Do not deploy, change production data, or change DNS
-until the relevant stage is approved.
+**Status:** Done. The move completed on 2026-10-16. This is now a dated
+record of the plan and its reasons, and is not updated. Its runbook
+references point to the runbook as it was at commit `46aa1b8`. For operating
+production, use `docs/vps-bootstrap-and-migration-runbook.md`.
 
 The step-by-step commands live in the companion runbook,
 `docs/vps-bootstrap-and-migration-runbook.md`. This document says what and

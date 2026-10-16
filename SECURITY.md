@@ -579,14 +579,14 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   least monthly and promptly after a Caddy security release (runbook 9.6),
   and the new image must validate the Caddyfile before it replaces the
   running one.
-- The one-time D1-to-SQLite move (`import-d1`, `server/db/import-d1.ts`;
-  runbook sections 10 and 11). The D1 export and its counts are production
-  data (emails, passkey public keys, every list): `0600` files in `0700`
-  directories on walnut and the VPS, never in Git, GitHub Actions or an
-  image (`.gitignore` and `.dockerignore` name `d1-full*.sql` and
-  `d1-counts*.json` as a second guard), deleted on the schedule in runbook
-  12.1. The import runs with `--network none` and the export mounted
-  read-only; the export is trusted input (the owner's own Wrangler output,
+- The one-time D1-to-SQLite move, completed 2026-10-16 (`import-d1`,
+  `server/db/import-d1.ts`; runbook sections 4, 10 and 11). The D1 export
+  and its counts are production data (emails, passkey public keys, every
+  list): `0600` files in `0700` directories on walnut and the VPS, never in
+  Git, GitHub Actions or an image (`.gitignore` and `.dockerignore` name
+  `d1-full*.sql` and `d1-counts*.json` as a second guard); the rehearsal
+  and cutover copies are deleted (runbook 12.1). The import runs with
+  `--network none` and the export mounted read-only; the export is trusted input (the owner's own Wrangler output,
   checked against SHA256SUMS), and only the container confines it. Its
   output and errors name tables, counts and SQLite error codes, never a
   value. It drops sessions, verification rows and rate-limit buckets, so
