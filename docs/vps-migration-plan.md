@@ -547,11 +547,14 @@ Keep unchanged:
 - user IDs;
 - passkey credential IDs, public keys, and counters.
 
-Keep the existing production `BETTER_AUTH_SECRET` during the move. Rotating it
-is a separate future operation, not part of this migration. Cloudflare cannot
-show a Worker secret after it is set, so the VPS needs the value from the
-password-manager copy. If no copy exists, stop: the move then forces a
-rotation, and that needs its own decision.
+Rotate `BETTER_AUTH_SECRET` at the move, on purpose. There is no copy of the
+Worker's secret, and Cloudflare cannot show a Worker secret after it is set.
+The VPS gets a new secret from `openssl rand -hex 32`, saved in the password
+manager before the VPS configuration is written (runbook 11.0 and 11.4).
+Nothing imported depends on the old secret: sessions, verification records and
+rate-limit records are removed by the import anyway. Passkeys keep working,
+because their credentials are imported and the RP ID and origin do not change.
+The Worker keeps its own secret, so rolling back to it is unaffected.
 
 Still delete imported sessions and short-lived verification challenges, so
 everyone signs in once on the new server. That is one statement in the import
