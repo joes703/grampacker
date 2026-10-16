@@ -4,6 +4,9 @@
 #   docker build --platform linux/amd64 -t grampacker .
 #   docker run --rm -v "$PWD/data:/data" grampacker migrate   apply migrations
 #   docker run -d -v "$PWD/data:/data" --env-file app.env grampacker   serve
+#   docker run --rm --network none -v "$PWD/import:/import:ro" -v "$PWD/data:/data" \
+#     grampacker import-d1 --export ... --d1-counts ... --out ...    one-time
+#     D1 import (server/db/import-d1.ts; runbook sections 10 and 11)
 #
 # Migrating and serving are separate commands on purpose. `serve` (the
 # default) never changes the schema: it refuses to start while a migration

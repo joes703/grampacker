@@ -17,20 +17,21 @@ Every command block starts with a location tag. Run it only there.
 
 | Tag | Meaning |
 | --- | --- |
+| `[admin workstation]` | Terminal on walnut or the Mac, either one |
+| `[walnut]` | Terminal on walnut: the step needs its `wrangler login`, or a file made in an earlier walnut step |
 | `[Mac]` | Terminal on the Mac |
-| `[walnut]` | Terminal on walnut |
 | `[RackNerd console]` | The provider's VNC/serial console in the RackNerd control panel. Works when SSH does not. |
 | `[VPS joe]` | SSH session on the VPS as `joe`, ordinary shell |
 | `[VPS root]` | Root shell on the VPS, opened from `[VPS joe]` with `sudo -i` |
 | `[GitHub web]` | github.com settings pages |
 | `[GitHub Actions]` | A workflow run (you start it or watch it; you do not type these commands) |
 | `[GHCR]` | GitHub Container Registry, through github.com package pages |
-| `[Cloudflare]` | Cloudflare dashboard, or `wrangler` on the Mac where noted |
+| `[Cloudflare]` | Cloudflare dashboard, or `wrangler` on walnut where noted |
 | `[sandbox]` | The coding agent's sandbox |
 
-`[Mac]` and `[walnut]` are interchangeable for administration. Steps that
-need the Cloudflare login (`wrangler`) use the Mac only, because that is where
-`wrangler login` already exists (`docs/d1-restore.md`).
+Walnut is the admin workstation. Most steps run on either administration
+machine and say `[admin workstation]`. Steps that need the Cloudflare login
+(`wrangler`, authenticated on walnut) or the D1 export files say `[walnut]`.
 
 ### Step labels
 
@@ -50,7 +51,7 @@ Set these at the top of a shell before running that section's commands. The
 address appears literally only here; commands use `$VPS_HOST`.
 
 ```bash
-# [Mac] [walnut]
+# [admin workstation]
 VPS_HOST=104.168.43.9          # current RackNerd address; change only this line after a move
 GH_REPO=joes703/grampacker
 IMAGE_REPO=ghcr.io/joes703/grampacker
@@ -73,9 +74,9 @@ Placeholders that you replace when you run a command:
 | `<BASELINE_TIME>` | The UTC time recorded before the merges in 6.1, such as `2026-10-20T15:30:00Z` |
 | `<APP_UID>` | `10001`: the image's fixed non-root UID, which is also its GID (`docs/container-image.md`); step 7.1 verifies it |
 | `<ACME_EMAIL>` | The address Let's Encrypt uses for expiry notices |
-| `<STAMP>` | A UTC time stamp such as `20261101T1530Z`, one per export |
+| `<STAMP>` | One per export: `rehearsal-` or `cutover-` and a UTC time, such as `cutover-20261101T1530Z` (10.1, 11.2 print it) |
 | `<WORKERS_SUBDOMAIN>` | The account's `workers.dev` subdomain, shown in the Cloudflare dashboard |
-| `<IMPORT_COMMAND>` | The D1 import command inside the image, named by its implementation (section 4) |
+| `<SHARED_SLUG>` | The last part of one of your existing public share links (10.4) |
 
 **Secret values never appear in this file.** Where a secret is needed, the
 command reads it from the keyboard with `read -rs` (not saved in shell
@@ -92,8 +93,8 @@ history, not shown on screen), or generates it on the VPS so it never travels.
 
 ## 1. Completed VPS base setup (DONE)
 
-These were completed before 2026-10-11. Re-verify them from `[Mac]` before
-starting section 3. All checks are read-only and safe to rerun.
+These were completed before 2026-10-11. Re-verify them from an
+`[admin workstation]` before starting section 3. All checks are read-only and safe to rerun.
 
 | Done | Fact |
 | --- | --- |
@@ -105,12 +106,13 @@ starting section 3. All checks are read-only and safe to rerun.
 | DONE | Root SSH login off; password and keyboard-interactive login off |
 | DONE | UFW: deny incoming, allow outgoing, SSH rate-limited, TCP 80 and 443 allowed |
 | DONE | `/srv/grampacker` (`joe:joe 0755`) with `data`, `secrets`, `snapshots` (`joe:joe 0700`) |
-| NOT DONE | Production start, production secrets and `deploy.env`, GitHub deployment (section 8), DNS and Cloudflare changes |
+| DONE | GitHub-to-VPS deployment (section 8), tested 2026-10-15/16 (1.3) |
+| NOT DONE | Production start, production secrets and `deploy.env`, DNS and Cloudflare changes |
 
 ### 1.1 Re-verify the base setup
 
 ```bash
-# [Mac]
+# [admin workstation]
 ssh joe@"$VPS_HOST" 'uname -srm; . /etc/os-release; echo "$PRETTY_NAME"; free -h; df -h /'
 ssh joe@"$VPS_HOST" 'docker --version; docker compose version; systemctl is-active docker'
 ssh joe@"$VPS_HOST" 'ip -6 addr show scope global'
@@ -140,8 +142,8 @@ If any line differs, stop and fix the base setup first.
 ### 1.2 Record the SSH host key fingerprint (NOW)
 
 GitHub Actions pins this key for the deploy job (section 8). Read it from the console,
-which does not depend on the network path, and compare it with what the Mac
-already trusts.
+which does not depend on the network path, and compare it with what the admin
+workstation already trusts.
 
 ```bash
 # [RackNerd console] logged in as joe
@@ -149,13 +151,13 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
 ```bash
-# [Mac]
+# [admin workstation]
 ssh-keygen -lF "$VPS_HOST"
 ```
 
 Expected: both print the same `SHA256:...` fingerprint for the ED25519 key.
 Write it down in your password manager as "grampacker VPS host key". If they
-differ, stop: the Mac may be talking to a different machine.
+differ, stop: the workstation may be talking to a different machine.
 
 Rerun: safe.
 
@@ -187,9 +189,16 @@ Done and checked:
 - Teardown: the rehearsal containers, network, database, rollback data and
   throwaway secrets were removed; `docker ps` showed no containers.
 
-Not done: production has not started; production secrets and `deploy.env`
-are not written; DNS and Cloudflare are unchanged; the GitHub deployment
-(section 8) is not set up.
+- 1.2: the VPS's ED25519 host key fingerprint is
+  `SHA256:6R0gvuvxXgw7m7zjTJrouxWooIcVlnLI6IAxtUQth48` (also in section 13).
+- Section 8 (2026-10-15/16): the `deploy` account, sudo rule and key are set
+  up, and the GitHub-to-VPS test (8.6) passed. The run published
+  `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52`,
+  and the deploy stopped at the missing `deploy.env` as intended.
+
+Not done: production has not started; there is still no `deploy.env`, no
+production container and no production database, and the production
+secrets are not written; DNS and Cloudflare are unchanged.
 
 ## 2. Access and credentials
 
@@ -360,7 +369,7 @@ Expected: `bindtest ok`, then the proof, three times:
 Defense in depth, not proof:
 
 ```bash
-# [Mac]
+# [admin workstation]
 nc -vz -w 5 "$VPS_HOST" 8099; echo "exit=$?"
 ```
 
@@ -457,7 +466,7 @@ written back into this runbook in the same PR.
 | Dockerfile | Multi-stage, glibc Node base, non-root numeric UID, `EXPOSE 3000`, no secrets, no database, no `.dev.vars` copy. |
 | Image health check | Passes only on HTTP 200 **and** a JSON body whose `ok` is exactly `true`, within a timeout (3 seconds is a reasonable start). Any other status, a non-JSON body, `{"ok":false}`, or a timeout is unhealthy. |
 | Migrate command | Runs inside the image, applies pending Drizzle migrations to `/data/grampacker.db`, prints what it applied, exits non-zero on any failure. Safe to rerun: applied migrations are skipped. |
-| D1 import command | Runs inside the image with `--network none`. Implements the plan's "Import" steps 1 to 15, writes a new database file (never overwrites an existing one), and prints a report: schema comparison, `integrity_check`, `foreign_key_check`, invariant checks, rows in the export against rows loaded per table (must always match), per-table counts against the D1 counts (must match, except with `--rehearsal`, where a difference is reported for the operator to review but does not fail the run), deleted transient rows, passkey field comparison. Before reporting success it checkpoints, closes every connection, and leaves a self-contained file: no `-wal` or `-shm` file beside it. Exits non-zero if any check fails. |
+| D1 import command | **Built:** `import-d1` in the image (`server/db/import-d1.ts`, sections 10 and 11). Takes the full Wrangler export, the counts from `deploy/d1-row-counts.sql`, and a new output path it never overwrites; checks D1's ledger and schema against `migrations/`, every count against D1, foreign keys, integrity and every kept row; removes sessions, verification rows and rate-limit buckets; leaves one file in rollback journal mode. Its report holds names and counts, never data. Tests: `server/db/import-d1.test.ts`, `scripts/check-image.sh`. |
 | Client address | The application reads the last `X-Forwarded-For` entry, which Caddy writes, and no longer reads `cf-connecting-ip`. |
 | Configuration | A documented list of environment variables. Known today: `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. The database path and port are expected to have fixed defaults (`/data/grampacker.db`, `3000`). |
 | Deployment files | **Built:** `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/Caddyfile.rehearsal`, `deploy/grampacker-deploy` (section 7). The script runs as root: `deploy <APP_DIGEST>` (accepts only `^sha256:[0-9a-f]{64}$`), `rollback <dir>`, `maintenance on\|off`, `caddy-update`. A rollback point is `rollback/<UTC time>/` with the stopped `data/` directory and `previous-image`. |
@@ -467,70 +476,27 @@ written back into this runbook in the same PR.
 | Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, one input, `deploy` (default false; section 8); every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Deploys only when `deploy` is set. |
 | Deploy job | **Built:** job "Deploy to the VPS" in `image.yml`, run only when a dispatch sets `deploy`. Takes the digest its own publish job pushed, in the `production` environment, and runs SSH with a pinned host key, sending only that digest (section 8). |
 
-Section 7 needs only what is built. Sections 10 and 11 also need the D1
-import command, which is not built.
+Sections 7 to 11 need only the items marked **Built**.
 
 ## 5. GitHub settings for the deploy job (GitHub web)
 
-The repository becomes public and the account moves to GitHub Free. The
-deploy key is a secret of the `production` environment, whose branch rule
-allows `main` alone, so GitHub itself refuses the key to a run from any
-other branch, even one that edits the workflow. GitHub Free offers
-environments on public repositories, not on private ones.
+The repository is public. The deploy key is a secret of the `production`
+environment, whose branch rule allows `main` alone, so GitHub itself refuses
+the key to a run from any other branch, even one that edits the workflow.
+GitHub Free offers environments on public repositories, so the environment
+and its `main` rule do not depend on GitHub Pro.
 
-**Order: 5.1, then 5.2, then make the repository public (5.3), and only
-then cancel Pro.** Cancelling Pro while the repository is still private
-would leave a private repository on Free, where the environment and its
-`main` rule are not available.
+### 5.1 History review before publication (DONE)
 
-### 5.1 Check the complete history before publishing (NOW)
+Before the repository was made public, the owner reviewed its complete Git
+history (every branch, tag and pull request ref, not only the current tree)
+for committed secrets, environment files, database exports and user data.
+The review is complete and recorded in section 13. It was a one-time check;
+no scanning tool is kept in the repository.
 
-Making the repository public publishes every commit on every branch, tag
-and pull request ref, not only the current tree. Check that history, in a
-mirror clone of exactly what GitHub holds:
-
-```bash
-# [Mac]
-git clone --mirror https://github.com/joes703/grampacker.git ~/grampacker-history.git
-cd ~/grampacker-history.git
-git log --all --name-only --format= | sort -u | grep -E '(^|/)(\.env|\.dev\.vars)|\.(sqlite3?|db|sql|csv|dump|bak|pem|key|p12|zip|tar|gz|tgz)$|(^|/)(\.data|backups?)/' | grep -v '^migrations/[^/]*\.sql$'
-git log --all --name-only --format= | sort -u | grep -E '\.json$' | grep -vE '^(migrations/meta/|package(-lock)?\.json$|tsconfig[^/]*\.json$|skills-lock\.json$)'
-git log --all -p --format= | grep -ohE 'PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abp]-|sk_live_|re_[A-Za-z0-9]{20,}|(SECRET|TOKEN|PASSWORD|API_KEY)[A-Z_]*["'"'"']? *[:=] *["'"'"'][^"'"'"'<$]{8,}|^[-+ ]?[A-Z_]*(SECRET|TOKEN|PASSWORD|API_KEY)[A-Z_]* *= *[^ <$"'"'"'{]{8,}' | sort | uniq -c
-```
-
-The first command lists every committed environment file, database file,
-archive or key file, except the migrations. The second lists every
-committed JSON file except known configuration: the app's own exports
-(`food.json`, `packing.json`) are JSON. The third prints, once each, every
-key or token shape and every quoted or `.env`-style assignment to a
-`SECRET`, `TOKEN`, `PASSWORD` or `API_KEY` name in any change ever
-committed. A `<placeholder>` value is not printed.
-
-Expected (checked on a local clone on 2026-10-15; recheck on the mirror,
-which also holds pull request refs):
-
-- The first prints only `.dev.vars.example`.
-- The second prints only `.claude/settings.json` and three files under
-  `.planning/intel/classifications/`.
-- The third prints only test and development values: the
-  `BETTER_AUTH_SECRET=dev-only-secret-not-used-in-production` example;
-  test passwords starting `a-long-test-password-` and
-  `another-long-password-`; a passkey `PASSWORD_AAGUID` constant; the
-  test secrets `test-only-secret-at-least-32-chars-long!` and
-  `schema-generation-only`; and a shell fragment `SECRET: ' AUTH_SECRET;
-  echo`. Read any JSON file or value not on these lists before going on.
-
-Also read, in the GitHub web interface, anything else that becomes
-public: issues, pull request descriptions and comments, and Actions run
-logs and artifacts. None may contain user data, a database export or a
-secret.
-
-If anything else appears: stop. Do not publish. A secret that was ever
-committed is rotated, not only removed: rewriting history is a separate
-decision (AGENTS.md forbids it without discussion), and a rotated secret
-is harmless even if an old copy survives.
-
-When done: `rm -rf ~/grampacker-history.git`. Rerun: safe.
+If a credential is ever found in the history later, rotate it at its
+provider at once, and never paste it into a chat, an issue or a pull
+request. Rewriting published history does not remove copies already made.
 
 ### 5.2 Create the `production` environment (CONFIRM)
 
@@ -549,24 +515,19 @@ Undo: delete the environment (its secrets go with it).
 
 Rerun: safe; editing an existing environment has the same result.
 
-### 5.3 Make the repository public, then cancel Pro (CONFIRM)
+### 5.3 Public repository (DONE); cancelling Pro (CONFIRM)
 
-Only after 5.1 found nothing:
+The repository is public. Before and after moving the account to GitHub
+Free (your account Settings, Billing and licensing, Plans), check:
 
-1. `[GitHub web]` Repository Settings, General, Danger Zone, Change
-   visibility: **Public**.
-2. `[GHCR]` Your profile, Packages, `grampacker`: it still shows
+1. `[GHCR]` Your profile, Packages, `grampacker`: it still shows
    **Private** (6.1, "Package visibility and access"). If it shows Public,
    stop.
-3. Repository Settings, Environments, `production`: still "1 branch rule:
-   main".
-4. Only now: your account Settings, Billing and licensing, Plans: move to
-   GitHub Free.
-5. After the plan change: `production` still shows its `main` rule and, once
-   section 8 is done, its secret.
+2. `[GitHub web]` Repository Settings, Environments, `production`: still
+   "1 branch rule: main" and, once section 8 is done, its `DEPLOY_SSH_KEY`
+   secret is listed.
 
-Making it private again does not undo this: forks and clones made while it
-was public remain.
+Cancelling Pro is independent of section 8: do it before or after.
 
 ## 6. GHCR access
 
@@ -621,7 +582,7 @@ deployed. Cloudflare's own list of Worker deployments is the proof; the
 GitHub checks support it.
 
 ```bash
-# [Mac] in a checkout of main, where `wrangler login` already exists
+# [walnut] in a checkout of main
 gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
 gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
 date -u +%Y-%m-%dT%H:%M:%SZ
@@ -639,12 +600,12 @@ version id and time of the last (newest) Cloudflare deployment. `wrangler
 deployments list` only reads; it changes nothing. Steps 3 and 4 expect all of
 these unchanged.
 
-1. **Push the migration branch.** From the Mac, because the branch changes
+1. **Push the migration branch.** From an admin workstation, because the branch changes
    workflow files and the agent tokens cannot push those
    (`docs/testing-and-ci.md` section 12):
 
    ```bash
-   # [Mac]
+   # [admin workstation]
    git push -u origin feat/node-sqlite-foundation
    ```
 
@@ -662,7 +623,7 @@ these unchanged.
    for the merge to finish; the Deploy run starts when it does.
 
    ```bash
-   # [Mac]
+   # [walnut]
    git ls-remote https://github.com/$GH_REPO refs/heads/main
    gh run list --repo "$GH_REPO" --workflow ci.yml --branch main --event push --limit 1 \
      --json databaseId,headSha,status,conclusion
@@ -714,7 +675,7 @@ these unchanged.
    weeks before the cutover:
 
    ```bash
-   # [Mac]
+   # [admin workstation]
    gh workflow disable deploy.yml --repo "$GH_REPO"
    gh workflow disable deploy-liveness.yml --repo "$GH_REPO"
    gh workflow list --all --repo "$GH_REPO"
@@ -745,7 +706,7 @@ Record each merge SHA and the Deploy run URL in section 13.
 Nothing on the VPS is needed: this run only publishes.
 
 ```bash
-# [Mac] [walnut]
+# [admin workstation]
 git ls-remote https://github.com/$GH_REPO refs/heads/main
 gh workflow run image.yml --repo "$GH_REPO" --ref main
 gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 \
@@ -757,7 +718,7 @@ seconds before `gh run list`; the run takes a moment to appear. Its
 `headSha` must equal `<APP_SHA>`, and its `databaseId` is `<RUN_ID>`.
 
 ```bash
-# [Mac] [walnut]
+# [admin workstation]
 gh run watch <RUN_ID> --repo "$GH_REPO" --exit-status
 gh run view <RUN_ID> --repo "$GH_REPO" --log | grep -E 'published |digest +sha256:|image +ghcr'
 ```
@@ -928,7 +889,7 @@ Expected: `10001:10001 700 data`, `0:0 755 maintenance`, `0:0 700` for
 ### 7.2 Install the files from a merged `main` commit
 
 ```bash
-# [Mac] in a clean checkout of main
+# [admin workstation] in a clean checkout of main
 git -C ~/code/grampacker fetch origin
 git -C ~/code/grampacker switch --detach origin/main
 git -C ~/code/grampacker status --short
@@ -1112,9 +1073,10 @@ image published earlier.
 
 ### 8.1 Before you start
 
-- Section 5 is done: the history is checked, `production` exists with its
-  `main` rule, and the repository is public. If the environment did not
-  exist, the first deploy run would create it without the `main` rule.
+- 5.1 and 5.2 are done and the repository is public: `production` exists
+  with its `main` rule. If the environment did not exist, the first deploy
+  run would create it without the `main` rule. Cancelling Pro (5.3) is not
+  required first.
 - The host key fingerprint from 1.2 is recorded in section 13.
 - 7.2 has installed `/usr/local/sbin/grampacker-deploy-ssh` from the same
   `main` commit as `grampacker-deploy`.
@@ -1125,6 +1087,7 @@ image published earlier.
 ```bash
 # [VPS root]
 adduser --disabled-password --comment 'GitHub Actions deploy' --shell /bin/bash deploy
+usermod -G '' deploy
 tee /etc/sudoers.d/50-grampacker-deploy >/dev/null <<'RULE'
 # GitHub deploy (runbook section 8): only the forced command, which accepts one image digest.
 deploy ALL=(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh
@@ -1140,7 +1103,9 @@ ls -l /usr/local/sbin/grampacker-deploy-ssh
 Expected:
 
 - `visudo -c` reports `parsed OK` for every file.
-- `id` shows only the `deploy` group: no `sudo`, `docker` or `adm`.
+- `id` shows `groups=` with only `deploy`. Ubuntu 26.04.1's `adduser` also
+  puts a new account in `users`; `usermod -G ''` removes every
+  supplementary group, so no `users`, `sudo`, `docker` or `adm`.
 - `passwd -S` shows `deploy L` (no password; keys only).
 - `sudo -l -U deploy` lists exactly one command:
   `(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh`.
@@ -1154,11 +1119,12 @@ Rerun: `adduser` refuses an existing account; the rest is safe.
 ### 8.3 Create the key and install it
 
 The key has no passphrase: a GitHub job cannot type one, and GitHub stores
-the secret encrypted. The private key leaves the Mac only for GitHub (8.5),
-and is then deleted.
+the secret encrypted. The private key leaves the admin workstation only for
+GitHub (8.5), and is then deleted. Run 8.3 to 8.5 on the same workstation:
+the key file exists only there.
 
 ```bash
-# [Mac]
+# [admin workstation]
 ( umask 077; ssh-keygen -t ed25519 -N '' -C "grampacker-github-deploy-$(date -u +%F)" -f ~/grampacker-deploy-key )
 ssh-keygen -lf ~/grampacker-deploy-key.pub
 scp ~/grampacker-deploy-key.pub joe@"$VPS_HOST":/tmp/grampacker-deploy-key.pub
@@ -1184,22 +1150,31 @@ files. Rerun: safe; the file is replaced.
 ### 8.4 Verify the limits
 
 ```bash
-# [Mac]
+# [admin workstation]
 K=(-i ~/grampacker-deploy-key -o IdentitiesOnly=yes -o BatchMode=yes)
-ssh "${K[@]}" deploy@"$VPS_HOST"; echo "exit=$?"
-ssh "${K[@]}" deploy@"$VPS_HOST" 'maintenance off'; echo "exit=$?"
-ssh "${K[@]}" deploy@"$VPS_HOST" 'deploy ghcr.io/joes703/grampacker:latest'; echo "exit=$?"
-ssh "${K[@]}" -tt deploy@"$VPS_HOST" 'id'; echo "exit=$?"
-ssh "${K[@]}" -o ExitOnForwardFailure=yes -R 127.0.0.1:18099:127.0.0.1:22 deploy@"$VPS_HOST" 'id'; echo "exit=$?"
-scp "${K[@]}" ~/grampacker-deploy-key.pub deploy@"$VPS_HOST":/tmp/deploy-wrote-this; echo "exit=$?"
+ssh "${K[@]}" deploy@"$VPS_HOST"; echo "exit=$?"; sleep 10
+ssh "${K[@]}" deploy@"$VPS_HOST" 'maintenance off'; echo "exit=$?"; sleep 10
+ssh "${K[@]}" deploy@"$VPS_HOST" 'deploy ghcr.io/joes703/grampacker:latest'; echo "exit=$?"; sleep 10
+ssh "${K[@]}" -tt deploy@"$VPS_HOST" 'id'; echo "exit=$?"; sleep 10
+ssh "${K[@]}" -o ExitOnForwardFailure=yes -R 127.0.0.1:18099:127.0.0.1:22 deploy@"$VPS_HOST" 'id'; echo "exit=$?"; sleep 10
+scp "${K[@]}" ~/grampacker-deploy-key.pub deploy@"$VPS_HOST":/tmp/deploy-wrote-this; echo "exit=$?"; sleep 10
 ssh "${K[@]}" deploy@"$VPS_HOST" "deploy sha256:$(printf '0%.0s' {1..64})"; echo "exit=$?"
 ```
 
+The `sleep 10` keeps these seven connections under UFW's SSH rate limit
+(`ufw limit`: more than 6 new connections from one address in 30 seconds
+are dropped). Without it, the later tests time out at the firewall and
+never reach sshd, so they prove nothing. A `Connection timed out` or
+`Connection refused` here means the limit was hit: wait a minute and run
+the remaining lines again.
+
 Expected:
 
-- The first four print `ERROR: refused. The only accepted command is:
-  deploy sha256:<64 lowercase hex>` and `exit=2`; `-tt` also prints `PTY
-  allocation request failed`.
+- The first three print `ERROR: refused. The only accepted command is:
+  deploy sha256:<64 lowercase hex>` and `exit=2`.
+- `-tt`: `PTY allocation request failed on channel 0` and `exit=255`.
+  sshd refuses the PTY (`restrict`), and the client gives up before the
+  wrapper runs, so no `ERROR: refused` line appears.
 - `-R`: `remote port forwarding failed`, `exit=255`.
 - `scp` fails, and `/tmp/deploy-wrote-this` does not exist on the VPS.
 - The all-zero digest passes the wrapper and sudo, and `grampacker-deploy`
@@ -1214,11 +1189,11 @@ Any other result: stop, and remove the access (8.7). Rerun: safe.
 
 ### 8.5 Store the key and pin the host key in GitHub
 
-Read the host key over the `joe` connection, which the Mac already checks
+Read the host key over the `joe` connection, which the workstation already checks
 against the key it trusts (1.2):
 
 ```bash
-# [Mac]
+# [admin workstation]
 HOSTKEY="$(ssh joe@"$VPS_HOST" cat /etc/ssh/ssh_host_ed25519_key.pub | cut -d' ' -f1,2)"
 printf '%s %s\n' "$VPS_HOST" "$HOSTKEY" | ssh-keygen -lf -
 ```
@@ -1226,7 +1201,7 @@ printf '%s %s\n' "$VPS_HOST" "$HOSTKEY" | ssh-keygen -lf -
 Expected: the fingerprint recorded in 1.2. If it differs, stop.
 
 ```bash
-# [Mac]
+# [admin workstation]
 gh secret set DEPLOY_SSH_KEY --repo "$GH_REPO" --env production <~/grampacker-deploy-key
 gh variable set DEPLOY_HOST --repo "$GH_REPO" --env production --body "$VPS_HOST"
 gh variable set DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production --body "$VPS_HOST $HOSTKEY"
@@ -1236,10 +1211,10 @@ gh variable list --repo "$GH_REPO" --env production
 
 Expected: `DEPLOY_SSH_KEY` listed as a secret; `DEPLOY_HOST` and
 `DEPLOY_KNOWN_HOSTS` with the values above. Then delete the key from the
-Mac:
+workstation:
 
 ```bash
-# [Mac]
+# [admin workstation]
 rm -f ~/grampacker-deploy-key ~/grampacker-deploy-key.pub
 ```
 
@@ -1273,7 +1248,7 @@ Expected: `compose.yaml installed`, `no deploy.env`, no container lines, and
 test; after cutover, 9.1 is the test.
 
 ```bash
-# [Mac]
+# [admin workstation]
 gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
 gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 --json databaseId,headSha,url
 gh run watch <RUN_ID> --repo "$GH_REPO"
@@ -1316,7 +1291,7 @@ then 8.5's `gh secret set` and `rm`.
 **Remove completely.** GitHub first:
 
 ```bash
-# [Mac]
+# [admin workstation]
 gh secret delete DEPLOY_SSH_KEY --repo "$GH_REPO" --env production
 gh variable delete DEPLOY_HOST --repo "$GH_REPO" --env production
 gh variable delete DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production
@@ -1338,7 +1313,7 @@ without the account and the rule; the logs in `/var/log/grampacker-deploy`
 stay as a record.
 
 ```bash
-# [Mac]
+# [admin workstation]
 ssh -o BatchMode=yes deploy@"$VPS_HOST" true; echo "exit=$?"
 ```
 
@@ -1354,7 +1329,7 @@ works; a dispatch with `deploy` ticked now fails in the deploy job with
 it in one run.
 
 ```bash
-# [Mac]
+# [admin workstation]
 gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
 ```
 
@@ -1371,7 +1346,7 @@ will not publish again). The digest is one the Image workflow printed for a
 run on `main` (6.1).
 
 ```bash
-# [Mac]
+# [admin workstation]
 ssh -t joe@"$VPS_HOST" 'sudo /usr/local/sbin/grampacker-deploy deploy <APP_DIGEST>'
 ```
 
@@ -1396,7 +1371,7 @@ which refuses anything but a bare `sha256:` digest. In order, it:
 Verify:
 
 ```bash
-# [Mac]
+# [admin workstation]
 curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
 ```
 
@@ -1545,7 +1520,7 @@ After every deploy, check what is running (9.1).
    ```
 
    ```bash
-   # [Mac] in the repository
+   # [admin workstation] in the repository
    git fetch origin
    git log --oneline <REVISION>..origin/main -- Dockerfile package.json package-lock.json
    ```
@@ -1555,7 +1530,7 @@ After every deploy, check what is running (9.1).
 2. **Did the base-image updates arrive?**
 
    ```bash
-   # [Mac]
+   # [admin workstation]
    git show origin/main:Dockerfile | grep '^FROM node:'
    docker buildx imagetools inspect node:24-trixie-slim \
      --format '{{json .Manifest.Digest}} {{range (index .Image "linux/amd64").Config.Env}}{{.}} {{end}}'
@@ -1600,114 +1575,239 @@ After every deploy, check what is running (9.1).
 
    Expected: both services running, and `{"ok":true} 200`.
 
-## 10. Staging with a copy of production (CONFIRM, production data)
+## 10. Import rehearsal (CONFIRM: reads production data)
 
-**Not ready.** Staging needs a DNS record and a Caddy site of its own, and
-neither is built: the deployment files in section 7 hold only production and
-the local rehearsal. Staging is designed together with the D1 import
-command, and the commands below are revised then. Do not run them as they
-are.
+One rehearsal of the D1 import, while production stays live on the Worker
+and D1. It reads D1 and changes nothing there, builds the SQLite database in
+the rehearsal directory of 7.4, and looks at it through that directory's
+local-only Caddy. No DNS, no certificate, no public site, no production
+database.
 
-Needed so an existing passkey can be tested on staging before cutover. This
-reads production data and puts a copy on the VPS. The copy is protected like
-production and deleted when staging is retired.
+It proves: the export, transfer and import work on the real data; every
+count, relationship and integrity check passes; and the app serves that
+data. It cannot prove that existing passkeys sign in: a passkey works only
+on `https://grampacker.app`, so 11.8 tests passkeys and magic links first,
+with the Worker ready to take traffic back.
 
-### 10.1 Rehearsal export
+Run it with the image that will become production: published from `main`
+after the import command (`import-d1`) merged. Then do 7.2 again from that
+`main` commit, which puts `compose.yaml` and `Caddyfile.rehearsal` in
+`/tmp` on the VPS.
 
-Same commands as 11.2 and 11.3, but **without** the freeze in 11.1:
-production stays live. Use a separate `<STAMP>` and folder, and mark it
-`rehearsal`.
+**The export and the counts are production data.** They hold every user's
+email address, passkey public keys and all lists:
 
-Because production keeps accepting writes, the D1 row counts taken a moment
-after the export may differ slightly from the export. In a rehearsal, the
-import report's "rows in the export against rows loaded" check must match
-exactly; a difference against the D1 counts is acceptable only if it is small
-and explained by live use. That is what the importer's `--rehearsal` option
-allows (10.2). At cutover (11.4), writes are frozen, `--rehearsal` is not
-used, and every count must match.
+- they live only in a `0700` directory as `0600` files, on walnut and on the
+  VPS, never in a repository checkout, never in GitHub (no issue, no
+  Actions artifact), never in an image (`.gitignore` and `.dockerignore`
+  name `d1-full*.sql` and `d1-counts*.json` as a second guard);
+- never `cat`, `less` or paste them, and never paste the database. The
+  import report holds only table names, counts and checks, and is safe to
+  keep in notes;
+- the rehearsal copies are deleted at the end of this section (10.5); the
+  cutover copies are kept as 11.2 and 12.1 say.
 
-### 10.2 Import into staging
+Do not use grampacker between 10.1's export and its counts. If anything
+writes to D1 in between, the import refuses the counts; export again.
 
-Same command as 11.4, with `--rehearsal` added, and nothing from 11.5 (which
-switches to production configuration). Review any D1-count difference the
-report lists, as described in 10.1. Then set the staging app to use the result:
+### 10.1 Export and count (walnut)
+
+Read-only on D1. Uses walnut's `wrangler login`.
+
+```bash
+# [walnut] in the repository checkout, on main
+umask 077
+STAMP=rehearsal-$(date -u +%Y%m%dT%H%MZ)
+OUT=~/grampacker-d1-export/$STAMP
+mkdir -p "$OUT"
+time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
+npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
+(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS && cat SHA256SUMS)
+ls -la ~/grampacker-d1-export "$OUT"
+echo "$STAMP"
+```
+
+Expected: the export finishes with `Done!`; three files, each
+`-rw-------`, in a `drwx------` directory. Record the export time and
+`<STAMP>` in section 13. Rerun: safe (read-only), with a new `<STAMP>`.
+
+### 10.2 Transfer to the VPS
+
+```bash
+# [VPS joe]
+install -d -m 0700 ~/import-<STAMP>
+```
+
+```bash
+# [walnut] same shell as 10.1
+scp -p "$OUT/d1-full.sql" "$OUT/d1-counts.json" "$OUT/SHA256SUMS" joe@"$VPS_HOST":import-<STAMP>/
+```
 
 ```bash
 # [VPS root]
-cd /srv/grampacker
-docker compose --env-file deploy.env stop app
-DEST=snapshots/staging-empty-<STAMP>
-install -d -o <APP_UID> -g <APP_UID> -m 0700 "$DEST"
-mv data/grampacker.db "$DEST"/ && echo "database moved"
-for x in -wal -shm; do [ ! -e "data/grampacker.db$x" ] || mv "data/grampacker.db$x" "$DEST"/ || echo "FAILED to move grampacker.db$x"; done
-ls -la data/
-ls -la data/grampacker.db.import*
+R=/srv/grampacker-rehearsal
+cd ~joe/import-<STAMP> && sha256sum -c SHA256SUMS
+install -d -m 0755 "$R"
+install -d -m 0700 "$R/import"
+install -m 0600 d1-full.sql d1-counts.json SHA256SUMS "$R/import/"
+chown -R 10001:10001 "$R/import"
+cd / && rm -rf ~joe/import-<STAMP>
+ls -la "$R/import"
 ```
 
-Expected: `database moved`, no `FAILED` line, no `grampacker.db`,
-`grampacker.db-wal` or `grampacker.db-shm` left in `data/`, and exactly one
-file `grampacker.db.import` (no `.import-wal` or `.import-shm`). If anything
-differs, stop. Then promote it:
+Expected: `OK` for both files; in `$R/import`, three `-rw-------` files
+owned by `10001`. The copy in `joe`'s home is gone. (`chown` with the
+number, not `install -o`: the host has no account 10001, only the image
+does, and `install -o 10001` failed in testing with uutils coreutils, which
+recent Ubuntu releases use.)
+
+### 10.3 Import
+
+Set up the rest of the 7.4 directory (its "Set up" block, from the line
+`install -d -m 0755 "$R" "$R/maintenance"` to `export GRAMPACKER_ROOT="$R"`),
+then start its Caddy closed:
+
+```bash
+# [VPS root] same shell (R and GRAMPACKER_ROOT are set)
+grampacker-deploy caddy-update
+ls -A "$R/data"
+```
+
+Expected: `answering 503`; `data` is empty.
+
+```bash
+# [VPS root] same shell
+time docker run --rm --network none --read-only --tmpfs /tmp \
+  -v "$R/import:/import:ro" -v "$R/data:/data" \
+  ghcr.io/joes703/grampacker@<APP_DIGEST> import-d1 \
+  --export /import/d1-full.sql --d1-counts /import/d1-counts.json --out /data/grampacker.db \
+  | tee "$R/import-report.txt"
+echo "exit=${PIPESTATUS[0]}"
+ls -la "$R/data"
+```
+
+Expected: `exit=0` and a report ending `result: OK`, with:
+
+- `d1 ledger: ok` and `schema: identical to migrations/`;
+- for every table, the same number under `export` and `d1`; `imported`
+  equal to them for every `kept` table, and `0` for `session`,
+  `verification` and `rate_limits` (`removed`);
+- `foreign keys: ok`, `integrity: ok`, and `content: every kept table
+  equals the export`;
+- in `data`, exactly one file, `grampacker.db`, owned by `10001`.
+
+If it fails, the report says why and nothing is left in `data`. A
+`schema ... differs` line names the tables, indexes or triggers whose SQL in
+D1 is not the SQL `migrations/` creates: stop and decide before the
+cutover. A `row counts differ from D1` line means something wrote between
+the export and the counts: repeat 10.1 to 10.3. Record the import time.
+
+### 10.4 Look at the imported data
+
+Serve it through the rehearsal stack. With no app running yet, `deploy`
+copies the imported database to a rollback point, applies no migration (the
+import already applied them), and starts the app on it:
+
+```bash
+# [VPS root] same shell
+grampacker-deploy deploy <APP_DIGEST>
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8081/api/health
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/api/categories
+curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:8081/api/shares/v2/<SHARED_SLUG>
+```
+
+`<SHARED_SLUG>` is the last part of one of your existing public share
+links. Expected: `applied 0 migration(s)`, `app is healthy`, `maintenance
+is off`; then `{"ok":true} 200`; `401` (signed out); `200
+application/json`. The share's contents are not printed here; to look at
+them, open the same path through an SSH tunnel
+(`ssh -L 8081:127.0.0.1:8081 joe@"$VPS_HOST"`, then
+`http://127.0.0.1:8081/api/shares/v2/<SHARED_SLUG>` in a browser on
+walnut) and compare with the same share on `https://grampacker.app`.
+
+Then compare a per-account summary of the imported copy with D1. The
+summary holds counts and the first 8 characters of each user id, no names
+or email addresses:
+
+```bash
+# [VPS root] same shell
+sqlite3 -readonly "$R/rollback/$(ls "$R/rollback" | sort | tail -n 1)/data/grampacker.db" \
+  "$(cat <<'SQL'
+SELECT substr(u.id, 1, 8) AS user,
+  (SELECT count(*) FROM lists l WHERE l.user_id = u.id) AS lists,
+  (SELECT count(*) FROM gear_items g WHERE g.user_id = u.id) AS gear,
+  (SELECT count(*) FROM list_items i WHERE i.user_id = u.id) AS list_items,
+  (SELECT count(*) FROM list_food_items f WHERE f.user_id = u.id) AS food,
+  (SELECT count(*) FROM passkey p WHERE p.user_id = u.id) AS passkeys,
+  (SELECT count(*) FROM lists s WHERE s.user_id = u.id AND s.is_shared = 1) AS shared
+FROM "user" u ORDER BY u.id
+SQL
+)"
+```
+
+```bash
+# [walnut] in the repository checkout
+npx wrangler d1 execute grampacker --remote --command "SELECT substr(u.id, 1, 8) AS user, (SELECT count(*) FROM lists l WHERE l.user_id = u.id) AS lists, (SELECT count(*) FROM gear_items g WHERE g.user_id = u.id) AS gear, (SELECT count(*) FROM list_items i WHERE i.user_id = u.id) AS list_items, (SELECT count(*) FROM list_food_items f WHERE f.user_id = u.id) AS food, (SELECT count(*) FROM passkey p WHERE p.user_id = u.id) AS passkeys, (SELECT count(*) FROM lists s WHERE s.user_id = u.id AND s.is_shared = 1) AS shared FROM \"user\" u ORDER BY u.id"
+```
+
+Expected: the same rows, in the same order, from both. It reads the
+rollback copy that `deploy` just made, never the live file.
+
+### 10.5 Record, tear down and delete the copies
+
+Record in section 13: the date, the export, transfer and import times, and
+`result: OK` (keep `$R/import-report.txt` in your notes: it holds no data).
+Then remove the rehearsal, its database and the export, everywhere:
 
 ```bash
 # [VPS root]
-cd /srv/grampacker
-mv data/grampacker.db.import data/grampacker.db
-docker compose --env-file deploy.env up -d app
+cd /srv/grampacker-rehearsal && docker compose --env-file deploy.env down
+unset GRAMPACKER_ROOT
+cd / && rm -rf /srv/grampacker-rehearsal
+ls /srv
 ```
 
-### 10.3 Test an existing passkey and a magic link on staging
+```bash
+# [walnut]
+rm -rf ~/grampacker-d1-export/<STAMP>
+ls -la ~/grampacker-d1-export
+```
 
-In a browser on a device that already has a `grampacker.app` passkey:
+Expected: no `grampacker-rehearsal` in `/srv`; no `<STAMP>` folder on
+walnut. No rehearsal copy is kept anywhere: the cutover makes its own.
 
-1. Open `https://staging.grampacker.app/` and sign in with the passkey.
-   Expected: sign-in succeeds. The browser offers the existing credential
-   because the RP ID is still `grampacker.app`.
-2. Sign out. Request a magic link for the same account. Expected: the email
-   arrives and its link starts with `https://staging.grampacker.app/`; it
-   signs in.
-3. Open two representative lists and one public share link (replace the host
-   with `staging.grampacker.app`). Expected: the same contents as production.
-4. Check the application log for errors from those requests:
-
-   ```bash
-   # [VPS root]
-   docker compose --env-file /srv/grampacker/deploy.env logs --tail 100 app
-   ```
-
-   Expected: no errors from the sign-in requests.
-
-If the passkey fails but the magic link works: stop. Do not continue to
-section 11. Compare the imported passkey row with D1 (the import report's
-passkey section) before anything else.
-
-Record how long 10.1 and 10.2 took. The plan requires **two** rehearsals that
-pass every check before cutover.
+Rerun: the whole section, with a new `<STAMP>`.
 
 ## 11. One-time D1 to SQLite move (FUTURE PRODUCTION - DO NOT RUN NOW)
 
 Every step in this section is a production operation. It runs once, in an
-announced maintenance window, after: section 4 is merged, sections 5 to 9 are
-done, and two rehearsals (section 10) passed. Each CONFIRM step needs its own
-"yes".
+announced maintenance window, after the import rehearsal (section 10)
+passed with the image that will run production. Each CONFIRM step needs
+its own "yes".
 
-Expected downtime: the length of the rehearsal timings, plus DNS cache and
-certificate time (minutes, not seconds).
+The plan in one line: freeze D1 writes, export and count, import into a new
+SQLite database on the VPS, start the app, point DNS at the VPS, test on
+`https://grampacker.app`. **If the checks in 11.8 fail, traffic goes back to
+the Worker and D1, which nothing here changed (11.9).** D1 and the Worker
+are retired only after the observation period (12.3).
+
+Expected downtime: the rehearsal's export, transfer and import times, plus
+DNS cache and certificate time (minutes, not seconds).
 
 ### 11.0 Before the window
 
-1. `[Mac]` Re-read `wrangler.jsonc` and record the Worker's current routes and
+1. `[walnut]` Re-read `wrangler.jsonc` and record the Worker's current routes and
    custom domains, and whether `workers.dev` and preview URLs are on
    (`[Cloudflare]` Workers & Pages, `grampacker`, Settings, Domains & Routes).
 2. `[Cloudflare]` Record every DNS record for `grampacker.app`, including
    `www` and any AAAA record. Screenshot or export the zone.
-3. `[Mac]` `dig +short A grampacker.app; dig +short AAAA grampacker.app` and
+3. `[admin workstation]` `dig +short A grampacker.app; dig +short AAAA grampacker.app` and
    record the output.
 4. Confirm Worker deployment is still off. The merge order in 6.1 stopped it
    before the Node/SQLite code reached `main`. Read-only:
 
    ```bash
-   # [Mac]
+   # [walnut]
    gh workflow list --all --repo "$GH_REPO"
    gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=in_progress" --jq .total_count
    gh api "repos/$GH_REPO/actions/workflows/deploy.yml/runs?status=queued" --jq .total_count
@@ -1721,13 +1821,19 @@ certificate time (minutes, not seconds).
    and `deploy-liveness.yml` show `disabled_manually`. If anything else
    shows, stop and find out why before the window.
 
-5. Have the empty-database rehearsal (7.4) passed with the image that will
-   become production, and two import rehearsals (section 10) passed.
+5. The empty-database rehearsal (7.4) and the import rehearsal (section 10)
+   passed with the image that will become production (`<APP_DIGEST>`).
 6. Confirm backups. They are set up outside this runbook, but the cutover
    depends on them: the existing setup must copy a backup-API snapshot of
    `/srv/grampacker/data` (never the live database and WAL files) to B2, and
    one such snapshot must have been restored from B2 and passed
    `integrity_check`. If not, do not start the cutover.
+7. Have the existing production `BETTER_AUTH_SECRET` and the Resend API key
+   ready in your password manager (11.4). If there is no copy of the secret,
+   stop: the move would then force a rotation, which needs its own decision.
+8. Have an encrypted place for the cutover export archive ready (11.2): the
+   same protected backup storage that holds other production secrets, not a
+   plain folder or a cloud drive.
 
 ### 11.1 Freeze writes to D1 (CONFIRM: Worker route)
 
@@ -1742,7 +1848,7 @@ certificate time (minutes, not seconds).
 Verify:
 
 ```bash
-# [Mac]
+# [admin workstation]
 dig +short A grampacker.app
 dig +short AAAA grampacker.app
 curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://grampacker.app/api/health
@@ -1752,101 +1858,76 @@ curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://grampacker.<WORKERS_SUBD
 Expected: no A or AAAA answer (or only caches expiring within minutes); the
 two `curl` commands fail or return a Cloudflare error, never `200`. Wait for
 any cached answer to expire before 11.2. From this moment users see an
-outage.
+outage. D1 itself is unchanged.
 
 Undo: re-add the custom domain and re-enable `workers.dev` (11.9).
 
-### 11.2 Export from D1 (Mac)
+### 11.2 Final export and counts (walnut)
 
-Read-only on D1. Uses the Mac's `wrangler login`.
+Read-only on D1. The same commands as 10.1, plus the Time Travel bookmark,
+which `docs/d1-restore.md` needs if D1 itself ever has to be restored:
 
 ```bash
-# [Mac] in the repository checkout
-STAMP=$(date -u +%Y%m%dT%H%MZ)
+# [walnut] in the repository checkout, on main
+umask 077
+STAMP=cutover-$(date -u +%Y%m%dT%H%MZ)
 OUT=~/grampacker-d1-export/$STAMP
-mkdir -p "$OUT" && chmod 700 "$OUT"
-npx wrangler d1 time-travel info grampacker | tee "$OUT/time-travel-bookmark.txt"
-npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
-npx wrangler d1 export grampacker --remote --no-schema --output "$OUT/d1-data.sql"
-npx wrangler d1 execute grampacker --remote --json --command "SELECT id, name, applied_at FROM d1_migrations ORDER BY id" > "$OUT/d1-ledger.json"
-npx wrangler d1 execute grampacker --remote --json --command "SELECT type, name, tbl_name, sql FROM sqlite_schema ORDER BY type, name" > "$OUT/d1-schema.json"
-npx wrangler d1 execute grampacker --remote --json --command "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name" > "$OUT/d1-tables.json"
-jq -r '[.[0].results[].name | "SELECT '\''\(.)'\'' AS t, COUNT(*) AS n FROM \"\(.)\""] | join(" UNION ALL ")' "$OUT/d1-tables.json" > "$OUT/d1-rowcount-query.sql"
-npx wrangler d1 execute grampacker --remote --json --command "$(cat "$OUT/d1-rowcount-query.sql")" > "$OUT/d1-rowcounts.json"
-grep -nE '^(BEGIN|COMMIT|PRAGMA)' "$OUT/d1-data.sql" | head
-(cd "$OUT" && shasum -a 256 * > SHA256SUMS && cat SHA256SUMS)
-echo "$OUT"
+mkdir -p "$OUT"
+npx wrangler d1 time-travel info grampacker > "$OUT/time-travel-bookmark.txt"
+time npx wrangler d1 export grampacker --remote --output "$OUT/d1-full.sql"
+npx wrangler d1 execute grampacker --remote --json --command "$(cat deploy/d1-row-counts.sql)" > "$OUT/d1-counts.json"
+(cd "$OUT" && sha256sum d1-full.sql d1-counts.json > SHA256SUMS && cat SHA256SUMS)
+cat "$OUT/time-travel-bookmark.txt"
+ls -la ~/grampacker-d1-export "$OUT"
+echo "$STAMP"
 ```
 
-Expected: the bookmark file holds a bookmark; both `.sql` files are non-empty;
-`d1-ledger.json` lists every migration in `migrations/`; the row-count file has
-one entry per table. The `grep` line shows whether the export has its own
-`BEGIN`/`COMMIT` (the import command must handle what it shows, as rehearsed).
+Expected: a bookmark; `Done!`; four `-rw-------` files in a `drwx------`
+directory.
 
-Rerun: safe (read-only), but use a new `<STAMP>` so files are never mixed.
+Now copy the whole `$OUT` folder into the encrypted backup storage from
+11.0. That copy is the untouched record of what moved, kept as 12.1 says.
+Never edit `d1-full.sql`.
 
-Archive: copy the whole `$OUT` folder to your encrypted backup location off
-the VPS now. `d1-full.sql` is the untouched archive and is never edited.
+Rerun: safe (read-only), with a new `<STAMP>`. Writes are frozen, so
+there is no reason for counts to differ; if the import says they do, find
+out what is still writing before going on.
 
 ### 11.3 Transfer to the VPS
 
 ```bash
 # [VPS joe]
-sudo install -d -o joe -g joe -m 0700 /srv/grampacker/import
-install -d -m 0700 /srv/grampacker/import/<STAMP>
+install -d -m 0700 ~/import-<STAMP>
 ```
 
 ```bash
-# [Mac]
-scp -p "$OUT"/* joe@"$VPS_HOST":/srv/grampacker/import/"$STAMP"/
+# [walnut] same shell as 11.2
+scp -p "$OUT/d1-full.sql" "$OUT/d1-counts.json" "$OUT/SHA256SUMS" joe@"$VPS_HOST":import-<STAMP>/
 ```
-
-```bash
-# [VPS joe]
-cd /srv/grampacker/import/<STAMP> && sha256sum -c SHA256SUMS
-sudo chown -R <APP_UID>:<APP_UID> /srv/grampacker/import/<STAMP>
-```
-
-Expected: every line `OK`. Rerun: safe.
-
-### 11.4 Import into a new SQLite file
-
-The production `app` must not be running while production is prepared.
 
 ```bash
 # [VPS root]
-cd /srv/grampacker
-docker compose --env-file deploy.env stop app
-docker run --rm --network none --user <APP_UID>:<APP_UID> \
-  -v /srv/grampacker/import/<STAMP>:/import:ro \
-  -v /srv/grampacker/data:/data \
-  ghcr.io/joes703/grampacker@<APP_DIGEST> <IMPORT_COMMAND> \
-  --export /import/d1-data.sql \
-  --d1-schema /import/d1-schema.json \
-  --d1-rowcounts /import/d1-rowcounts.json \
-  --out /data/grampacker.db.import \
-  | tee /srv/grampacker/import/<STAMP>-import-report.txt
-echo "exit=${PIPESTATUS[0]}"
+cd ~joe/import-<STAMP> && sha256sum -c SHA256SUMS
+install -d -m 0700 /srv/grampacker/import
+install -d -m 0700 /srv/grampacker/import/<STAMP>
+install -m 0600 d1-full.sql d1-counts.json SHA256SUMS /srv/grampacker/import/<STAMP>/
+chown -R 10001:10001 /srv/grampacker/import/<STAMP>
+cd / && rm -rf ~joe/import-<STAMP>
+ls -la /srv/grampacker/import/<STAMP>
 ```
 
-`<IMPORT_COMMAND>` and its option names are set by the implementation
-(section 4). Expected: `exit=0`, and the report shows: schema match,
-`integrity_check` `ok`, `foreign_key_check` empty, every invariant check
-passed, every table's row count equal to D1's (after the deletion of
-sessions, verification rows and rate-limit rows, which are listed
-separately), and the passkey comparison identical.
+Expected: `OK` for both files; three `-rw-------` files owned by `10001`.
+Rerun: safe.
 
-If `exit` is not 0: stop. D1 is unchanged and still authoritative. Go to 11.9.
+### 11.4 Write the production configuration
 
-Rerun: safe. It refuses to overwrite an existing `grampacker.db.import`;
-delete that file first to start again.
+`deploy.env` (no secrets): do 7.3 now, with `<APP_DIGEST>` the image the
+rehearsal used.
 
-### 11.5 Switch the VPS to production configuration
-
-Production keeps the **existing** `BETTER_AUTH_SECRET`; rotating it is a
-separate, later operation. Cloudflare cannot show a Worker secret after it is
-set, so type it from your password manager. If you have no copy, stop: the
-move would then force a rotation, which needs its own decision.
+The app's secrets. Production keeps the **existing**
+`BETTER_AUTH_SECRET`; rotating it is a separate, later operation.
+Cloudflare cannot show a Worker secret after it is set, so type it from
+your password manager:
 
 ```bash
 # [VPS joe]
@@ -1866,21 +1947,59 @@ grep -c '=' /srv/grampacker/secrets/app.env
 
 Expected: `joe:joe 600` and `4`. Do not `cat` the file.
 
+### 11.5 Import into the production data directory
+
+The import writes `/srv/grampacker/data/grampacker.db` itself and refuses
+if any database file is already there. Check that the directory is empty,
+and that no app container exists:
+
 ```bash
 # [VPS root]
 cd /srv/grampacker
-ls -la data/
+docker compose --env-file deploy.env ps -a
+ls -A data
 ```
 
-Expected: only `grampacker.db.import` (no `.import-wal` or `.import-shm`,
-and no `grampacker.db`, `-wal` or `-shm`). If anything else is there, stop.
-Then promote the import and keep a copy of it, made while nothing runs:
+Expected: no container, and nothing in `data`. If a file is there (for
+example from an earlier attempt), do not delete it: move it aside, then
+check again.
+
+```bash
+# [VPS root] only if `ls -A data` listed something
+cd /srv/grampacker
+ASIDE=rollback/moved-aside-$(date -u +%Y%m%dT%H%M%SZ)
+install -d -m 0700 "$ASIDE"
+find data -mindepth 1 -maxdepth 1 -exec mv -t "$ASIDE" {} +
+ls -A data
+ls -la "$ASIDE"
+```
+
+Then import:
 
 ```bash
 # [VPS root]
 cd /srv/grampacker
-mv data/grampacker.db.import data/grampacker.db
-mkdir rollback/cutover-imported-<STAMP>
+time docker run --rm --network none --read-only --tmpfs /tmp \
+  -v /srv/grampacker/import/<STAMP>:/import:ro -v /srv/grampacker/data:/data \
+  ghcr.io/joes703/grampacker@<APP_DIGEST> import-d1 \
+  --export /import/d1-full.sql --d1-counts /import/d1-counts.json --out /data/grampacker.db \
+  | tee /srv/grampacker/import/<STAMP>-import-report.txt
+echo "exit=${PIPESTATUS[0]}"
+ls -la data
+```
+
+Expected: exactly what 10.3 expects. There is no rehearsal allowance: every
+count must match, and `result: OK` must be the last line.
+
+If `exit` is not 0: stop. Nothing was written to `data`, D1 is unchanged
+and still authoritative. Go to 11.9.
+
+Keep a copy of the imported database, made while nothing runs:
+
+```bash
+# [VPS root]
+cd /srv/grampacker
+install -d -m 0700 rollback/cutover-imported-<STAMP>
 cp -a data rollback/cutover-imported-<STAMP>/data
 ls -la rollback/cutover-imported-<STAMP>/data
 ```
@@ -1917,7 +2036,7 @@ Expected: `app (healthy)`; `200` and `{"ok":true}`; `200 text/html...`;
 - **No AAAA record.** Confirm none remains from the Worker.
 
 ```bash
-# [Mac]
+# [admin workstation]
 dig +short A grampacker.app @1.1.1.1
 dig +short AAAA grampacker.app @1.1.1.1
 ```
@@ -1957,7 +2076,7 @@ acceptable: there are only three test accounts, and the checks below are
 their writes. If 11.9 rollback happens, those test writes are discarded.
 
 ```bash
-# [Mac]
+# [admin workstation]
 curl -sS -w '\n%{http_code}\n' https://grampacker.app/api/health
 curl -sS -o /dev/null -w '%{http_code} %{http_version}\n' https://grampacker.app/
 curl -sS -o /dev/null -w '%{http_code}\n' http://grampacker.app/
@@ -1987,44 +2106,82 @@ stale** and returning to it loses writes.
 
 ### 11.9 Rollback
 
-**Before 11.8 finishes** (no real writes yet), rollback is safe:
+Use this when the import fails (11.5) or any check in 11.6 to 11.8 fails:
+an existing passkey, a magic link, the lists, or a public share. **Before
+11.8 finishes** (no real writes on SQLite yet), it is safe: D1 and the
+Worker were never changed, only taken off the domain.
 
-1. `[Cloudflare]` Delete the VPS A record (CONFIRM).
+1. `[Cloudflare]` Delete the VPS A record, if 11.7 created it (CONFIRM).
 2. `[Cloudflare]` Re-add the Worker custom domain `grampacker.app`, and
    restore `workers.dev` and preview URLs to the state recorded in 11.0
-   (CONFIRM).
-3. `[Mac]` `curl -sS https://grampacker.app/api/health` returns
-   `{"ok":true}` from the Worker.
-4. `[VPS root]` `docker compose --env-file /srv/grampacker/deploy.env stop app`.
-   Keep the failed import and its report for diagnosis.
-5. D1 is authoritative and was never written. Rollback is the Worker that
-   is already running; it keeps serving its last version. Do **not** turn
-   `deploy.yml` back on, and never re-run an earlier Deploy run: `main`
-   contains Node/SQLite code, and either can deploy code the Worker cannot
-   run (6.1, "Merge order").
+   (CONFIRM). This reopens writes to D1.
+3. `[admin workstation]` `curl -sS https://grampacker.app/api/health`
+   returns `{"ok":true}` from the Worker. Sign in once to confirm.
+4. Stop the VPS and keep its data for diagnosis, out of `data/`, so the
+   next attempt starts from an empty directory:
+
+   ```bash
+   # [VPS root]
+   cd /srv/grampacker
+   docker compose --env-file deploy.env stop caddy app
+   FAILED=rollback/failed-cutover-<STAMP>
+   install -d -m 0700 "$FAILED"
+   find data -mindepth 1 -maxdepth 1 -exec mv -t "$FAILED" {} +
+   cp -a /srv/grampacker/import/<STAMP>-import-report.txt "$FAILED"/ 2>/dev/null || true
+   ls -A data
+   ls -la "$FAILED"
+   ```
+
+   Expected: `data` is empty; the database (and any `-wal`/`-shm`) and the
+   import report are in `$FAILED`. Nothing is deleted here.
+5. D1 is authoritative. Rollback is the Worker that is already running; it
+   keeps serving its last version. Do **not** turn `deploy.yml` back on,
+   and never re-run an earlier Deploy run: `main` contains Node/SQLite code,
+   and either can deploy code the Worker cannot run (6.1, "Merge order").
+6. Find the cause from the report, the app log
+   (`docker compose --env-file deploy.env logs app`) and the kept data,
+   before planning another window. A new attempt starts again at 11.1,
+   with a new export and a new `<STAMP>`.
 
 **After 11.8** (real writes on SQLite): do not return to D1. Fix forward,
 or follow 9.3, which needs a written decision first.
 
 ## 12. After cutover
 
-### 12.1 Delete copies of production data
+### 12.1 Copies of production data: when each is deleted
 
-Staging (section 10) is not built. If it is built and used, its retirement
-is written together with it.
+| Copy | Where | Deleted or kept |
+| --- | --- | --- |
+| Rehearsal export, counts and database | walnut, `/srv/grampacker-rehearsal` | deleted at the end of the rehearsal (10.5) |
+| Cutover export folder (`d1-full.sql`, `d1-counts.json`, `SHA256SUMS`, bookmark) | encrypted backup storage (11.2) | kept until D1 is deleted (12.3), then 30 days more; then deleted |
+| Cutover export folder | walnut `~/grampacker-d1-export/<STAMP>` | deleted at the end of the observation period (12.2) |
+| Cutover export | VPS `/srv/grampacker/import/<STAMP>` | deleted at the end of the observation period |
+| Imported database, as imported | VPS `rollback/cutover-imported-<STAMP>` | deleted at the end of the observation period; Kopia's backups cover the time since |
+| A failed attempt's data | VPS `rollback/failed-cutover-<STAMP>`, `rollback/moved-aside-*` | deleted once the cause is understood, and before the next window |
 
-The rehearsal export folders under `/srv/grampacker/import/` are also copies of
-production data. Delete them now (`rm -rf /srv/grampacker/import/<rehearsal
-STAMP>`). Keep the cutover export folder until the end of the observation
-period, then delete it too; its untouched archive already lives off the VPS
-(11.2).
+The import reports (`*-import-report.txt`) hold no user data and may be
+kept with your notes.
+
+At the end of the observation period:
+
+```bash
+# [VPS root]
+rm -rf /srv/grampacker/import/<STAMP> /srv/grampacker/rollback/cutover-imported-<STAMP>
+ls -la /srv/grampacker/import /srv/grampacker/rollback
+```
+
+```bash
+# [walnut]
+rm -rf ~/grampacker-d1-export/<STAMP>
+ls -la ~/grampacker-d1-export
+```
 
 ### 12.2 Observe for two weeks
 
 Daily for the first week, then weekly:
 
 ```bash
-# [Mac]
+# [admin workstation]
 curl -sS -w ' %{http_code}\n' https://grampacker.app/api/health
 ```
 
@@ -2060,15 +2217,18 @@ Each is its own decision, after the observation period:
 - `[GitHub web]` Delete `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 - `[Resend]` Revoke the old Worker's API key.
 - Replace `docs/d1-restore.md` with the SQLite restore procedure.
-- Archive a final D1 export (11.2 commands, new `<STAMP>`).
+- Archive a final D1 export (11.2 commands, new `<STAMP>`), kept like the
+  cutover export (12.1).
 - Delete the D1 database: **only** with separate, explicit approval.
 
 ## 13. Records to fill in
 
 | Item | Value |
 | --- | --- |
-| VPS host key fingerprint (ED25519) | |
+| VPS host key fingerprint (ED25519) | `SHA256:6R0gvuvxXgw7m7zjTJrouxWooIcVlnLI6IAxtUQth48` |
+| History review before publication (5.1) | completed before the repository was made public |
 | GitHub deploy key: fingerprint, created | |
+| GitHub-to-VPS test (8.6): date, published digest, result | 2026-10-15/16, `sha256:16575850faf2365f64ed50585f1055267a31ee64f953b623d9823e29b3c6ed52`, passed |
 | Caddy version after each `caddy-update` | |
 | Worker hotfixes: branch, commit, Cloudflare version id and time (`docs/testing-and-ci.md` section 11) | |
 | Image runtime UID | 10001 (checked 2026-10-15) |
@@ -2077,8 +2237,6 @@ Each is its own decision, after the observation period:
 | Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
 | Migration merge: `<MERGE_SHA>`, Deploy run URL (or none, if disabled) | |
 | First published image: `<APP_SHA>`, `<APP_DIGEST>`, run URL | |
-| Staging memory, idle / busy | |
-| Rehearsal 1: export, transfer, import, validation times | |
-| Rehearsal 2: same | |
+| Import rehearsal (section 10): date, export, transfer, import and check times, result | |
 | Cutover window start / site open / D1 stale from | |
 | GHCR token expiry date | |

@@ -188,8 +188,8 @@ Before changing code:
 - record the production D1 migration ledger;
 - identify any Pages project, redirect rule, or old Worker route that could
   continue answering for the domain;
-- check the complete history, make the repository public, then move to
-  GitHub Free (runbook section 5);
+- review the complete history, then make the repository public (done; runbook
+  5.1 and 5.3);
 - confirm the VPS distribution, SSH setup, IPv6 availability, and firewall
   (done 2026-10-11; see "Current infrastructure").
 
@@ -371,30 +371,16 @@ Other headers such as `X-Real-IP` pass through Caddy unchanged unless the
 config overwrites them, so they are not trusted. The header is trusted only
 because the application port is reachable solely from localhost.
 
-Use a temporary DNS-only `staging.grampacker.app` record to verify Caddy and
-the container before production cutover.
-
-For staging:
-
-- set `BETTER_AUTH_URL=https://staging.grampacker.app`;
-- keep the passkey RP ID as `grampacker.app`;
-- explicitly allow the staging origin in Better Auth;
-- confirm magic links and an existing passkey both work.
+There is no staging environment: no `staging.grampacker.app`, no second
+Caddy site, no second long-running app and no staging authentication
+configuration. Caddy and the container are proved on `127.0.0.1` by the
+empty-database rehearsal and the import rehearsal (runbook 7.4 and section
+10). A passkey works only on its real origin, so existing passkeys and magic
+links are tested at cutover on `https://grampacker.app`, with the unchanged
+Worker and D1 ready to take traffic back (runbook 11.8 and 11.9). For three
+accounts, all the owner's, that is simpler and no less safe.
 
 Production uses `BETTER_AUTH_URL=https://grampacker.app`.
-
-Today `BETTER_AUTH_URL` is Better Auth's `baseURL`, the passkey origin, and the
-origin the CSRF middleware compares against, and `passkeyRpId` maps any
-`*.grampacker.app` URL to the RP ID `grampacker.app`. Setting the staging URL
-may therefore be all the "allow" needs. Confirm that against the code at
-implementation time instead of adding a second trusted origin by habit.
-
-Staging uses its own `BETTER_AUTH_SECRET`, different from the production
-secret, so a staging cookie can never be valid in production. Testing an existing passkey
-needs a copy of production users and passkeys on staging, so loading that copy
-is a production-data operation: it needs explicit approval, the copy is
-protected like production, and it is deleted when staging is removed. Remove
-the staging DNS record and Caddy site after cutover.
 
 ### 8. Add GitHub image builds
 
@@ -435,12 +421,11 @@ job pushed, over SSH as a `deploy` account whose key can only run
 Do not require GitHub Releases. Do not deploy `latest` without also recording
 the immutable digest or commit tag.
 
-The repository becomes public and the account moves to GitHub Free, which
-offers environments on public repositories. The SSH key is a secret of a
-`production` environment whose deployment-branch rule allows `main` alone,
-so GitHub itself refuses the environment, and its secrets, to a run from any
-other branch. Make the repository public, after checking its complete
-history for secrets and data, before cancelling Pro (runbook section 5).
+The repository is public, and GitHub Free offers environments on public
+repositories. The SSH key is a secret of a `production` environment whose
+deployment-branch rule allows `main` alone, so GitHub itself refuses the
+environment, and its secrets, to a run from any other branch. The complete
+history was reviewed for secrets and data before publication (runbook 5.1).
 
 The VPS also limits the key with a forced command (below), so even a
 leaked key can only deploy an image digest.
@@ -505,55 +490,51 @@ Treat this one-time move more cautiously than ordinary deployments.
 
 ### Export
 
-After production writes are frozen:
+On walnut, read-only on D1 (runbook 10.1 and 11.2):
 
-1. record the D1 Time Travel bookmark;
-2. create one full schema-and-data export as the untouched archive;
-3. create the data export used for import;
-4. record the D1 migration ledger;
-5. record all application schema objects;
-6. record row counts for every table;
-7. hash and copy the archive somewhere outside the VPS.
+1. at cutover only, after production writes are frozen: record the D1 Time
+   Travel bookmark;
+2. one full schema-and-data export (`wrangler d1 export --remote`), the
+   untouched archive and the import's input;
+3. the row count of every application table (`deploy/d1-row-counts.sql`),
+   right after the export;
+4. hash both, transfer them to the VPS, and check the hashes.
 
-Rehearse this before cutover. Do not first discover the export format during
-the production maintenance window.
+The export and the counts are production data: `0600` files in `0700`
+directories, never in Git, GitHub Actions or an image, and deleted on the
+schedule in runbook 12.1.
 
 ### Import
 
-Use the same production image and SQLite library that will run Grampacker.
+`import-d1` in the production image (`server/db/import-d1.ts`), run with
+`--network none` on the VPS:
 
-1. Create an empty reference database by applying the Drizzle migrations.
-2. Compare D1 and reference schemas structurally: columns and order, types,
-   nullability, defaults, primary keys, foreign keys, indexes, and triggers.
-3. Normalize harmless quoting and whitespace before comparing trigger and
-   index SQL. Do not require raw `sqlite_master.sql` strings to be byte-for-byte
-   identical when the structural comparison proves the same schema.
-4. Create the target database with the normal migration runner so its Drizzle
-   migration ledger is correct.
-5. Temporarily remove triggers that would reject valid data solely because of
-   export insertion order.
-6. Disable foreign-key checking outside the import transaction.
-7. Inspect the export for its own `BEGIN` and `COMMIT`. Use its transaction if
-   present; otherwise add one. Never nest transactions blindly.
-8. Load the data and discard the D1-specific migration ledger. Before
-   reporting success, checkpoint, close every connection, and leave one
-   self-contained file with no `-wal` or `-shm` beside it, so promoting it is
-   a plain rename.
-9. Recreate the triggers and enable foreign keys.
-10. Require `PRAGMA integrity_check` to return `ok` and
-    `PRAGMA foreign_key_check` to return no rows.
-11. Check application invariants that triggers do not retroactively test,
-    including ownership, same-list relationships, container cycles, rank
-    ranges, and row caps.
-12. Compare every table's row count with the export.
-13. Preserve users, accounts, passkeys, lists, gear, food, and shares.
-14. Delete transient sessions, verification challenges, and rate-limit rows.
-15. Verify passkey credential IDs, public keys, user IDs, and counters were
-    copied without transformation.
-16. Exercise representative accounts and lists through the staging API.
+1. load the export, unmodified, into an in-memory SQLite database with the
+   app's own library (better-sqlite3);
+2. check D1's ledger against `migrations/`, and every table, index and
+   trigger's SQL against a database the migrations build: identical, with
+   no normalization;
+3. check that the coordination tables that must be empty are, and that
+   every D1 count equals the export's;
+4. build a new file with the normal migration runner, so Drizzle's ledger is
+   right; then, in ONE transaction with foreign keys off: drop the triggers
+   (a container item and its packing location refer to each other, so no
+   table order loads with them active), copy every kept table with exact
+   values, recreate the triggers, and before COMMIT prove
+   `foreign_key_check` empty, `integrity_check` `ok`, the schema identical,
+   and every kept row equal to the export, value by value;
+5. keep users, accounts, passkeys, lists, gear, food and their links;
+   remove sessions, verification rows and rate-limit buckets;
+6. validate the closed file (rollback journal mode, no `-wal` or `-shm`, no
+   pending migration), then link it to the output path, which it never
+   overwrites. Any failure before that leaves nothing behind.
 
-Do at least two rehearsals. Record how long export, import, validation, and
-certificate issuance take.
+Trigger invariants (container cycles, rank ranges, caps) are not re-checked:
+D1 enforced them on every write, the rows are copied exactly, and the
+triggers are restored unchanged.
+
+Do one rehearsal (runbook section 10). Record how long the export, transfer
+and import take.
 
 ## Authentication continuity
 
@@ -576,9 +557,10 @@ Still delete imported sessions and short-lived verification challenges, so
 everyone signs in once on the new server. That is one statement in the import
 and avoids carrying sessions across a change of server.
 
-Magic-link sign-in remains the recovery path if a passkey test fails. Do not
-complete cutover until at least one existing passkey works against the staging
-copy with the correct staging origin.
+Magic-link sign-in remains the recovery path if a passkey fails for one
+user. Do not complete cutover until an existing passkey and a magic link
+both work on `https://grampacker.app` (runbook 11.8); if they do not, traffic
+returns to the Worker (11.9).
 
 ## DNS cutover
 
@@ -615,7 +597,8 @@ Before the first real SQLite write, rollback is straightforward:
 - remove the VPS DNS record;
 - restore the Worker custom domain;
 - treat D1 as authoritative;
-- discard the rehearsal or failed SQLite import.
+- keep the failed SQLite data out of `data/` for diagnosis (runbook 11.9),
+  and delete it once the cause is understood.
 
 Do not re-enable `deploy.yml` as part of that rollback once `main` contains
 Node/SQLite code: it would deploy code the Worker cannot run. For the same
@@ -647,10 +630,8 @@ The migration is ready for production only when:
 - the production image builds and contains no database or secrets;
 - Compose preserves the database when the container is replaced;
 - the application port is unreachable from another machine;
-- staging works through Caddy with a valid certificate;
-- magic-link sign-in and an existing passkey work on staging;
-- two D1 import rehearsals pass every integrity, relationship, and row-count
-  check;
+- one D1 import rehearsal passes every integrity, relationship, and
+  row-count check, and the app serves the imported data on `127.0.0.1`;
 - a manually started GitHub workflow publishes and deploys an immutable image;
 - the rollback-directory and previous-image recovery has been tested (the
   empty-database rehearsal, runbook 7.4);

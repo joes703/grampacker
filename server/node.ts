@@ -4,14 +4,17 @@ import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
 import app from './index'
 import { openSqlite, type Sqlite } from './db'
+import { importD1Command } from './db/import-d1'
 import { applyMigrations, MigrationStateError, pendingMigrationCount } from './db/migrate'
 import { ConfigError, loadConfig, type AppEnv } from './env'
 
 // The Node process entry. Production runs the compiled output
 // (`npm run build:server`), never tsx:
 //
-//   node dist/server/node.js           serve (the default)
-//   node dist/server/node.js migrate   apply pending migrations, then exit
+//   node dist/server/node.js             serve (the default)
+//   node dist/server/node.js migrate     apply pending migrations, then exit
+//   node dist/server/node.js import-d1   build a new database from a D1
+//                                        export, once (server/db/import-d1.ts)
 //
 // In local development `tsx server/node.ts [migrate]` runs the same code.
 //
@@ -106,6 +109,15 @@ export function shutdownOnSignals(
 
 export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<number> {
   const command = argv[0] ?? 'serve'
+  // Before loadConfig: the import needs no app secret or URL, so the runbook
+  // can run it without the production app.env.
+  if (command === 'import-d1') {
+    return importD1Command(
+      argv.slice(1),
+      (line) => console.log(line),
+      (line) => console.error(line),
+    )
+  }
   let config
   try {
     config = loadConfig(source)
@@ -118,7 +130,7 @@ export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<n
   }
 
   if (command !== 'serve' && command !== 'migrate') {
-    console.error(`unknown command: ${command} (expected serve or migrate)`)
+    console.error(`unknown command: ${command} (expected serve, migrate or import-d1)`)
     return 2
   }
 
