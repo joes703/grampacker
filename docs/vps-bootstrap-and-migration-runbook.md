@@ -1,8 +1,9 @@
 # Grampacker VPS bootstrap and migration runbook
 
-**Status:** Partly executed. Section 1 records what is already done on the VPS.
-Everything else has not been run. Sections 10 to 12 are future production
-operations and must not run now.
+**Status:** Partly executed. Section 1 records what is done on the VPS,
+including the empty-database rehearsal of 2026-10-15 (1.3). Production has
+not started. Sections 10 to 12 are future production operations and must
+not run now.
 
 This is the executable companion to `docs/vps-migration-plan.md`. The plan
 explains what and why. This runbook gives the exact commands, where each one
@@ -35,7 +36,7 @@ need the Cloudflare login (`wrangler`) use the Mac only, because that is where
 
 | Label | Meaning |
 | --- | --- |
-| **DONE** | Already completed on 2026-10-11. Listed so it can be re-verified. |
+| **DONE** | Already completed (1.3 says when). Listed so it can be re-verified. |
 | **NOW** | Safe to run before implementation. Touches no production system. |
 | **AFTER IMAGE** | Needs a Grampacker image that the Node/SQLite work has not produced yet. |
 | **CONFIRM** | Stop. Changes DNS, a Worker route, D1, production data, or a GitHub security setting. Run only after you have said "yes" to that exact step. |
@@ -99,12 +100,12 @@ starting section 3. All checks are read-only and safe to rerun.
 | DONE | RackNerd KVM, Ubuntu 26.04.1 LTS, kernel `7.0.0-31-generic`, x86-64 |
 | DONE | 1.9 GiB RAM, 1 GiB swap, about 32 GB free of about 34 GB |
 | DONE | No global IPv6 address (link-local `fe80::` only) |
-| DONE | Docker Engine 29.9.0 and Compose 5.6.0 installed; Docker active |
+| DONE | Docker Engine, containerd and Compose from Docker's apt repository; Docker active (versions in 1.3) |
 | DONE | User `joe`, key login from the Mac and walnut |
 | DONE | Root SSH login off; password and keyboard-interactive login off |
 | DONE | UFW: deny incoming, allow outgoing, SSH rate-limited, TCP 80 and 443 allowed |
 | DONE | `/srv/grampacker` (`joe:joe 0755`) with `data`, `secrets`, `snapshots` (`joe:joe 0700`) |
-| NOT DONE | Caddy, Grampacker, GitHub deployment, GHCR access, DNS changes |
+| NOT DONE | Production start, production secrets and `deploy.env`, GitHub deployment (section 8), DNS and Cloudflare changes |
 
 ### 1.1 Re-verify the base setup
 
@@ -121,7 +122,8 @@ ssh joe@"$VPS_HOST" 'stat -c "%U:%G %a %n" /srv/grampacker /srv/grampacker/*'
 
 Expected:
 
-- Ubuntu 26.04.1 LTS, `x86_64`, Docker 29.9.0, Compose 5.6.0, `active`.
+- Ubuntu 26.04.1 LTS, `x86_64`, Docker and Compose at or above the versions
+  in 1.3, `active`.
 - `ip -6 addr show scope global` prints nothing.
 - `permitrootlogin no`, `passwordauthentication no`,
   `kbdinteractiveauthentication no`.
@@ -137,7 +139,7 @@ If any line differs, stop and fix the base setup first.
 
 ### 1.2 Record the SSH host key fingerprint (NOW)
 
-GitHub Actions will pin this key in the deferred deploy job (section 8). Read it from the console,
+GitHub Actions pins this key for the deploy job (section 8). Read it from the console,
 which does not depend on the network path, and compare it with what the Mac
 already trusts.
 
@@ -157,6 +159,38 @@ differ, stop: the Mac may be talking to a different machine.
 
 Rerun: safe.
 
+### 1.3 Preparation and rehearsal (DONE, 2026-10-15)
+
+Versions after the VPS was updated and rebooted:
+
+| Component | Version |
+| --- | --- |
+| Ubuntu, kernel | 26.04.1 LTS, `7.0.0-31-generic` |
+| Docker Engine, Compose, containerd | 29.9.1, 5.6.0, 2.4.2 (Docker's apt repository, current when checked) |
+| Caddy (`caddy:2`) | 2.11.7 |
+| SQLite: host `sqlite3`, and inside the app image (`better-sqlite3`) | 3.46.1, 3.53.4 |
+
+Done and checked:
+
+- 3.2: Caddy pulled; its configuration validated.
+- 3.3: the test port was bound to `127.0.0.1` only, proved by `docker port`,
+  `docker inspect` and `ss`.
+- 3.6: unattended security updates enabled; the dry run exited 0.
+- 7.1 and 7.2: the image runs as UID/GID 10001; the deployment files are
+  under `/srv/grampacker`.
+- 7.4: the empty-database rehearsal passed: first deploy, app and Caddy
+  restarts, maintenance (503 on API and frontend paths, after a Caddy
+  restart, and with the app stopped), rollback refused while maintenance was
+  off, and with it on, a rollback that kept the failed data, restored the
+  saved database and image, came back healthy and left maintenance on. After
+  `maintenance off`, `/api/health` answered `{"ok":true} 200`.
+- Teardown: the rehearsal containers, network, database, rollback data and
+  throwaway secrets were removed; `docker ps` showed no containers.
+
+Not done: production has not started; production secrets and `deploy.env`
+are not written; DNS and Cloudflare are unchanged; the GitHub deployment
+(section 8) is not set up.
+
 ## 2. Access and credentials
 
 There are four kinds of access. Keep them separate. Never reuse a key from one
@@ -166,7 +200,7 @@ row for another.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Administrator SSH keys | the Mac and walnut | `joe` | everything, through `sudo` | DONE |
 | 2 | Temporary provisioning key | the agent sandbox, only while approved | `provision` (temporary account) | what that session needs; removed afterward | not created; not needed now |
-| 3 | Deployment SSH key | GitHub: `production` environment secret (Pro) or repository secret (no Pro) | `deploy` | run the deploy wrapper with one image digest; nothing else | deferred (section 8) |
+| 3 | Deployment SSH key | GitHub: `production` environment secret | `deploy` | run the deploy wrapper with one image digest; nothing else | built; not set up (section 8) |
 | 4 | Read-only GHCR credential | `/root/.docker/config.json` on the VPS | Docker (as root) | pull Grampacker images; cannot push or delete | step 6 |
 
 ### 2.1 Administrator keys (DONE)
@@ -268,8 +302,8 @@ and 5 are safe to rerun.
 
 ### 2.3 Deployment key and GHCR credential
 
-Set up in steps 8 and 6. They are listed in the table above so their limits
-are clear before they exist.
+Set up in section 8 and step 6. They are listed in the table above so their
+limits are clear before they exist.
 
 ## 3. VPS preparation that needs no Grampacker image (NOW)
 
@@ -311,18 +345,29 @@ has no rule for it. This test proves the `127.0.0.1:` form is not.
 # [VPS joe]
 sudo docker run -d --rm --name bindtest -p 127.0.0.1:8099:80 caddy:2 caddy respond --listen :80 "bindtest ok"
 curl -sS http://127.0.0.1:8099/
+sudo docker port bindtest
+sudo docker inspect -f '{{json (index .NetworkSettings.Ports "80/tcp")}}' bindtest
 sudo ss -ltnp | grep 8099
 ```
 
-Expected: `bindtest ok`, and `ss` shows `127.0.0.1:8099` only (no `0.0.0.0`,
-no `*`, no `[::]`).
+Expected: `bindtest ok`, then the proof, three times:
+
+- `docker port`: `80/tcp -> 127.0.0.1:8099`, and no other line;
+- `docker inspect`: `[{"HostIp":"127.0.0.1","HostPort":"8099"}]`;
+- `ss`: the local address `127.0.0.1:8099` only (no `0.0.0.0`, no `*`, no
+  `[::]`).
+
+Defense in depth, not proof:
 
 ```bash
 # [Mac]
 nc -vz -w 5 "$VPS_HOST" 8099; echo "exit=$?"
 ```
 
-Expected: the connection fails (refused or timed out), `exit=1`.
+Expected: the connection fails, `exit=1`. This shows only that something
+blocks the port from outside. UFW may block it too, so a refusal or a
+timeout does not show which layer stopped it. A connection that succeeds is
+a stop.
 
 ```bash
 # [VPS joe]
@@ -416,43 +461,78 @@ written back into this runbook in the same PR.
 | Client address | The application reads the last `X-Forwarded-For` entry, which Caddy writes, and no longer reads `cf-connecting-ip`. |
 | Configuration | A documented list of environment variables. Known today: `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`. The database path and port are expected to have fixed defaults (`/data/grampacker.db`, `3000`). |
 | Deployment files | **Built:** `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/Caddyfile.rehearsal`, `deploy/grampacker-deploy` (section 7). The script runs as root: `deploy <APP_DIGEST>` (accepts only `^sha256:[0-9a-f]{64}$`), `rollback <dir>`, `maintenance on\|off`, `caddy-update`. A rollback point is `rollback/<UTC time>/` with the stopped `data/` directory and `previous-image`. |
-| SSH wrapper | **Deferred** with the deploy job (section 8). |
+| SSH wrapper | **Built:** `deploy/grampacker-deploy-ssh`, the `deploy` key's forced command (section 8). Accepts only `deploy sha256:<64 hex>`, checks the digest again as root, runs `grampacker-deploy deploy`. Local test: `deploy/test-grampacker-deploy-ssh.sh`. |
 | Maintenance response | **Built:** the file `maintenance/on`, checked by Caddy on every request. 503 for every path including `/api/*`; works with the app stopped; survives a Caddy restart; `grampacker-deploy maintenance on\|off`; provable with one `curl`. |
 | CI | **Built:** `image.yml` builds the image and runs `scripts/check-image.sh` on pull requests (no push), beside `ci.yml`'s checks. |
-| Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, no inputs; every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Never deploys. |
-| Deploy job | **Deferred** (section 8). Takes a digest the publish workflow printed, and (in the `production` environment when Pro is available) runs SSH with a pinned host key and sends only that digest. Whether it is a job in `image.yml` or its own workflow is decided with section 8. |
+| Publish workflow | **Built:** `image.yml`, step 6.1. `workflow_dispatch`, one input, `deploy` (default false; section 8); every job carries `github.ref == 'refs/heads/main'`, so a dispatch from any other branch runs nothing; checks out the dispatched commit; runs build, unit, API and migration checks; builds `linux/amd64` with the label `org.opencontainers.image.source=https://github.com/joes703/grampacker`; runs `scripts/check-image.sh`; pushes `$IMAGE_REPO:<full SHA>` unless that tag exists; prints the digest. One concurrency group, never canceled in progress. Deploys only when `deploy` is set. |
+| Deploy job | **Built:** job "Deploy to the VPS" in `image.yml`, run only when a dispatch sets `deploy`. Takes the digest its own publish job pushed, in the `production` environment, and runs SSH with a pinned host key, sending only that digest (section 8). |
 
 Section 7 needs only what is built. Sections 10 and 11 also need the D1
 import command, which is not built.
 
-## 5. GitHub settings for the deferred deploy job (GitHub web)
+## 5. GitHub settings for the deploy job (GitHub web)
 
-### 5.1 Check whether the account has GitHub Pro (NOW)
+The repository becomes public and the account moves to GitHub Free. The
+deploy key is a secret of the `production` environment, whose branch rule
+allows `main` alone, so GitHub itself refuses the key to a run from any
+other branch, even one that edits the workflow. GitHub Free offers
+environments on public repositories, not on private ones.
 
-Automated deployment works either way. Pro decides only where the deployment
-key is stored and what enforces "deploy `main` only".
+**Order: 5.1, then 5.2, then make the repository public (5.3), and only
+then cancel Pro.** Cancelling Pro while the repository is still private
+would leave a private repository on Free, where the environment and its
+`main` rule are not available.
 
-| | With Pro | Without Pro |
-| --- | --- | --- |
-| Key stored as | secret of the `production` environment (5.2) | repository secret |
-| "main only" enforced by | GitHub: the environment's branch rule refuses the secret to any other branch | the workflow: every job has `if: github.ref == 'refs/heads/main'` |
-| A branch that edits the workflow and dispatches it | is refused the secret | would receive the secret |
+### 5.1 Check the complete history before publishing (NOW)
 
-The last row is why today's `deploy.yml` forbids `workflow_dispatch`. Without
-Pro, it is still acceptable here because no one but Joe can both change a
-workflow file and dispatch it: the agent tokens have no Workflows permission
-and only read access to Actions (`docs/testing-and-ci.md` section 12). Before
-storing the key as a repository secret, confirm those two token settings on
-GitHub's token settings page. If either has changed, stop and decide again.
-In both cases the VPS's forced command (step 8) limits the key to deploying
-an image digest.
+Making the repository public publishes every commit on every branch, tag
+and pull request ref, not only the current tree. Check that history, in a
+mirror clone of exactly what GitHub holds:
 
-`[GitHub web]` Check: your account Settings, Billing and licensing (Plans).
+```bash
+# [Mac]
+git clone --mirror https://github.com/joes703/grampacker.git ~/grampacker-history.git
+cd ~/grampacker-history.git
+git log --all --name-only --format= | sort -u | grep -E '(^|/)(\.env|\.dev\.vars)|\.(sqlite3?|db|sql|csv|dump|bak|pem|key|p12|zip|tar|gz|tgz)$|(^|/)(\.data|backups?)/' | grep -v '^migrations/[^/]*\.sql$'
+git log --all --name-only --format= | sort -u | grep -E '\.json$' | grep -vE '^(migrations/meta/|package(-lock)?\.json$|tsconfig[^/]*\.json$|skills-lock\.json$)'
+git log --all -p --format= | grep -ohE 'PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_|AKIA[0-9A-Z]{16}|xox[abp]-|sk_live_|re_[A-Za-z0-9]{20,}|(SECRET|TOKEN|PASSWORD|API_KEY)[A-Z_]*["'"'"']? *[:=] *["'"'"'][^"'"'"'<$]{8,}|^[-+ ]?[A-Z_]*(SECRET|TOKEN|PASSWORD|API_KEY)[A-Z_]* *= *[^ <$"'"'"'{]{8,}' | sort | uniq -c
+```
 
-- **Pro:** do 5.2 when the deploy job (section 8) is built.
-- **No Pro:** skip 5.2; the deploy job will use a repository secret.
+The first command lists every committed environment file, database file,
+archive or key file, except the migrations. The second lists every
+committed JSON file except known configuration: the app's own exports
+(`food.json`, `packing.json`) are JSON. The third prints, once each, every
+key or token shape and every quoted or `.env`-style assignment to a
+`SECRET`, `TOKEN`, `PASSWORD` or `API_KEY` name in any change ever
+committed. A `<placeholder>` value is not printed.
 
-### 5.2 Create the `production` environment (CONFIRM, needs Pro)
+Expected (checked on a local clone on 2026-10-15; recheck on the mirror,
+which also holds pull request refs):
+
+- The first prints only `.dev.vars.example`.
+- The second prints only `.claude/settings.json` and three files under
+  `.planning/intel/classifications/`.
+- The third prints only test and development values: the
+  `BETTER_AUTH_SECRET=dev-only-secret-not-used-in-production` example;
+  test passwords starting `a-long-test-password-` and
+  `another-long-password-`; a passkey `PASSWORD_AAGUID` constant; the
+  test secrets `test-only-secret-at-least-32-chars-long!` and
+  `schema-generation-only`; and a shell fragment `SECRET: ' AUTH_SECRET;
+  echo`. Read any JSON file or value not on these lists before going on.
+
+Also read, in the GitHub web interface, anything else that becomes
+public: issues, pull request descriptions and comments, and Actions run
+logs and artifacts. None may contain user data, a database export or a
+secret.
+
+If anything else appears: stop. Do not publish. A secret that was ever
+committed is rotated, not only removed: rewriting history is a separate
+decision (AGENTS.md forbids it without discussion), and a rotated secret
+is harmless even if an old copy survives.
+
+When done: `rm -rf ~/grampacker-history.git`. Rerun: safe.
+
+### 5.2 Create the `production` environment (CONFIRM)
 
 `[GitHub web]` Repository Settings, Environments, New environment:
 
@@ -461,7 +541,7 @@ an image digest.
    `main` only.
 3. Required reviewers: optional. Adding yourself means each deploy waits for
    one more click; useful, not required.
-4. Leave secrets empty; the deploy job (section 8) adds them.
+4. Leave secrets empty; section 8 adds them.
 
 Verify: the environment page shows "1 branch rule: main".
 
@@ -469,11 +549,31 @@ Undo: delete the environment (its secrets go with it).
 
 Rerun: safe; editing an existing environment has the same result.
 
+### 5.3 Make the repository public, then cancel Pro (CONFIRM)
+
+Only after 5.1 found nothing:
+
+1. `[GitHub web]` Repository Settings, General, Danger Zone, Change
+   visibility: **Public**.
+2. `[GHCR]` Your profile, Packages, `grampacker`: it still shows
+   **Private** (6.1, "Package visibility and access"). If it shows Public,
+   stop.
+3. Repository Settings, Environments, `production`: still "1 branch rule:
+   main".
+4. Only now: your account Settings, Billing and licensing, Plans: move to
+   GitHub Free.
+5. After the plan change: `production` still shows its `main` rule and, once
+   section 8 is done, its secret.
+
+Making it private again does not undo this: forks and clones made while it
+was public remain.
+
 ## 6. GHCR access
 
 ### 6.1 Publishing (GitHub Actions, AFTER IMAGE)
 
-`.github/workflows/image.yml` ("Image") publishes; it never deploys. On a
+`.github/workflows/image.yml` ("Image") publishes. It deploys only when a
+dispatch sets its `deploy` input (section 8); this step leaves it unset. On a
 pull request it builds the image and runs `scripts/check-image.sh`, and
 pushes nothing. Started by hand on `main`, it:
 
@@ -493,7 +593,8 @@ the push and is not atomic; it guards against a rerun, not against another
 writer pushing at the same moment. A deployment always uses the
 digest, never the tag.
 
-A dispatch from any other branch runs no job. The workflow has no inputs.
+A dispatch from any other branch runs no job. The workflow's one input,
+`deploy`, defaults to false; with it false the run only publishes.
 
 Prerequisite: `image.yml` is on `main`. GitHub offers "Run workflow" only
 for workflow files on the default branch. It reaches `main` with the
@@ -771,7 +872,7 @@ Rotate or revoke: `[GitHub web]` delete the token, then repeat 6.2 and 6.3.
 ## 7. Deployment files and the empty-database rehearsal (AFTER IMAGE)
 
 The deployment is two containers (the app and Caddy), one SQLite data
-directory, and one script. All three files come from `deploy/` in the
+directory, and one script. The files come from `deploy/` in the
 repository:
 
 | Repository file | Installed as | What it is |
@@ -780,6 +881,7 @@ repository:
 | `deploy/Caddyfile` | `/srv/grampacker/Caddyfile` | `grampacker.app`: HTTPS, maintenance switch, proxy to the app |
 | `deploy/Caddyfile.rehearsal` | `/srv/grampacker-rehearsal/Caddyfile.rehearsal` | The same, on `http://127.0.0.1:8081` only, for the rehearsal |
 | `deploy/grampacker-deploy` | `/usr/local/sbin/grampacker-deploy` | `deploy`, `rollback`, `maintenance`, `caddy-update` |
+| `deploy/grampacker-deploy-ssh` | `/usr/local/sbin/grampacker-deploy-ssh` | The GitHub deploy key's forced command (section 8); does nothing until that is set up |
 
 **Maintenance** is on while the file `maintenance/on` exists. Caddy then
 answers 503 to every path, including `/api/*`, whether or not the app runs,
@@ -831,15 +933,15 @@ git -C ~/code/grampacker fetch origin
 git -C ~/code/grampacker switch --detach origin/main
 git -C ~/code/grampacker status --short
 cd ~/code/grampacker/deploy
-shasum -a 256 compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy
-scp compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy joe@"$VPS_HOST":/tmp/
+shasum -a 256 compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy grampacker-deploy-ssh
+scp compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy grampacker-deploy-ssh joe@"$VPS_HOST":/tmp/
 ```
 
 ```bash
 # [VPS root]
 cd /tmp
-sha256sum compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy
-install -o root -g root -m 0755 grampacker-deploy /usr/local/sbin/grampacker-deploy
+sha256sum compose.yaml Caddyfile Caddyfile.rehearsal grampacker-deploy grampacker-deploy-ssh
+install -o root -g root -m 0755 grampacker-deploy grampacker-deploy-ssh /usr/local/sbin/
 install -o root -g root -m 0644 compose.yaml Caddyfile /srv/grampacker/
 ```
 
@@ -970,26 +1072,311 @@ rm -rf /srv/grampacker-rehearsal
 
 Rerun: safe after the tear-down. Record the time it took in section 13.
 
-## 8. GitHub-to-VPS deployment (DEFERRED)
+## 8. GitHub-to-VPS deployment (NOW to set up; deploys only after cutover)
 
-Deploying from GitHub Actions (a `deploy` account, an SSH key limited by a
-forced command, the key in GitHub) is a later slice. Until then every
-deployment is the manual command in 9.1. That slice will call
-`grampacker-deploy deploy <APP_DIGEST>` and nothing else.
+One dispatch of the Image workflow publishes `main`'s head and, when its
+`deploy` box is ticked, deploys exactly that digest:
+
+1. `[GitHub Actions]` "Publish image to GHCR" pushes and checks the image
+   and hands its digest to "Deploy to the VPS". Nobody types a digest or a
+   tag. The deploy job runs only on `main` in `joes703/grampacker`, in the
+   `production` environment, one at a time, and is never canceled once
+   started.
+2. It connects as `deploy` with a key from GitHub, checks the VPS's host
+   key against the one pinned in GitHub (never `ssh-keyscan`), and sends
+   `deploy sha256:<64 hex>`.
+3. `[VPS]` The key's `authorized_keys` line has
+   `restrict,command="/usr/local/sbin/grampacker-deploy-ssh"`. Whatever the
+   client asks for, sshd runs that wrapper instead. `restrict` turns off PTY
+   allocation, port, agent and X11 forwarding, and `~/.ssh/rc`.
+4. The wrapper accepts only `deploy sha256:<64 lowercase hex>`, then runs
+   itself through `sudo` with the digest. The sudo rule allows `deploy` that
+   one program and nothing else.
+5. As root, the wrapper checks the digest again and runs
+   `grampacker-deploy deploy <digest>` in its own session, with the output in
+   `/var/log/grampacker-deploy/<time>-<pid>.log`. The job shows the log. If
+   the connection drops or the run is canceled, the deploy still runs to its
+   end on the VPS.
+
+The `deploy` account cannot roll back, switch maintenance, update Caddy,
+write files, open a shell or name a tag. It can deploy any digest that
+exists in `ghcr.io/joes703/grampacker`, older ones included.
+
+**A failed deploy is not rolled back.** The job fails, maintenance stays on,
+and the log names the rollback directory. Decide as for a manual deploy
+(9.2), as root.
+
+**Manual root deployment stays** (9.1, "Manual"): it is the recovery path
+when GitHub, the key or the account does not work, and the way to deploy an
+image published earlier.
+
+### 8.1 Before you start
+
+- Section 5 is done: the history is checked, `production` exists with its
+  `main` rule, and the repository is public. If the environment did not
+  exist, the first deploy run would create it without the `main` rule.
+- The host key fingerprint from 1.2 is recorded in section 13.
+- 7.2 has installed `/usr/local/sbin/grampacker-deploy-ssh` from the same
+  `main` commit as `grampacker-deploy`.
+- Keep a second `joe` SSH session open while changing sudo (2.1).
+
+### 8.2 Create the account and the sudo rule
+
+```bash
+# [VPS root]
+adduser --disabled-password --comment 'GitHub Actions deploy' --shell /bin/bash deploy
+tee /etc/sudoers.d/50-grampacker-deploy >/dev/null <<'RULE'
+# GitHub deploy (runbook section 8): only the forced command, which accepts one image digest.
+deploy ALL=(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh
+RULE
+chmod 0440 /etc/sudoers.d/50-grampacker-deploy
+visudo -c
+id deploy
+passwd -S deploy
+sudo -l -U deploy
+ls -l /usr/local/sbin/grampacker-deploy-ssh
+```
+
+Expected:
+
+- `visudo -c` reports `parsed OK` for every file.
+- `id` shows only the `deploy` group: no `sudo`, `docker` or `adm`.
+- `passwd -S` shows `deploy L` (no password; keys only).
+- `sudo -l -U deploy` lists exactly one command:
+  `(root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh`.
+- The wrapper is `-rwxr-xr-x root root`.
+
+The shell is bash, not `nologin`, because sshd runs even a forced command
+through the account's shell. The forced command is what refuses a shell.
+
+Rerun: `adduser` refuses an existing account; the rest is safe.
+
+### 8.3 Create the key and install it
+
+The key has no passphrase: a GitHub job cannot type one, and GitHub stores
+the secret encrypted. The private key leaves the Mac only for GitHub (8.5),
+and is then deleted.
+
+```bash
+# [Mac]
+( umask 077; ssh-keygen -t ed25519 -N '' -C "grampacker-github-deploy-$(date -u +%F)" -f ~/grampacker-deploy-key )
+ssh-keygen -lf ~/grampacker-deploy-key.pub
+scp ~/grampacker-deploy-key.pub joe@"$VPS_HOST":/tmp/grampacker-deploy-key.pub
+```
+
+```bash
+# [VPS root]
+ssh-keygen -lf /tmp/grampacker-deploy-key.pub
+install -d -o root -g root -m 0755 /home/deploy /home/deploy/.ssh
+printf 'restrict,command="/usr/local/sbin/grampacker-deploy-ssh" %s\n' "$(cat /tmp/grampacker-deploy-key.pub)" >/home/deploy/.ssh/authorized_keys
+chmod 0644 /home/deploy/.ssh/authorized_keys
+rm /tmp/grampacker-deploy-key.pub
+cat /home/deploy/.ssh/authorized_keys
+ssh-keygen -lf /home/deploy/.ssh/authorized_keys
+```
+
+Expected: the same `SHA256:...` fingerprint three times, and one line
+starting `restrict,command="/usr/local/sbin/grampacker-deploy-ssh"
+ssh-ed25519`. The home directory, `.ssh` and the file belong to root, so
+the account cannot change its own key's limits or its shell's startup
+files. Rerun: safe; the file is replaced.
+
+### 8.4 Verify the limits
+
+```bash
+# [Mac]
+K=(-i ~/grampacker-deploy-key -o IdentitiesOnly=yes -o BatchMode=yes)
+ssh "${K[@]}" deploy@"$VPS_HOST"; echo "exit=$?"
+ssh "${K[@]}" deploy@"$VPS_HOST" 'maintenance off'; echo "exit=$?"
+ssh "${K[@]}" deploy@"$VPS_HOST" 'deploy ghcr.io/joes703/grampacker:latest'; echo "exit=$?"
+ssh "${K[@]}" -tt deploy@"$VPS_HOST" 'id'; echo "exit=$?"
+ssh "${K[@]}" -o ExitOnForwardFailure=yes -R 127.0.0.1:18099:127.0.0.1:22 deploy@"$VPS_HOST" 'id'; echo "exit=$?"
+scp "${K[@]}" ~/grampacker-deploy-key.pub deploy@"$VPS_HOST":/tmp/deploy-wrote-this; echo "exit=$?"
+ssh "${K[@]}" deploy@"$VPS_HOST" "deploy sha256:$(printf '0%.0s' {1..64})"; echo "exit=$?"
+```
+
+Expected:
+
+- The first four print `ERROR: refused. The only accepted command is:
+  deploy sha256:<64 lowercase hex>` and `exit=2`; `-tt` also prints `PTY
+  allocation request failed`.
+- `-R`: `remote port forwarding failed`, `exit=255`.
+- `scp` fails, and `/tmp/deploy-wrote-this` does not exist on the VPS.
+- The all-zero digest passes the wrapper and sudo, and `grampacker-deploy`
+  stops it before it changes anything. It prints `grampacker-deploy-ssh:
+  deploy sha256:000..., log /var/log/grampacker-deploy/...`; then, before
+  cutover, `ERROR: /srv/grampacker has no compose.yaml or deploy.env`,
+  because `deploy.env` is absent (after cutover, a failed pull: that image
+  does not exist); then
+  `grampacker-deploy-ssh: exit 1` and `exit=1`.
+
+Any other result: stop, and remove the access (8.7). Rerun: safe.
+
+### 8.5 Store the key and pin the host key in GitHub
+
+Read the host key over the `joe` connection, which the Mac already checks
+against the key it trusts (1.2):
+
+```bash
+# [Mac]
+HOSTKEY="$(ssh joe@"$VPS_HOST" cat /etc/ssh/ssh_host_ed25519_key.pub | cut -d' ' -f1,2)"
+printf '%s %s\n' "$VPS_HOST" "$HOSTKEY" | ssh-keygen -lf -
+```
+
+Expected: the fingerprint recorded in 1.2. If it differs, stop.
+
+```bash
+# [Mac]
+gh secret set DEPLOY_SSH_KEY --repo "$GH_REPO" --env production <~/grampacker-deploy-key
+gh variable set DEPLOY_HOST --repo "$GH_REPO" --env production --body "$VPS_HOST"
+gh variable set DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production --body "$VPS_HOST $HOSTKEY"
+gh secret list --repo "$GH_REPO" --env production
+gh variable list --repo "$GH_REPO" --env production
+```
+
+Expected: `DEPLOY_SSH_KEY` listed as a secret; `DEPLOY_HOST` and
+`DEPLOY_KNOWN_HOSTS` with the values above. Then delete the key from the
+Mac:
+
+```bash
+# [Mac]
+rm -f ~/grampacker-deploy-key ~/grampacker-deploy-key.pub
+```
+
+A lost key is never recovered from GitHub: make a new one (8.7, "Rotate").
+Rerun: safe; `set` replaces a value. After a VPS move, set `DEPLOY_HOST`
+and `DEPLOY_KNOWN_HOSTS` again.
+
+### 8.6 Test a deployment
+
+Before cutover, this proves GitHub's side (environment, key, pinned host
+key) and the VPS's side, and changes nothing on the VPS.
+`/srv/grampacker/compose.yaml` is already installed (7.2); 7.3 has not run,
+so `/srv/grampacker/deploy.env` is absent, and `grampacker-deploy` stops on
+that before it does anything else.
+
+Record the state first, in one root shell kept open until the end of this
+test:
+
+```bash
+# [VPS root]
+cd /srv/grampacker
+test -f compose.yaml && echo "compose.yaml installed"
+test -e deploy.env && echo "STOP: deploy.env exists" || echo "no deploy.env"
+docker ps -a --filter label=com.docker.compose.project=grampacker --format '{{.Names}} {{.Status}}' >/root/8.6-before.txt
+ls -la --time-style=full-iso maintenance data >>/root/8.6-before.txt
+cat /root/8.6-before.txt
+```
+
+Expected: `compose.yaml installed`, `no deploy.env`, no container lines, and
+`data` with no database file. If `deploy.env` exists, stop and skip this
+test; after cutover, 9.1 is the test.
+
+```bash
+# [Mac]
+gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
+gh run list --repo "$GH_REPO" --workflow image.yml --event workflow_dispatch --limit 1 --json databaseId,headSha,url
+gh run watch <RUN_ID> --repo "$GH_REPO"
+gh run view <RUN_ID> --repo "$GH_REPO" --log-failed | grep -E 'grampacker-deploy|ERROR'
+```
+
+Expected: the image is published as in 6.1. "Deploy to the VPS" fails with
+`grampacker-deploy-ssh: deploy sha256:...`, `ERROR: /srv/grampacker has no
+compose.yaml or deploy.env` (here it is `deploy.env` that is missing) and
+`grampacker-deploy-ssh: exit 1`. Any other `ERROR` means the run reached
+further than intended: stop and check the VPS. `Host key verification
+failed` means `DEPLOY_KNOWN_HOSTS` is wrong; `Permission denied (publickey)`
+means the key or `authorized_keys` is.
+
+Then prove the failure changed nothing, in the same root shell:
+
+```bash
+# [VPS root]
+docker ps -a --filter label=com.docker.compose.project=grampacker --format '{{.Names}} {{.Status}}' >/root/8.6-after.txt
+ls -la --time-style=full-iso maintenance data >>/root/8.6-after.txt
+diff /root/8.6-before.txt /root/8.6-after.txt && echo "unchanged"
+test -e deploy.env && echo "STOP: deploy.env exists" || echo "no deploy.env"
+ls -l /var/log/grampacker-deploy/
+rm /root/8.6-before.txt /root/8.6-after.txt
+```
+
+Expected: `unchanged` (no production container started, `maintenance/` did
+not change, nothing in `data/` was created or modified), `no deploy.env`,
+and one new log for this run. Any difference: stop and report it.
+
+Rerun: safe before cutover. It publishes `main`'s head; if that commit is
+already in GHCR, the publish job stops at "already exists" and the deploy
+job is skipped.
+
+### 8.7 Rotate or remove
+
+**Rotate:** 8.3 with a new key (the new line replaces the old one), 8.4,
+then 8.5's `gh secret set` and `rm`.
+
+**Remove completely.** GitHub first:
+
+```bash
+# [Mac]
+gh secret delete DEPLOY_SSH_KEY --repo "$GH_REPO" --env production
+gh variable delete DEPLOY_HOST --repo "$GH_REPO" --env production
+gh variable delete DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production
+```
+
+```bash
+# [VPS root]
+rm -f /etc/sudoers.d/50-grampacker-deploy
+visudo -c
+pkill -u deploy || true
+deluser --remove-home deploy
+getent passwd deploy || echo "deploy account removed"
+sudo -l -U deploy
+```
+
+Expected: `parsed OK`, `deploy account removed`, and `sudo` reports an
+unknown user. The wrapper in `/usr/local/sbin` stays and does nothing
+without the account and the rule; the logs in `/var/log/grampacker-deploy`
+stay as a record.
+
+```bash
+# [Mac]
+ssh -o BatchMode=yes deploy@"$VPS_HOST" true; echo "exit=$?"
+```
+
+Expected: `Permission denied (publickey)`, `exit=255`. Publishing still
+works; a dispatch with `deploy` ticked now fails in the deploy job with
+`... is not set`. Rerun: safe.
 
 ## 9. Routine deployments (AFTER CUTOVER)
 
 ### 9.1 Deploy
 
-The digest is one the Image workflow printed for a run on `main` (6.1).
+**From GitHub** (once section 8 is set up): publish `main`'s head and deploy
+it in one run.
+
+```bash
+# [Mac]
+gh workflow run image.yml --repo "$GH_REPO" --ref main -f deploy=true
+```
+
+Find `<RUN_ID>` and watch it as in 8.6. The deploy job prints the VPS's
+log, which ends `grampacker-deploy-ssh: exit 0` on success. A failed deploy
+job is handled like a failed manual deploy (9.2). Rerunning that job
+(`gh run rerun <RUN_ID> --repo "$GH_REPO" --failed`) sends the same digest
+again; do it only when you would run the same manual deploy again. If the run was
+canceled or timed out, the deploy may still be running: read the newest
+`/var/log/grampacker-deploy/*.log` as root.
+
+**Manual** (recovery, or an image published earlier, whose commit GitHub
+will not publish again). The digest is one the Image workflow printed for a
+run on `main` (6.1).
 
 ```bash
 # [Mac]
 ssh -t joe@"$VPS_HOST" 'sudo /usr/local/sbin/grampacker-deploy deploy <APP_DIGEST>'
 ```
 
-`-t` lets `sudo` ask for `joe`'s password. The script refuses anything but a
-bare `sha256:` digest. In order, it:
+`-t` lets `sudo` ask for `joe`'s password. Both paths run the same script,
+which refuses anything but a bare `sha256:` digest. In order, it:
 
 1. takes a lock (`/srv/grampacker/.deploy.lock`), so two commands never
    overlap;
@@ -1681,9 +2068,11 @@ Each is its own decision, after the observation period:
 | Item | Value |
 | --- | --- |
 | VPS host key fingerprint (ED25519) | |
+| GitHub deploy key: fingerprint, created | |
 | Caddy version after each `caddy-update` | |
 | Worker hotfixes: branch, commit, Cloudflare version id and time (`docs/testing-and-ci.md` section 11) | |
-| Image runtime UID | |
+| Image runtime UID | 10001 (checked 2026-10-15) |
+| Empty-database rehearsal (7.4): date, result, time it took | 2026-10-15, passed (1.3); time: |
 | Baseline before the merges: `<BASELINE_TIME>`, GitHub record (SHA, time), newest Cloudflare deployment (version id, time) | |
 | Deployment-safety merge: `<MERGE_SHA>`, skipped Deploy run URL | |
 | Migration merge: `<MERGE_SHA>`, Deploy run URL (or none, if disabled) | |

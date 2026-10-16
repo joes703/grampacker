@@ -535,8 +535,11 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     named their advisories.
 - GitHub Actions pinned to full commit SHAs; triggers are `pull_request`,
   `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
-  workflows that name no secret - never `pull_request_target` (which would
-  run workflows with secrets against fork code); private repo.
+  workflows that name no secret, with one exception, `image.yml` (below) -
+  never `pull_request_target` (which would run workflows with secrets
+  against fork code). The repository is private today and becomes public
+  (runbook section 5, after a check of its complete history); fork pull
+  requests then run with a read-only token and no secrets.
 - `image.yml` publishes the production image to GHCR on a manual dispatch
   from main, with `packages: write` on its publish job only. Accepted risk:
   a workflow runs the triggering branch's copy of its file, so a branch that
@@ -547,12 +550,26 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   Workflows permission, Actions read only; `docs/testing-and-ci.md` section
   12). So a tag proves nothing: deploy only a digest that a successful run
   on main printed. Fork pull requests get a read-only token.
-- The VPS deployment (`deploy/`, runbook section 7) runs by hand: the owner
-  logs in over SSH and runs `grampacker-deploy` as root through `sudo`. No
-  deploy account, deploy key or forced command exists yet; they come with
-  the GitHub deploy job (runbook section 8). The script accepts only an
-  exact `sha256:` app image digest, never a tag. The app listens on
-  `127.0.0.1` only, as UID/GID 10001, with a read-only root filesystem;
+- The VPS deployment (`deploy/`, runbook sections 7 and 8) runs as root,
+  either by hand (the owner, over SSH, through `sudo`; also the recovery
+  path) or from `image.yml`'s deploy job. That job runs only when a dispatch
+  on main sets `deploy`, and sends only the digest its own publish job
+  pushed. It logs in as `deploy`, checking a host key pinned in GitHub. The
+  key's `authorized_keys` line is `restrict` (no PTY, no forwarding, no
+  `~/.ssh/rc`) with a forced command, `deploy/grampacker-deploy-ssh`, which
+  accepts only `deploy sha256:<64 hex>` and runs itself through `sudo`; the
+  sudo rule allows that one program, which checks the digest again as root
+  and runs `grampacker-deploy deploy`. The parser is tested by
+  `deploy/test-grampacker-deploy-ssh.sh`, run by hand; sshd's and sudo's
+  limits are checked on the VPS by runbook 8.4. Accepted risk: whoever
+  holds the key can deploy any digest in
+  `ghcr.io/joes703/grampacker`, an older vulnerable image included, and
+  nothing on the VPS can tell a main build from one a branch pushed (the
+  `image.yml` entry above). The key is a secret of the `production`
+  environment, which GitHub gives only to a run on main (runbook section 5).
+  The script accepts only an exact `sha256:` app image digest, never
+  a tag. The app listens on `127.0.0.1` only, as UID/GID 10001, with a
+  read-only root filesystem;
   its secrets stay in `/srv/grampacker/secrets/app.env`, outside Git.
   Accepted risk: Caddy is `caddy:2`, which follows every 2.x release,
   because Caddy supports only its newest 2.x (its SECURITY.md); a minor or
@@ -569,8 +586,11 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
 - No workflow that names a secret carries `workflow_dispatch`. A manual
   dispatch runs the CHOSEN REF's copy of the workflow file, and
   same-repository refs receive repository secrets, so it would let a branch
-  execute an edited privileged workflow. `deploy.yml` carried one as a
-  recovery path until 2026-09-04. Its replacement, re-running a failed
+  execute an edited privileged workflow. The one exception is `image.yml`'s
+  deploy job, which reads the deploy key: the `production` environment's
+  `main` rule refuses the key to other branches, and the key itself can only
+  deploy a digest (runbook sections 5 and 8). `deploy.yml` carried
+  one as a recovery path until 2026-09-04. Its replacement, re-running a failed
   Deploy run, is withdrawn too now that `deploy.yml` is legacy (every job
   `if: false`, AGENTS.md "Shipping"): never re-run an earlier Deploy run. A
   re-run uses that run's old copy of the file, which still deploys, and can
@@ -710,8 +730,9 @@ of it:
 
   What the repository shows, and it is all this entry claims: `deploy.yml`
   reads `secrets.CLOUDFLARE_API_TOKEN` and `secrets.CLOUDFLARE_ACCOUNT_ID`,
-  and no job in any workflow declares an `environment:` key, so no deployment
-  branch policy applies to any job here. **No GitHub setting has been
+  and no job in `deploy.yml` declares an `environment:` key, so no deployment
+  branch policy applies to it. (`image.yml`'s VPS deploy job does declare
+  `environment: production`; it reads no Cloudflare credential.) **No GitHub setting has been
   inspected.** Whether those secrets are defined at repository or organization
   scope, and whether this plan offers environments on a private repository at
   all, are unverified - `gh api user --jq .plan.name` returns nothing under
