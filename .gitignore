@@ -15,3 +15,10 @@ worker-configuration.d.ts
 # in the PRs they gated.
 .tmp/
 .playwright-mcp/
+
+# A real D1 export and its counts are production data (runbook section 10):
+# never committed. The test fixtures in server/test/fixtures are invented and
+# named differently on purpose.
+d1-full*.sql
+d1-counts*.json
+grampacker-d1-export/

@@ -27,7 +27,7 @@ cleanup() {
   # The data files belong to the app's UID; remove them from inside Docker so
   # the host needs no sudo.
   if [ -d "$WORK" ]; then
-    docker run --rm --user 0 --entrypoint rm -v "$WORK:/work" "$IMAGE" -rf /work/data /work/locked >/dev/null 2>&1 || true
+    docker run --rm --user 0 --entrypoint rm -v "$WORK:/work" "$IMAGE" -rf /work/data /work/locked /work/imported >/dev/null 2>&1 || true
     rm -rf "$WORK"
   fi
 }
@@ -121,6 +121,32 @@ pass "migrate: $out"
 out="$(run_app migrate)"
 [ "$out" = "applied 0 migration(s) to /data/grampacker.db" ] || fail "second migrate printed: $out"
 pass "migrate again is a no-op: $out"
+
+# --- 4a. The D1 import command (runbook sections 10 and 11) -----------------
+# The committed test fixture (invented data; server/db/import-d1.test.ts),
+# mounted read-only and run as the runbook runs it: no network, no app
+# configuration, into a directory only the app user can write.
+FIXTURES="$(cd "$(dirname "$0")/.." && pwd)/server/test/fixtures"
+docker run --rm --user 0 --entrypoint sh -v "$WORK:/work" "$IMAGE" \
+  -c "mkdir /work/imported && chown $APP_ID:$APP_ID /work/imported && chmod 0700 /work/imported"
+set +e
+out="$(docker run --rm --network none -v "$FIXTURES:/import:ro" -v "$WORK/imported:/data" "$IMAGE" \
+  import-d1 --export /import/fixture-d1-export.sql --d1-counts /import/fixture-d1-counts.json --out /data/grampacker.db 2>&1)"
+code=$?
+set -e
+[ "$code" = 0 ] || fail "import-d1 exited $code: $out"
+grep -qx 'result: OK' <<<"$out" || fail "import-d1 did not report OK: $out"
+left="$(docker run --rm --user 0 --entrypoint ls -v "$WORK/imported:/data" "$IMAGE" -A /data)"
+[ "$left" = "grampacker.db" ] || fail "import-d1 left: $left"
+pass "import-d1 builds one database file from a Wrangler export"
+set +e
+out="$(docker run --rm --network none -v "$FIXTURES:/import:ro" -v "$WORK/imported:/data" "$IMAGE" \
+  import-d1 --export /import/fixture-d1-export.sql --d1-counts /import/fixture-d1-counts.json --out /data/grampacker.db 2>&1)"
+code=$?
+set -e
+[ "$code" = 1 ] || fail "import-d1 over an existing database exited $code"
+case "$out" in *"already exists"*) ;; *) fail "import-d1 over an existing database printed: $out" ;; esac
+pass "import-d1 refuses to overwrite an existing database"
 
 # --- 5 and 6. Serve the migrated database over HTTP -------------------------
 start_server "$NAME-a"

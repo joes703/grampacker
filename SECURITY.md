@@ -537,9 +537,9 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
   workflows that name no secret, with one exception, `image.yml` (below) -
   never `pull_request_target` (which would run workflows with secrets
-  against fork code). The repository is private today and becomes public
-  (runbook section 5, after a check of its complete history); fork pull
-  requests then run with a read-only token and no secrets.
+  against fork code). The repository is public; its complete history was
+  reviewed for secrets and data before publication (runbook 5.1). Fork pull
+  requests run with a read-only token and no secrets.
 - `image.yml` publishes the production image to GHCR on a manual dispatch
   from main, with `packages: write` on its publish job only. Accepted risk:
   a workflow runs the triggering branch's copy of its file, so a branch that
@@ -579,6 +579,19 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   least monthly and promptly after a Caddy security release (runbook 9.6),
   and the new image must validate the Caddyfile before it replaces the
   running one.
+- The one-time D1-to-SQLite move (`import-d1`, `server/db/import-d1.ts`;
+  runbook sections 10 and 11). The D1 export and its counts are production
+  data (emails, passkey public keys, every list): `0600` files in `0700`
+  directories on walnut and the VPS, never in Git, GitHub Actions or an
+  image (`.gitignore` and `.dockerignore` name `d1-full*.sql` and
+  `d1-counts*.json` as a second guard), deleted on the schedule in runbook
+  12.1. The import runs with `--network none` and the export mounted
+  read-only; the export is trusted input (the owner's own Wrangler output,
+  checked against SHA256SUMS), and only the container confines it. Its
+  output and errors name tables, counts and SQLite error codes, never a
+  value. It drops sessions, verification rows and rate-limit buckets, so
+  everyone signs in again; users, accounts and passkeys are copied exactly
+  and checked value by value. It never overwrites a database.
 - A merge changes `main`, not production. A dependency or base-image fix
   reaches the VPS only when an image is published from `main` and deployed:
   within 7 days of a routine update, and as soon as practical for a security
@@ -734,9 +747,9 @@ of it:
   branch policy applies to it. (`image.yml`'s VPS deploy job does declare
   `environment: production`; it reads no Cloudflare credential.) **No GitHub setting has been
   inspected.** Whether those secrets are defined at repository or organization
-  scope, and whether this plan offers environments on a private repository at
-  all, are unverified - `gh api user --jq .plan.name` returns nothing under
-  the sandbox token (`docs/testing-and-ci.md` section 12).
+  scope is unverified (what the sandbox token can read:
+  `docs/testing-and-ci.md` section 12). Environments are available: the
+  repository is public (runbook section 5).
 
   Why it matters: a secret available to the repository is readable by a
   same-repository `pull_request` run of any workflow, including one that a
