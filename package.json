@@ -4,14 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:node": "tsx watch --clear-screen=false --include vite.node.config.ts server/dev.ts",
+    "dev": "tsx watch --clear-screen=false --include vite.node.config.ts server/dev.ts",
     "build:client": "vite build --config vite.node.config.ts",
     "build:server": "vite build --config vite.server.config.ts",
     "start:node": "node dist/server/node.js",
     "db:migrate": "tsx server/node.ts migrate",
-    "build": "npm run typecheck && npm run lint && vite build && npm run build:server",
-    "typecheck": "wrangler types && tsc -b",
+    "build": "npm run typecheck && npm run lint && npm run build:client && npm run build:server",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:api",
     "test:unit": "vitest run",
@@ -19,7 +18,7 @@
     "test:migrations": "node scripts/check-migration-safety.mjs",
     "check:action-pins": "node scripts/check-action-pins.mjs",
     "check:yaml": "yamllint .github/ .yamllint.yml",
-    "preview": "vite preview"
+    "preview": "vite preview --config vite.node.config.ts"
   },
   "overrides": {
     "@esbuild-kit/core-utils": {
@@ -48,8 +47,6 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.63.1",
-    "@cloudflare/vitest-plugin": "1.4.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
@@ -69,7 +66,6 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.1",
     "vite": "8.3.1",
-    "vitest": "4.1.11",
-    "wrangler": "4.149.0"
+    "vitest": "4.1.11"
   }
 }

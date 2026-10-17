@@ -5,19 +5,13 @@ export default tseslint.config(
   {
     ignores: [
       'dist',
-      '.wrangler',
       '.superpowers',
-      'worker-configuration.d.ts',
-      // The workerd test tier's setup: outside every tsconfig now (see
-      // tsconfig.worker.json), so typed lint cannot parse it.
-      'server/test/apply-migrations.ts',
-      'server/test/env.d.ts',
     ],
   },
   ...tseslint.configs.recommended,
   {
-    // A dropped promise in a Worker is a silently swallowed error (and
-    // on the SPA side, a mutation nobody observes). tsc does not catch
+    // A dropped promise can become a silently swallowed server error (and on
+    // the SPA side, a mutation nobody observes). tsc does not catch
     // these; only the type-aware lint rule does. Scoped to source files
     // covered by the tsconfigs - the flat-config files themselves are
     // plain JS and stay outside the type-checked program.
@@ -158,10 +152,9 @@ export default tseslint.config(
       ],
     },
   },
-  // Node-tier server tests (docs/testing-and-ci.md section 3) run on plain
-  // Node, which refuses `cloudflare:*` at import on its own. The one thing
-  // Node does not refuse is the app entry: server/index.ts loads fine there,
-  // so a misnamed API test would prove Hono-on-Node instead of workerd.
+  // Unit-tier server tests (docs/testing-and-ci.md section 2) must not drive
+  // the full app. A misnamed API test would skip the API suite's database
+  // setup and make the tier boundary meaningless.
   //
   // One block per directory depth, 0-5 (server/ is 4 deep today), so each file
   // forbids the direct spellings that reach server/index.ts from where it
@@ -178,7 +171,7 @@ export default tseslint.config(
             paths: [dir, `${dir}/`, `${dir}/index`, `${dir}/index.ts`, `${dir}/index.js`].map((name) => ({
               name,
               message:
-                'A .node.test.ts runs on Node and must not drive the app. Name it .test.ts to run it on workerd.',
+                'A .node.test.ts is a unit test and must not drive the app. Name it .test.ts to run it in the API suite.',
             })),
           },
         ],

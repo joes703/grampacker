@@ -2,8 +2,8 @@ import { bodyLimit } from 'hono/body-limit'
 import { createMiddleware } from 'hono/factory'
 
 // Hard cap on request body size for the whole /api subtree, registered
-// before anything that consumes a body (Workers get 128 MB of memory;
-// an unbounded req.json() is a trivial memory-pressure vector). 128 KB
+// before anything that consumes a body. An unbounded req.json() is a trivial
+// memory-pressure vector. 128 KB
 // is ~4x the largest legitimate non-import payload, the 500-item gear
 // reorder (~30 KB of ids).
 export const API_BODY_LIMIT_BYTES = 128 * 1024
@@ -24,7 +24,7 @@ export const API_BODY_LIMIT_BYTES = 128 * 1024
 // units, at most 3 bytes each; the switch made every string cap admit
 // MORE bytes, not fewer). So the worst case the gear DTO accepts (500
 // items x 2000-char descriptions) is over 4 MB - a cap we do not want to
-// hold open in a 128 MB isolate for an endpoint that only needs to carry
+// hold open for an endpoint that only needs to carry
 // real CSV data (at ~300 bytes per fat row, 500 rows is well under 1 MB). A
 // pathological import can therefore still 413. That is the intended
 // behavior, not a bug: the DTO bounds semantics, this bounds transport,

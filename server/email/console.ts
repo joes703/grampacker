@@ -15,7 +15,7 @@ const MAX_OUTBOX = 50
 export const outbox: AuthEmail[] = []
 
 // The most recent email to an address. Tests within a file run in parallel
-// against one Worker, so filtering by recipient is what keeps them from
+// against one app, so filtering by recipient is what keeps them from
 // stealing each other's tokens.
 export function lastEmailTo(to: string): AuthEmail | undefined {
   return outbox.findLast((msg) => msg.to === to)

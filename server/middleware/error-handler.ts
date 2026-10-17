@@ -168,9 +168,8 @@ export function describeError(err: unknown): LoggedError {
 // a 60s deferral. A count that arrives only when convenient reads as
 // authoritative and is not.
 //
-// Per ISOLATE: with many isolates the effective cap is a multiple of 21. This
-// bounds what one isolate writes, not what the platform writes in aggregate.
-// Losing the counter on isolate recycle costs log fidelity, never correctness.
+// Per process. Restarting the process resets the counter; that costs log
+// fidelity, never correctness.
 const WINDOW_MS = 60_000
 const DETAILED_BUDGET = 20
 
@@ -180,10 +179,9 @@ let suppressionAnnounced = false
 
 type LogSlot = 'detailed' | 'announce-suppression' | 'silent'
 
-// SYNCHRONOUS BY CONSTRUCTION. Workers interleave requests at every await point,
-// so the ceiling holds only because the window check, the reset, the increment,
-// and the decision happen with nothing suspending between them. Do not make this
-// async, and do not await anything inside it.
+// SYNCHRONOUS BY CONSTRUCTION. The ceiling holds because the window check, the
+// reset, the increment, and the decision happen with nothing suspending between
+// them. Do not make this async, and do not await anything inside it.
 function claimLogSlot(now: number): LogSlot {
   if (now - windowStartedAt >= WINDOW_MS) {
     windowStartedAt = now
@@ -201,7 +199,7 @@ function claimLogSlot(now: number): LogSlot {
   return 'silent'
 }
 
-// Exported for tests only: module state survives across cases in one isolate, so
+// Exported for tests only: module state survives across cases in one process, so
 // a test that does not reset it would inherit the previous test's budget.
 export function resetLogBudget(): void {
   windowStartedAt = 0
@@ -239,8 +237,8 @@ function recordIncident({ source, method, path, status, err }: Incident): string
 
   const correlationId = crypto.randomUUID()
   const error = err === undefined ? undefined : describeError(err)
-  // One JSON string, so Workers Logs keeps one entry rather than splitting a
-  // multi-argument call across lines.
+  // One JSON string keeps one entry rather than splitting a multi-argument call
+  // across lines.
   console.error(
     JSON.stringify({
       event: 'server-error',

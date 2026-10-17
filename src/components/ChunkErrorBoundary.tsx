@@ -1,12 +1,9 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
-// A deploy deletes the old chunks. Cloudflare's asset store serves exactly the
-// files of the CURRENT deployment, so a tab that has been open across a deploy
-// is holding an index.html whose chunk URLs no longer exist. When that tab
-// finally imports one - a signed-out tab that sits on /sign-in and then signs
-// in, say - the request for the old hash misses, not_found_handling
-// ("single-page-application") answers it with index.html at 200, the browser
-// tries to parse HTML as a JavaScript module, and the import rejects.
+// A deployment replaces the old chunks, so a tab that has been open across a
+// deploy can hold an index.html whose chunk URLs no longer exist. When that tab
+// finally imports one, the request for the old hash fails and the import
+// rejects.
 //
 // Without a boundary, React unmounts the whole tree on that throw and the user
 // gets a white page with no way out but a manual reload. That failure mode is

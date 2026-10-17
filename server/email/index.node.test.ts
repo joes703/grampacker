@@ -54,7 +54,7 @@ describe('createEmailSender', () => {
   it.each([
     ['no key on the production origin', envWith({ BETTER_AUTH_URL: prod })],
     ['an empty key on the production origin', envWith({ BETTER_AUTH_URL: prod, RESEND_API_KEY: '' })],
-    ['no key on a workers.dev origin', envWith({ BETTER_AUTH_URL: 'https://x.workers.dev' })],
+    ['no key on a production origin', envWith({ BETTER_AUTH_URL: 'https://example.com' })],
     ['no key and a malformed origin', envWith({ BETTER_AUTH_URL: 'not a url' })],
   ])('fails the send closed with %s', async (_label, env) => {
     const sender = createEmailSender(env)

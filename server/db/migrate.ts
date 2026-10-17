@@ -48,7 +48,7 @@ export class MigrationStateError extends Error {}
 // A ledger LONGER than the journal is accepted when its overlap matches: that
 // is the previous image running against a database the newer image already
 // migrated, which is exactly the rollback the deploy relies on
-// (docs/vps-migration-plan.md, "Rollback").
+// during rollback.
 function pending(sqlite: Sqlite, migrationsFolder: string) {
   const migrations = readMigrationFiles({ migrationsFolder })
   migrations.forEach((m, i) => {

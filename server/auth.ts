@@ -258,8 +258,7 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
       // (create-context's isTest()). On Node that means a stray TEST=1 in
       // production would silently drop the forged-Origin 403 and the
       // cookieless magic-link-send refusal, and under Vitest (which sets
-      // NODE_ENV=test) the check would not run at all. Workers never
-      // matched, because process.env was empty there.
+      // NODE_ENV=test) the check would not run at all.
       // server/auth-origin-validation.test.ts pins the check.
       disableOriginCheck: false,
     },
@@ -267,8 +266,8 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
       // Rate limiting is owned by our middleware
       // (server/middleware/rate-limit.ts) so there is exactly one
       // mechanism, shared with future non-auth routes. Left unset this
-      // would silently self-enable in production with per-isolate MEMORY
-      // storage - useless on Workers and confusing to debug.
+      // would silently self-enable in production with in-memory storage,
+      // creating a second limiter with different semantics.
       enabled: false,
     },
     hooks: {
@@ -411,8 +410,8 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
           // The token rides in the FRAGMENT, not the query string, because a
           // browser puts the fragment in neither the request line nor the
           // `Referer` header. So clicking the link does not write a live,
-          // unconsumed, session-minting token into our logs, Cloudflare's request
-          // logs, or any proxy's access log en route. The Referer half matters as
+          // unconsumed, session-minting token into our logs or any proxy's access
+          // log en route. The Referer half matters as
           // much as the log half: Referrer-Policy is strict-origin-when-cross-
           // origin, which sends the FULL url on same-origin requests - so under
           // `?token=` the landing page handed the token to every request it then
@@ -477,8 +476,7 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
   }
 }
 
-// Workers get fresh bindings per request, so the auth instance is built per
-// request. This is config wiring only - no I/O happens until a handler runs.
+// This is config wiring only - no I/O happens until a handler runs.
 export function createAuth(env: AppEnv, incident?: AuthIncident) {
   return betterAuth(authOptions(env, incident))
 }

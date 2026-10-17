@@ -120,7 +120,7 @@ api.route('/shares', shareRoutes)
 api.get('/health', async (c) => {
   // Round-trips through Drizzle to SQLite, so a green health check proves the
   // whole server stack, not just that Hono is routing. Health means HTTP 200
-  // AND `ok` exactly true (docs/vps-migration-plan.md, step 5); a failed query
+  // AND `ok` exactly true; a failed query
   // throws and the error handler answers 500.
   const db = createDb(c.env.DB)
   const row = await db.get<{ ok: number }>(sql`select 1 as ok`)

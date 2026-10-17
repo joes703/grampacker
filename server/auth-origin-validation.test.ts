@@ -107,7 +107,7 @@ describe('better-auth origin validation on /api/auth/*', () => {
   // nothing about reaching sendMagicLink.
   //
   // A unique recipient keeps this from colliding with the parallel suites that
-  // share one Worker and read the same outbox.
+  // share one process and read the same outbox.
   it('completes an originless magic-link send (the server-to-server carve-out)', async () => {
     const to = 'originless-carveout@example.com'
     const res = await app.request(

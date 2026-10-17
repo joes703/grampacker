@@ -3,7 +3,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema'
 
 // All DB access goes through this module. The app opens ONE better-sqlite3
-// connection per process and every request shares it (docs/vps-migration-plan.md).
+// connection per process and every request shares it.
 //
 // Drizzle is pinned to the 0.45.x stable line because better-auth's adapter
 // peers on drizzle-orm ^0.45.2 (see STACK.md). Upgrade to 1.x when

@@ -5,7 +5,7 @@ import { checkHealth, healthUrl } from './healthcheck'
 
 // The container's HEALTHCHECK (Dockerfile). Healthy means HTTP 200 AND a JSON
 // body whose `ok` is exactly true, within the timeout
-// (docs/vps-migration-plan.md step 5). Every other answer is unhealthy, and
+// Every other answer is unhealthy, and
 // the reason is printed so `docker inspect` shows why.
 
 let server: Server | undefined

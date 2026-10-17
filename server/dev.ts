@@ -8,7 +8,7 @@ import { openSqlite } from './db'
 import { applyMigrations } from './db/migrate'
 import type { AppEnv } from './env'
 
-// Local development without Wrangler: `npm run dev:node`.
+// Local development: `npm run dev`.
 //
 // One process on http://localhost:5173. /api/* goes to the real Hono app;
 // everything else goes to Vite, which serves the React app with hot reload.

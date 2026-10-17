@@ -4,8 +4,7 @@ import type { AppEnv } from '../env'
 
 // Serves the built SPA from STATIC_DIR: real files as themselves, and
 // index.html for any other path so client-side routes work on deep links.
-// This replaces Cloudflare's assets binding with `not_found_handling:
-// single-page-application`.
+// Unknown non-API paths receive the SPA shell.
 //
 // Differences from the binding, on purpose:
 //

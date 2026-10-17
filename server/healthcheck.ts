@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 //
 // It uses Node's own fetch so the image needs no curl. Healthy means HTTP 200
 // AND a JSON body whose `ok` is exactly true, within the timeout
-// (docs/vps-migration-plan.md step 5). Receiving some HTTP response is not
+// Receiving some HTTP response is not
 // enough: a 500, `{"ok":false}`, or a body that is not JSON is unhealthy. The
 // deployment script's own health step uses the same rule.
 //

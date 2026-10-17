@@ -119,7 +119,7 @@ export function rateLimitIpKey(rawIp: string): string {
 // Caddy untouched unless the config overwrites it), can be forged.
 //
 // Trusted only because the app port is reachable from localhost alone
-// (docs/vps-migration-plan.md, "Configure Caddy"): anything that reaches the
+// Anything that reaches the
 // port directly could still write its own header. undefined when the header
 // is absent or empty - local dev and tests - where callers fall back to one
 // shared bucket.

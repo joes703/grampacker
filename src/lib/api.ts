@@ -15,7 +15,7 @@ export class ApiError extends Error {
   // Present only on unhandled 5xx, and only when the server actually logged the
   // incident - it stops minting ids once its per-window budget is spent, rather
   // than handing out one that cannot be found. Developer-only: it joins a
-  // DevTools console line to a Workers Logs entry. There is deliberately no
+  // DevTools console line to a server log entry. There is deliberately no
   // "quote this to support" UI, because there is no support process to quote it
   // to.
   readonly correlationId?: string

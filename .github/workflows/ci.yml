@@ -12,9 +12,6 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
-    env:
-      # A fresh runner has no `wrangler telemetry disable` state.
-      WRANGLER_SEND_METRICS: 'false'
     # A hang detector, not a budget.
     timeout-minutes: 20
 
