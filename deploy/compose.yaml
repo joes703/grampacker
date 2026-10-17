@@ -1,7 +1,7 @@
 # Production Compose file for the VPS. It is installed as
 # /srv/grampacker/compose.yaml, next to deploy.env, secrets/app.env, data/,
-# maintenance/ and caddy/ (docs/vps-bootstrap-and-migration-runbook.md
-# section 7). Every host path is relative to this file.
+# maintenance/ and caddy/ (docs/vps-runbook.md). Every host path is relative
+# to this file.
 #
 # Run it through deploy/grampacker-deploy, or by hand with
 #   docker compose --env-file deploy.env <command>

@@ -5,8 +5,7 @@ this file and adds Claude-specific notes.
 
 **Stack:** Node + better-sqlite3 (SQLite) on a VPS, Hono, Vite, React,
 TypeScript, Drizzle, better-auth. Operations:
-`docs/vps-bootstrap-and-migration-runbook.md`. This is a rewrite of a
-Supabase app, and Supabase or Postgres patterns do not exist here: no RLS
+`docs/vps-runbook.md`. Supabase or Postgres patterns do not exist here: no RLS
 (`auth.uid()`, `WITH CHECK`), no PostgREST `.upsert()`, no
 `SECURITY DEFINER` RPCs or `supabase.rpc()`, no pgTAP. The scoped
 repositories are the authorization boundary.
@@ -14,7 +13,7 @@ repositories are the authorization boundary.
 ## Shipping
 
 - **A merge to `main` does not deploy.** The owner deploys to the VPS by
-  dispatching `image.yml` with `deploy` set (runbook 9.1). Never deploy
+  dispatching `image.yml` with `deploy` set (`docs/vps-runbook.md`, "Deploy"). Never deploy
   yourself.
 - The human approves each merge, for an exact PR head. Confirm CI is green
   yourself, then `gh pr merge --squash --match-head-commit <sha>` (squash is
@@ -47,7 +46,7 @@ repositories are the authorization boundary.
 | Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
 | Dev server | `npm run dev` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. |
 | Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
-| Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR, and deploys to the VPS only when its `deploy` input is set (runbook 6.1, section 8). |
+| Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR, and deploys to the VPS only when its `deploy` input is set (`docs/vps-runbook.md`). |
 
 There is no formatter; do not add Prettier. Which tier a new test belongs in:
 `docs/testing-and-ci.md` section 2. When a test may be deleted: section 6.
@@ -108,9 +107,8 @@ dated.
 
 ## Migrations
 
-Before writing one, read `docs/incidents.md` "Migrations" (why these rules
-exist). What `npm run test:migrations` proves and does not: `docs/testing-and-ci.md`
-section 7.
+Before writing one, read these rules and `docs/testing-and-ci.md` section 7,
+which states what `npm run test:migrations` proves and does not prove.
 
 - Create every migration with `drizzle-kit generate` (schema change) or
   `generate --custom` (data only), so its journal entry and snapshot exist.
@@ -123,6 +121,11 @@ section 7.
   application no longer uses the object.
 - Never edit or delete a migration that has shipped; production applied it by
   name and never re-runs it.
+- Every SQLite connection goes through `openSqlite` in `server/db/index.ts`.
+  It enables foreign keys, WAL, synchronous NORMAL and a five-second busy
+  timeout; `server/db/sqlite.test.ts` pins all four. A connection that skips
+  this setup silently loses cascade and ownership enforcement because SQLite
+  defaults foreign keys to off per connection.
 - SQL triggers (every row cap; the rank-range, rerank, same-list, cycle and
   owner guards) are hand-written and outside Drizzle's model; `drizzle-kit generate` never
   emits or checks them. Never hand-edit generated files (Drizzle snapshots
@@ -130,8 +133,8 @@ section 7.
 
 ## Traps
 
-Each has cost an incident. When working near one, read its
-`docs/incidents.md` section first.
+These are the compact, current explanations. Keep the regression tests and
+load-bearing comments named by each rule.
 
 - No unbounded `inArray` over client input. SQLite allows 32766 bound
   parameters per statement (`server/db/sqlite.test.ts`). A repository binds
@@ -149,14 +152,16 @@ Each has cost an incident. When working near one, read its
   collision retries the whole transaction (`withFreshSlug` in
   `server/repos/lists.ts`).
 - Never put `${table.column}` in a raw sql`` fragment that correlates to an
-  outer table: Drizzle renders it unqualified. Use a join, and assert the
-  values in an API test.
+  outer table: Drizzle renders it unqualified, so both sides of a predicate
+  can resolve against the inner table and return plausible but wrong data.
+  Use a join, and assert the values in an API test.
 - better-auth GETs are not read-only (passkey challenges write; magic-link
   verify creates users). Its own rate limiter is deliberately off: every
   budget is in `server/middleware/rate-limit.ts`, fail-closed across methods,
   so do not delete a rule there because "the plugin covers it". Config alone
   does not disable an auth route (killing a method means purging its data),
-  and `hooks.before` sees an unvalidated body.
+  and `hooks.before` sees an unvalidated body. Charge a request only after
+  the endpoint has validated the value used as the rate-limit key.
 - Hono's `c.res = res` merges headers and the old value wins. Set
   `c.res = undefined` first.
 - A 304 carries no Cache-Control, so a browser that revalidates keeps its old
@@ -246,7 +251,7 @@ agents. Write for them.
 - Explain why, not what. Delete a comment that only repeats the code.
 - Short sentences and common words. No idioms or jokes.
 - No history: no PR numbers, review rounds, or "this used to...". Git has
-  that. Point to a document or incident only when the reader needs it.
+  that. Keep the current reason beside the rule or test that needs it.
 - Keep every warning about a trap, an invariant, a known gap, or a failure
   the code prevents, and the document link that explains it. Say it as
   briefly as it can be said and still be complete; some code needs several
@@ -258,17 +263,15 @@ agents. Write for them.
 ## Documents and rules
 
 - **Binding, kept current with the code:** `AGENTS.md`, `CLAUDE.md`,
-  `SECURITY.md`, `docs/authz-matrix.md`, `docs/incidents.md`,
-  `docs/testing-and-ci.md`, `docs/ui-density.md`. One
+  `SECURITY.md`, `docs/authz-matrix.md`, `docs/testing-and-ci.md`,
+  `docs/ui-density.md`. One
   that disagrees with the code is a bug, fixed in the change that caused it.
 - **Reference, kept current but not policy:** `README.md`, `STACK.md`,
   `PARKED.md`.
-- **Dated records, never cited as authority and never updated:**
-  `docs/passwordless-auth-design.md`, and any new plan, review or design doc
-  once it ships. Older plans, reviews and audits were removed on 2026-10-01
-  and live only in git history (last present at `89e4f1c`). Before
-  de-authorizing or deleting one, move any live gap it describes into
-  `SECURITY.md` (defects, accepted risks) or `PARKED.md` (deferred ideas).
+- **Plans, reviews and design records leave the tree after they ship.** Before
+  deleting one, move every live rule or accepted risk into `AGENTS.md` or
+  `SECURITY.md`, and every deferred idea with a real trigger into `PARKED.md`.
+  Git history keeps the original record.
 - Platform facts above (SQLite limits, Hono, Drizzle, Tailwind) are specific on
   purpose; do not soften them, but re-verify one against the current
   dependency before relying on it in a new way.
@@ -277,5 +280,4 @@ agents. Write for them.
   has expired, retire or reclassify the rule in its maintained document, in
   the change that notices it or with a note saying why not - never work around
   it silently. A policy with no stated reason you can reconstruct is a
-  default, not a constraint: say what you did and why. Before arguing with a
-  rule, read its `docs/incidents.md` section.
+  default, not a constraint: say what you did and why.

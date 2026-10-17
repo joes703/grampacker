@@ -10,7 +10,7 @@
 //   3. Migrations this branch adds (not in the merge base with origin/main)
 //      contain none of the statements that can destroy production data. A
 //      table rebuild's DROP TABLE can fire every ON DELETE CASCADE child. That
-//      is how 0009 wiped list_items (docs/incidents.md).
+//      failure mode is why AGENTS.md bans table rebuilds.
 //
 // Everything else - including whether the SQL runs on SQLite - is proven by
 // the API suite, which builds its database from this directory.

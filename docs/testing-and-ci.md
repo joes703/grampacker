@@ -118,11 +118,12 @@ those files merges, run:
 - `docker compose config` with production-shaped and rehearsal-shaped env
   files;
 - `caddy validate` on both Caddyfiles with `caddy:2`;
-- the empty-database rehearsal in runbook section 7.4.
+- the empty-database rehearsal in `docs/vps-runbook.md`, "Change or test
+  deployment files".
 
 Merging does not deploy. The owner dispatches `image.yml` from `main` with
 `deploy=true` after reviewing the exact commit and green checks. Routine
-deploy, failure and rollback procedures are in the runbook, section 9.
+deploy, failure and rollback procedures are in `docs/vps-runbook.md`.
 
 ## 10. GitHub access from agent sandboxes
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Deploys Grampacker on the VPS. Run as root; installed as
-# /usr/local/sbin/grampacker-deploy (docs/vps-bootstrap-and-migration-runbook.md
-# section 7).
+# /usr/local/sbin/grampacker-deploy (docs/vps-runbook.md).
 #
 #   grampacker-deploy deploy sha256:<64 hex>    deploy that exact image
 #   grampacker-deploy rollback <rollback dir>   restore a saved data directory
@@ -26,7 +25,7 @@
 #   6. turns maintenance off, only after those checks pass.
 # If any step fails, maintenance stays on and the script prints the rollback
 # directory. A rollback directory is the immediate way back from one deploy;
-# long-term backups are Kopia's job.
+# it is not a long-term backup.
 set -euo pipefail
 
 ROOT="${GRAMPACKER_ROOT:-/srv/grampacker}"
@@ -127,7 +126,7 @@ deploy_failed() {
   if [ -e "$ROOT/maintenance/on" ]; then
     say "Maintenance is still on." >&2
   else
-    say "The maintenance file was already removed, so the site may be open (runbook 9.3)." >&2
+    say "The maintenance file was already removed, so the site may be open (see docs/vps-runbook.md)." >&2
   fi
   if [ -n "$saved" ]; then
     say "Rollback directory: $saved" >&2
@@ -200,8 +199,8 @@ cmd_rollback() {
 
   # Restoring discards every write since the copy was made. After a failed
   # deploy maintenance is already on. If the site has reopened since, the
-  # decision is a person's (runbook 9.3): they turn maintenance on first.
-  maintenance_is_on || die "turn maintenance on first (runbook 9.3)"
+  # decision is a person's (docs/vps-runbook.md): they turn maintenance on first.
+  maintenance_is_on || die "turn maintenance on first (see docs/vps-runbook.md)"
 
   docker image inspect "$previous" >/dev/null 2>&1 || docker pull "$previous"
   compose stop app
