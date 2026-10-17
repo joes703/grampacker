@@ -184,8 +184,9 @@ jobs:
 
   # Manual publish, step 3, only when the dispatch set `deploy`: deploys the
   # digest the publish job above pushed and checked, never a tag or a typed
-  # value. A failed deploy is not rolled back: the VPS leaves maintenance on
-  # and prints the rollback directory, and a person decides
+  # value. A failed deploy is not rolled back automatically. If it reaches the
+  # guarded deployment phase, the VPS reports whether maintenance is on and
+  # which rollback directory exists; a person decides
   # (`docs/vps-runbook.md`, "Failed deploy").
   deploy:
     name: Deploy to the VPS

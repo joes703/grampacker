@@ -30,10 +30,11 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
   convenience call: the gear and list content a session reaches is
   low-sensitivity, so a long session wins over frequent sign-ins.
   No tokens in localStorage anywhere.
-- **Passwordless.** grampacker stores no password, and there is no reset,
-  change, or verify flow to attack. There are exactly two ways to get a
-  session: a passkey ceremony, or redeeming an emailed magic link. The full
-  current design and its accepted risks are under "Passwordless auth" below.
+- **Passwordless.** grampacker stores no password and configures no password
+  reset, password change or email-verification feature. There are exactly two
+  ways to get a session: a passkey ceremony, or redeeming an emailed magic
+  link. better-auth's mounted reset compatibility route and the database
+  invariant that keeps it unusable are under "Passwordless auth" below.
 - Passkeys (WebAuthn): rpID is `grampacker.app`, derived with an
   exact-or-dot-boundary match so lookalike domains are excluded
   (`server/passkey-rp-id.node.test.ts`).
@@ -274,12 +275,20 @@ coverage in `server/routes/me.test.ts`):
 ## Passwordless auth
 
 Two ways in, and no third: a passkey ceremony, or an emailed magic link.
-There is no password to phish, reuse, guess, reset, or leak, and no reset
-or verify flow to attack. This section is the maintained design record.
+There is no password to phish, reuse, guess, reset, or leak. No password
+reset, password change or email-verification feature is configured. This
+section is the maintained design record.
 
 **The mailbox is the root of trust.** That is not a downgrade - it was
 already true when a password could be reset by email. The change makes it
 honest rather than adding a second, weaker credential in front of it.
+
+- better-auth still mounts `/reset-password` even though email/password is
+  disabled. The database must contain no `account` row whose provider is
+  `credential` and no `reset-password:*` token in `verification`; otherwise a
+  valid old token could recreate a password credential. The passwordless
+  cutover removed both; new databases start without either, and their absence
+  remains a production invariant.
 
 - Magic-link tokens are **hashed at rest** (`storeToken: 'hashed'`; the
   plugin defaults to PLAIN, which would leave session-minting tokens in

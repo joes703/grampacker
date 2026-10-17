@@ -16,8 +16,9 @@
 #
 # The deploy runs in its own session and writes to a log file. A dropped SSH
 # connection, or a canceled GitHub job, then cannot stop it halfway; the
-# connection only shows the log while it lasts. A failed deploy leaves
-# maintenance on and prints the rollback directory, as a manual one does.
+# connection only shows the log while it lasts. If the deploy reaches its
+# guarded phase, a failure reports whether maintenance is on and which
+# rollback directory exists, as a manual deployment does.
 set -euo pipefail
 
 # Fixed values, never taken from the environment. The local test

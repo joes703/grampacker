@@ -23,7 +23,7 @@
 #   4. runs `migrate` with the new image;
 #   5. starts the new image and checks health and the homepage;
 #   6. turns maintenance off, only after those checks pass.
-# If any step fails, maintenance stays on and the script prints the rollback
+# A failure report says whether maintenance is still on and prints the rollback
 # directory. A rollback directory is the immediate way back from one deploy;
 # it is not a long-term backup.
 set -euo pipefail
@@ -37,7 +37,14 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '6,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+  cat >&2 <<'USAGE'
+grampacker-deploy deploy sha256:<64 hex>    deploy that exact image
+grampacker-deploy rollback <rollback dir>   restore a saved data directory
+                                             and the image it ran with
+grampacker-deploy maintenance on|off        close or reopen the site
+grampacker-deploy caddy-update              pull caddy:2, validate,
+                                             recreate only Caddy
+USAGE
   exit 2
 }
 

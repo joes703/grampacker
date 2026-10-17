@@ -114,9 +114,9 @@ which states what `npm run test:migrations` proves and does not prove.
   `generate --custom` (data only), so its journal entry and snapshot exist.
   Never hand-add a `.sql`.
 - **No table rebuilds, renames or `DROP TABLE`, and never touch the migration
-  ledger.** A rebuild's `DROP TABLE` once cascaded into child rows and wiped
-  them (migration 0009). A deliberate exception needs its own data-preservation
-  proof and rollback rehearsal.
+  ledger.** A rebuild's `DROP TABLE` can cascade into child rows and wipe them.
+  A deliberate exception needs its own data-preservation proof and rollback
+  rehearsal.
 - `DROP COLUMN`, `DROP INDEX` and `DROP TRIGGER` are fine once the deployed
   application no longer uses the object.
 - Never edit or delete a migration that has shipped; production applied it by
@@ -183,7 +183,9 @@ load-bearing comments named by each rule.
   (`src/lib/toast-host.ts`). A modal still reports its own failures inline,
   beside the form. `src/lib/mutation-error-handler.ts` owns which failures
   toast. Error copy claims only what it can prove ("Couldn't confirm...", not
-  "Couldn't delete...").
+  "Couldn't delete..."). A rejected response does not prove that a
+  non-idempotent request did not commit; tell the user to refresh or check the
+  result before retrying.
 - **Every rejected promise has an owner.** An async handler called without
   `await`/`.catch` catches internally or becomes a promise the call site
   awaits. Non-mutation async actions report the error, then consume it,

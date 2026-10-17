@@ -89,8 +89,8 @@ updates:
   #
   # Dependabot may not raise a PR when the SAME tag is rebuilt for Debian
   # fixes (dependabot-core #15103 can turn those off). The monthly check in
-  # the runbook (docs/vps-bootstrap-and-migration-runbook.md 9.6) catches a
-  # rebuilt tag that no PR has moved.
+  # docs/vps-runbook.md, "Routine maintenance", catches
+  # a rebuilt tag that no PR has moved.
   - package-ecosystem: docker
     directory: /
     schedule:
