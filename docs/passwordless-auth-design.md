@@ -197,8 +197,8 @@ in to grampacker"). A scanner fetching that page consumes nothing.
 
 The token rides in the **fragment**, not the query string, because a browser does
 not put the fragment in the request line or the `Referer` header. So clicking the
-link does not write the live, unconsumed, session-minting token into our Worker's
-logs, Cloudflare's request logs, or any proxy's access log en route. The `Referer`
+link does not write the live, unconsumed, session-minting token into application
+logs or a reverse proxy's access log en route. The `Referer`
 half matters as much as the log half: `Referrer-Policy:
 strict-origin-when-cross-origin` sends the FULL url on same-origin requests, so
 under `?token=` the landing page handed the token to every request it went on to
