@@ -52,12 +52,13 @@ D1 binding - the production database is never contacted.
 
 ## Deployment
 
-Merging to `main` no longer deploys. The app is moving from Cloudflare
-Workers to a Node server with SQLite on a VPS, so
+Merging to `main` does not deploy. Production runs on a Node server with
+SQLite on a VPS since 2026-10-16; the owner deploys it from the Image
+workflow (`docs/vps-bootstrap-and-migration-runbook.md`).
 `.github/workflows/deploy.yml`, which applied remote D1 migrations and then
 ran `wrangler deploy`, is kept only as a legacy record and none of its jobs
-run. The production Worker keeps serving the last commit it deployed until
-the cutover. The Cloudflare credentials exist only as GitHub Actions secrets,
+run. The old Worker and D1 serve no traffic and remain only as rollback
+targets. The Cloudflare credentials exist only as GitHub Actions secrets,
 never locally.
 
 ## Layout
