@@ -25,7 +25,7 @@ export interface EmailSender {
 // CSP, so there is one definition of dev. Anywhere else a missing key used to
 // select the console sender too, which made a dropped or rotated-away
 // production secret fail OPEN: sign-in reported success, sent nothing, and
-// wrote redeemable magic-link URLs into Workers Logs. Now it fails at SEND
+// wrote redeemable magic-link URLs into server logs. Now it fails at SEND
 // time, as a logged 500 on the magic-link request alone. Not at construction:
 // authOptions runs for every /api/auth/* request and every requireSession
 // check, and a mail misconfiguration must not take down session lookups.

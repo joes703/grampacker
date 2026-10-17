@@ -43,9 +43,9 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
 - Passkeys (WebAuthn): rpID is `grampacker.app`, derived with an
   exact-or-dot-boundary match so lookalike domains are excluded
   (`server/passkey-rp-id.node.test.ts`).
-- Secrets (`BETTER_AUTH_SECRET`, `RESEND_API_KEY`) are Worker secrets;
-  nothing secret is in the client bundle or the repo (`.dev.vars` is
-  gitignored).
+- Secrets (`BETTER_AUTH_SECRET`, `RESEND_API_KEY`) live only in the
+  root-owned VPS file `/srv/grampacker/secrets/app.env`; nothing secret is in
+  the client bundle or repository.
 - **A missing `RESEND_API_KEY` fails closed.** The console sender - which
   prints the redeemable magic-link URL to the log and reports success - is
   selected only when `BETTER_AUTH_URL` is `localhost` (`isDevEnvironment`,
@@ -100,10 +100,9 @@ coverage in `server/routes/me.test.ts`):
 
 - React escaping end-to-end; no `dangerouslySetInnerHTML`, no `eval`,
   no raw HTML in markdown when that ports.
-- One security-header map is owned by the Worker and applied to every
-  response - SPA shell, static assets, and API alike
-  (`server/middleware/security-headers.ts`; `run_worker_first: true`
-  means nothing bypasses it). CSP `default-src 'self'` with no external
+- One security-header map is applied by the Hono server to every response -
+  SPA shell, static assets, and API alike
+  (`server/middleware/security-headers.ts`). CSP `default-src 'self'` with no external
   origins, `frame-ancestors 'none'` + `X-Frame-Options: DENY`
   (clickjacking), `nosniff`, `Referrer-Policy`, `Permissions-Policy`,
   HSTS with preload, COOP. Integration tests assert the full set on an
@@ -256,19 +255,10 @@ coverage in `server/routes/me.test.ts`):
   would reasonably conclude magic links are self-policing. They are not.
   Every budget above is hand-written in
   `server/middleware/rate-limit.ts`, and a test asserts it.
-- **Where a budget lives depends on what it counts, not on a blanket rule.**
-  This used to read "Cloudflare WAF is hardening on top, never the mechanism
-  (portability rule: the limiter must work on the Node target too)". That
-  reason is retired, and on 2026-08-11 it caused an agent to build a D1-backed
-  limiter that wrote a row on every anonymous page view to protect a read.
-
-  The line that actually holds: a **semantic** budget - one that has to see
-  something only the app knows, like "5 magic links per email address" - can
-  only live in application code, and every budget listed above is that kind.
-  A **volumetric** budget - "too many requests from one address" - belongs at
-  the edge, where it refuses before the Worker runs and before D1 is touched.
-  An application counter cannot do the edge's job: it costs a write to save a
-  read and cannot stop the invocation it is counting.
+- **A budget belongs where its identity is known.** A semantic budget such as
+  "5 magic links per email address" belongs in application code. A broad
+  volumetric limit may belong in the proxy or firewall if traffic ever makes
+  one necessary.
 - CAPTCHA (Turnstile) is deliberately parked; trigger = observed signup
   abuse or real user growth.
 
@@ -310,9 +300,8 @@ honest rather than adding a second, weaker credential in front of it.
   endpoint directly would burn the user's link before they ever saw it.
 - The token rides in the **URL fragment** (`/auth/magic#token=...`). A
   browser does not put the fragment in the request line or the `Referer`
-  header, so clicking the link does not write the live token into our
-  Worker's logs, Cloudflare's request logs, or any proxy's access log on
-  the way. The `Referer` part is load-bearing: `Referrer-Policy:
+  header, so clicking the link does not write the live token into our server
+  or proxy logs. The `Referer` part is load-bearing: `Referrer-Policy:
   strict-origin-when-cross-origin` sends the FULL url on same-origin
   requests, so with `?token=` the landing page handed the token to every
   request it went on to make. A `?token=` link is still honored on read,
@@ -436,55 +425,12 @@ matters more without a password: the passkey is now the whole credential,
 so an unverified ceremony would mean possession of the device alone is
 the account.
 
-## Secrets in build output
-
-`vite build` emits `dist/<worker>/.dev.vars` when a local `.dev.vars`
-exists. This looks alarming and gets re-raised by every audit, so: it is
-deliberate, and it cannot reach production. Three independent reasons -
-
-- The uploaded asset set is `assets.directory: "../client"`
-  (`dist/grampacker/wrangler.json`). The file sits beside the WORKER
-  bundle, which is not part of that set.
-- The Cloudflare plugin also writes an `.assetsignore` naming
-  `.dev.vars`, so wrangler skips it even if it were in the asset dir.
-- CI never has a `.dev.vars` to copy: it is gitignored, and the deploy
-  workflow builds from a clean checkout with secrets injected as env.
-
-It is emitted on purpose so `npm run preview` can read the values back.
-Deleting it in a build hook would break preview and change nothing in
-CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
-
 ## Supply chain
 
 - `npm ci` everywhere, `ignore-scripts=true` + `save-exact=true` in
   `.npmrc`, exact pins, no core infra on beta/RC. We never choose a
   prerelease ourselves: not as a direct dependency, not in `overrides`, and
   not in place of a stable release.
-  - *Exception, Cloudflare development tooling only.* The stable `wrangler`,
-    `@cloudflare/vite-plugin` and `@cloudflare/vitest-plugin` releases we
-    pin require these prereleases at exact versions, so no stable
-    alternative can be installed with them:
-    - `miniflare` `5.20261006.1-alpha` (pinned by all three): the local
-      Workers simulator behind `npm run dev` (the Worker dev server; the API
-      tests no longer use it).
-    - `youch` `4.1.0-beta.10` (pinned by miniflare): formats error pages
-      in local development.
-    - `unenv` `2.0.0-rc.24` (pinned by wrangler and the Vite plugin, and an
-      exact peer dependency of `@cloudflare/unenv-preset`): stand-ins for
-      Node.js APIs that the build can bundle into the Worker under
-      `nodejs_compat`.
-
-    The exception covers only these packages, only at the versions that a
-    reviewed stable Cloudflare release pins. Re-check it, and update the
-    versions here, in the change that updates that tooling. It does not mean
-    that any prerelease a dependency picks, or any version npm tags
-    `latest`, is acceptable. `unenv` is the one that can reach production:
-    because `nodejs_compat` is on, the build can put its Node.js stand-ins
-    into the deployed Worker. Inspect the Worker bundle when the tooling,
-    the `nodejs_compat` setting, or our use of Node.js APIs changes.
-    Searching for unenv's `[unenv]` error prefix is a quick check, but
-    finding none does not prove that unenv code is absent: some of its code
-    has no such marker, and the bundler can remove unused error paths.
 - **Routine updates wait; security fixes bypass routine waiting and receive
   prompt review.** Neither path makes a release safe or approves a deploy.
   - *Routine:* Dependabot version updates wait 7 days on the registry
@@ -495,14 +441,9 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     works, not that it is harmless.
   - *Dependabot security updates* already bypass the cooldown and the weekly
     schedule. They need the dependency graph, Dependabot alerts and Dependabot
-    security updates all enabled in the repository's settings. Not verified
-    from an agent: reading the last two needs admin, and on 2026-10-14 the
-    sandbox's API calls were refused (401). The owner checks, from the Mac:
-    `gh api repos/joes703/grampacker/vulnerability-alerts` must exit 0 with
-    no output (HTTP 204; `HTTP 404` means alerts are off), and
-    `gh api repos/joes703/grampacker/automated-security-fixes` must print
-    `"enabled":true` and `"paused":false`. If either is off, turn it on in
-    the repository's settings, in the Dependabot section.
+    security updates all enabled in the repository's settings. The owner
+    verified on 2026-10-14 that vulnerability alerts were enabled and
+    automated security fixes reported `"enabled":true` and `"paused":false`.
   - *Container images get no security updates* from Dependabot (GitHub's
     supported-ecosystems table). The Node base image moves only through
     Dependabot's daily version updates (`.github/dependabot.yml`) and the
@@ -516,8 +457,7 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     2026-09-30) and GHSA-5r4p-p66f-jhc7 (hono, medium, 2026-09-29) were both
     still outside it on 2026-10-04.
   - *Manual path,* for a credible announcement (the project's own advisory or
-    release notes) that Dependabot has not acted on (for the Worker before
-    cutover, `docs/testing-and-ci.md` section 11): confirm the affected
+    release notes) that Dependabot has not acted on: confirm the affected
     versions against the lockfile and whether our config is exposed; choose
     the smallest suitable fix, usually the patched release plus the sibling
     packages released with it; review the lockfile diff and the release's
@@ -533,13 +473,13 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
     neither better-auth's nor drizzle-orm's `SECURITY.md` names a separate
     announcement channel, and hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
     named their advisories.
-- GitHub Actions pinned to full commit SHAs; triggers are `pull_request`,
-  `push` to main, `workflow_run`, a schedule, and `workflow_dispatch` on
-  workflows that name no secret, with one exception, `image.yml` (below) -
-  never `pull_request_target` (which would run workflows with secrets
-  against fork code). The repository is public; its complete history was
-  reviewed for secrets and data before publication (runbook 5.1). Fork pull
-  requests run with a read-only token and no secrets.
+- GitHub Actions are pinned to full commit SHAs; triggers are `pull_request`,
+  `push` to main and `workflow_dispatch`. Only `image.yml`'s deploy job reads a
+  secret on manual dispatch, under the restrictions below. There is no
+  `pull_request_target` trigger, which would run workflows with secrets against
+  fork code. The repository is public; its complete history was reviewed for
+  secrets and data before publication. Fork pull requests run with a read-only
+  token and no secrets.
 - `image.yml` publishes the production image to GHCR on a manual dispatch
   from main, with `packages: write` on its publish job only. Accepted risk:
   a workflow runs the triggering branch's copy of its file, so a branch that
@@ -548,7 +488,7 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   any tag. Nothing on GitHub stops that on this plan; what does is that only
   the owner can push workflow-file changes or dispatch (agent tokens: no
   Workflows permission, Actions read only; `docs/testing-and-ci.md` section
-  12). So a tag proves nothing: deploy only a digest that a successful run
+  10). So a tag proves nothing: deploy only a digest that a successful run
   on main printed. Fork pull requests get a read-only token.
 - The VPS deployment (`deploy/`, runbook sections 7 and 8) runs as root,
   either by hand (the owner, over SSH, through `sudo`; also the recovery
@@ -579,38 +519,14 @@ CI. `dist/` and `.dev.vars` are both gitignored; keep them that way.
   least monthly and promptly after a Caddy security release (runbook 9.6),
   and the new image must validate the Caddyfile before it replaces the
   running one.
-- The one-time D1-to-SQLite move, completed 2026-10-16 (`import-d1`,
-  `server/db/import-d1.ts`; runbook sections 4, 10 and 11). The D1 export
-  and its counts are production data (emails, passkey public keys, every
-  list): `0600` files in `0700` directories on walnut and the VPS, never in
-  Git, GitHub Actions or an image (`.gitignore` and `.dockerignore` name
-  `d1-full*.sql` and `d1-counts*.json` as a second guard); the rehearsal
-  and cutover copies are deleted (runbook 12.1). The import runs with
-  `--network none` and the export mounted read-only; the export is trusted input (the owner's own Wrangler output,
-  checked against SHA256SUMS), and only the container confines it. Its
-  output and errors name tables, counts and SQLite error codes, never a
-  value. It drops sessions, verification rows and rate-limit buckets, so
-  everyone signs in again; users, accounts and passkeys are copied exactly
-  and checked value by value. It never overwrites a database.
 - A merge changes `main`, not production. A dependency or base-image fix
   reaches the VPS only when an image is published from `main` and deployed:
   within 7 days of a routine update, and as soon as practical for a security
   fix (runbook 9.6, which also checks what production runs).
-- No workflow that names a secret carries `workflow_dispatch`. A manual
-  dispatch runs the CHOSEN REF's copy of the workflow file, and
-  same-repository refs receive repository secrets, so it would let a branch
-  execute an edited privileged workflow. The one exception is `image.yml`'s
-  deploy job, which reads the deploy key: the `production` environment's
-  `main` rule refuses the key to other branches, and the key itself can only
-  deploy a digest (runbook sections 5 and 8). `deploy.yml` carried
-  one as a recovery path until 2026-09-04. Its replacement, re-running a failed
-  Deploy run, is withdrawn too now that `deploy.yml` is legacy (every job
-  `if: false`, AGENTS.md "Shipping"): never re-run an earlier Deploy run. A
-  re-run uses that run's old copy of the file, which still deploys, and can
-  deploy `main` as it is now (header of `deploy.yml`). Narrowly stated: `deploy.yml`'s `workflow_run` trigger
-  still fires on PR-branch CI completions, but its job-level `if` rejects
-  them before any step runs, and the copy that runs is always the one on
-  main.
+- A manual dispatch runs the chosen ref's copy of the workflow file.
+  `image.yml` therefore keeps the deploy key in the `production` environment,
+  whose `main` rule refuses the key to other branches. The key itself can only
+  deploy a digest (runbook sections 5 and 8).
 
 ## Later surfaces (packing locations, food, the pack union)
 
@@ -711,67 +627,7 @@ restatement of the general posture.
   tie remains legal by design (migration 0022) and renders by the
   deterministic tiebreak.
 
-## The app has TWO public origins
-
-`wrangler.jsonc` routes `grampacker.app` as a custom domain and does NOT set
-`workers_dev: false`, so the Worker also answers on its `*.workers.dev`
-hostname. Both serve the same code.
-
-What that does and does not mean, because the config comment only covers half
-of it:
-
-- **Writes are refused there.** `BETTER_AUTH_URL` is the single canonical
-  origin, and both better-auth's origin validation and our CSRF middleware
-  check against it, so an unsafe request carrying the workers.dev Origin is
-  rejected. WebAuthn additionally requires the real domain.
-- **Anonymous reads are NOT.** `GET /api/shares/v2/:slug` takes no session and
-  no CSRF header, so a share link works on the workers.dev hostname too. It
-  publishes exactly what the real domain publishes - the same allowlisted DTO
-  - so this is a second address for public data, not a second trust level.
-- **Accepted**, not overlooked. Setting `workers_dev: false` would close it;
-  the reason not to bother is that it exposes nothing the canonical origin
-  does not already expose to the same anonymous audience. Revisit if the share
-  DTO ever carries something whose distribution should be tied to a hostname,
-  or if the second origin starts showing up where a user could mistake it for
-  the real one.
-
 ## Deferred - known gaps with triggers
-
-- **Production Cloudflare credentials are not environment-scoped.** Closing
-  this needs repository SETTINGS changes plus a one-line workflow change; no
-  pull request closes it on its own.
-
-  What the repository shows, and it is all this entry claims: `deploy.yml`
-  reads `secrets.CLOUDFLARE_API_TOKEN` and `secrets.CLOUDFLARE_ACCOUNT_ID`,
-  and no job in `deploy.yml` declares an `environment:` key, so no deployment
-  branch policy applies to it. (`image.yml`'s VPS deploy job does declare
-  `environment: production`; it reads no Cloudflare credential.) **No GitHub setting has been
-  inspected.** Whether those secrets are defined at repository or organization
-  scope is unverified (what the sandbox token can read:
-  `docs/testing-and-ci.md` section 12). Environments are available: the
-  repository is public (runbook section 5).
-
-  Why it matters: a secret available to the repository is readable by a
-  same-repository `pull_request` run of any workflow, including one that a
-  pull request itself edits. The merge gate does not help - the run happens
-  before the merge. Today the only thing between a branch and these
-  credentials is that no workflow reads them outside `deploy.yml`, which is a
-  convention, not a control.
-
-  Closing it is a coordinated settings-and-code migration, not a checklist of
-  independently useful steps: a `production` environment holding the
-  credentials, its deployment branch policy restricted to `main`, broader-scope
-  availability withdrawn (for an organization secret, removing THIS
-  repository's access is enough - the organization secret itself need not be
-  deleted), and `environment: production` on the deploy job, since a branch
-  policy binds only a job that references it. Withdrawing the broader-scope
-  availability is what actually stops the exposure; do it without the rest and
-  deploys break until the environment wiring exists, so the order matters.
-
-  Trigger: any second person gaining write access, or any need to run workflow
-  code that is not reviewed before it runs. Until then the accepted risk is a
-  single-maintainer repository where every branch is authored by the
-  credential owner.
 
 - **Concurrent food edits can silently destroy scheduling.** Not a security
   hole - an integrity one, recorded here because this is the maintained list
@@ -946,74 +802,13 @@ of it:
   before it ships. Food crosses this boundary as rows carrying no schedule -
   see "Later surfaces" above for that split, and the metering entry below for
   the rest of the endpoint's posture.
-- **Public share endpoint is UNMETERED, and the control when it is needed
-  belongs at the edge** (`GET /api/shares/v2/:slug`). Raised by review
-  2026-07-11; still open by decision, 2026-08-11. There is no rate limit on
-  this endpoint today.
-
-  When one is wanted, it is a Cloudflare rate limiting rule, not application
-  code: the rule refuses before the Worker runs and before D1 is touched,
-  where an application counter would add a database write to every anonymous
-  view in order to protect a read, and could not stop the invocation it was
-  counting. An app-level limiter was written and then removed for exactly
-  that reason (2026-08-11).
-
-  This is the semantic-versus-volumetric split stated under "Abuse and rate
-  limiting" above. The rewrite once ruled that the WAF may never be the only
-  control; that rule existed only for portability to a Node target, which is
-  retired.
-
-  **Trigger for creating the rule:** any sign of scraping, or a share link
-  being posted somewhere public. Until then, unmetered is the accepted
-  position for an app with one user and a 62^6 slug space - a stated
-  decision, not an oversight. Dashboard config is invisible to code review,
-  so this entry is the authoritative record of both the absence and the
-  trigger; `server/routes/shares.ts` and `docs/authz-matrix.md` note the
-  absence too, and point here.
+- **Public share endpoint is unmetered** (`GET /api/shares/v2/:slug`). There
+  is no rate limit on this endpoint today. The trigger for adding one is any
+  sign of scraping or a share link being posted somewhere public. Until then,
+  unmetered is accepted for this small app and its 62^6 slug space.
 
   `/api/health` is unmetered for the same reason and is even less
   interesting: it returns a single boolean.
-
-- **Web Analytics**: `https://static.cloudflareinsights.com/beacon.min.js` (and
-  its `/`-suffixed prefix form) is allowed in **script-src**, and only there.
-  Cloudflare Web Analytics is enabled
-  on the zone and the edge injects its beacon into our HTML *after* the Worker
-  returns, so no code in this repo can see it - this entry previously claimed
-  the beacon "is NOT in the CSP" and was simply wrong. (It hid behind a false
-  negative: the edge only injects when the request sends `Accept: text/html`, so
-  a plain `curl` shows a clean document and a browser does not.) Under
-  `script-src 'self'` the browser blocked it on every page load, so we paid for
-  a third-party request, collected no analytics, and carried a permanent CSP
-  violation in the console that would mask the next real one.
-
-  The grant is **path-restricted**, not host-wide. A bare origin would authorize
-  every executable path on `static.cloudflareinsights.com`, now and in future;
-  the trailing slash confines it to the beacon's own prefix.
-
-  **connect-src is NOT widened.** An edge-injected beacon reports to the
-  same-origin `/cdn-cgi/rum` (only a *manually embedded* beacon talks to
-  `cloudflareinsights.com` directly), already permitted by `connect-src 'self'`.
-  Allowing the static origin as a connection destination would grant a
-  third-party script an exfiltration target for nothing. Pinned by a test.
-
-  **On the SRI, do not overclaim.** The injected tag carries
-  `integrity="sha512-..."` and `crossorigin="anonymous"`, so a browser refuses
-  bytes that do not match the hash the edge advertised. That defends against a
-  tampered or compromised response *from* `static.cloudflareinsights.com`. It is
-  **not** an application-controlled supply-chain pin: Cloudflare chooses both the
-  injected tag and the script it points at, and can rotate the URL and the hash
-  together without our knowledge. It constrains that host; it does not constrain
-  Cloudflare.
-
-  Why we accept it anyway: Cloudflare already terminates our TLS and serves our
-  origin, so this adds no *new* administrative trust principal. What it does add
-  is browser-enforced script authority for more Cloudflare infrastructure - a
-  vulnerability on that host would now reach a page holding a live session
-  cookie. That is a real, bounded increase in attack surface, and the honest
-  reason to take it is that the alternative (leave the block in place) means
-  paying every cost of the beacon and getting none of the data. Turning Web
-  Analytics off at the zone remains the strictly safer option if the RUM data
-  ever stops earning its keep.
 
 - **A parent deleted mid-write answered 500, not 4xx**: CLOSED 2026-10-12.
   Repositories used to check ownership of a category, gear row or list,
@@ -1040,11 +835,5 @@ Recorded so they are not re-litigated:
 SSRF (the only outbound HTTP is Resend's fixed endpoint; no
 user-controlled URLs), mixed content (HTTPS-only + HSTS), CORS
 misconfiguration (no CORS at all), local network access, user
-activation.
-
-SRI used to sit in that list ("all assets same-origin and content-hashed
-by Vite"). It no longer belongs there: the Cloudflare Web Analytics beacon
-is a genuine third-party script (see Web Analytics above). Our own assets
-are still same-origin and content-hashed, so they need no SRI - but the one
-script we do not serve arrives SRI-pinned by Cloudflare, and that is now a
-property we depend on rather than one we can call inapplicable.
+activation, and SRI (all executable assets are same-origin and content-hashed
+by Vite).

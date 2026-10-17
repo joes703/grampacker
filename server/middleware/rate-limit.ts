@@ -209,8 +209,8 @@ function ruleFor(path: string): Rule {
 // - HMAC, not a bare hash. Without it, rate_limits.key becomes a list of every
 //   address that ever requested a link, and a plain SHA-256 of an email address
 //   is trivially reversible with a dictionary - it is a lookup key, not a
-//   secret. The pepper is BETTER_AUTH_SECRET: real secret material (a Worker
-//   secret), NOT BETTER_AUTH_URL or any other public/low-entropy value, and it
+//   secret. The pepper is BETTER_AUTH_SECRET: real secret material, NOT
+//   BETTER_AUTH_URL or any other public/low-entropy value, and it
 //   is never logged.
 //
 // - DOMAIN-SEPARATED. BETTER_AUTH_SECRET is also better-auth's own signing key,

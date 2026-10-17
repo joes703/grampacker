@@ -2,8 +2,7 @@
 # and, when started by hand on main, publishes it to GHCR and, only if the
 # dispatch asks, deploys that image to the VPS.
 #
-# Nothing here talks to DNS or Cloudflare. The Worker deployment is
-# deploy.yml, and this workflow does not touch it.
+# Nothing here changes DNS or the public route.
 #
 # TRIGGERS
 # --------
@@ -28,7 +27,7 @@
 # not by GitHub: a branch could edit it away. The same is true of
 # `packages: write` on any trigger. What prevents that is who can change a
 # workflow file at all: only Joe; the agent tokens have no Workflows permission
-# (docs/testing-and-ci.md section 12). The token here can push images, which
+# (docs/testing-and-ci.md section 10). The token here can push images, which
 # is why a deployment uses the digest this workflow prints for a main run,
 # never a tag.
 #

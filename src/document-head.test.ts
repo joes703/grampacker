@@ -36,8 +36,7 @@ function head(): Document {
 describe('index.html', () => {
   it('declares both icon formats, and every icon link resolves to a file', () => {
     // The files matter even to a client that ignores these links. Any path
-    // with no file is answered by the SPA fallback (wrangler.jsonc
-    // not_found_handling) with index.html at 200: a browser probes
+    // with no file is answered by the SPA fallback with index.html at 200: a browser probes
     // /favicon.ico by convention, crawlers and link unfurlers ask for it
     // regardless, and iOS asks for /apple-touch-icon.png when saving to the
     // Home Screen. Each would get HTML where it asked for an image.

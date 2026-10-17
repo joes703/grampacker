@@ -21,8 +21,8 @@ export const FORBIDDEN = [
     'ALTER TABLE ... RENAME (a rebuild step, and a rename has no window where both names work)',
   ],
   [/__new_/i, "drizzle-kit's table-rebuild scratch table"],
-  [/\bforeign_keys\b/i, 'PRAGMA foreign_keys (a no-op on D1; its presence means a rebuild)'],
-  [/\bd1_migrations\b/i, "wrangler's migration ledger"],
+  [/\bforeign_keys\b/i, 'PRAGMA foreign_keys (its presence usually means a rebuild)'],
+  [/\b__drizzle_migrations\b/i, "the application's migration ledger"],
   [/\bsqlite_(master|schema)\b/i, 'the SQLite schema table'],
 ]
 

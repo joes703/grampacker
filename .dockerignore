@@ -3,9 +3,8 @@
 # reach the image by accident. The image itself copies only build output
 # (Dockerfile); this keeps the build stages clean too.
 #
-# Never allowed: .git, .env*, .dev.vars, .wrangler, wrangler.jsonc, .data,
-# dist (the Cloudflare build copies .dev.vars into it), node_modules, docs,
-# scripts, and every SQLite file.
+# Never allowed: .git, .env*, .data, dist, node_modules, docs, scripts, and
+# every SQLite file.
 *
 
 !package.json
@@ -21,7 +20,6 @@
 !tsconfig.json
 !tsconfig.app.json
 !tsconfig.node.json
-!tsconfig.worker.json
 !vite.node.config.ts
 !vite.server.config.ts
 
@@ -32,13 +30,7 @@
 **/*.test.tsx
 **/test/
 **/.env*
-**/.dev.vars*
 **/*.db
 **/*.db-*
 **/*.sqlite*
 **/.DS_Store
-
-# A real D1 export or its counts (runbook section 10), wherever it lands.
-**/d1-full*.sql
-**/d1-counts*.json
-**/grampacker-d1-export/

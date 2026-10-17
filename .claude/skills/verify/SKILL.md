@@ -8,10 +8,10 @@ description: Drive the running grampacker app in a real browser to verify auth/U
 ## Launch
 
 - `npm run dev > /tmp/grampacker-dev.log 2>&1 &` - one server for SPA +
-  /api/* + local D1 (port 5173). Capture the log: the dev EmailSender
+  /api/* + local SQLite (port 5173). Capture the log: the dev EmailSender
   prints every auth email to it.
-- Local D1 state persists in `.wrangler/`. Migrations:
-  `npx wrangler d1 migrations apply grampacker --local`.
+- Local state persists in `.data/grampacker.db`; the dev server applies
+  migrations when it starts.
 
 ## Drive
 
@@ -46,23 +46,12 @@ description: Drive the running grampacker app in a real browser to verify auth/U
   buckets, 1 hour for the per-address one, a day for the global mail
   quota); a 429 carries `Retry-After`. Clean up after 429 probes rather
   than waiting:
-  `npx wrangler d1 execute grampacker --local --command "delete from rate_limits"`.
+  Stop the dev server, then run
+  `sqlite3 .data/grampacker.db "delete from rate_limits"`.
   To simulate distinct clients instead, set a `cf-connecting-ip` header.
 - Passkey enrollment and deletion need a FRESH session (created within
   24h): a session aged in D1 answers 403 SESSION_NOT_FRESH, and the fix is
   to sign in again, which mints a new one.
-
-## Production-mode preview (CSP)
-
-Dev drops the CSP (Vite HMR needs inline scripts), so CSP must be
-verified against the BUILT app: hide .dev.vars, `npm run build`, then
-`npx vite preview --port 4173`. GOTCHA: the cloudflare vite plugin
-copies .dev.vars into dist/grampacker/.dev.vars AT BUILD TIME and
-preview loads it, overriding wrangler.jsonc vars - a build made while
-.dev.vars exists previews in dev mode no matter what. Hide the file
-BEFORE building. Auth writes fail under preview (origin mismatch with
-the prod BETTER_AUTH_URL - expected); shell render + zero console CSP
-violations is the check. Restore .dev.vars after.
 
 ## Gear page (/gear)
 

@@ -102,10 +102,8 @@ API tests run without `NODE_ENV`; the check script proves the redirect from
 the real container.
 
 The build context is an allowlist (`.dockerignore`), so `.git`, `.env*`,
-`.dev.vars`, Wrangler files, `dist/`, `.data/`, SQLite files and tests
-never reach any stage. The image builds `build:client` and `build:server`,
-never `npm run build`: that also runs the Cloudflare build, which copies
-`.dev.vars` into `dist/`.
+`dist/`, `.data/`, SQLite files and tests never reach any stage. The image
+builds `build:client` and `build:server` directly.
 
 ## Health check
 

@@ -96,7 +96,7 @@ export function mutationErrorHandler(
   const message = error instanceof Error ? error.message : String(error)
   // The server's id for the same incident, when it minted one (5xx that it
   // actually logged). This is the join between what the console shows and what
-  // Workers Logs holds - without it, a client-side "Internal Server Error" and
+  // the server log holds - without it, a client-side "Internal Server Error" and
   // the server entry that explains it cannot be tied together.
   const correlationId = error instanceof ApiError ? error.correlationId : undefined
   console.warn(`[${key}] failed`, {

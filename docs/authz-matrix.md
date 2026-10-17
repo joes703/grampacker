@@ -125,5 +125,4 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 Response headers, tested in `server/middleware/security-headers.test.ts`:
 
 - Every response (SPA shell, assets, API, errors) carries the shared
-  security-header map (`server/middleware/security-headers.ts`);
-  `run_worker_first: true` means no path bypasses the Worker.
+  security-header map (`server/middleware/security-headers.ts`).

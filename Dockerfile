@@ -1,13 +1,9 @@
 # The production image: one Node process serving the API and the built SPA
-# from a SQLite database in /data (docs/vps-migration-plan.md step 5).
+# from a SQLite database in /data.
 #
 #   docker build --platform linux/amd64 -t grampacker .
 #   docker run --rm -v "$PWD/data:/data" grampacker migrate   apply migrations
 #   docker run -d -v "$PWD/data:/data" --env-file app.env grampacker   serve
-#   docker run --rm --network none -v "$PWD/import:/import:ro" -v "$PWD/data:/data" \
-#     grampacker import-d1 --export ... --d1-counts ... --out ...    one-time
-#     D1 import (server/db/import-d1.ts; runbook sections 10 and 11)
-#
 # Migrating and serving are separate commands on purpose. `serve` (the
 # default) never changes the schema: it refuses to start while a migration
 # is pending, so the deploy runs `migrate` explicitly, after it has copied
@@ -25,9 +21,8 @@
 # The digest is the multi-platform index (docs/container-image.md).
 FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS base
 
-# 1. Build: every dependency, then the SPA and the compiled server. Not
-#    `npm run build`: that also runs the Cloudflare build, which copies
-#    .dev.vars into dist/. Typecheck, lint and tests run in CI, not here.
+# 1. Build: every dependency, then the SPA and the compiled server. Typecheck,
+#    lint and tests run in CI, not here.
 FROM base AS build
 WORKDIR /src
 COPY package.json package-lock.json .npmrc ./

@@ -200,7 +200,7 @@ describe('log volume ceiling', () => {
   })
 
   it('holds the ceiling when requests race concurrently', async () => {
-    // Workers interleave at every await, so the ceiling holds only because the
+    // Requests interleave at every await, so the ceiling holds because the
     // claim is synchronous end to end.
     const thrower = appThatThrows(new Error('flood'))
     await Promise.all(

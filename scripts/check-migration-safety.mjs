@@ -8,13 +8,12 @@
 //   2. The newest snapshot matches server/db/schema.ts: `drizzle-kit generate`
 //      against a copy of meta/ must find nothing to do.
 //   3. Migrations this branch adds (not in the merge base with origin/main)
-//      contain none of the statements that can destroy data on D1. A table
-//      rebuild's DROP TABLE fires every ON DELETE CASCADE child, because
-//      PRAGMA foreign_keys=OFF is a no-op inside D1's migration transaction.
-//      That is how 0009 wiped list_items (docs/incidents.md).
+//      contain none of the statements that can destroy production data. A
+//      table rebuild's DROP TABLE can fire every ON DELETE CASCADE child. That
+//      is how 0009 wiped list_items (docs/incidents.md).
 //
-// Everything else - whether the SQL runs on D1 at all - is proven by the API
-// suite, which builds its database from this directory.
+// Everything else - including whether the SQL runs on SQLite - is proven by
+// the API suite, which builds its database from this directory.
 //
 // Usage: node scripts/check-migration-safety.mjs. Needs origin/main fetched.
 
@@ -97,7 +96,7 @@ const checkNewMigrations = () => {
     .filter(([, reasons]) => reasons.length > 0)
   if (refused.length > 0) {
     throw new Error(
-      'New migration(s) contain statements that can destroy data on D1:\n' +
+      'New migration(s) contain statements that can destroy production data:\n' +
         refused.map(([name, reasons]) => `  ${name}: ${reasons.join('; ')}`).join('\n') +
         '\nSee AGENTS.md "Migrations".',
     )

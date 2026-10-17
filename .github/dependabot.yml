@@ -1,20 +1,12 @@
-# Keeps dependencies current. Without it, only GitHub's repo-level SECURITY
-# updates run, and those bump a direct dependency but never a PARENT to fix a
-# transitive child - which is how the Cloudflare toolchain drifted until
-# miniflare's bundled sharp picked up four libvips CVEs that nothing was ever
-# going to raise a PR for.
+# Keeps direct and transitive dependencies current alongside GitHub's security
+# updates.
 #
 # ONE GROUP PER ECOSYSTEM, ON PURPOSE
 # -----------------------------------
 # This file used to partition npm updates by semver level (major 30 days, minor
 # 7, patch 3) and by package family. The semver partition was the mistake. A
 # group can only ever combine updates that are eligible in the SAME run, so
-# different waits per level push packages that pin each other exactly into
-# separate runs. The Cloudflare Vitest plugin (@cloudflare/vitest-pool-workers
-# then, @cloudflare/vitest-plugin now) pins wrangler EXACTLY; a patch
-# on one and a minor on the other came eligible three days apart, and the
-# resulting PR would have installed a second nested wrangler, miniflare and five
-# workerd binaries.
+# different waits per level can push related packages into separate runs.
 #
 # Grouping by family was the attempt to fix that, and it only works if every
 # family is enumerated in advance - which is how react got missed. react-dom

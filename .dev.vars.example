@@ -1,5 +1,0 @@
-# Copy to .dev.vars (gitignored) for local dev.
-BETTER_AUTH_SECRET=dev-only-secret-not-used-in-production
-BETTER_AUTH_URL=http://localhost:5173
-# Optional: set to send real email from local dev instead of console logging.
-# RESEND_API_KEY=re_...

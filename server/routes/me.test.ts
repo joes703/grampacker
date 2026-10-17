@@ -41,7 +41,7 @@ describe('/api/me authorization matrix', () => {
       .bind('me-haskey@example.com')
       .first<{ id: string }>()
     // Passkey rows can only be created by a WebAuthn ceremony, which cannot run
-    // in a test worker, so the credential is seeded directly. What is under test
+    // in the test app, so the credential is seeded directly. What is under test
     // is the COUNT's scoping, not the ceremony (covered by the passkey tests).
     await testDb.prepare(
       `insert into passkey (id, name, public_key, user_id, credential_id, counter,

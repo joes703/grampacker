@@ -27,7 +27,7 @@ cleanup() {
   # The data files belong to the app's UID; remove them from inside Docker so
   # the host needs no sudo.
   if [ -d "$WORK" ]; then
-    docker run --rm --user 0 --entrypoint rm -v "$WORK:/work" "$IMAGE" -rf /work/data /work/locked /work/imported >/dev/null 2>&1 || true
+    docker run --rm --user 0 --entrypoint rm -v "$WORK:/work" "$IMAGE" -rf /work/data /work/locked >/dev/null 2>&1 || true
     rm -rf "$WORK"
   fi
 }
@@ -122,32 +122,6 @@ out="$(run_app migrate)"
 [ "$out" = "applied 0 migration(s) to /data/grampacker.db" ] || fail "second migrate printed: $out"
 pass "migrate again is a no-op: $out"
 
-# --- 4a. The D1 import command (runbook sections 10 and 11) -----------------
-# The committed test fixture (invented data; server/db/import-d1.test.ts),
-# mounted read-only and run as the runbook runs it: no network, no app
-# configuration, into a directory only the app user can write.
-FIXTURES="$(cd "$(dirname "$0")/.." && pwd)/server/test/fixtures"
-docker run --rm --user 0 --entrypoint sh -v "$WORK:/work" "$IMAGE" \
-  -c "mkdir /work/imported && chown $APP_ID:$APP_ID /work/imported && chmod 0700 /work/imported"
-set +e
-out="$(docker run --rm --network none -v "$FIXTURES:/import:ro" -v "$WORK/imported:/data" "$IMAGE" \
-  import-d1 --export /import/fixture-d1-export.sql --d1-counts /import/fixture-d1-counts.json --out /data/grampacker.db 2>&1)"
-code=$?
-set -e
-[ "$code" = 0 ] || fail "import-d1 exited $code: $out"
-grep -qx 'result: OK' <<<"$out" || fail "import-d1 did not report OK: $out"
-left="$(docker run --rm --user 0 --entrypoint ls -v "$WORK/imported:/data" "$IMAGE" -A /data)"
-[ "$left" = "grampacker.db" ] || fail "import-d1 left: $left"
-pass "import-d1 builds one database file from a Wrangler export"
-set +e
-out="$(docker run --rm --network none -v "$FIXTURES:/import:ro" -v "$WORK/imported:/data" "$IMAGE" \
-  import-d1 --export /import/fixture-d1-export.sql --d1-counts /import/fixture-d1-counts.json --out /data/grampacker.db 2>&1)"
-code=$?
-set -e
-[ "$code" = 1 ] || fail "import-d1 over an existing database exited $code"
-case "$out" in *"already exists"*) ;; *) fail "import-d1 over an existing database printed: $out" ;; esac
-pass "import-d1 refuses to overwrite an existing database"
-
 # --- 5 and 6. Serve the migrated database over HTTP -------------------------
 start_server "$NAME-a"
 pass "server healthy by its own HEALTHCHECK (read-only root filesystem)"
@@ -234,11 +208,11 @@ pass "/app holds only package.json, node_modules, migrations (SQL + journal), di
 # As root, so no unreadable directory hides a file or fails the search.
 found="$(docker run --rm --user 0 --entrypoint sh "$IMAGE" -c '
   find / -xdev \( -path /proc -o -path /sys \) -prune -o \( \
-    -name .git -o -name ".env*" -o -name ".dev.vars*" -o -name ".wrangler" -o -name "wrangler.*" \
+    -name .git -o -name ".env*" \
     -o -name "*.db" -o -name "*.db-wal" -o -name "*.db-shm" -o -name "*.sqlite*" -o -name ".npmrc" \
   \) -print')"
 [ -z "$found" ] || fail "forbidden files in the image: $found"
-pass "no .git, .env*, .dev.vars, Wrangler files, .npmrc or SQLite files anywhere"
+pass "no .git, .env*, .npmrc or SQLite files anywhere"
 
 found="$(docker run --rm --entrypoint sh "$IMAGE" -c 'find /app/dist /app/migrations \( -name "*.map" -o -name "*.test.*" -o -name "*.ts" \) -print; ls -A /data')"
 [ -z "$found" ] || fail "maps, tests, TypeScript or data in the app: $found"
@@ -254,7 +228,7 @@ result="$(docker run --rm --entrypoint node "$IMAGE" -e '
   const pkg = JSON.parse(fs.readFileSync("/app/package.json", "utf8"))
   const installed = JSON.parse(fs.readFileSync("/app/node_modules/.package-lock.json", "utf8")).packages
   const bad = Object.entries(installed).filter(([, e]) => e.dev || e.devOptional).map(([k]) => k)
-  for (const n of ["vite", "vitest", "wrangler", "typescript", "eslint", "drizzle-kit", "tsx", "miniflare", "workerd", "esbuild", "jsdom"]) {
+  for (const n of ["vite", "vitest", "typescript", "eslint", "drizzle-kit", "tsx", "esbuild", "jsdom"]) {
     if (fs.existsSync("/app/node_modules/" + n)) bad.push(n)
   }
   const requiredBy = (n) => Object.entries(installed).filter(([, e]) =>

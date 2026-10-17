@@ -64,7 +64,7 @@ describe('mutationErrorHandler', () => {
   })
 
   it('carries the correlation id from an ApiError into the log payload', () => {
-    // The join between this console line and the Workers Logs entry that
+    // The join between this console line and the server log entry that
     // explains it. Without it, a client-side "Internal Server Error" and the
     // server incident behind it cannot be tied together.
     mutationErrorHandler(
