@@ -48,9 +48,9 @@ description: Drive the running grampacker app in a real browser to verify auth/U
   than waiting:
   Stop the dev server, then run
   `sqlite3 .data/grampacker.db "delete from rate_limits"`.
-  To simulate distinct clients instead, set a `cf-connecting-ip` header.
+  To simulate distinct clients instead, set an `x-forwarded-for` header.
 - Passkey enrollment and deletion need a FRESH session (created within
-  24h): a session aged in D1 answers 403 SESSION_NOT_FRESH, and the fix is
+  24h): an aged session answers 403 SESSION_NOT_FRESH, and the fix is
   to sign in again, which mints a new one.
 
 ## Gear page (/gear)
