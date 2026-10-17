@@ -61,7 +61,7 @@ export function passkeyRpId(baseUrl: string): string {
 //   - update-passkey
 //     RENAME. The plugin writes only the `name` column, so it cannot add,
 //     remove, or alter a credential - a gate here buys nothing and costs
-//     the owner a ceremony (docs/passwordless-auth-design.md).
+//     the owner a ceremony (SECURITY.md "Fresh auth").
 const PASSKEY_UNGATED = new Set([
   '/passkey/generate-authenticate-options',
   '/passkey/verify-authentication',
@@ -121,8 +121,8 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
     // (RESET_PASSWORD_DISABLED). This matters more than it looks:
     // /reset-password is NOT gated on `enabled`, and given a still-valid token
     // it will RE-CREATE a credential account for a user who has none. Config
-    // alone does not kill the password - the migration that purges reset tokens
-    // and credential rows does (docs/passwordless-auth-design.md section 5).
+    // alone does not kill the password. The database must also contain no
+    // reset tokens or credential rows; SECURITY.md records that invariant.
 
     // Data minimization: grampacker never collects or stores a display
     // name (2026-07-09). better-auth's user model requires the column, and the

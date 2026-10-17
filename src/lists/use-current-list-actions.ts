@@ -117,7 +117,7 @@ export function useCurrentListActions() {
   // isShared/isDraft reset) and returns the new row; navigate to it. Invalidate
   // on failure too: a rejected request does not prove the copy was not made, and
   // it is a non-idempotent POST, so the copy advises checking before retrying
-  // (docs/incidents.md). Hook-level rather than per-call, so both still run when
+  // (AGENTS.md "Traps"). Hook-level rather than per-call, so both still run when
   // the caller has unmounted by the time the response lands.
   // Invalidate BEFORE navigating: the copy is not in ['lists'] yet, and a fetch
   // already in flight is what makes the new page wait rather than flash "List

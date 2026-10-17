@@ -6,12 +6,6 @@ it wrong. It records what is enforced, where the tests live, and what is
 deliberately deferred - it is honest about gaps, and a gap stated here is a
 decision, not an oversight.
 
-Written at phase 1 (2026-07-08) against MDN's web security guides
-(https://developer.mozilla.org/en-US/docs/Web/Security). Re-swept 2026-08-11,
-which was overdue: the public share had shipped long before, and three whole
-subsystems (packing locations, the food estimate, the gear/food pack union)
-had arrived with no entry here at all. See "Later surfaces" below.
-
 Per-route contracts live in `docs/authz-matrix.md`, which is the authority on
 who can call what. This file is the posture: the shape of the defenses and the
 reasoning behind them. Where the two overlap, the matrix wins on detail.
@@ -36,10 +30,11 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
   convenience call: the gear and list content a session reaches is
   low-sensitivity, so a long session wins over frequent sign-ins.
   No tokens in localStorage anywhere.
-- **Passwordless.** grampacker stores no password, and there is no reset,
-  change, or verify flow to attack. There are exactly two ways to get a
-  session: a passkey ceremony, or redeeming an emailed magic link. See
-  "Passwordless auth" below and `docs/passwordless-auth-design.md`.
+- **Passwordless.** grampacker stores no password and configures no password
+  reset, password change or email-verification feature. There are exactly two
+  ways to get a session: a passkey ceremony, or redeeming an emailed magic
+  link. better-auth's mounted reset compatibility route and the database
+  invariant that keeps it unusable are under "Passwordless auth" below.
 - Passkeys (WebAuthn): rpID is `grampacker.app`, derived with an
   exact-or-dot-boundary match so lookalike domains are excluded
   (`server/passkey-rp-id.node.test.ts`).
@@ -275,19 +270,25 @@ coverage in `server/routes/me.test.ts`):
 - zod DTOs in `shared/` validate on both sides of the API; response
   shapes are pinned by tests so drift fails CI.
 - SQLite constraints (FKs, UNIQUEs, CHECKs) land with each schema slice
-  as the backstop against programmer error, mirroring the old repo's
-  discipline.
+  as the backstop against programmer error.
 
 ## Passwordless auth
 
 Two ways in, and no third: a passkey ceremony, or an emailed magic link.
-There is no password to phish, reuse, guess, reset, or leak, and no reset
-or verify flow to attack. Full design and rejected alternatives:
-`docs/passwordless-auth-design.md`.
+There is no password to phish, reuse, guess, reset, or leak. No password
+reset, password change or email-verification feature is configured. This
+section is the maintained design record.
 
 **The mailbox is the root of trust.** That is not a downgrade - it was
 already true when a password could be reset by email. The change makes it
 honest rather than adding a second, weaker credential in front of it.
+
+- better-auth still mounts `/reset-password` even though email/password is
+  disabled. The database must contain no `account` row whose provider is
+  `credential` and no `reset-password:*` token in `verification`; otherwise a
+  valid old token could recreate a password credential. The passwordless
+  cutover removed both; new databases start without either, and their absence
+  remains a production invariant.
 
 - Magic-link tokens are **hashed at rest** (`storeToken: 'hashed'`; the
   plugin defaults to PLAIN, which would leave session-minting tokens in
@@ -303,9 +304,9 @@ honest rather than adding a second, weaker credential in front of it.
   header, so clicking the link does not write the live token into our server
   or proxy logs. The `Referer` part is load-bearing: `Referrer-Policy:
   strict-origin-when-cross-origin` sends the FULL url on same-origin
-  requests, so with `?token=` the landing page handed the token to every
-  request it went on to make. A `?token=` link is still honored on read,
-  for links that were in an inbox at the cutover.
+  requests, so with `?token=` the landing page would hand the token to every
+  request it went on to make. A legacy `?token=` link is still honored on
+  read for compatibility.
 - **What this does not do:** the token is still in the email. Resend and
   any receiving mail-security gateway (Safe Links and friends) see the
   whole message, and a gateway that rewrites URLs sees the fragment too.
@@ -447,7 +448,7 @@ the account.
   - *Container images get no security updates* from Dependabot (GitHub's
     supported-ecosystems table). The Node base image moves only through
     Dependabot's daily version updates (`.github/dependabot.yml`) and the
-    monthly check (runbook 9.6). Caddy moves only through
+    monthly check (`docs/vps-runbook.md`, "Routine maintenance"). Caddy moves only through
     `grampacker-deploy caddy-update`.
   - *Gap:* Dependabot and `npm audit` act only on advisories in GitHub's
     advisory database, and Dependabot raises vulnerability alerts and
@@ -490,7 +491,7 @@ the account.
   Workflows permission, Actions read only; `docs/testing-and-ci.md` section
   10). So a tag proves nothing: deploy only a digest that a successful run
   on main printed. Fork pull requests get a read-only token.
-- The VPS deployment (`deploy/`, runbook sections 7 and 8) runs as root,
+- The VPS deployment (`deploy/`; see `docs/vps-runbook.md`) runs as root,
   either by hand (the owner, over SSH, through `sudo`; also the recovery
   path) or from `image.yml`'s deploy job. That job runs only when a dispatch
   on main sets `deploy`, and sends only the digest its own publish job
@@ -501,12 +502,13 @@ the account.
   sudo rule allows that one program, which checks the digest again as root
   and runs `grampacker-deploy deploy`. The parser is tested by
   `deploy/test-grampacker-deploy-ssh.sh`, run by hand; sshd's and sudo's
-  limits are checked on the VPS by runbook 8.4. Accepted risk: whoever
+  limits are checked on the VPS as described under "Deployment files and
+  access". Accepted risk: whoever
   holds the key can deploy any digest in
   `ghcr.io/joes703/grampacker`, an older vulnerable image included, and
   nothing on the VPS can tell a main build from one a branch pushed (the
   `image.yml` entry above). The key is a secret of the `production`
-  environment, which GitHub gives only to a run on main (runbook section 5).
+  environment, which GitHub gives only to a run on main.
   The script accepts only an exact `sha256:` app image digest, never
   a tag. The app listens on `127.0.0.1` only, as UID/GID 10001, with a
   read-only root filesystem;
@@ -516,36 +518,30 @@ the account.
   digest pin would stop its security fixes. So an upstream regression or
   compromise reaches production at the next `grampacker-deploy
   caddy-update`. Updates are explicit, never part of an app deploy, run at
-  least monthly and promptly after a Caddy security release (runbook 9.6),
+  least monthly and promptly after a Caddy security release,
   and the new image must validate the Caddyfile before it replaces the
   running one.
 - A merge changes `main`, not production. A dependency or base-image fix
   reaches the VPS only when an image is published from `main` and deployed:
   within 7 days of a routine update, and as soon as practical for a security
-  fix (runbook 9.6, which also checks what production runs).
+  fix (`docs/vps-runbook.md`, "Routine maintenance").
 - A manual dispatch runs the chosen ref's copy of the workflow file.
   `image.yml` therefore keeps the deploy key in the `production` environment,
   whose `main` rule refuses the key to other branches. The key itself can only
-  deploy a digest (runbook sections 5 and 8).
+  deploy a digest (`docs/vps-runbook.md`, "Deployment files and access").
 
-## Later surfaces (packing locations, food, the pack union)
+## Packing, food and public shares
 
-Added 2026-08-11. These three shipped after this file was written and had no
-entry until the re-sweep. None introduces a new authentication or
-authorization MECHANISM: the authenticated routes all go through
-`reposForUser`, and the one anonymous path (the share's food rows) goes
-through `createPublicSharesRepo`, which is deliberately outside `reposForUser`
-because there is no user - it self-gates every statement on slug + is_shared
-instead. What follows is what is DIFFERENT about these surfaces, not a
-restatement of the general posture.
+Authenticated routes go through `reposForUser`. The anonymous share route
+uses `createPublicSharesRepo`, outside `reposForUser` because there is no
+session; every statement gates itself on the slug and `is_shared`.
 
 - **Packing locations** are children of a list, and the interesting failure is
   cross-parent stitching: a location id from another of the caller's OWN lists
   must 404, not succeed, or the ownership check degrades from "this list" to
   "this user". Enforced by a composite parent predicate on every write.
   All three write verbs have explicit wrong-parent tests
-  (`server/routes/packing-locations.test.ts`); PATCH was the gap and was
-  closed 2026-08-11. Two things that gap taught, both worth keeping:
+  (`server/routes/packing-locations.test.ts`).
 
   A status assertion alone proves nothing here. `rename` pre-reads, UPDATEs,
   then reads back through the owned parent - so with the parent predicate
@@ -570,24 +566,17 @@ restatement of the general posture.
   "Tuesday dinner: leftover curry" is a fact about someone's week. Caps: 200
   items, 30 days.
 
-  Amended 2026-08-12 by migration 0024, and the amendment is a real widening
-  that must not be glossed. A per-meal item's carried count is `quantity` x
-  the meals it is in, so the share repo now DOES read `list_food_item_slots` -
+  A per-meal item's carried count is `quantity` times the meals it is in, so
+  the share repo reads `list_food_item_slots` in
   a second statement selecting `food_item_id` and nothing else, gated through
   the same shared-list join as every other query there, counted in JS. No day,
   no meal, no slot id crosses; what a reader can infer is a COUNT, which is
   the number they came for. The wire carries `unitCount` and neither
   `quantity` nor `isPerMeal`, because quantity without the mode invites a
   reader to compute the wrong answer and the mode is a step toward the plan.
-  `server/routes/food.test.ts` asserts the exact key set on raw JSON, and
-  names those two absences individually.
-
-  Changed 2026-08-11, from an aggregate to rows. Hiding food was never a
-  privacy decision - it was a leftover from food arriving late, and it cost a
-  permanent asymmetry between what the owner saw and what a reader did. The
-  change also deleted the aggregate query that existed only for this surface:
-  the share sums the rows exactly as the owner's own view does, so there is
-  one definition of food weight rather than two that could drift.
+  `server/routes/food.test.ts` asserts the exact key set on raw JSON and names
+  those two absences individually. The share returns food rows and sums them
+  with the same definition the owner view uses.
 
   The food rows are never JOINED to the slot associations. That trap is
   unchanged and is the severe one: a join would put one bag of trail mix on
@@ -595,12 +584,9 @@ restatement of the general posture.
   duplicate rows and, if anyone re-adds a sum, as 2500 g. A wire test on the
   share pins it.
 
-  Since 0024 the module does READ the link table, in a separate statement
-  selecting `food_item_id` and nothing else, under the same share gate, so a
-  per-meal item's carried count can be counted in JS. Reading a count is not
-  joining and summing - the item stays one row - but it IS more of the plan
-  than this surface used to touch, and the paragraph above states exactly
-  what a reader can and cannot infer from it.
+  The link-table read selects only `food_item_id` under the same share gate.
+  It derives a count without exposing the day, meal or slot and keeps each
+  food item as one row.
 
 - **The gear/food pack union** lets one bag hold rows from two tables under a
   shared ordering. Its risk is not disclosure but integrity: a client-supplied
@@ -609,217 +595,48 @@ restatement of the general posture.
   whole reorder back rather than leaving a partial write. Ownership checks
   are owned-set membership in JS: one query whatever the payload size.
 
-  Two details worth being exact about, because a looser summary invites the
-  wrong assumption. Migration **0022** added the union with NO rank
-  enforcement; **0023** added the unique indexes and range guards afterwards,
-  deliberately sequenced so the enforcement could not reject rows the earlier
-  release had already written. And uniqueness is **per table, not across the
-  union** - a gear row and a food row may legally hold the same rank in the
-  same bag, which the reorder planner accounts for
+  Rank uniqueness is **per table, not across the union**: a gear row and a
+  food row may legally hold the same rank in the same bag, which the reorder
+  planner accounts for
   (`server/repos/pack-reorder.ts`).
-
-- **Deleting a packing location appended its contents after a rank read
-  taken before the write**: CLOSED. A food row arriving in Unassigned at
-  that rank while gear was being appended there (or the reverse) could
-  produce a legal cross-table tie. The delete now reads `base` and writes
-  inside one immediate SQLite transaction (`server/repos/packing-locations.ts`,
-  `removeInTransaction`), so no arrival can land in between. A cross-table
-  tie remains legal by design (migration 0022) and renders by the
-  deterministic tiebreak.
+  Deleting a packing location reads the destination rank and moves its
+  contents inside one immediate transaction
+  (`server/repos/packing-locations.ts`, `removeInTransaction`), so another
+  write cannot land between the read and the moves. Legal cross-table ties
+  render with a deterministic tiebreak.
 
 ## Deferred - known gaps with triggers
 
-- **Concurrent food edits can silently destroy scheduling.** Not a security
-  hole - an integrity one, recorded here because this is the maintained list
-  of live gaps and the plan that describes it in full is a dated record.
+- **Concurrent food edits can silently destroy scheduling.** Trimming the day
+  count, replacing an item's schedule, or deleting a food item starts from a
+  client snapshot. Another tab can change the same plan between that read and
+  the write, and the later full-replacement or cascade can erase the other
+  tab's work. `FoodView` refetches on focus, which narrows but does not close
+  the window. The server cannot currently distinguish a stale snapshot from a
+  fresh one.
 
-  What is lost: the day x meal SLOTS and their placements - which food is
-  eaten when. Of the three CLIENT-SIDE paths below, one deletes placements
-  DIRECTLY; the other two delete a parent row and let the placements
-  cascade. Two leave the food items themselves alone; one removes an item
-  outright. A fourth, server-side path (the day-count race, last in the
-  list) was different in kind and is now closed.
+  The fix needs a food-plan revision carried by every food mutation. Every
+  mutation must bump it; destructive writes must compare the client's
+  revision inside the same immediate SQLite transaction and return 409 before
+  writing when it is stale. Trigger: a second person using the app, or any
+  report of a meal plan losing entries. Until then the blast radius is one
+  list within one account, with concurrent clients.
 
-  There were FOUR paths until the Skip feature was removed. Marking a meal
-  not needed cleared that slot's placements, and its confirm was skipped
-  whenever the cached snapshot said the slot was empty - the worst of the
-  four, because a stale snapshot suppressed the warning entirely.
-
-  Each of the three client-side paths decides from a cached snapshot.
-  `staleTime` is 30s, but
-  that only marks data stale - it does not refetch, and the app-wide default
-  in `src/App.tsx` is `refetchOnWindowFocus: false` with no polling.
-
-  PARTIALLY MITIGATED 2026-08-12: `FoodView` overrides that default to
-  `refetchOnWindowFocus: true` (the only query in the app that does), so
-  returning to a tab re-reads the plan before you can act in it. Every path
-  below lives on that view, so none of them can now be driven from an
-  arbitrarily old snapshot - the exposure is a tab you are already looking at
-  while another client writes.
-
-  This does NOT close the gap and must not be read as closing it. The window
-  between the refetch and the write is still open. Only the revision guard
-  below makes the write itself safe.
-
-  - **Trimming the day count** drops every slot past the new end. Since
-    2026-10-02 the trim reads the plan fresh, decides whether to warn from
-    that read, and writes nothing if the read fails (`changeDays` in
-    `src/lists/FoodView.tsx`). What remains is a write from elsewhere in
-    the one round trip between that read and the PUT.
-  - **Rescheduling an item** is a full replace, not a merge: the picker opens
-    from the cached `slotIds`, and the write deletes every placement for that
-    item before inserting the submitted set (`server/repos/food.ts`). A stale
-    client therefore erases placements another client added, without touching
-    the day count.
-  - **Removing an item** acts on the cached row
-    (`src/lists/FoodCarryingList.tsx`) and deletes it, cascading every
-    placement it had (`list_food_item_slots` has ON DELETE cascade on the
-    item). This is the one path that destroys the item too, so a stale client
-    can remove something another client had just rescheduled - and the guard
-    in Release B has to cover this delete, not only the trim.
-
-  - **Changing the day count** used to plan the missing slots from a read
-    taken outside the write, so two day-count writes racing could leave the
-    grid with a hole or collide on the slot unique index as a 500. CLOSED
-    2026-10-12: `setDayCount` in `server/repos/food.ts` now reads, plans and
-    writes in one immediate SQLite transaction, so two day-count writes run
-    one after the other (`server/repos/food-transactions.test.ts`). Grids
-    written before then may still hold a hole; the next day-count write
-    repairs it. A day-count write from a STALE client is the first bullet
-    above and stays open.
-
-  A fifth path exists and is deliberately out of scope: **deleting the list**
-  cascades its food entirely (`server/repos/lists.ts`), reachable from three
-  cached-list surfaces. It belongs to a different problem - it destroys the
-  whole list, its confirm is unconditional rather than snapshot-derived, and a
-  food-revision guard is the wrong instrument for it. Noted so the omission is
-  a decision rather than an oversight. Account deletion cascades everything
-  too and does not act from a cached snapshot at all. Deleting a packing
-  location only unassigns and re-ranks food; it destroys nothing.
-
-  In each of the three client-side cases a second client's work is deleted
-  by a write that never saw it. Nothing stops it today: the server cannot
-  tell a write made from a stale snapshot from a fresh one.
-
-  The fix is designed and prototyped but unbuilt, and needs two releases
-  separated by a deploy. Release A adds `lists.food_revision` and makes
-  **every** food mutation bump it - that part is load-bearing, because a
-  revision only some writes touch cannot detect the concurrent create or
-  reschedule this is meant to catch. Release B checks the client's revision
-  and answers a 409 the client consumes as control flow. The original design
-  forced the rollback with a NOT NULL guard table, because a D1 batch could
-  not branch; food writes are now SQLite transactions, so Release B can
-  compare the revision inside the write's transaction and return before
-  writing. The full design (section N1) is in git history:
-  `git show 89e4f1c:docs/review-remediation-plan.md`. Verify it against the
-  code before trusting any of it.
-
-  Trigger: a second person using the app, or any report of a meal plan losing
-  entries. Until then the blast radius is one list, within one account, with
-  concurrent clients - two tabs, or a phone and a laptop.
-
-- **Creating or renaming a packing location commits then reports failure**:
-  CLOSED 2026-08-12. Both `create` and `rename` in
-  `server/repos/packing-locations.ts` used to write and then call
-  `readOwnedList` in a second round trip to compose their response, so a
-  read-back that threw reported failure over a row that had already
-  committed - `create` 500'd ("insert could not be read"), `rename` 500'd or
-  mapped it to 404. Location names are NOT unique (the only unique index is
-  `container_list_item_id`), so retrying a "failed" create made a SECOND bag
-  with the same name rather than refusing; promoting gear to a container is
-  the one path that does refuse, with "Item is already a container".
-
-  Each now runs its checks, its write and its read-back inside ONE SQLite
-  transaction: a statement that fails rolls the whole sequence back, so a
-  failing read-back takes the write with it. The read runs after the write
-  inside that transaction, so it sees the row.
-
-  Scoped claim, deliberately: this closes the read-back-failed case and the
-  window between the two round trips. It does not make the write atomic with
-  its RESPONSE - a transport failure after the batch commits, or a failure
-  mapping the batch's results, still leaves the caller unsure. Nothing at this
-  layer can fix that; only an idempotency key would.
-  `rename`'s pre-read, write and read-back share the transaction, so a
-  concurrent delete can no longer land between them; both "matched nothing"
-  branches are unreachable and throw rather than answer not_found over a
-  committed rename.
-
-  server/repos/pack-transactions.test.ts proves the packing-location and
-  pack-order transactions are all-or-nothing by injecting a failure partway
-  through; those tests fail when the transaction is removed.
-
-- **Fresh-auth proofs**: CLOSED. See "Fresh auth" above - passkey
-  mutations and account deletion both require a fresh session. Email
-  change does not exist as a feature.
-- **Account enumeration**: CLOSED, and by construction rather than by
-  care. Requesting a link answers the same way for an address that has an
-  account and one that does not, because redeeming the link CREATES the
-  account either way - so there is no distinction to leak. (The old
-  sign-up endpoint necessarily disclosed existing accounts. That endpoint
-  is gone.)
-- **Dead credential rows**: CLOSED. Migration `0006_passwordless-teardown`
-  deleted every `account` row with `provider_id = 'credential'`, purged the
-  `reset-password:*` tokens from `verification`, and dropped the `fresh_auth`
-  table. The token purge is the load-bearing half: `/reset-password` is mounted
-  unconditionally and is not gated on `emailAndPassword.enabled`, so a
-  still-valid pre-cutover token would have RE-CREATED a credential account for
-  a user who has none. No password hash remains in the database.
-  The `account.password` COLUMN stays - it is part of better-auth's base model
-  and the CLI keeps emitting it. Only the rows are gone.
 - **Resend is a single point of failure for recovery.** If it is down,
   anyone without a working passkey cannot sign in. Accepted knowingly:
   the data is low-sensitivity, the failure is temporary and read-only
   (nobody loses anything), and the alternative - keeping a password
   around as a backup - reintroduces the credential this change exists to
   delete. Worst case for a user with no passkey and no working mailbox is
-  loss of access to their own gear list, which is recoverable by support
-  (there is one user, and he is the maintainer).
-- **Two list flags were retired from every surface** (2026-08-11):
-  `groupWorn` and `readyChecksEnabled`. Neither is on any DTO, neither is
-  accepted on PATCH, and `groupWorn` is off the public share DTO. It was
-  published there for a real reason - the share honored it - until #110 made
-  worn grouping unconditional on 2026-07-21, after which it was a public
-  field nothing read. Their columns were dropped in a later release by
-  migration 0027 as a contract step - a native `ALTER TABLE ... DROP
-  COLUMN`, which rewrites rows in place and is NOT the table rebuild that
-  cascade-deletes children (AGENTS.md draws that line). Both names stay in
-  the forbidden-key denylist in
-  `server/routes/shares.test.ts` so a future projection cannot reintroduce
-  them quietly.
+  loss of access to their own data. Restoring service may require replacing
+  the Resend key or waiting for the provider; there is no password fallback.
 
-  Taking a required field OFF a response is not free: `apiFetch` strips
-  unexpected fields but THROWS on a missing required one, so a tab still open
-  on the previous bundle reports its own committed writes as failures until
-  it is reloaded. Owner's call, 2026-08-11, was to accept that rather than
-  keep dead fields on the wire or stage a two-release retirement - a refresh
-  is the remedy, and this is a single-user app. The contract comment in
-  `src/lib/api.ts` said the opposite and has been corrected rather than left
-  standing.
-
-- **Public share endpoint** (`GET /api/shares/v2/:slug`, phase 4): dedicated
-  repository + DTO allowlist + private-column ABSENCE tests + uniform
-  404 for unknown and inactive slugs. The re-sweep of this file happens
-  before it ships. Food crosses this boundary as rows carrying no schedule -
-  see "Later surfaces" above for that split, and the metering entry below for
-  the rest of the endpoint's posture.
 - **Public share endpoint is unmetered** (`GET /api/shares/v2/:slug`). There
   is no rate limit on this endpoint today. The trigger for adding one is any
   sign of scraping or a share link being posted somewhere public. Until then,
   unmetered is accepted for this small app and its 62^6 slug space.
 
-  `/api/health` is unmetered for the same reason and is even less
-  interesting: it returns a single boolean.
-
-- **A parent deleted mid-write answered 500, not 4xx**: CLOSED 2026-10-12.
-  Repositories used to check ownership of a category, gear row or list,
-  then write in a later call; another client deleting that parent in
-  between made the foreign key reject the write (a 500, or a re-probe that
-  answered 4xx). Every repository now runs its checks, writes and
-  read-back in one immediate SQLite transaction, so a concurrent delete
-  lands before or after the whole operation
-  (`server/repos/gear-transactions.test.ts`,
-  `server/repos/list-transactions.test.ts`). A foreign-key failure inside
-  a transaction can only be a defect, and stays a 500.
+  `/api/health` is unmetered for the same reason and returns one boolean.
 
 - **A list cache can show a deleted gear row.** The gear delete fan-out
   (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches

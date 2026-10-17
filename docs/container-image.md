@@ -1,7 +1,7 @@
 # The production container image
 
 How the image is built, what it contains, who it runs as, and how to test
-it. The deployment that uses it is `docs/vps-bootstrap-and-migration-runbook.md`.
+it. The deployment that uses it is `docs/vps-runbook.md`.
 
 ## Commands
 
@@ -32,8 +32,8 @@ digest in the Dockerfile's first `FROM` line (the `base` stage):
 
 Dependabot updates that line daily (`.github/dependabot.yml`), within
 Node 24. It changes the tag and the digest together. Because Dependabot may
-skip a rebuild of the same tag, the runbook's monthly check (9.6) compares
-the pin with the newest image. To choose or update the pin by hand:
+skip a rebuild of the same tag, the VPS runbook's monthly maintenance includes
+checking the pin against the newest image. To choose or update the pin by hand:
 
 ```bash
 docker pull --platform linux/amd64 node:24-trixie-slim
@@ -144,7 +144,8 @@ It runs the real image with a throwaway data directory and configuration:
 every pull request. Started by hand on main, it also pushes the checked
 image to `ghcr.io/joes703/grampacker:<full commit SHA>` with
 `scripts/publish-image.sh`, which refuses to replace an existing tag (a
-check just before the push, not atomic) and prints the digest to deploy. Procedure and checks: runbook step 6.1.
+check just before the push, not atomic) and prints the digest to deploy.
+Procedure and checks: `docs/vps-runbook.md`, "Deploy".
 
 ## Notes
 

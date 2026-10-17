@@ -23,7 +23,7 @@ export const MAGIC_LINK_PATH = '/auth/magic'
 // "fresh", nothing to drift.
 //
 // 24h is better-auth's default, pinned explicitly so an upstream change cannot
-// move it silently. See docs/passwordless-auth-design.md section 8.2.
+// move it silently. SECURITY.md "Fresh auth" records the threat model.
 export const FRESH_AGE_SECONDS = 60 * 60 * 24
 
 // Request header naming the account the user confirmed they want to delete.

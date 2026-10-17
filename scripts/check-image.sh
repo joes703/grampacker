@@ -54,7 +54,7 @@ sql() {
 
 start_server() {
   local name="$1"
-  # As production runs it (runbook compose.yaml): read-only root filesystem,
+  # As production runs it (deploy/compose.yaml): read-only root filesystem,
   # a tmpfs /tmp, the data directory mounted, the port on loopback only.
   docker run -d --name "$name" --env-file "$ENV_FILE" -v "$DATA:/data" \
     --read-only --tmpfs /tmp -p 127.0.0.1::3000 "$IMAGE" >/dev/null

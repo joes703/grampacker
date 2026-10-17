@@ -56,12 +56,10 @@ export function createUsersRepo(db: Db, userId: string) {
     //     when no user matches). An empty resurrected account is not a breach,
     //     but "I deleted my account and it came back" is a bug, so purge by
     //     email too.
-    //   - LEGACY password-reset tokens: `value` is the bare user id. grampacker
-    //     can no longer mint these (no sendResetPassword => the request endpoint
-    //     is disabled), but rows created before the passwordless cutover still
-    //     exist in production until the teardown migration drops them. Keeping
-    //     the predicate costs one clause and means a delete does not have to
-    //     depend on that migration having run first.
+    //   - Password-reset tokens: `value` is the bare user id. grampacker cannot
+    //     mint these (no sendResetPassword => the request endpoint is disabled),
+    //     and production contains none. Keeping the predicate costs one clause
+    //     and prevents an unexpected legacy row from surviving account deletion.
     // (Email-verification / change-email use signed JWTs, not verification rows,
     // so there is nothing to clean there.) Every predicate keys on a value
     // unique to this account, so none of them can touch another user's rows;

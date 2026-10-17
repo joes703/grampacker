@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The forced command of the `deploy` account's SSH key. Installed as
 # /usr/local/sbin/grampacker-deploy-ssh, owned by root
-# (docs/vps-bootstrap-and-migration-runbook.md section 8).
+# (docs/vps-runbook.md).
 #
 # It runs twice:
 #   1. As `deploy`, with no arguments: sshd starts it in place of whatever
@@ -16,8 +16,9 @@
 #
 # The deploy runs in its own session and writes to a log file. A dropped SSH
 # connection, or a canceled GitHub job, then cannot stop it halfway; the
-# connection only shows the log while it lasts. A failed deploy leaves
-# maintenance on and prints the rollback directory, as a manual one does.
+# connection only shows the log while it lasts. If the deploy reaches its
+# guarded phase, a failure reports whether maintenance is on and which
+# rollback directory exists, as a manual deployment does.
 set -euo pipefail
 
 # Fixed values, never taken from the environment. The local test
@@ -48,7 +49,7 @@ fi
 if [ "$#" != 1 ] || [[ ! "$1" =~ $DIGEST_RE ]]; then
   die "refused. Expected one argument: sha256:<64 lowercase hex>"
 fi
-# Docker reads root's GHCR login from $HOME/.docker (runbook 6.3).
+# Docker reads root's GHCR login from $HOME/.docker (docs/vps-runbook.md).
 export HOME=/root
 
 # Only the log is private. The deploy keeps root's usual umask, so the files

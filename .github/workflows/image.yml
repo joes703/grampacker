@@ -17,7 +17,7 @@
 #     digest.
 #
 # There is no push trigger yet: each publish is started by hand
-# (docs/vps-bootstrap-and-migration-runbook.md step 6.1).
+# (`docs/vps-runbook.md`, "Deploy").
 #
 # WHAT "MAIN ONLY" RESTS ON
 # -------------------------
@@ -34,8 +34,8 @@
 # The deploy job is the only one that reads a secret, the deploy SSH key. It
 # runs in the `production` environment. The key is a secret of that
 # environment, which allows only main, so GitHub itself refuses the key to
-# any other branch (runbook section 5). On the VPS the key can do one thing:
-# deploy one image digest (deploy/grampacker-deploy-ssh, runbook section 8).
+# any other branch. On the VPS the key can do one thing: deploy one image
+# digest (`deploy/grampacker-deploy-ssh`; see `docs/vps-runbook.md`).
 #
 # The checkout is `github.sha`, the commit the dispatch started on, in every
 # job. Both jobs therefore test and publish the same commit even if main moves
@@ -184,8 +184,10 @@ jobs:
 
   # Manual publish, step 3, only when the dispatch set `deploy`: deploys the
   # digest the publish job above pushed and checked, never a tag or a typed
-  # value. A failed deploy is not rolled back: the VPS leaves maintenance on
-  # and prints the rollback directory, and a person decides (runbook 9.2).
+  # value. A failed deploy is not rolled back automatically. If it reaches the
+  # guarded deployment phase, the VPS reports whether maintenance is on and
+  # which rollback directory exists; a person decides
+  # (`docs/vps-runbook.md`, "Failed deploy").
   deploy:
     name: Deploy to the VPS
     needs: publish
@@ -217,7 +219,7 @@ jobs:
         run: |
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::the publish job gave no digest"; exit 1; }
           if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
-            echo "::error::DEPLOY_HOST, DEPLOY_KNOWN_HOSTS or DEPLOY_SSH_KEY is not set (runbook section 8)"
+            echo "::error::DEPLOY_HOST, DEPLOY_KNOWN_HOSTS or DEPLOY_SSH_KEY is not set (see docs/vps-runbook.md)"
             exit 1
           fi
           dir="$(mktemp -d)"
