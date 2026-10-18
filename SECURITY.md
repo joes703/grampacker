@@ -293,7 +293,11 @@ honest rather than adding a second, weaker credential in front of it.
 - Magic-link tokens are **hashed at rest** (`storeToken: 'hashed'`; the
   plugin defaults to PLAIN, which would leave session-minting tokens in
   cleartext in the `verification` table), single-use via an atomic
-  consume, and live **5 minutes**.
+  consume, and live **5 minutes**. We test our explicit storage/lifetime
+  choices in `server/auth-options.node.test.ts` and rely on better-auth to
+  enforce them. Successful sign-in and rejection after our deletion purge
+  are exercised through the real app; this suite does not independently
+  prove hashing, expiry, replay protection or atomic token consumption.
 - The emailed URL points at the **SPA** (`/auth/magic`), not at
   better-auth's verify endpoint, and the SPA redeems only on a user
   CLICK. Mail scanners and link-prefetchers follow URLs in email; since
@@ -424,7 +428,9 @@ those in the `afterVerification` hooks of BOTH ceremonies, which run
 before the passkey row is created and before the session is issued. This
 matters more without a password: the passkey is now the whole credential,
 so an unverified ceremony would mean possession of the device alone is
-the account.
+the account. Direct callback tests in `server/auth-options.node.test.ts` prove
+our acceptance/rejection of verified/unverified results. They do not prove
+WebAuthn cryptography or the plugin's callback transaction timing.
 
 ## Supply chain
 
@@ -531,6 +537,18 @@ the account.
   deploy a digest (`docs/vps-runbook.md`, "Deployment files and access").
 
 ## Packing, food and public shares
+
+Row caps are application resource policies, not D1 or SQLite engine limits:
+500 categories and 500 inventory items per account, 100 lists per account,
+300 gear rows and 30 packing locations per list, and 200 food items over at
+most 30 days (90 meal slots). They bound growth, responses and operation work;
+the exact values are modest product choices, not measured engine ceilings.
+SQLite still permits 32,766 parameters per statement; duplication splits
+potentially larger food-association inserts. Temporary negative ranks avoid
+unique-index collisions during swaps. Parent/account cascades skip reranking
+rows that the same deletion will remove, keeping deletion work linear.
+Unused reorder-guard tables are inert and need no operational cleanup; live
+location-delete state remains necessary for trigger-driven orphan ordering.
 
 Authenticated routes go through `reposForUser`. The anonymous share route
 uses `createPublicSharesRepo`, outside `reposForUser` because there is no

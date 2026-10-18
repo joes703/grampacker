@@ -6,7 +6,6 @@ import app from '../index'
 import { createDb } from '../db'
 import {
   listItems,
-  packReorderGuard,
   packingLocationDeleteState,
   packingLocations,
 } from '../db/schema'
@@ -1286,9 +1285,8 @@ describe('deleting a location keeps its contents together', () => {
   })
 })
 
-// The reserved scratch band, and the guard that turns a lost race
-// into a 409 instead of a 204 that lies.
-describe('pack-order scratch band and reorder guard (0019)', () => {
+// Negative ranks are reserved for staging collision-free swaps.
+describe('pack-order rank bounds and scratch band', () => {
   async function bagOfThree(email: string) {
     const { cookie } = await signUpVerifiedUser(email, 'O')
     const list = await createList(cookie, 'Trip')
@@ -1304,42 +1302,6 @@ describe('pack-order scratch band and reorder guard (0019)', () => {
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
     return { cookie, list, location, inBag }
   }
-
-  const guardRows = async () =>
-    createDb(env.DB).select().from(packReorderGuard)
-
-  it('leaves the guard table empty, and a SECOND reorder still succeeds', async () => {
-    // The regression this pins: the guard is keyed on list_id, so a batch that
-    // forgets its own cleanup makes the NEXT reorder collide on the primary
-    // key. One passing reorder proves nothing; two do.
-    const { cookie, list, location, inBag } = await bagOfThree(
-      'pack-guard-cleanup@example.com',
-    )
-    const [a, , c] = inBag as [ItemBody, ItemBody, ItemBody]
-
-    const first = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
-      { id: a.id, packSortOrder: c.packSortOrder },
-      { id: c.id, packSortOrder: a.packSortOrder },
-    ])
-    expect(first.status).toBe(204)
-    expect(await guardRows()).toEqual([])
-
-    // Re-read: the first swap moved these rows, and a payload built from the
-    // pre-swap snapshot is no longer a permutation of what they hold - the
-    // route would (correctly) 400 it, and this test would then prove nothing
-    // about the guard's cleanup.
-    const after = (await getItems(cookie, list.id))
-      .filter((i) => i.packingLocationId === location.id)
-      .sort((x, y) => x.packSortOrder - y.packSortOrder)
-    const [x, y] = after as [ItemBody, ItemBody]
-
-    const second = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
-      { id: x.id, packSortOrder: y.packSortOrder },
-      { id: y.id, packSortOrder: x.packSortOrder },
-    ])
-    expect(second.status).toBe(204)
-    expect(await guardRows()).toEqual([])
-  })
 
   it('rejects a negative packSortOrder with 400, not a 500 from the trigger', async () => {
     // packSortOrder used to reuse sortOrderSchema, which allows negatives. With
@@ -1364,12 +1326,9 @@ describe('pack-order scratch band and reorder guard (0019)', () => {
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
 
-  it('refuses to INSERT a negative rank, which is what makes the guard exact', async () => {
-    // The scratch range is reserved by an ASYMMETRIC pair: INSERT allows only
-    // 0..PACK_RANK_MAX, UPDATE additionally allows the negatives that parking
-    // needs. If INSERT were also permissive, a row could be created negative
-    // and "every negative row is one of our parks" - the whole basis for
-    // counting rather than checking ids - would be false.
+  it('reserves negative ranks for staged updates, refusing them on INSERT', async () => {
+    // INSERT permits only committed ranks. UPDATE also permits the bounded
+    // negative scratch range needed to swap ranks under unique indexes.
     const { cookie, list } = await bagOfThree('pack-band-insert@example.com')
     const userId = await userIdFor(cookie)
     const db = createDb(env.DB)

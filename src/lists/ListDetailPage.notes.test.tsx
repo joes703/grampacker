@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
+import { makeList } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
-import type { List } from '../lib/types'
 import { showToast } from '../lib/toast'
 import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
@@ -13,14 +13,13 @@ import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 const listId = 'list-1'
 
-const list = {
+const list = makeList({
   id: listId,
   name: 'Sierra High Route',
   description: 'Old notes',
   isShared: false,
-  shareSlug: null,
   updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+})
 
 type Deferred = {
   promise: Promise<unknown>

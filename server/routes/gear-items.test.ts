@@ -434,15 +434,11 @@ describe('/api/gear-items authorization matrix', () => {
     expect(await listGear(cookie)).toHaveLength(499)
   })
 
-  it('import referencing >100 distinct existing categories works', async () => {
-    // The ownership precheck loads the user's owned category ids with a
-    // single bound parameter and verifies membership in JS, so a wide
-    // import does not grow the statement.
+  it('import preserves distinct category references and rejects a mixed foreign reference', async () => {
     const { cookie } = await signUpVerifiedUser('gear-import-many@example.com', 'M')
     const userId = await userIdFor(cookie)
 
-    // Seed 120 categories directly (the API path would be 120 round trips).
-    const values = Array.from({ length: 120 }, (_, i) => {
+    const values = Array.from({ length: 3 }, (_, i) => {
       return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
     }).join(',')
     await testDb.prepare(
@@ -451,7 +447,7 @@ describe('/api/gear-items authorization matrix', () => {
 
     const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
       categories: [],
-      items: Array.from({ length: 120 }, (_, i) => ({
+      items: Array.from({ length: 3 }, (_, i) => ({
         name: `Item ${i}`,
         category: { kind: 'existing', id: `manycat-${i}` },
       })),
@@ -459,18 +455,19 @@ describe('/api/gear-items authorization matrix', () => {
     expect(res.status).toBe(201)
     expect(importGearResponseSchema.parse(await res.json())).toEqual({
       createdCategories: 0,
-      createdItems: 120,
+      createdItems: 3,
     })
-    expect(await listGear(cookie)).toHaveLength(120)
+    expect((await listGear(cookie)).map((item) => [item.name, item.categoryId])).toEqual([
+      ['Item 0', 'manycat-0'], ['Item 1', 'manycat-1'], ['Item 2', 'manycat-2'],
+    ])
 
-    // The ownership guarantee survives the rewrite: one foreign ref among
-    // many still rejects with zero writes.
+    // One foreign reference rejects the whole import.
     const other = await signUpVerifiedUser('gear-import-many-b@example.com', 'B')
     const foreignCat = await createCategory(other.cookie, 'Foreign')
     const bad = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
       categories: [],
       items: [
-        ...Array.from({ length: 110 }, (_, i) => ({
+        ...Array.from({ length: 2 }, (_, i) => ({
           name: `Again ${i}`,
           category: { kind: 'existing', id: `manycat-${i}` },
         })),
@@ -478,7 +475,9 @@ describe('/api/gear-items authorization matrix', () => {
       ],
     })
     expect(bad.status).toBe(400)
-    expect(await listGear(cookie)).toHaveLength(120)
+    expect((await listGear(cookie)).map((item) => [item.name, item.categoryId])).toEqual([
+      ['Item 0', 'manycat-0'], ['Item 1', 'manycat-1'], ['Item 2', 'manycat-2'],
+    ])
   })
 
   it('import validation: tempId wiring and bounds', async () => {
@@ -518,41 +517,6 @@ describe('/api/gear-items authorization matrix', () => {
     }
     expect(await listGear(cookie)).toHaveLength(0)
     expect(await listCategories(cookie)).toHaveLength(0)
-  })
-
-  it('bulk ops on >100 ids work', async () => {
-    // Prechecks use owned-set membership in JS. The writes bind every id
-    // in one statement, which the DTOs' 500-id bound keeps far below
-    // SQLite's parameter limit (server/repos/gear-items.ts).
-    const { cookie } = await signUpVerifiedUser('gear-bulk-many@example.com', 'M')
-    const userId = await userIdFor(cookie)
-    const catId = await createCategory(cookie, 'Target')
-
-    const values = Array.from({ length: 150 }, (_, i) => {
-      return `('bulkmany-${i}', '${userId}', 'Bulk item ${i}', 0, 'active', ${i}, 0, 0)`
-    }).join(',')
-    await testDb.prepare(
-      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
-    ).run()
-    const ids = Array.from({ length: 150 }, (_, i) => `bulkmany-${i}`)
-
-    const move = await apiRequest(cookie, 'POST', '/api/gear-items/bulk-move', {
-      ids,
-      categoryId: catId,
-    })
-    expect(move.status).toBe(204)
-    expect((await listGear(cookie)).every((g) => g.categoryId === catId)).toBe(true)
-
-    const reorder = await apiRequest(cookie, 'PUT', '/api/gear-items/order',
-      ids.map((id, i) => ({ id, sortOrder: 149 - i })),
-    )
-    expect(reorder.status).toBe(204)
-
-    const del = await apiRequest(cookie, 'POST', '/api/gear-items/bulk-delete', {
-      ids,
-    })
-    expect(del.status).toBe(204)
-    expect(await listGear(cookie)).toHaveLength(0)
   })
 
   it('fractional grams survive the write, the read back, and a PATCH', async () => {

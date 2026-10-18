@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CSRF_HEADER } from '../../../shared/api'
-import { createPackingLocation } from './packing-locations'
+import { createPackingLocation, fetchPackingLocations, renamePackingLocation, deletePackingLocation, reorderPackingLocations } from './packing-locations'
 
 const LOCATION = {
   id: 'loc-1',
@@ -49,5 +49,22 @@ describe('createPackingLocation', () => {
       body,
       csrf: '1',
     })
+  })
+})
+
+describe('packing-location transport', () => {
+  const updates = [{ id: 'loc-1', sortOrder: 2 }]
+  it.each([
+    ['fetch', () => fetchPackingLocations('list-1'), '', 'GET', undefined, [LOCATION], [LOCATION]],
+    ['rename', () => renamePackingLocation('list-1', 'loc-1', 'Top pocket'), '/loc-1', 'PATCH', { name: 'Top pocket' }, LOCATION, LOCATION],
+    ['delete', () => deletePackingLocation('list-1', 'loc-1'), '/loc-1', 'DELETE', undefined, undefined, undefined],
+    ['reorder', () => reorderPackingLocations('list-1', updates), '/order', 'PUT', updates, undefined, undefined],
+  ] as const)('%s uses the actual URL, method and body', async (_name, invoke, suffix, method, body, response, result) => {
+    const fetch = vi.fn().mockResolvedValue(response === undefined
+      ? new Response(null, { status: 204 })
+      : new Response(JSON.stringify(response), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(invoke()).resolves.toEqual(result)
+    expect(requestOf(fetch)).toMatchObject({ url: `/api/lists/list-1/packing-locations${suffix}`, method, body })
   })
 })

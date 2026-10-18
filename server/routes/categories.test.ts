@@ -144,32 +144,6 @@ describe('/api/categories authorization matrix', () => {
     expect(gear.find((g) => g.name === 'Stove')?.categoryId).toBe(keep.id)
   })
 
-  it('reorder of >100 categories works', async () => {
-    // The reorder ownership precheck loads the owned set with a single
-    // bound parameter, so the DTO's 500 ids do not grow the statement.
-    const { cookie } = await signUpVerifiedUser('cat-many@example.com', 'M')
-    const meRes = await apiRequest(cookie, 'GET', '/api/me')
-    const { id: userId } = (await meRes.json()) as { id: string }
-
-    const values = Array.from({ length: 120 }, (_, i) => {
-      return `('catmany-${i}', '${userId}', 'Cat ${i}', ${i}, 0)`
-    }).join(',')
-    await testDb.prepare(
-      `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
-    ).run()
-
-    const res = await apiRequest(cookie, 'PUT', '/api/categories/order',
-      Array.from({ length: 120 }, (_, i) => ({
-        id: `catmany-${i}`,
-        sortOrder: 119 - i,
-      })),
-    )
-    expect(res.status).toBe(204)
-    const after = await listCategories(cookie)
-    expect(after).toHaveLength(120)
-    expect(after[0]?.name).toBe('Cat 119') // reversed order applied
-  })
-
   it('validation: empty, oversized, and unknown-key bodies are 400', async () => {
     const { cookie } = await signUpVerifiedUser('cat-valid@example.com', 'V')
     for (const body of [
@@ -192,8 +166,7 @@ describe('/api/categories authorization matrix', () => {
 // without a cap; growth is reachable through three doors (direct create,
 // gear import, list import), so each door gets its own 422 test.
 describe('the category cap (500 per user)', () => {
-  // One statement, inline literals: no bound params, so the 100-param cap
-  // does not apply (the 499-gear seed in gear-items.test.ts sets the shape).
+  // Seed the product-cap fixture in one statement with inline literals.
   async function seedRawCategories(userId: string, count: number) {
     // Ids are namespaced by user: this DB is shared across the whole file,
     // and three tests seed 499 rows each.

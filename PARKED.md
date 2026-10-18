@@ -21,4 +21,4 @@ Format: `- YYYY-MM-DD <idea> - <why it waits>`
 - 2026-10-01 Bearer tokens for the API - trigger: a CLI or other non-browser client.
 - 2026-10-01 One item editor instead of `QuickAddItemModal`, `GearItemDialog` and the inline category fields - trigger: the next time those editors drift apart.
 - 2026-10-01 Lint hardening: `no-misused-promises`, `--max-warnings 0`, a rule stopping `src/` from importing `server/`, CSP `object-src 'none'` - trigger: a bug any of these would have caught.
-- 2026-10-18 Move about 19 `server/middleware/error-handler.test.ts` tests and 4 `security-headers` tests to the Node tier (`*.node.test.ts`), assertions unchanged - trigger: suite time becomes a problem. It saves seconds and needs a review of its own.
+- 2026-10-18 Investigate repeated CI compilation/installation and image readiness waits only when comparable job timings identify a material delay. Obtain at least two baseline and two after runs on the same runner class before claiming savings or changing gates. Candidate details: `git show fd89242:docs/audits/2026-10-18-test-audit.md`, F12. No workflow changes are required for the test cleanup.

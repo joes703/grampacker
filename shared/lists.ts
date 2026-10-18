@@ -19,17 +19,10 @@ export const LIST_ITEM_CAP = 300
 export const PACKING_LOCATION_CAP = 30
 export const MAX_LIST_ITEM_QUANTITY = 9999
 
-// The upper bound on a COMMITTED pack rank. Deliberately a separate constant
-// from sortOrder's bound even though the magnitude matches: they are different
-// contracts. sortOrder is a signed document position; pack_sort_order is an
-// unsigned per-cohort rank that the DB now enforces, and that reorderPack
-// parks ABOVE transiently.
-//
-// PACK_RANK_MAX .. PACK_RANK_MAX + LIST_ITEM_CAP is the reserved scratch band.
-// Nothing may be INSERTed there - migration 0019's insert trigger is strict at
-// PACK_RANK_MAX - so a row sitting in the band can only have been parked by an
-// in-flight reorder, which is exactly what makes reorderPack's guard an exact
-// check rather than a heuristic.
+// Committed pack ranks are unsigned, unlike signed document sortOrder.
+// Reorders stage rows at -1, -2, ... inside one transaction to avoid unique
+// index collisions, then check every write before committing nonnegative ranks.
+// INSERT rejects negative ranks; UPDATE permits the bounded scratch range.
 export const PACK_RANK_MAX = 1_000_000_000
 
 const listNameSchema = z.string().trim().min(1).max(256)

@@ -7,7 +7,8 @@ import { decimalNumber } from './decimal'
 // stores epoch-ms integers, cents, and ISO dates; DTOs speak ISO strings
 // and dollars.
 
-// Mirrors the 0021 categories_user_cap trigger; the DB is authoritative.
+// Bounds account growth and response work; SQLite does not require this cap.
+// Mirrors the categories_user_cap trigger; the DB is authoritative.
 // Distinct from the gear cap even though the values match - they are
 // different contracts that happen to agree today.
 export const CATEGORY_CAP = 500

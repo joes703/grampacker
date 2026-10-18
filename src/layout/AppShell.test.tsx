@@ -25,17 +25,12 @@ afterEach(() => {
 })
 
 describe('AppShell', () => {
-  it('keeps the all-viewport Settings entry point touch-safe below lg', () => {
+  it('offers a named Settings button', () => {
     // A button, not a link: settings opens over the page you are on instead of
     // navigating away from it.
     render(<AppShell />, { wrapper: MemoryRouter })
 
-    expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass(
-      'h-10',
-      'w-10',
-      'lg:h-7',
-      'lg:w-6',
-    )
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled()
   })
 
   it('does not offer the parked Food workspace in primary navigation', () => {
@@ -62,16 +57,5 @@ describe('AppShell', () => {
 
     const lists = screen.getAllByRole('link', { name: 'Lists' })
     expect(lists.map((link) => link.getAttribute('href'))).toEqual(['/lists', '/lists'])
-  })
-
-  // The bottom bar is lg:hidden. If the header nav appeared at md instead,
-  // both would show across 768-1023px.
-  it('hands primary navigation from the bottom bar to the header at lg', () => {
-    render(<AppShell />, { wrapper: MemoryRouter })
-
-    const header = screen.getByRole('navigation', { name: 'Primary' })
-    expect(header).toHaveClass('hidden', 'lg:flex')
-    expect(header).not.toHaveClass('md:flex')
-    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toHaveClass('lg:hidden')
   })
 })

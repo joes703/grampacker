@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen } from '@testing-library/react'
@@ -21,12 +22,12 @@ import {
 // section summing its own rows.
 
 const categories = [
-  { id: 'cat-a', name: 'Shelter', sortOrder: 0 },
-  { id: 'cat-b', name: 'Cook', sortOrder: 1 },
-] as unknown as Category[]
+  { id: 'cat-a', name: 'Shelter', sortOrder: 0, createdAt: '2026-07-01' },
+  { id: 'cat-b', name: 'Cook', sortOrder: 1, createdAt: '2026-07-01' },
+] satisfies Category[]
 
 function gear(id: string, name: string, weightGrams: number, categoryId: string | null): GearItem {
-  return { id, name, weightGrams, categoryId } as unknown as GearItem
+  return makeGearItem({ id, name, weightGrams, categoryId })
 }
 
 function row(
@@ -35,7 +36,7 @@ function row(
   sortOrder: number,
   flags: { isWorn?: boolean; isConsumable?: boolean } = {},
 ): ListItemWithGear {
-  return {
+  return makeListItem({
     id,
     gearItemId: g.id,
     gearItem: g,
@@ -47,7 +48,7 @@ function row(
     packingLocationId: null,
     sortOrder,
     packSortOrder: sortOrder,
-  } as unknown as ListItemWithGear
+  })
 }
 
 // Shelter: 210 g base, 50 g consumable, 400 g worn. Summing the section's own

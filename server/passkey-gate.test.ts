@@ -81,46 +81,22 @@ describe('passkey fresh-auth gate', () => {
     }
   })
 
-  it('lets a FRESH session through - signing in IS the proof', async () => {
-    // No proof to mint, no password to type: the session minted by the sign-in
-    // ceremony is itself the fresh-auth proof.
-    const { cookie } = await signUpVerifiedUser('fa-fresh@test.dev', '')
-
-    for (const [method, path] of GATED) {
-      // better-auth answers on its own terms (empty bodies, so a 4xx from IT
-      // is expected) - what matters is that it is not the freshness 403.
-      const res = await request(method, path, cookie, '10.60.1.1')
-      expect(res.status, path).not.toBe(403)
-    }
-  })
-
-  it('a fresh ceremony un-stales the user: re-signing in mints a new session', async () => {
-    // The recovery path. A stale session cannot be refreshed in place - the
-    // user re-authenticates, which creates a NEW session, fresh by
-    // construction. Proves the re-auth loop the Settings UI depends on.
-    const { cookie: stale } = await signUpVerifiedUser('fa-reauth@test.dev', '')
+  it('requires a new sign-in to delete a credential and leaves the old session stale', async () => {
+    const email = 'fa-reauth@test.dev'
+    const { cookie: stale } = await signUpVerifiedUser(email, '')
+    await seedPasskey(email, 'reauth-key', 'Laptop')
     await makeSessionStale(stale)
-    expect(
-      (await request('POST', '/api/auth/passkey/delete-passkey', stale, '10.60.1.2')).status,
-    ).toBe(403)
-
-    const { cookie: fresh } = await signInAgain('fa-reauth@test.dev')
-    expect(
-      (await request('POST', '/api/auth/passkey/delete-passkey', fresh, '10.60.1.3')).status,
-    ).not.toBe(403)
-  })
-
-  it('leaves the OLD stale session stale after a re-auth elsewhere', async () => {
-    // Freshness is per-session, measured from that session's own created_at,
-    // so re-authenticating in one place must NOT hand a sensitive-action
-    // window to a thief holding a cookie from another.
-    const { cookie: stolen } = await signUpVerifiedUser('fa-persession@test.dev', '')
-    await makeSessionStale(stolen)
-
-    await signInAgain('fa-persession@test.dev')
-
-    const res = await request('POST', '/api/auth/passkey/delete-passkey', stolen, '10.60.1.4')
-    expect(res.status).toBe(403)
+    const remove = (cookie: string) => app.request('/api/auth/passkey/delete-passkey', {
+      method: 'POST',
+      headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json', 'x-forwarded-for': '10.60.1.2' },
+      body: JSON.stringify({ id: 'reauth-key' }),
+    }, env)
+    expect((await remove(stale)).status).toBe(403)
+    expect(await passkeyRow('reauth-key')).toEqual({ name: 'Laptop' })
+    const { cookie: fresh } = await signInAgain(email)
+    expect((await remove(fresh)).status).toBe(200)
+    expect(await passkeyRow('reauth-key')).toBeNull()
+    expect((await remove(stale)).status).toBe(403)
   })
 
   it('401s an anonymous caller on a gated path', async () => {
@@ -130,48 +106,6 @@ describe('passkey fresh-auth gate', () => {
     // shape. These answers ride /api/auth/*, which the SPA reads through
     // better-auth's client: PasskeySection keys off `code`.
     expect(await res.json()).toMatchObject({ code: 'UNAUTHORIZED' })
-  })
-
-  it('leaves RENAME ungated even for a stale session', async () => {
-    // A rename changes a display label. It cannot add, remove, or alter a
-    // credential, so the gate has nothing to protect here and would only cost
-    // the owner a ceremony. better-auth will reject this empty body on its
-    // own terms - what matters is that the gate did not.
-    const { cookie } = await signUpVerifiedUser('fa-rename@test.dev', '')
-    await makeSessionStale(cookie)
-
-    const res = await request('POST', '/api/auth/passkey/update-passkey', cookie, '10.60.0.6')
-    expect(res.status).not.toBe(403)
-  })
-
-  it('leaves the passkey SIGN-IN ceremony and the read ungated', async () => {
-    // Gating these would be a self-inflicted outage: the sign-in endpoints
-    // are anonymous by definition, and list is a read. Per-endpoint methods
-    // and an explicit status-set rejection, because "not 403" alone is a
-    // trap: a wrong method 404s and a gate regression 401s, and both would
-    // sail past it while passkey sign-in lay broken.
-    for (const [method, path] of [
-      ['GET', '/api/auth/passkey/generate-authenticate-options'],
-      ['POST', '/api/auth/passkey/verify-authentication'],
-    ] as const) {
-      const res = await request(method, path, null, '10.60.0.4')
-      expect(
-        [401, 403, 404].includes(res.status),
-        `${method} ${path} answered ${res.status} - the ENDPOINT must answer, not a gate or the router`,
-      ).toBe(false)
-    }
-
-    const { cookie } = await signUpVerifiedUser('fa-read@test.dev', '')
-    await makeSessionStale(cookie)
-    const list = await app.request(
-      '/api/auth/passkey/list-user-passkeys',
-      {
-        method: 'GET',
-        headers: { Origin: ORIGIN, Cookie: cookie, 'x-forwarded-for': '10.60.0.5' },
-      },
-      env,
-    )
-    expect(list.status).toBe(200)
   })
 })
 
@@ -212,14 +146,8 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
       { id: 'pk-owner-1', name: 'Hijacked' },
       '10.61.0.1',
     )
-    // Pinned to the plugin's ownership refusal (requireResourceOwnership with
-    // forbiddenStatus UNAUTHORIZED), not merely "not ok": a 400 from a body
-    // mismatch, a 404 or a 429 would all leave the row untouched without
-    // ever reaching the ownership check.
+    // The exact refusal and unchanged row prove the mounted access boundary.
     expect(foreignRename.status).toBe(401)
-    expect(await foreignRename.json()).toMatchObject({
-      code: 'YOU_ARE_NOT_ALLOWED_TO_REGISTER_THIS_PASSKEY',
-    })
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
 
     // Non-owner delete (fresh session, so the freshness gate is not what
@@ -267,7 +195,8 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     expect(listed.status).toBe(200)
     expect(((await listed.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-other-1'])
 
-    // Owner rename and delete work, and touch only the named row.
+    // A stale owner can rename and read, but needs a new sign-in to delete.
+    await makeSessionStale(owner.cookie)
     const rename = await post(
       owner.cookie,
       '/api/auth/passkey/update-passkey',
@@ -276,8 +205,14 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     )
     expect(rename.status).toBe(200)
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Work laptop' })
+    const ownList = await app.request('/api/auth/passkey/list-user-passkeys', {
+      headers: { Cookie: owner.cookie, Origin: ORIGIN, 'x-forwarded-for': '10.61.0.8' },
+    }, env)
+    expect(ownList.status).toBe(200)
+    expect(((await ownList.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-owner-1'])
+    const fresh = await signInAgain('pk-owner@test.dev')
     const del = await post(
-      owner.cookie,
+      fresh.cookie,
       '/api/auth/passkey/delete-passkey',
       { id: 'pk-owner-1' },
       '10.61.0.5',

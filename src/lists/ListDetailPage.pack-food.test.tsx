@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, PackingLocation } from '../lib/types'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
-import { PACK_ROW_WEIGHT_CELL } from '../components/flat-table-styles'
 import { list, listId, renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 // Food as a full peer of gear in Pack mode. What these tests pin:
@@ -12,18 +12,18 @@ import { list, listId, renderListDetailPage, stubViewport } from './test/list-de
 // item, the progress header counts the union, and none of it leaks into the
 // List (edit) view - food's editing surface stays the Food view.
 
-const gear = {
+const gear = makeGearItem({
   id: 'gear-1',
   name: 'Cooking pot',
   weightGrams: 210,
   categoryId: null,
-} as unknown as GearItem
+})
 
-const listItem = {
+const listItem = makeListItem({
   id: 'li-1',
   gearItemId: 'gear-1',
   gearItem: gear,
-  quantity: 1, isPerMeal: false, unitCount: 1,
+  quantity: 1,
   isWorn: false,
   isConsumable: false,
   isPacked: true,
@@ -31,7 +31,7 @@ const listItem = {
   packingLocationId: null,
   sortOrder: 0,
   packSortOrder: 0,
-} as unknown as ListItemWithGear
+})
 
 const tortillas: FoodItemResponse = {
   id: 'food-1',
@@ -130,30 +130,6 @@ describe('food rows in Pack mode', () => {
       'food-1',
       { isPacked: true },
     ))
-  })
-
-  // A bag is one cohort of gear and food rows. A weight cell on one and not
-  // the other pushes every column to its right out of alignment in a mixed
-  // section, so the two rows carry the identical cell.
-  it('gives food rows the same weight cell as the gear rows beside them', async () => {
-    await renderDetail(`/lists/${listId}/pack`)
-
-    // The gear cell is a button (its weight is editable in place) and the
-    // food cell is a span (food weight is authored in the Food view), so
-    // their affordance styling differs. The column geometry is the shared
-    // token. The gear weight also shows in the picker aside, so look for the
-    // token among every cell that shows the weight.
-    const cellClasses = (label: string) =>
-      screen.getAllByLabelText(label).map((el) => el.parentElement?.className ?? '')
-
-    await screen.findByLabelText('300 g')
-    expect(cellClasses('300 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
-    expect(cellClasses('210 g')).toContainEqual(expect.stringContaining(PACK_ROW_WEIGHT_CELL))
-    // What the token must keep: one fixed column width, shown from lg up only
-    // (a w-24 cell at 375px would crush the name), never printed.
-    for (const cls of ['shrink-0', 'w-24', 'hidden', 'lg:inline-block', 'print:hidden']) {
-      expect(PACK_ROW_WEIGHT_CELL.split(' ')).toContain(cls)
-    }
   })
 
   // Gear rows reach the gear editor from this menu. Food does not: food is

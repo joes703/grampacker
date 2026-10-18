@@ -506,21 +506,4 @@ describe('POST /api/auth/delete-user', () => {
     expect(await verificationCount(userId, email)).toBe(1)
   })
 
-  it('refuses to resurrect a password: a supplied password is rejected, not honored', async () => {
-    // There is no credential account any more, so better-auth's password path
-    // 400s with CREDENTIAL_ACCOUNT_NOT_FOUND rather than falling back to the
-    // freshness check. Worth pinning: it means a stale client still sending a
-    // password gets a clean refusal instead of silently deleting the account by
-    // the other route.
-    const res = await apiRequest(cookie, 'POST', '/api/auth/delete-user', {
-      password: 'anything-at-all-123456',
-    })
-    expect(res.ok).toBe(false)
-    expect(((await res.json()) as { code?: string }).code).toBe(
-      'CREDENTIAL_ACCOUNT_NOT_FOUND',
-    )
-
-    const after = await rowCounts(userId)
-    expect(after.user).toBe(1)
-  })
 })

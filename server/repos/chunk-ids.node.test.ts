@@ -3,7 +3,6 @@ import { getTableColumns } from 'drizzle-orm'
 import {
   chunkForParamCap,
   PARAM_BUDGET_PER_STATEMENT,
-  rowsPerStatement,
   SQLITE_MAX_PARAMS,
 } from './chunk-ids'
 import { listFoodItemSlots, listItems } from '../db/schema'
@@ -15,24 +14,17 @@ import { listFoodItemSlots, listItems } from '../db/schema'
 // SQLite is server/repos/list-duplicate-size.test.ts.
 
 describe('chunkForParamCap', () => {
-  it('keeps a quarter of SQLite\'s limit as margin', () => {
-    // server/db/sqlite.test.ts proves the real limit is SQLITE_MAX_PARAMS.
-    expect(SQLITE_MAX_PARAMS).toBe(32766)
-    expect(PARAM_BUDGET_PER_STATEMENT).toBe(8191)
-    expect(PARAM_BUDGET_PER_STATEMENT * 4).toBeLessThanOrEqual(SQLITE_MAX_PARAMS)
-  })
-
   it('divides by the TABLE column count, and every chunk stays within the budget', () => {
     const columns = Object.keys(getTableColumns(listFoodItemSlots)).length
-    const rows = Array.from({ length: 5000 }, (_, i) => ({
+    const rows = Array.from({ length: 9000 }, (_, i) => ({
       foodItemId: `f-${i}`,
       slotId: `s-${i}`,
       userId: 'u',
       listId: 'l',
     }))
     const chunks = chunkForParamCap(listFoodItemSlots, rows)
-    expect(chunks[0]?.length).toBe(Math.floor(PARAM_BUDGET_PER_STATEMENT / columns))
-    expect(chunks).toHaveLength(Math.ceil(5000 / rowsPerStatement(listFoodItemSlots)))
+    expect(PARAM_BUDGET_PER_STATEMENT).toBeLessThanOrEqual(SQLITE_MAX_PARAMS)
+    expect(chunks.length).toBeGreaterThan(1)
     for (const chunk of chunks) {
       expect(chunk.length * columns).toBeLessThanOrEqual(PARAM_BUDGET_PER_STATEMENT)
     }

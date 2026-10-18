@@ -79,16 +79,10 @@ export type GearWriteResult =
   | { ok: true; row: GearItemRow }
   | { ok: false; reason: 'cap_exceeded' | 'invalid_category' | 'not_found' }
 
-// The DB trigger in migration 0003 is the SINGLE enforcement point for the
-// cap - no read-then-insert race to lose (Codex finding, PR #13). The repo
-// maps the trigger's RAISE(ABORT) message to a friendly result; keep this
-// constant, the trigger's WHEN clause, and its message in lockstep.
-export const GEAR_ITEM_CAP = 500
-
-// Root-cause-only matching rationale lives in db-errors.ts (Codex
-// finding, PR #14). Exported for the false-positive/true-positive unit
-// tests; the live 501st-item test pins the REAL error shape SQLite
-// produces.
+// The DB trigger enforces shared/gear.ts's GEAR_ITEM_CAP. A refused insert
+// maps to a friendly result without a read-then-insert race.
+// Match only the root cause (db-errors.ts); the live cap test proves the
+// actual SQLite error shape.
 export function isCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'gear item cap exceeded')
 }
@@ -180,7 +174,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
     // a cap abort on any item rolls back the new categories too. Every
     // referenced existing category must be the caller's, checked before any
     // write. No cap preflight on purpose: the trigger stays the single
-    // enforcement point (see GEAR_ITEM_CAP above).
+    // enforcement point for shared/gear.ts's GEAR_ITEM_CAP.
     async importBatch(input: {
       categories: ImportGearCategoryInput[]
       items: ImportGearItemInput[]

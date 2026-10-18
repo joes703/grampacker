@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makeList } from '../test/fixtures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, within } from '@testing-library/react'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
@@ -28,14 +29,12 @@ import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 
 const listId = 'list-1'
 
-const list: List = {
+const list: List = makeList({
   id: listId,
   name: 'Sierra High Route',
   isShared: false,
-  shareSlug: null,
-  notes: null,
   updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+})
 
 const food: ListFoodResponse = {
   dayCount: 3,
@@ -48,7 +47,7 @@ const food: ListFoodResponse = {
       id: 'food-1',
       name: 'Oatmeal',
       weightGrams: 90,
-      quantity: 3,
+      quantity: 3, isPerMeal: false, unitCount: 3,
       sortOrder: 0,
       isPacked: false,
       isReady: false,
@@ -57,7 +56,7 @@ const food: ListFoodResponse = {
       slotIds: ['slot-1'],
     },
   ],
-} as unknown as ListFoodResponse
+} satisfies ListFoodResponse
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),

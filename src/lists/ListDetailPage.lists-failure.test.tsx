@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { makeList, makeGearItem, makeListItem } from '../test/fixtures'
 //
 // The lists query on /lists/:id feeds two things that look identical when it
 // fails: the terminal "List not found" state, and the last-list-path
@@ -10,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, onlineManager, useQuery } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, List, PackingLocation } from '../lib/types'
 import type { ListFoodResponse } from '../../shared/food'
 import { writeLastListPath, readLastListPath } from '../lib/last-list-path'
 import { queryKeys, fetchLists } from '../lib/queries'
@@ -34,23 +35,23 @@ vi.mock('../lib/auth-client', () => ({
 // self-heal assertions below pass vacuously.
 const listId = '11111111-2222-4333-8444-555555555555'
 
-const list = {
+const list = makeList({
   id: listId,
   name: 'Sierra High Route',
   isShared: false,
-  shareSlug: null,
   description: null,
   updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+})
 
-const gear = {
+const gear = makeGearItem({
   id: 'gear-1',
   name: 'Cooking pot',
   weightGrams: 210,
   categoryId: null,
-} as unknown as GearItem
+})
 
-const listItem = {
+const listItem = makeListItem({
+  listId,
   id: 'li-1',
   gearItemId: 'gear-1',
   gearItem: gear,
@@ -61,7 +62,7 @@ const listItem = {
   isReady: false,
   packingLocationId: null,
   sortOrder: 0,
-} as unknown as ListItemWithGear
+})
 
 const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 
