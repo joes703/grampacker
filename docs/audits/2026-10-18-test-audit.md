@@ -44,7 +44,8 @@ and distinguishes them from chunking and rank staging SQLite still needs.
 Deleting those 29 tests will not, by itself, transform deployment time. The
 local suites completed in seconds. Workflows repeat compilation and dependency
 installation, and image readiness checks may impose avoidable waiting. Those
-are better places to investigate substantial deployment savings.
+are candidates to measure for deployment savings. F12 records an unmeasured
+investigation; workflow redesign is outside this cleanup's completion criteria.
 
 ## Evidence and limits
 
@@ -191,9 +192,12 @@ suite also use `not 403`; the anonymous sign-in availability case excludes
 **Change:** combine the trusted-origin positive control with the forged-origin
 case, using the live magic-link endpoint and exact 200 plus outbox message for
 the positive result. Keep a cookieless forged-origin refusal, since sending
-email is a side effect even without a session. Delete the separate originless
-server-to-server carve-out test: it characterizes upstream CSRF behavior for
-a client this browser application does not use.
+email is a side effect even without a session. Keep the separate originless
+magic-link send case and its exact 200 plus outbox assertion. A direct HTTP
+caller, including an attacker, can omit Origin; this is an actual path to
+emitting mail through our mounted app. It explains why origin validation
+cannot replace `MAGIC_LINK_SEND_GLOBAL`, even though the accepted request
+shape comes from better-auth. Do not expand it into an upstream CSRF matrix.
 
 For passkeys, delete the broad fresh-session probe of all plugin endpoints
 and the deliberately invalid ceremony probes. Test our freshness gate with a
@@ -294,14 +298,18 @@ access requirements; use a targeted visual check when changing those surfaces.
 For share bundle changes, inspect the emitted bundle when relevant instead of
 building a more sophisticated custom parser or a new performance platform.
 
-**Policy change needed with implementation:** `docs/testing-and-ci.md` section 6
+**Proposed policy change with implementation:** `docs/testing-and-ci.md` section 6
 currently allows deletion only for obsolete behavior, a named equivalent at the
 same boundary, or inability to catch a realistic defect. Several deletions
-above are a broader value decision requested by the owner. Amend that policy
-to allow a documented low-material-value decision with the accepted gap and
-appropriate manual check. Do not mislabel a cosmetic test as impossible to fail
-just to fit the existing wording. This audit proposes the policy change; it
-does not silently change the binding document.
+above require a broader value judgment. The source for including that judgment
+is the owner's request in this audit conversation: "look for pedantic testing"
+and "if you want to delete a bunch that are not matierally helpful". That
+authorizes proposing value-based deletions; it does not approve this report's
+specific cuts or policy wording. Propose allowing a documented decision based
+on material value, with an accepted gap and appropriate manual check. Do not
+mislabel a cosmetic test as impossible to fail just to fit the existing wording.
+The amendment and specific deletions remain proposals for the owner's decision
+before implementation; the binding document is unchanged.
 
 ### F7. Trim structural assertions from useful component suites
 
@@ -390,9 +398,11 @@ and app-level error/header wiring in the API tier. Keep the remaining four
 security-header cases against the real API/error/404/SPA paths. Split shared
 test helpers only as needed; do not extract production code just to move tests.
 
-Update the matching `PARKED.md` entry when implemented. Its trigger is now met;
-its count of four pure security-header tests should be three. Moving cases
-reduces unnecessary setup but is not a proven CI saving. The D1-shaped SQL
+Update the matching `PARKED.md` entry when implemented; its count of four pure
+security-header tests should be three. Its trigger, "suite time becomes a
+problem," is not established by this audit's local timings. The recommendation
+here is based on correct tier classification and avoiding unused app/database
+setup, not a demonstrated performance problem or CI saving. The D1-shaped SQL
 adapter in `server/test/node-env.ts` is a small convenience wrapper over real
 SQLite, not a fake database. Use native SQLite calls in new tests, but do not
 rewrite every existing setup call just to remove its old syntax.
@@ -447,10 +457,16 @@ part of this cleanup. A future cross-layer bug that existing tiers cannot
 express can justify one targeted browser test. The absence of a browser tier
 is not itself a finding for this application.
 
-### F12. Streamline CI work before blaming the test count
+### F12. Unmeasured CI investigation, outside the cleanup's completion criteria
 
 Files: `.github/workflows/ci.yml`, `.github/workflows/image.yml`, `Dockerfile`,
 `scripts/check-image.sh`.
+
+No CI timings were obtained for this audit: the lookup returned HTTP 401.
+`docs/testing-and-ci.md` section 7 requires comparable CI measurements for CI
+claims. The observations below identify candidates to investigate; they do
+not establish a bottleneck or justify changing verification gates. Keep
+workflows and image-check behavior unchanged in the test/application cleanup.
 
 Observed work, not measured GitHub durations:
 
@@ -464,18 +480,23 @@ Tests do **not** run inside the Dockerfile. The duplicate work is compilation
 and installation, plus separate workflow validation. On pull requests, parallel
 job durations are not added together to determine elapsed time.
 
-**Change together with the test cleanup:**
+**Candidates to evaluate after measuring:** obtain at least two baseline runs
+on the same runner class, separating verification, image build, image check,
+and deployment. Select only changes the evidence supports, then compare at
+least two after runs. None of the following is required to complete the test
+cleanup or an instruction to implement it now.
 
-1. Keep local `npm run build` intact. In host CI verification, run typecheck,
-   lint, tests, and migration checks; let the mandatory image build perform
-   client/server compilation. Preserve the required `Verify` check and require
-   the image check for landing. Update the documented workflow contract.
-2. Add persistent Docker layer caching on ephemeral runners. Keep cache writes
-   restricted to trusted main jobs; pull requests may read appropriate caches
+1. Evaluate whether repeated compilation materially affects elapsed time before
+   proposing to remove compilation from `Verify`. The image build would need
+   to remain a mandatory compilation/check gate. Keep local `npm run build`
+   intact and update the documented workflow contract if evidence supports a
+   later change. No gate change is recommended for this cleanup.
+2. Evaluate persistent Docker layer caching on ephemeral runners. Keep cache
+   writes restricted to trusted main jobs; pull requests may read appropriate caches
    without gaining publish or deploy credentials. Pin any added Actions.
    Continue checking the actual image that is subsequently published by digest.
-3. Cancel superseded **pull-request validation** runs. Scope cancellation so
-   main publishing and production deployment retain their current noncanceling
+3. Evaluate cancellation of superseded **pull-request validation** runs. Scope
+   it so main publishing and production deployment retain their current noncanceling
    behavior. Do not cancel an in-progress deploy to save CI time.
 4. Investigate startup readiness latency. The image healthcheck interval is
    30 seconds with a 20-second start period; `check-image.sh` starts and waits
@@ -487,15 +508,15 @@ job durations are not added together to determine elapsed time.
    interval** on a supported Docker version, keeping the actual shipped
    healthcheck and normal steady-state interval. No 60-second saving has been
    demonstrated here.
-5. Batch independent runtime filesystem/package inspections in
+5. Evaluate batching independent runtime filesystem/package inspections in
    `check-image.sh` into fewer one-off containers where straightforward. Keep
    non-root execution, real native SQLite, explicit migrations, startup refusal
    before migrations, restart persistence, read-only filesystem, log redaction,
    and secret/source exclusion. Exact filesystem listings and every absent
    tool are lower-value than those behaviors, but some encode deliberate
    security policy; do not remove them without checking/updating that policy.
-6. Run the cheap local SSH forced-command regression script in CI when its
-   wrapper/test changes. It currently relies on manual invocation. Keep the
+6. Consider running the cheap local SSH forced-command regression script in CI
+   when its wrapper/test changes. It currently relies on manual invocation. Keep the
    existing targeted deployment rehearsal for deployment configuration changes;
    do not rehearse the whole VPS on every ordinary application change.
 
@@ -525,7 +546,7 @@ of the same cleanup.
 | Passkey verification | Our two `afterVerification` rejection callbacks | Two small direct callback cases under F2. Trust the library's signature/challenge/attestation/counter machinery |
 | Passkey freshness | Our deny-by-default hook and exemptions | Consolidate actual stale/fresh behavior; remove malformed-plugin-input probes under F3. No upstream error-code catalog |
 | Credential ownership | The effective access policy of our mounted app | Keep one compact owner/non-owner/anonymous contract for rename/delete/list. Drop assertions of unused library-specific error wording; preserve status, unchanged foreign rows, and own-row success |
-| Auth origin checks | Our explicit configuration and exposing an email-sending endpoint | Two application cases: trusted/forged origins and cookieless forged send. Delete the upstream originless carve-out case |
+| Auth origin checks | Our explicit configuration and exposing an email-sending endpoint | Strengthen the trusted/forged-origin control; retain cookieless forged refusal and completed originless send. The latter is a real mail-emitting path that origin checks cannot constrain |
 | Account deletion | Our identity header, erasure schema, and before/after purge hooks | Keep their real-app tests. Delete the supplied-password case and internal account-SQL recorder described below |
 | Email adapter | Selecting our sender and building/handling an HTTP request | Keep one sender-selection table, one request-contract test, and existing API error/redaction proof. No live-provider delivery tests |
 | Markdown | Our configured untrusted-content surface and custom external-link renderer | Reduce four cases to one representative unsafe-markup smoke check and one external-link behavior case. Do not enumerate the library's protocol/sanitization rules |
@@ -535,7 +556,7 @@ of the same cleanup.
 | Native dialogs | Our open/close wiring, dismissal rules, focus override, and toast host | Keep callback/wiring tests. A jsdom shim is test setup, not proof of browser focus trapping, top-layer rendering, or Escape implementation |
 | ZIP export | Our file contents, filenames, fetch behavior, and download action | Keep the existing fflate mock boundary. No ZIP algorithm, compression ratio, or round-trip library tests |
 
-Specific additional cuts:
+Specific decisions:
 
 - **Delete `server/auth-account-sql.test.ts` (one test).** It proxies SQLite,
   records the SQL better-auth emits during deletion, parses quoted identifiers,
@@ -556,10 +577,12 @@ Specific additional cuts:
   real identity-header refusals and passwordless deletion scenario. Existing
   credential/reset-token absence rules remain; do not replace this with tests
   of upstream password validation or password hashing.
-- **Delete the originless carve-out case from
-  `server/auth-origin-validation.test.ts`.** Keep the two application cases
-  described above. Record that originless server-to-server authentication
-  behavior is delegated to better-auth, rather than a locally tested feature.
+- **Keep the originless send case in
+  `server/auth-origin-validation.test.ts`.** Its completed send proves a real
+  unauthenticated, direct-HTTP path to our email side effect. This supports the
+  documented need for a global mail budget; it is not only a compatibility
+  test for a server-to-server client. Retain it alongside the strengthened
+  trusted/forged-origin control and cookieless forged refusal in F3.
 - **Consolidate `server/email/index.node.test.ts`.** Its six tests mostly
   repeat the same missing-key branch across origins. Use a small selection
   table for configured key, local development without a key, and a nonlocal
@@ -704,10 +727,10 @@ above ship with the test cleanup, not as a later D1-removal phase.
   and F14's application/comment/import-message changes together. Name retained
   coverage when consolidating behavior tests; record accepted presentation gaps
   honestly.
-- Update `docs/testing-and-ci.md` for the material-value deletion policy,
-  test ownership at dependency boundaries, in-memory API isolation, and workflow
-  changes. Update `docs/authz-matrix.md` for current conflict behavior and actual
-  auth test evidence, and `SECURITY.md` for the distinction between our tested
+- Update `docs/testing-and-ci.md` for the proposed material-value deletion
+  policy if accepted, test ownership at dependency boundaries, and in-memory
+  API isolation. Update `docs/authz-matrix.md` for current conflict behavior and
+  actual auth test evidence, and `SECURITY.md` for the distinction between our tested
   configuration/callbacks and delegated library enforcement. Remove the completed
   tier-move entry from `PARKED.md`. Update `AGENTS.md`/`SECURITY.md`/UI rules only
   where the resulting implementation or accepted risk changes their claims.
@@ -720,10 +743,10 @@ above ship with the test cleanup, not as a later D1-removal phase.
   and action-pin checks for workflow changes, plus the required shell/deployment
   checks for any affected deployment files. Build and check the actual image
   when registry access is available; report a blocked check explicitly.
-- Obtain CI timings when GitHub access works. Compare at least two before and
-  two after runs on the same runner class, separating verification, image build,
-  image check, and deployment. Report maintenance savings separately from
-  measured elapsed-time savings. No speed claim based only on fewer tests.
+- Report maintenance savings separately from measured elapsed-time savings.
+  Make no CI speed claim based on local timings or fewer tests. F12's timing
+  investigation and potential workflow changes are outside these completion
+  criteria; they do not block this test/application cleanup.
 - Remove this audit after its recommendations are resolved. Put enduring rules
   and accepted risks in maintained policy, and only genuinely deferred ideas
   with a real trigger in `PARKED.md`; Git retains this record.
@@ -768,7 +791,7 @@ is implied for a file merely because it has many tests or mocks.
 | [`server/auth-account-sql.test.ts`](../../server/auth-account-sql.test.ts) | Delete | F13: internal adapter SQL read without app account-model hooks or supported account rows |
 | [`server/auth-delete-user.test.ts`](../../server/auth-delete-user.test.ts) | Trim | F13: drop supplied-password plugin probe; keep our identity, purge, and cascade behavior |
 | [`server/auth-error-logging.test.ts`](../../server/auth-error-logging.test.ts) | Keep | F1/F11: real failures and secret redaction; inspect provider payload if extending |
-| [`server/auth-origin-validation.test.ts`](../../server/auth-origin-validation.test.ts) | Trim / strengthen | F3/F13: two live app cases; drop originless upstream carve-out |
+| [`server/auth-origin-validation.test.ts`](../../server/auth-origin-validation.test.ts) | Strengthen | F3/F13: live trusted/forged control; retain cookieless refusal and completed originless send |
 | [`server/db/sqlite.test.ts`](../../server/db/sqlite.test.ts) | Keep | F11: actual file-backed SQLite settings and limits |
 | [`server/email/index.node.test.ts`](../../server/email/index.node.test.ts) | Trim + extend boundary | F1/F13: three selection states; one Resend request-contract test nearby |
 | [`server/healthcheck.node.test.ts`](../../server/healthcheck.node.test.ts) | Keep | F11: real runtime/security behavior or focused server unit boundary |
