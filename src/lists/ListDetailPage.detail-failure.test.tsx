@@ -149,6 +149,9 @@ describe('ListDetailPage detail-data gate', () => {
 
       expect(await screen.findByText(ERROR_PANEL)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+      // The panel replaces the rows: a total built from partial data must not
+      // render beside it.
+      expect(within(documentColumn()).queryByText('Cooking pot')).not.toBeInTheDocument()
     },
   )
 
