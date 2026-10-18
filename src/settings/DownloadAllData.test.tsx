@@ -27,6 +27,7 @@ vi.mock('../lib/queries', async (importOriginal) => ({
 }))
 
 import {
+  queryKeys,
   fetchCategories,
   fetchGearItems,
   fetchLists,
@@ -99,8 +100,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function renderIt() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderIt(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
     <QueryClientProvider client={qc}>
       <DownloadAllData />
@@ -148,5 +148,44 @@ describe('DownloadAllData', () => {
 
     await waitFor(() => expect(screen.getByText('network down')).toBeInTheDocument())
     expect(zipSync).not.toHaveBeenCalled()
+  })
+
+  // An export is a snapshot claim, so it must read the server even when the
+  // app's cache still holds data it calls fresh: another tab or device may
+  // have written since. The client here has the app's 30-second staleTime,
+  // and every cache it reads is warm, so each fetcher call is a forced read.
+  // The gear and lists caches also differ from the server's data.
+  it('reads every collection from the server, not from a warm cache', async () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    })
+    const tarp = gearItems[0]
+    if (!tarp) throw new Error('fixture has no gear item')
+    const old = { ...tarp, name: 'Old tarp' }
+    qc.setQueryData(queryKeys.categories(), [])
+    qc.setQueryData(queryKeys.gearItems(), [old])
+    qc.setQueryData(queryKeys.lists(), lists.slice(0, 1))
+    for (const list of lists) {
+      qc.setQueryData(queryKeys.listItems(list.id), [])
+      qc.setQueryData(queryKeys.packingLocations(list.id), [])
+      qc.setQueryData(queryKeys.listFood(list.id), { dayCount: 0, slots: [], items: [] })
+    }
+    renderIt(qc)
+    fireEvent.click(screen.getByRole('button', { name: /download \.zip/i }))
+
+    await waitFor(() => expect(zipSync).toHaveBeenCalledTimes(1))
+
+    for (const fetcher of [fetchCategories, fetchGearItems, fetchLists]) {
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    }
+    for (const fetcher of [fetchListItems, fetchPackingLocations, fetchListFood]) {
+      expect(vi.mocked(fetcher).mock.calls.map(([id]) => id).sort()).toEqual(['l-1', 'l-2'])
+    }
+    // And the file holds the server's version.
+    const gearFile = zipSync.mock.calls[0]?.[0]['gear-library.csv']
+    if (!gearFile) throw new Error('the zip has no gear-library.csv')
+    const gearCsv = new TextDecoder().decode(gearFile)
+    expect(gearCsv).toContain('Tarp')
+    expect(gearCsv).not.toContain('Old tarp')
   })
 })
