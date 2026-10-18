@@ -730,23 +730,9 @@ above ship with the test cleanup, not as a later D1-removal phase.
 
 ## Review handoff to another sandbox
 
-The local report branch is `audit/tests-vps-2026-10-18`. **Publication is
-blocked:** `git push` failed because no usable Git credential was available.
-The original host checkout is mounted read-only here; the managed worktree
-also uses this sandbox's Git directory. Neither is proof that a separate
-Docker sandbox can see this file. No remote branch was created.
-
-An offline bundle is prepared at `/tmp/grampacker-test-audit.bundle`. Copy it
-to a host directory mounted into Claude's sandbox, then in that sandbox's
-repository run (using the actual copied bundle path):
-
-```bash
-git fetch /path/to/grampacker-test-audit.bundle audit/tests-vps-2026-10-18
-git show FETCH_HEAD:docs/audits/2026-10-18-test-audit.md > /tmp/grampacker-test-audit.md
-```
-
-Alternatively, publish this branch from a credentialed checkout. Once it is
-published, another sandbox with repository access can retrieve it with:
+The report is published on `origin/audit/tests-vps-2026-10-18`. Another
+sandbox with repository access can retrieve it without sharing this sandbox's
+filesystem or `/tmp`:
 
 ```bash
 git fetch origin audit/tests-vps-2026-10-18
