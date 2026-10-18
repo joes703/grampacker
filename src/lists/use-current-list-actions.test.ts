@@ -9,10 +9,6 @@ import { showToast } from '../lib/toast'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 
-// TRANSPLANT NOTE (csv): the old repo's suite also covered exportCsv
-// (exportingListId lifecycle + failure toast); those cases return with the
-// CSV slice.
-
 // Hoisted spies so both the mock factories and the test bodies share the same
 // fn instances. (vi.mock is hoisted above imports; vi.hoisted lets the
 // factories close over these.)
@@ -21,6 +17,8 @@ const q = vi.hoisted(() => ({
   duplicateList: vi.fn(),
   deleteList: vi.fn(),
   createList: vi.fn(),
+  fetchListItems: vi.fn(),
+  fetchCategories: vi.fn(),
   // Faithful (content-dependent) reimplementation of the real
   // nextListSortOrder: max(sortOrder) + 1 + offset. The createListMut
   // lifecycle test relies on this returning DIFFERENT values for the
@@ -77,6 +75,8 @@ vi.mock('../lib/queries', async () => {
     duplicateList: q.duplicateList,
     deleteList: q.deleteList,
     createList: q.createList,
+    fetchListItems: q.fetchListItems,
+    fetchCategories: q.fetchCategories,
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
@@ -303,5 +303,42 @@ describe('useCurrentListActions - createListMut', () => {
     await waitFor(() => expect(result.current.createListMut.isError).toBe(true))
     expect(showToast).toHaveBeenCalledWith("Couldn't create the list. Please try again.", { type: 'error' })
     expect(navigateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('useCurrentListActions - exportCsv', () => {
+  beforeEach(() => {
+    vi.mocked(showToast).mockClear()
+    q.fetchListItems.mockReset()
+    q.fetchCategories.mockReset()
+  })
+  afterEach(() => cleanup())
+
+  // The export is fired without await from a menu, so a failure must be
+  // reported and consumed here, and the row's spinner must stop. Otherwise
+  // the user sees a spinner that never ends and no reason why.
+  it('marks the list as exporting, then on failure toasts and stops the spinner', async () => {
+    let failItems: (error: Error) => void = () => {}
+    q.fetchListItems.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { failItems = reject }),
+    )
+    q.fetchCategories.mockResolvedValueOnce([])
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    let done: Promise<void> = Promise.resolve()
+    act(() => { done = result.current.exportCsv(LIST) })
+    await waitFor(() => expect(result.current.exportingListId).toBe('l1'))
+    expect(q.fetchListItems).toHaveBeenCalledWith('l1')
+
+    await act(async () => {
+      failItems(new Error('offline'))
+      await expect(done).resolves.toBeUndefined()
+    })
+
+    expect(result.current.exportingListId).toBeNull()
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't export the list. Please try again.",
+      { type: 'error' },
+    )
   })
 })
