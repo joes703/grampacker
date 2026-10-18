@@ -74,8 +74,11 @@ function setup(items: ListItemWithGear[], food: FoodItemResponse[] = []) {
 
 const read = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(KEY) ?? []
 const find = (qc: QueryClient, id: string) => read(qc).find((i) => i.id === id)!
-const findFood = (qc: QueryClient, id: string) =>
-  qc.getQueryData<ListFoodResponse>(FOOD_KEY)!.items.find((i) => i.id === id)!
+const findFood = (qc: QueryClient, id: string) => {
+  const row = qc.getQueryData<ListFoodResponse>(FOOD_KEY)?.items.find((i) => i.id === id)
+  if (!row) throw new Error(`no food row ${id} in the cache`)
+  return row
+}
 
 beforeEach(() => {
   h.resetPackedForList.mockResolvedValue(undefined)
@@ -224,6 +227,7 @@ describe('useListResetActions', () => {
         foodItem({ id: 'f1', [flag]: true, [other]: true }),
         foodItem({ id: 'f2', [flag]: true }),
       ])
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
       let done: Promise<void> = Promise.resolve()
       act(() => { done = result.current[action]() })
@@ -234,6 +238,8 @@ describe('useListResetActions', () => {
 
       finish()
       await act(async () => { await done })
+      // The refetch is what brings the food rows in line with the server.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: FOOD_KEY })
     })
 
     it(`on failure puts back ${flag} only on the food rows it cleared`, async () => {
