@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { ListItemWithGear } from '../lib/types'
+import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 
 // Coverage for resetPacked / resetReady and their field-scoped optimistic
 // rollback. The subtle part is that each reset only restores its OWN field on
@@ -15,6 +16,7 @@ import type { ListItemWithGear } from '../lib/types'
 
 const LIST_ID = 'list-1'
 const KEY = ['list-items', LIST_ID] as const
+const FOOD_KEY = ['list-food', LIST_ID] as const
 
 const h = vi.hoisted(() => ({
   queryKeys: {
@@ -46,11 +48,20 @@ function item(over: Partial<ListItemWithGear> = {}): ListItemWithGear {
   }
 }
 
-function setup(items: ListItemWithGear[]) {
+function foodItem(over: Partial<FoodItemResponse> = {}): FoodItemResponse {
+  return {
+    id: 'f1', name: 'Tortillas', weightGrams: 50, quantity: 1, isPerMeal: true,
+    unitCount: 1, sortOrder: 0, isPacked: false, isReady: false,
+    packingLocationId: null, packSortOrder: 0, slotIds: [], ...over,
+  }
+}
+
+function setup(items: ListItemWithGear[], food: FoodItemResponse[] = []) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   qc.setQueryData<ListItemWithGear[]>(KEY, items)
+  qc.setQueryData<ListFoodResponse>(FOOD_KEY, { dayCount: 1, slots: [], items: food })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
@@ -63,6 +74,11 @@ function setup(items: ListItemWithGear[]) {
 
 const read = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(KEY) ?? []
 const find = (qc: QueryClient, id: string) => read(qc).find((i) => i.id === id)!
+const findFood = (qc: QueryClient, id: string) => {
+  const row = qc.getQueryData<ListFoodResponse>(FOOD_KEY)?.items.find((i) => i.id === id)
+  if (!row) throw new Error(`no food row ${id} in the cache`)
+  return row
+}
 
 beforeEach(() => {
   h.resetPackedForList.mockResolvedValue(undefined)
@@ -194,6 +210,49 @@ describe('useListResetActions', () => {
       // ...but resetPacked's whole-row-free rollback never touches isReady, so
       // the concurrent resetReady clear survives.
       expect(a.isReady).toBe(false)
+    })
+  })
+
+  // The server clears gear and food in one batch, so the cache must too: a
+  // reset that left the food checkboxes ticked would contradict the server,
+  // and a failed one must put back exactly the food ticks it cleared.
+  describe.each([
+    { action: 'resetPacked', flag: 'isPacked', other: 'isReady', server: h.resetPackedForList },
+    { action: 'resetReady', flag: 'isReady', other: 'isPacked', server: h.resetReadyForList },
+  ] as const)('$action on food', ({ action, flag, other, server }) => {
+    it(`clears ${flag} on every food row while the request is in flight`, async () => {
+      let finish: () => void = () => {}
+      server.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+      const { qc, result } = setup([], [
+        foodItem({ id: 'f1', [flag]: true, [other]: true }),
+        foodItem({ id: 'f2', [flag]: true }),
+      ])
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+      let done: Promise<void> = Promise.resolve()
+      act(() => { done = result.current[action]() })
+      await waitFor(() => expect(server).toHaveBeenCalled())
+
+      expect(findFood(qc, 'f1')).toMatchObject({ [flag]: false, [other]: true })
+      expect(findFood(qc, 'f2')[flag]).toBe(false)
+
+      finish()
+      await act(async () => { await done })
+      // The refetch is what brings the food rows in line with the server.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: FOOD_KEY })
+    })
+
+    it(`on failure puts back ${flag} only on the food rows it cleared`, async () => {
+      server.mockRejectedValueOnce(new Error('boom'))
+      const { qc, result } = setup([], [
+        foodItem({ id: 'f1', [flag]: true, [other]: true }),
+        foodItem({ id: 'f2', [flag]: false }),
+      ])
+
+      await act(async () => { await result.current[action]() })
+
+      expect(findFood(qc, 'f1')).toMatchObject({ [flag]: true, [other]: true })
+      expect(findFood(qc, 'f2')[flag]).toBe(false)
     })
   })
 })
