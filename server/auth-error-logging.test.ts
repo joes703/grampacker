@@ -246,4 +246,44 @@ describe('auth failures in the log', () => {
     )
     expect(session.status).toBe(200)
   })
+
+  it('fails a magic-link send with a correlated 500 when Resend refuses it', async () => {
+    // A key is set, so the real Resend sender runs; only its HTTP call is
+    // answered here. If a refusal were treated as sent, sign-in would tell
+    // the user to check an inbox that will never receive the link.
+    const resend = vi.fn(async () => new Response('{"message":"rejected"}', { status: 422 }))
+    vi.stubGlobal('fetch', resend)
+    const email = `refused-${crypto.randomUUID()}@example.com`
+    try {
+      const res = await app.request(
+        '/api/auth/sign-in/magic-link',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: PROD_ORIGIN,
+            'x-forwarded-for': clientIp(),
+          },
+          body: JSON.stringify({ email }),
+        },
+        { ...env, BETTER_AUTH_URL: PROD_ORIGIN, RESEND_API_KEY: 're_test_not_a_real_key' },
+      )
+      expect(res.status).toBe(500)
+      const body = (await res.json()) as { correlationId?: string; code?: string }
+      expect(body.code).toBe('INTERNAL_SERVER_ERROR')
+      expect(body.correlationId).toMatch(UUID_RE)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    // The request really reached the provider, so the 500 is its refusal.
+    expect(resend).toHaveBeenCalledWith('https://api.resend.com/emails', expect.anything())
+    const out = everything()
+    // The operator can see why, and the log holds neither the recipient nor
+    // the link.
+    expect(out).toContain('Resend send failed: HTTP 422')
+    expect(out).not.toContain(email)
+    expect(out).not.toContain('token=')
+    assertOnlyBudgetedLines()
+  })
 })
