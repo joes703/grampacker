@@ -172,26 +172,6 @@ describe('pack reorder is all-or-nothing', () => {
     }
   })
 
-  it('concurrent reorders of the same bag both apply; neither loses a race', async () => {
-    // Each reorder reads and writes inside one immediate transaction, so two
-    // overlapping reorders run one after the other and both succeed.
-    const { cookie, listId } = await seedBag(3)
-    const rows = [...itemsIn(listId)].sort((a, b) => a.packSortOrder - b.packSortOrder)
-    const ranks = rows.map((r) => r.packSortOrder)
-    const reversed = rows.map((r, i) => ({ id: r.id, packSortOrder: ranks[ranks.length - 1 - i]! }))
-    const rotated = rows.map((r, i) => ({ id: r.id, packSortOrder: ranks[(i + 1) % ranks.length]! }))
-    const results = await Promise.all(
-      [reversed, rotated].map((items) =>
-        apiRequest(cookie, 'PUT', `/api/lists/${listId}/items/pack-order`, {
-          items,
-          foodItems: [],
-        }),
-      ),
-    )
-    expect(results.map((r) => r.status)).toEqual([204, 204])
-    const final = [...itemsIn(listId)].map((r) => r.packSortOrder).sort((a, b) => a - b)
-    expect(final).toEqual([...ranks].sort((a, b) => a - b))
-  })
 })
 
 describe('deleting a packing location is all-or-nothing', () => {

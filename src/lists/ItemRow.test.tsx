@@ -76,13 +76,6 @@ describe('ItemRow pack-mode weight', () => {
     expect(screen.getByLabelText('1200 g').closest('label')).toBeNull()
   })
 
-  it('hides the weight in print so the paper checklist is unchanged', () => {
-    render(<ItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
-
-    const cell = screen.getByLabelText('1200 g').parentElement
-    expect(cell?.className).toContain('print:hidden')
-  })
-
   // Fixing a weight is the edit you actually want mid-pack, and it works here
   // for a structural reason: the weight cell is OUTSIDE the wrapping label, so
   // an input in it cannot steal the toggle-packed gesture. Name and

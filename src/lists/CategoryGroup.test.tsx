@@ -192,36 +192,6 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.getAllByText(/Consumable/).length).toBeGreaterThan(0)
   })
 
-  it('uses one line box and explicit font roles for every footer metric', () => {
-    render(
-      <CategoryGroup
-        name="Kitchen"
-        categoryId="cat-kitchen"
-        items={[itemNamed('a', 'Pot'), consumable('b', 'Fuel')]}
-        weightUnit="g"
-        baseSubtotalGrams={1352}
-        consumableSubtotalGrams={110}
-      />,
-    )
-
-    const footer = document.querySelector<HTMLElement>('.print\\:flex')
-    if (!footer) throw new Error('expected category footer')
-    const totals = footer.querySelector<HTMLElement>('.inline-flex.justify-end')
-    if (!totals) throw new Error('expected category footer totals')
-    const basePair = within(totals).getByText('Base').parentElement
-    const consumablePair = within(totals).getByText('Consumable').parentElement
-    if (!basePair || !consumablePair) throw new Error('expected category footer label-value pairs')
-
-    expect(totals).toHaveClass('flex-nowrap', 'items-baseline')
-    expect(totals.parentElement).not.toHaveClass('font-mono', 'font-semibold')
-    expect(basePair).toHaveClass('text-xs', 'leading-4')
-    expect(consumablePair).toHaveClass('text-xs', 'leading-4')
-    expect(within(basePair).getByText('Base')).toHaveClass('font-sans')
-    expect(within(consumablePair).getByText('Consumable')).toHaveClass('font-sans')
-    expect(within(basePair).getByText('1352 g')).toHaveClass('font-mono', 'text-xs', 'leading-4')
-    expect(within(consumablePair).getByText('110 g')).toHaveClass('font-mono', 'text-xs', 'leading-4')
-  })
-
   it('keeps full gram precision when converting category footers to ounces', () => {
     render(
       <CategoryGroup

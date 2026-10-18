@@ -14,7 +14,7 @@ const list = (id: string, name: string) =>
     sortOrder: 0,
     createdAt: '2026-01-01',
     updatedAt: '2026-01-01',
-  }) as List
+  }) satisfies List
 
 describe('buildFoodJson', () => {
   it('serializes a carried item ONCE with its slots as references', () => {
@@ -52,10 +52,31 @@ describe('buildFoodJson', () => {
     expect(json.lists[0]!.items).toHaveLength(1)
     expect(json.lists[0]!.items[0]!.slotIds).toHaveLength(5)
     const total = json.lists[0]!.items.reduce(
-      (g, i) => g + i.weightGrams * i.quantity,
+      (g, i) => g + i.weightGrams * i.unitCount,
       0,
     )
     expect(total).toBe(500)
+  })
+
+  it('exports per-meal authored quantity and carried units without duplicating the item', () => {
+    const json = buildFoodJson({
+      lists: [list('a', 'Trip')],
+      foodByListId: new Map([['a', {
+        dayCount: 3,
+        slots: [1, 2, 3].map((dayNumber) => ({ id: `s${dayNumber}`, dayNumber, meal: 'dinner' as const })),
+        items: [{
+          id: 'ramen', name: 'Ramen', weightGrams: 85,
+          quantity: 2, isPerMeal: true, unitCount: 6, sortOrder: 0,
+          isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0,
+          slotIds: ['s1', 's2', 's3'],
+        }],
+      }]]),
+    })
+    expect(json.lists[0]?.items).toEqual([{
+      id: 'ramen', name: 'Ramen', weightGrams: 85,
+      quantity: 2, isPerMeal: true, unitCount: 6,
+      slotIds: ['s1', 's2', 's3'],
+    }])
   })
 
   it('carries no plan-completeness flag on a slot', () => {

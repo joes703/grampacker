@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { makeList, makeListItem } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import type { Category, GearItem, List, ListItemWithGear } from '../lib/types'
+import type { Category, GearItem } from '../lib/types'
 import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
 
 // ListDetailPage's edit-gear dialog is a two-stage async save - gear first, then the
@@ -19,14 +20,12 @@ import { renderListDetailPage, shimDialog, stubViewport } from './test/list-deta
 
 const listId = 'list-1'
 
-const list = {
+const list = makeList({
   id: listId,
   name: 'Sierra High Route',
   isShared: false,
-  shareSlug: null,
-  notes: null,
   updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+})
 
 const category: Category = {
   id: 'c1',
@@ -52,7 +51,7 @@ function gear(over: Partial<GearItem> = {}): GearItem {
   }
 }
 
-const listItem = {
+const listItem = makeListItem({
   id: 'li-1',
   gearItemId: 'g1',
   gearItem: gear(),
@@ -61,7 +60,7 @@ const listItem = {
   isConsumable: false,
   sortOrder: 0,
   packingLocationId: null,
-} as unknown as ListItemWithGear
+})
 
 type Deferred = {
   promise: Promise<unknown>

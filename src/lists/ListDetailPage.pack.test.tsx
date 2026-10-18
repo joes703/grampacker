@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
 import { useLocation, useNavigationType } from 'react-router'
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, PackingLocation } from '../lib/types'
 import {
   emptyFood,
   list,
@@ -25,14 +26,14 @@ import {
 // Which surface carries the trigger is the whole point of these tests, so
 // they assert per-breakpoint and per-view rather than just "a button exists".
 
-const gear = {
+const gear = makeGearItem({
   id: 'gear-1',
   name: 'Cooking pot',
   weightGrams: 210,
   categoryId: null,
-} as unknown as GearItem
+})
 
-const listItem = {
+const listItem = makeListItem({
   id: 'li-1',
   gearItemId: 'gear-1',
   gearItem: gear,
@@ -43,16 +44,16 @@ const listItem = {
   isReady: false,
   packingLocationId: null,
   sortOrder: 0,
-} as unknown as ListItemWithGear
+})
 
-const wornItem = {
+const wornItem = makeListItem({
   ...listItem,
   id: 'li-worn',
   gearItemId: 'gear-worn',
   gearItem: { ...gear, id: 'gear-worn', name: 'Sun hoody' },
   isWorn: true,
   sortOrder: 1,
-} as unknown as ListItemWithGear
+})
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),

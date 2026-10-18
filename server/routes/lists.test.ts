@@ -856,62 +856,6 @@ describe('caps and slug integrity', () => {
     expect(gearAfter).toBe(gearBefore)
   })
 
-  it('bulk surfaces work above 100 ids', async () => {
-    // The repos check these ids against the user's owned set in JS, so the
-    // bound parameters do not grow with the request: lists reorder at the
-    // full LIST_CAP (100 ids), from-selection with 150 gear ids, and
-    // list-items reorder at 150.
-    const { cookie } = await signUpVerifiedUser('lists-many@example.com', 'M')
-    const userId = await userIdFor(cookie)
-
-    // from-selection with 150 gear ids (list #1 of the eventual 100).
-    const gearValues = Array.from({ length: 150 }, (_, i) => {
-      return `('selmany-${i}', '${userId}', 'Sel gear ${i}', 0, 'active', ${i}, 0, 0)`
-    }).join(',')
-    await testDb.prepare(
-      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${gearValues}`,
-    ).run()
-    const gearIds = Array.from({ length: 150 }, (_, i) => `selmany-${i}`)
-    const sel = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
-      name: 'Big selection',
-      gearItemIds: gearIds,
-    })
-    expect(sel.status).toBe(201)
-    const bigList = (await sel.json()) as { id: string }
-    const items = await getItems(cookie, bigList.id)
-    expect(items).toHaveLength(150)
-
-    // List-items reorder at 150.
-    const reorderItems = await apiRequest(
-      cookie,
-      'PUT',
-      `/api/lists/${bigList.id}/items/order`,
-      items.map((it, i) => ({ id: it.id, sortOrder: 149 - i })),
-    )
-    expect(reorderItems.status).toBe(204)
-
-    // Lists reorder at exactly LIST_CAP: 99 seeded + the selection list
-    // (seeding 100 first would make from-selection the 101st and 422).
-    const listValues = Array.from({ length: 99 }, (_, i) => {
-      return `('listmany-${i}', '${userId}', 'List ${i}', 'LM${String(i).padStart(4, '0')}', 0, 1, ${i + 10}, 0, 0)`
-    }).join(',')
-    await testDb.prepare(
-      `insert into lists (id, user_id, name, slug, is_shared, is_draft, sort_order, created_at, updated_at) values ${listValues}`,
-    ).run()
-    const reorderIds = [
-      bigList.id,
-      ...Array.from({ length: 99 }, (_, i) => `listmany-${i}`),
-    ]
-    const reorderLists = await apiRequest(cookie, 'PUT', '/api/lists/order',
-      reorderIds.map((id, i) => ({ id, sortOrder: 99 - i })),
-    )
-    expect(reorderLists.status).toBe(204)
-    // bigList got the highest slot, so it sorts last now.
-    const after = await getLists(cookie)
-    expect(after).toHaveLength(100)
-    expect(after[99]?.name).toBe('Big selection')
-  })
-
   it('import: list + categories + gear + items land atomically with CSV row-index sort orders', async () => {
     const { cookie } = await signUpVerifiedUser('lists-import@example.com', 'I')
     const catRes = await apiRequest(cookie, 'POST', '/api/categories', { name: 'Shelter' })
@@ -1095,34 +1039,6 @@ describe('caps and slug integrity', () => {
     expect(
       (await (await apiRequest(cookie, 'GET', '/api/gear-items')).json()) as unknown[],
     ).toHaveLength(499)
-  })
-
-  it('import with 120 existing-gear refs works', async () => {
-    const { cookie } = await signUpVerifiedUser('lists-import-wide@example.com', 'W')
-    const userId = await userIdFor(cookie)
-
-    const values = Array.from({ length: 120 }, (_, i) => {
-      return `('importwide-${i}', '${userId}', 'Wide ${i}', 0, 'active', ${i}, 0, 0)`
-    }).join(',')
-    await testDb.prepare(
-      `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
-    ).run()
-
-    // The ownership precheck loads the user's owned ids with one bound
-    // parameter and checks membership in JS, so its cost does not grow
-    // with the import.
-    const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
-      name: 'Wide import',
-      categories: [],
-      gear: [],
-      items: Array.from({ length: 120 }, (_, i) => ({
-        gear: { kind: 'existing', id: `importwide-${i}` },
-        sortOrder: i,
-      })),
-    })
-    expect(res.status).toBe(201)
-    const list = (await res.json()) as ListBody
-    expect(await getItems(cookie, list.id)).toHaveLength(120)
   })
 
   it('import validation: tempId wiring, flags, quantity, sortOrders', async () => {

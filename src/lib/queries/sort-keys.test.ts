@@ -25,13 +25,9 @@ const helpers = [
 ] as const
 
 describe.each(helpers)('%s', (_name, next) => {
-  it('walks off the MAX of a sparse sequence, not the length', () => {
+  it('uses the maximum of an unsorted sparse sequence', () => {
     // Length-based picking would answer 3 here - colliding with the row
     // already holding 3. The gap at 1-2 is what a delete leaves behind.
-    expect(next(rows(0, 3, 7))).toBe(8)
-  })
-
-  it('is order-independent', () => {
     expect(next(rows(7, 0, 3))).toBe(8)
   })
 

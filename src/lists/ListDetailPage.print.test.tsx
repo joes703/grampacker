@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, PackingLocation } from '../lib/types'
 import {
   emptyFood,
   list,
@@ -28,14 +29,14 @@ import {
 // can prove is that the sheet LOOKS right - jsdom paginates nothing. That
 // check is a human in a print preview.
 
-const gear = {
+const gear = makeGearItem({
   id: 'gear-1',
   name: 'Cooking pot',
   weightGrams: 210,
   categoryId: null,
-} as unknown as GearItem
+})
 
-const unpackedItem = {
+const unpackedItem = makeListItem({
   id: 'li-1',
   gearItemId: 'gear-1',
   gearItem: gear,
@@ -46,17 +47,17 @@ const unpackedItem = {
   isReady: false,
   packingLocationId: null,
   sortOrder: 0,
-} as unknown as ListItemWithGear
+})
 
 // The row a filtered print would lose.
-const packedItem = {
+const packedItem = makeListItem({
   ...unpackedItem,
   id: 'li-2',
   gearItemId: 'gear-2',
   gearItem: { ...gear, id: 'gear-2', name: 'Titanium spork' },
   isPacked: true,
   sortOrder: 1,
-} as unknown as ListItemWithGear
+})
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
@@ -150,7 +151,7 @@ describe('printing renders the full list regardless of the pack filters', () => 
     const user = userEvent.setup()
     h.fetchListItems.mockResolvedValue([
       unpackedItem,
-      { ...packedItem, isPacked: false, isReady: true } as unknown as ListItemWithGear,
+      makeListItem({ ...packedItem, isPacked: false, isReady: true }),
     ])
     await renderPack()
 

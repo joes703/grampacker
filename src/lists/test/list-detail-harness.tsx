@@ -1,9 +1,9 @@
 import { vi } from 'vitest'
+import { makeList } from '../../test/fixtures'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
-import type { List } from '../../lib/types'
 import type { ListFoodResponse } from '../../../shared/food'
 import { MobilePrimaryNavProvider } from '../../layout/mobile-primary-nav-context'
 import { SidebarDrawerProvider } from '../../layout/sidebar-drawer-context'
@@ -23,14 +23,13 @@ import { SidebarDrawerProvider } from '../../layout/sidebar-drawer-context'
 
 export const listId = 'list-1'
 
-export const list = {
+export const list = makeList({
   id: listId,
   name: 'Sierra High Route',
   isShared: false,
-  shareSlug: null,
   description: null,
   updatedAt: '2026-07-01T00:00:00.000Z',
-} as unknown as List
+})
 
 export const emptyFood: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 

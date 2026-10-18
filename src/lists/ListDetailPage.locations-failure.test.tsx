@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { makeDnDId } from '../lib/dnd-ids'
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, PackingLocation } from '../lib/types'
 import {
   emptyFood,
   list,
@@ -29,14 +30,14 @@ import {
 // location-free list is the control: a SUCCESSFUL [] is resolved, and must keep
 // working exactly as before.
 
-const gear = {
+const gear = makeGearItem({
   id: 'gear-1',
   name: 'Cooking pot',
   weightGrams: 210,
   categoryId: null,
-} as unknown as GearItem
+})
 
-const listItem = {
+const listItem = makeListItem({
   id: 'li-1',
   gearItemId: 'gear-1',
   gearItem: gear,
@@ -50,16 +51,16 @@ const listItem = {
   packingLocationId: 'loc-1',
   sortOrder: 0,
   packSortOrder: 0,
-} as unknown as ListItemWithGear
+})
 
-const secondItem = {
+const secondItem = makeListItem({
   ...listItem,
   id: 'li-2',
   gearItemId: 'gear-2',
   gearItem: { ...gear, id: 'gear-2', name: 'Stove' },
   sortOrder: 1,
   packSortOrder: 1,
-} as unknown as ListItemWithGear
+})
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),

@@ -434,7 +434,7 @@ describe('assertListImportWithinCaps', () => {
 
   it('rejects an import that would push the inventory over the gear cap', () => {
     expect(() => assertListImportWithinCaps(planOf(2, 2), GEAR_ITEM_CAP - 1, 0)).toThrow(
-      `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+      `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Reduce the new entries or delete unused gear from your inventory.`,
     )
     // Singular form for a single new item.
     expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP, 0)).toThrow(
@@ -499,7 +499,7 @@ describe('assertGearImportWithinCaps', () => {
   it('rejects when existing + new gear exceeds the inventory cap', () => {
     expect(() =>
       assertGearImportWithinCaps(gearPlanOf(2, 0), GEAR_ITEM_CAP - 1, 0),
-    ).toThrow(/inventory limit/)
+    ).toThrow(/inventory limit\. Reduce the new entries or delete unused gear from your inventory\./)
   })
 
   it('rejects when existing + new categories exceeds the category cap', () => {

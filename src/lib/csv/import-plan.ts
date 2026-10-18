@@ -292,11 +292,7 @@ export function planListImport(
 // over-cap import never reaches the server (the DB triggers remain
 // authoritative; this just yields a specific, actionable message instead
 // of a generic limit error).
-// The gear-library twin of assertListImportWithinCaps below - and until now
-// the missing one: only LIST import had a preflight, so a 501-item gear CSV
-// went to the server and came back as a late cap error. Both dimensions are
-// checked, because a gear import can create categories too and the 0021
-// trigger caps those independently.
+// Gear imports can create categories too, so check both account-wide bounds.
 export function assertGearImportWithinCaps(
   plan: GearImportPlan,
   existingGearCount: number,
@@ -305,7 +301,7 @@ export function assertGearImportWithinCaps(
   const newGearCount = plan.newItems.length
   if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
     throw new Error(
-      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Reduce the new entries or delete unused gear from your inventory.`,
     )
   }
   const newCategoryCount = plan.newCategories.length
@@ -329,7 +325,7 @@ export function assertListImportWithinCaps(
   const newGearCount = plan.newGear.length
   if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
     throw new Error(
-      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove some items or split the file into smaller batches.`,
+      `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Reduce the new entries or delete unused gear from your inventory.`,
     )
   }
   // A list import creates categories too, and the 0021 trigger caps those

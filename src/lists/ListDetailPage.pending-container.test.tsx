@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { makeGearItem, makeListItem } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { makeDnDId } from '../lib/dnd-ids'
-import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
+import type { Category, ListItemWithGear, PackingLocation } from '../lib/types'
 import {
   emptyFood,
   list,
@@ -23,10 +24,10 @@ import {
 // looking at, and rewrite the header's rank as a side effect.
 
 function gearRow(id: string, name: string, rank: number): ListItemWithGear {
-  return {
+  return makeListItem({
     id,
     gearItemId: `gear-${id}`,
-    gearItem: { id: `gear-${id}`, name, weightGrams: 100, categoryId: null } as unknown as GearItem,
+    gearItem: makeGearItem({ id: `gear-${id}`, name, weightGrams: 100, categoryId: null }),
     quantity: 1,
     isWorn: false,
     isConsumable: false,
@@ -35,7 +36,7 @@ function gearRow(id: string, name: string, rank: number): ListItemWithGear {
     packingLocationId: 'loc-1',
     sortOrder: rank,
     packSortOrder: rank,
-  } as unknown as ListItemWithGear
+  })
 }
 
 // The row being promoted sits BETWEEN the two the user drags, so a planner

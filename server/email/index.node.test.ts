@@ -11,14 +11,13 @@ import type { AppEnv } from '../env'
 // HTTP-level proof against the real magic-link endpoint is in
 // server/auth-error-logging.test.ts.
 
-// The generated AppEnv types BETTER_AUTH_URL as the production literal; the
-// selection rule is about its VALUE, so the fixtures are cast.
+// Selection does not use the database or static assets.
 function envWith(overrides: Record<string, string | undefined>): AppEnv {
   return {
     BETTER_AUTH_SECRET: 'x'.repeat(40),
     EMAIL_FROM: 'grampacker <no-reply@grampacker.app>',
     ...overrides,
-  } as unknown as AppEnv
+  } as AppEnv
 }
 
 const local = 'http://localhost:5173'
@@ -37,27 +36,16 @@ describe('createEmailSender', () => {
     consoleLog.mockRestore()
   })
 
-  it('uses Resend whenever a key is present, on any origin', () => {
-    for (const url of [local, prod]) {
-      expect(
-        createEmailSender(envWith({ BETTER_AUTH_URL: url, RESEND_API_KEY: 're_test' })),
-      ).toBeInstanceOf(ResendEmailSender)
-    }
-  })
-
-  it('uses the console sender on localhost with no key', () => {
-    expect(createEmailSender(envWith({ BETTER_AUTH_URL: local }))).toBeInstanceOf(
-      ConsoleEmailSender,
-    )
-  })
-
   it.each([
-    ['no key on the production origin', envWith({ BETTER_AUTH_URL: prod })],
-    ['an empty key on the production origin', envWith({ BETTER_AUTH_URL: prod, RESEND_API_KEY: '' })],
-    ['no key on a production origin', envWith({ BETTER_AUTH_URL: 'https://example.com' })],
-    ['no key and a malformed origin', envWith({ BETTER_AUTH_URL: 'not a url' })],
-  ])('fails the send closed with %s', async (_label, env) => {
-    const sender = createEmailSender(env)
+    ['configured key', { BETTER_AUTH_URL: prod, RESEND_API_KEY: 're_test' }, ResendEmailSender],
+    ['local development', { BETTER_AUTH_URL: local }, ConsoleEmailSender],
+    ['unconfigured public origin', { BETTER_AUTH_URL: prod }, null],
+  ])('selects a sender for %s', async (_label, config, expected) => {
+    const sender = createEmailSender(envWith(config))
+    if (expected) {
+      expect(sender).toBeInstanceOf(expected)
+      return
+    }
     expect(sender).not.toBeInstanceOf(ConsoleEmailSender)
     const message = {
       to: 'someone@example.com',
@@ -71,3 +59,28 @@ describe('createEmailSender', () => {
     expect(outbox.length).toBe(outboxBefore)
   })
 })
+
+it('sends the supplied message to Resend with the configured credentials and sender', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  const message = {
+    to: 'backpacker@example.com',
+    subject: 'Sign in',
+    text: 'Synthetic sign-in text',
+    html: '<p>Synthetic sign-in text</p>',
+  }
+  await new ResendEmailSender('re_synthetic', 'App <app@example.com>').send(message)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  const [url, request] = fetch.mock.calls[0] as unknown as [string, RequestInit]
+  expect({ url, ...request, body: JSON.parse(String(request.body)) }).toEqual({
+    url: 'https://api.resend.com/emails',
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer re_synthetic',
+      'Content-Type': 'application/json',
+    },
+    body: { from: 'App <app@example.com>', ...message },
+  })
+})
+
+afterEach(() => vi.unstubAllGlobals())

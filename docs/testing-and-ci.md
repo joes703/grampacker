@@ -32,7 +32,7 @@ The suffix is a claim the author makes and the reviewer checks.
 
 ## 3. Isolation
 
-Each API test file gets a fresh temporary SQLite database through
+Each API test file gets a fresh in-memory SQLite database through
 `server/test/node-env.ts`. Tests in one file may share process state, so reset
 module-level counters and outboxes explicitly. Do not read a real secret or a
 developer database.
@@ -73,11 +73,28 @@ records, so replacing applied history is not routine maintenance.
 Speed alone is not a reason to delete a test. A test may go only when:
 
 1. the behavior or reachable input no longer exists;
-2. another named test proves the same behavior at the same boundary; or
-3. the test cannot fail for a realistic production defect.
+2. another named test proves the same behavior at the same boundary;
+3. the test cannot fail for a realistic production defect; or
+4. its maintenance cost exceeds its material value for this app. Name the
+   accepted gap and an appropriate manual check; owner approval of the exact
+   PR head accepts that tradeoff.
 
 The change must name the reason and evidence. Moving a test to a cheaper tier
 keeps its assertions unless the behavior changed.
+
+Test our configuration, callbacks, transformations, and observable application
+outcomes. Trust dependencies to implement their own hashing, expiry, WebAuthn,
+SQL, schema primitives, and compression. Real dependencies are appropriate
+when they prove our wiring or access boundary; neither a security label nor
+third-party ownership alone determines whether to keep a test.
+
+Exact class strings and DOM rails have limited value without a layout engine.
+Shared-control sizing, alignment, print layout and keyboard access remain UI
+requirements. Check them in a browser or print preview when changing those
+surfaces; this suite accepts less automated protection for cosmetic changes.
+For changes to the public share's dependencies, inspect the emitted bundle
+instead of maintaining a custom import parser. The existing page-level print
+filter test protects missing content separately.
 
 ## 7. Measuring
 

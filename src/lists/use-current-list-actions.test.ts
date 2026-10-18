@@ -19,29 +19,6 @@ const q = vi.hoisted(() => ({
   createList: vi.fn(),
   fetchListItems: vi.fn(),
   fetchCategories: vi.fn(),
-  // Faithful (content-dependent) reimplementation of the real
-  // nextListSortOrder: max(sortOrder) + 1 + offset. The createListMut
-  // lifecycle test relies on this returning DIFFERENT values for the
-  // pre-insert cache vs. the post-insert cache - a constant stub would mask
-  // the ordering regression it guards against.
-  nextListSortOrder: vi.fn((existing: { sortOrder: number }[], offset = 0) => {
-    let max = -1
-    for (const l of existing) if (l.sortOrder > max) max = l.sortOrder
-    return max + 1 + offset
-  }),
-}))
-// Faithful placeholder: carries the passed sortOrder onto the optimistic row
-// so the REAL makeOptimisticInsert appends a row whose sortOrder the
-// lifecycle test can observe.
-const placeholder = vi.hoisted(() => ({
-  optimisticListPlaceholder: vi.fn(
-    ({ name, sortOrder }: { name: string; sortOrder: number }) => ({
-      id: `temp-${sortOrder}`,
-      name,
-      sortOrder,
-      isDraft: true,
-    }),
-  ),
 }))
 const navigateSpy = vi.hoisted(() => vi.fn())
 
@@ -55,16 +32,10 @@ vi.mock('react-router', async (importOriginal) => {
 
 vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 
-// COMPLETE mock of the queries barrel so the real network-facing fetchers are
-// never loaded. EXCEPTION: the makeOptimistic* helpers come from the REAL
-// `../lib/queries/optimistic` module, imported directly (it only depends on
-// react-query types and the toast module, which is mocked). Going through the
-// real optimistic-insert lifecycle is load-bearing for the createListMut test:
-// a stubbed makeOptimisticInsert would never insert the placeholder, so it
-// could not catch the onMutate-before-mutationFn ordering regression where
-// the placeholder's slot ends up one position too high.
+// Keep the real optimistic and sort helpers; mock only data transport.
 vi.mock('../lib/queries', async () => {
   const optimistic = await import('../lib/queries/optimistic')
+  const { nextListSortOrder } = await import('../lib/queries/sort-keys')
   return {
     queryKeys: {
       lists: () => ['lists'],
@@ -80,13 +51,9 @@ vi.mock('../lib/queries', async () => {
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
-    nextListSortOrder: q.nextListSortOrder,
+    nextListSortOrder,
   }
 })
-
-vi.mock('../lib/optimistic-list-placeholder', () => ({
-  optimisticListPlaceholder: placeholder.optimisticListPlaceholder,
-}))
 
 const LIST: List = {
   id: 'l1',
@@ -258,8 +225,6 @@ describe('useCurrentListActions - deleteListMut', () => {
 describe('useCurrentListActions - createListMut', () => {
   beforeEach(() => {
     q.createList.mockReset()
-    q.nextListSortOrder.mockClear()
-    placeholder.optimisticListPlaceholder.mockClear()
     vi.mocked(showToast).mockClear()
     navigateSpy.mockClear()
   })
@@ -274,7 +239,8 @@ describe('useCurrentListActions - createListMut', () => {
     // the placeholder for a [0,1] cache must be built with sortOrder 2,
     // never 3. (The server assigns the persisted slot from its own max+1;
     // only the placeholder consumes this value in the rewrite.)
-    q.createList.mockResolvedValueOnce({ ...LIST, id: 'new-id', name: 'New' })
+    let finish: (row: List) => void = () => {}
+    q.createList.mockReturnValueOnce(new Promise<List>((resolve) => { finish = resolve }))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
     // Seed two lists at sortOrder 0 and 1; the append position is 2.
     const seeded: List[] = [
@@ -286,13 +252,12 @@ describe('useCurrentListActions - createListMut', () => {
     act(() => { result.current.submitCreateList('New') })
 
     await waitFor(() => expect(q.createList).toHaveBeenCalled())
-    // The optimistic placeholder was built with sortOrder 2 (not 3)...
-    expect(placeholder.optimisticListPlaceholder).toHaveBeenCalledWith({
-      name: 'New',
-      sortOrder: 2,
-    })
+    // Observe the real placeholder while the request is pending.
+    expect(lastQc.getQueryData<List[]>(['lists'])?.find((row) => row.name === 'New'))
+      .toMatchObject({ name: 'New', sortOrder: 2, isDraft: true })
     // ...and the server write carries only the name.
     expect(q.createList).toHaveBeenCalledWith('New')
+    await act(async () => { finish({ ...LIST, id: 'new-id', name: 'New' }) })
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
   })
 
