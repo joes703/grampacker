@@ -162,6 +162,30 @@ describe('FoodView quantity', () => {
   // mutation-error-handler.test.ts instead.
 })
 
+describe('FoodView per-meal toggle', () => {
+  // Per meal or shared decides how many the user carries (see foodUnitCount),
+  // so the row's switch must save the opposite of the current mode, and only
+  // that field: carrying slotIds or quantity too would rewrite the plan.
+  it.each([
+    { from: 'shared', isPerMeal: false, to: true },
+    { from: 'per meal', isPerMeal: true, to: false },
+  ])('a $from item switched from its row PATCHes isPerMeal: $to', async ({ from, isPerMeal, to }) => {
+    const ramen = guardFood.items[0]
+    if (!ramen) throw new Error('guardFood has no item')
+    h.fetchListFood.mockResolvedValue({ ...guardFood, items: [{ ...ramen, isPerMeal }] })
+    await renderFoodView()
+
+    await user.click(
+      await screen.findByRole('button', { name: `Ramen is ${from}. Switch.` }),
+    )
+
+    await waitFor(() =>
+      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { isPerMeal: to }),
+    )
+    expect(h.updateFoodItem).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('FoodView staleness', () => {
   // Every destructive food action decides from this cache, so the view opts
   // OUT of the app-wide refetchOnWindowFocus: false. Without it a tab left
