@@ -94,6 +94,28 @@ describe('useListFood', () => {
     expect(h.updateFoodItem).toHaveBeenNthCalledWith(1, LIST_ID, 'f1', { isPacked: true })
   })
 
+  it('a failed Packed tick leaves the placement alone: a move of the same row that succeeded mid-flight survives', async () => {
+    const packed = deferred()
+    h.updateFoodItem
+      .mockReturnValueOnce(packed.promise)
+      .mockResolvedValueOnce(undefined)
+    const { qc, result } = setup([food({ id: 'f1', packingLocationId: 'pocket', packSortOrder: 2 })])
+
+    await act(async () => {
+      result.current.patchPackState.mutate({ foodId: 'f1', patch: { isPacked: true } })
+    })
+    await act(async () => {
+      await result.current.moveFood.mutateAsync({ foodId: 'f1', locationId: 'bag', nextPackSortOrder: 9 })
+    })
+
+    await act(async () => {
+      packed.reject(new Error('network'))
+    })
+    await waitFor(() => expect(row(qc, 'f1').isPacked).toBe(false))
+
+    expect(row(qc, 'f1')).toMatchObject({ packingLocationId: 'bag', packSortOrder: 9 })
+  })
+
   it("a failed move rewinds only the moved row's placement and says so: Packed ticks saved mid-flight survive, on that row and another", async () => {
     const move = deferred()
     h.updateFoodItem
