@@ -82,6 +82,9 @@ jobs:
   # Manual publish, step 1: build, unit, API and migration checks on this
   # commit. ci.yml also checks shipped migrations, action pins and YAML;
   # those run on the pull request that brought the commit to main.
+  # These steps are deliberate copies of ci.yml's verify job (a reusable
+  # workflow would add a third file with its own pin and permissions
+  # surface); a change to one copy moves the other in the same commit.
   # Never name a job here "Verify": that is the ruleset's required check
   # (ci.yml), and this job reports "skipped" on every pull request.
   verify:
