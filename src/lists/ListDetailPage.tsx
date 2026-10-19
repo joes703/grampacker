@@ -976,7 +976,7 @@ function ListDetailInner({
   //
   // Be precise about what that costs, because the obvious reading is wrong:
   // this repo runs the compiler's LINT rules but not its transform (plain
-  // `react()` in vite.node.config.ts, no babel-plugin-react-compiler in
+  // `react()` in vite.client.config.ts, no babel-plugin-react-compiler in
   // package.json). So nothing memoizes these for us - they genuinely
   // recompute every render. That is affordable on its own terms: a handful of
   // linear passes over at most 30 locations and 300 items, well under a
