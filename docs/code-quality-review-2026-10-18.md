@@ -680,6 +680,10 @@ caller outside its own file's wrapper.
 
 ### H3. Over-exporting: ~80 exports/types used only in their defining file — LOW (API hygiene)
 
+**PARTIAL (Phase 1b PR):** the `scripts/` portion (`currentDefinitions`,
+`FORBIDDEN`) is closed. The rest is handled on a touched-file basis in
+Phases 2–6; any residue after Phase 6 is accepted.
+
 knip flags 43 unused exports + 40 unused types; spot-checks show most are
 "exported but only used in-file" rather than dead (e.g. `copyName`,
 `remapPackingLocationId` in `server/repos/lists.ts`; the `public*Schema`
@@ -723,6 +727,11 @@ three prop lists in lockstep. (jscpd flags the twin blocks.)
 - **Gear PATCH can mislabel a cap error as 404** (D11, unreachable today).
 
 ## J. Config/CI nits — LOW
+
+**CLOSED (Phase 1b PR).** Rename, preview script, eslint ignore, yaml pin
+and tsconfig flags all landed; the ci.yml↔image.yml verify duplication is
+deliberately kept, with comments in both files saying the copies move
+together.
 
 - `vite.node.config.ts` builds the *client* (`package.json:8`); the `.node.`
   suffix is a vestige of the deleted Cloudflare config (commit `7a4c75e`).
