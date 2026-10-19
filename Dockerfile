@@ -19,7 +19,7 @@
 # Dependabot updates this FROM line (.github/dependabot.yml). It cannot
 # update an image named through an ARG, so keep it a literal FROM line.
 # The digest is the multi-platform index (docs/container-image.md).
-FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS base
+FROM node:24.22.0-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315 AS base
 
 # 1. Build: every dependency, then the SPA and the compiled server. Typecheck,
 #    lint and tests run in CI, not here.
