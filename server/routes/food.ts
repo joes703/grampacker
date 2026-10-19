@@ -5,8 +5,10 @@ import {
   createFoodItemRequestSchema,
   setFoodDaysRequestSchema,
   updateFoodItemRequestSchema,
+  type FoodItemResponse,
   type ListFoodResponse,
 } from '../../shared/food'
+import type { FoodItemRow } from '../repos/food'
 import { type SessionVars } from '../middleware/session'
 import type { AppEnv } from '../env'
 
@@ -24,6 +26,27 @@ import type { AppEnv } from '../env'
 // server/routes/shares.ts - name, carried count, weight, order. What never
 // leaves this module is the PLAN: the day grid, the meal slots, and every
 // item's slot ids and pack state.
+
+
+// The explicit allowlist between the repo row and the wire, like every
+// sibling route: a field added to the row reaches the response only by
+// being named here (server/repos/public-shares.ts states the philosophy).
+function toFoodItemResponse(row: FoodItemRow): FoodItemResponse {
+  return {
+    id: row.id,
+    name: row.name,
+    weightGrams: row.weightGrams,
+    quantity: row.quantity,
+    isPerMeal: row.isPerMeal,
+    unitCount: row.unitCount,
+    sortOrder: row.sortOrder,
+    isPacked: row.isPacked,
+    isReady: row.isReady,
+    packingLocationId: row.packingLocationId,
+    packSortOrder: row.packSortOrder,
+    slotIds: row.slotIds,
+  }
+}
 
 export const foodRoutes = new Hono<{
   Bindings: AppEnv
@@ -72,7 +95,7 @@ foodRoutes.post('/:id/food/items', async (c) => {
     // silently dropping the placement.
     return c.json({ error: 'Invalid slots' }, 400)
   }
-  return c.json(result.row, 201)
+  return c.json(toFoodItemResponse(result.row), 201)
 })
 
 foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
@@ -98,7 +121,7 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     }
     return c.json({ error: 'Not found' }, 404)
   }
-  return c.json(result.row)
+  return c.json(toFoodItemResponse(result.row))
 })
 
 foodRoutes.delete('/:id/food/items/:itemId', async (c) => {
