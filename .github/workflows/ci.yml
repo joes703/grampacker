@@ -64,7 +64,8 @@ jobs:
       # it. This catches only PARSE-level mistakes - duplicate keys, tabs, bad
       # indentation - which is what silently changes a config's meaning. It does
       # NOT check the schema: a misspelled key is valid YAML and Dependabot just
-      # ignores it. See .yamllint.yml. Pinned so a linter release cannot fail an
-      # unrelated PR.
+      # ignores it. See .yamllint.yml. The npm script owns the yamllint version
+      # pin (so local runs and CI cannot diverge); pinned so a linter release
+      # cannot fail an unrelated PR.
       - name: Check (YAML parses as intended)
-        run: pipx install yamllint==1.37.1 && yamllint .github/ .yamllint.yml
+        run: npm run check:yaml

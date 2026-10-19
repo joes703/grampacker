@@ -17,7 +17,7 @@
     "test:api": "vitest run --config vitest.api.config.ts",
     "test:migrations": "node scripts/check-migration-safety.mjs",
     "check:action-pins": "node scripts/check-action-pins.mjs",
-    "check:yaml": "yamllint .github/ .yamllint.yml"
+    "check:yaml": "pipx run yamllint==1.37.1 .github/ .yamllint.yml"
   },
   "overrides": {
     "@esbuild-kit/core-utils": {
