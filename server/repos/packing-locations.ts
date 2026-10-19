@@ -10,7 +10,6 @@ import {
 } from '../db/schema'
 import {
   isPackRankUniqueViolation,
-  isForeignKeyViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -190,7 +189,9 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       } catch (err) {
         // The database's own rules, still the final word inside the
         // transaction: the per-list cap trigger, one location per container
-        // item, the same-list trigger, and the composite ownership FK.
+        // item, and the same-list trigger. A foreign-key failure is not
+        // classified: the prechecks run in this same transaction, so it can
+        // only be a defect - let it 500.
         if (isPackingLocationCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
         }
@@ -198,9 +199,6 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           return { ok: false, reason: 'already_container' }
         }
         if (isTriggerAbort(err, 'container item does not belong to this list')) {
-          return { ok: false, reason: 'invalid_container_item' }
-        }
-        if (isForeignKeyViolation(err)) {
           return { ok: false, reason: 'invalid_container_item' }
         }
         throw err
