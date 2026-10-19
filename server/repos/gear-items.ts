@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
 import type { GearStatus } from '../../shared/gear'
 import type { Db, Tx } from '../db'
@@ -357,23 +358,18 @@ export function createGearItemsRepo(db: Db, userId: string) {
       )
     },
 
-    // Same contract as the categories repo's reorder (kept in lockstep;
-    // a generic helper costs more in drizzle type gymnastics than the
-    // dozen duplicated lines are worth).
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          if (!ownsAllGearIds(tx, updates.map((u) => u.id))) return false
-          for (const u of updates) {
-            tx.update(gearItems)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(gearItems.id, u.id), eq(gearItems.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            gearItems,
+            { id: gearItems.id, sortOrder: gearItems.sortOrder },
+            [eq(gearItems.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

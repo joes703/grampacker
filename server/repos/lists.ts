@@ -1,4 +1,5 @@
 import { and, asc, eq, type Table } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
 import type { Db, Tx } from '../db'
 import {
@@ -194,20 +195,6 @@ export function remapPackingLocationId(
 // rotateShareLink) need no explicit transaction: SQLite applies one
 // statement whole or not at all.
 export function createListsRepo(db: Db, userId: string) {
-  // Owned-set membership in JS rather than inArray over the input: one query
-  // whatever the input size, and the list cap bounds the scan at 100 rows.
-  function ownsAllListIds(tx: Tx, ids: string[]): boolean {
-    const owned = new Set(
-      tx
-        .select({ id: lists.id })
-        .from(lists)
-        .where(eq(lists.userId, userId))
-        .all()
-        .map((r) => r.id),
-    )
-    return ids.every((id) => owned.has(id))
-  }
-
   function nextSortOrder() {
     return appendSortOrder(lists, lists.sortOrder, eq(lists.userId, userId))
   }
@@ -293,16 +280,14 @@ export function createListsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          if (!ownsAllListIds(tx, updates.map((u) => u.id))) return false
-          for (const u of updates) {
-            tx.update(lists)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(lists.id, u.id), eq(lists.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            lists,
+            { id: lists.id, sortOrder: lists.sortOrder },
+            [eq(lists.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

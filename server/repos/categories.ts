@@ -1,4 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
@@ -101,32 +102,18 @@ export function createCategoriesRepo(db: Db, userId: string) {
       )
     },
 
-    // All-or-nothing: every id must be an owned row (ids are deduped by the
-    // DTO) or nothing is written; the check and the writes are one
-    // transaction. Owned-set membership in JS rather than inArray over the
-    // input: one query whatever the input size, bounded by the category cap.
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          const owned = new Set(
-            tx
-              .select({ id: categories.id })
-              .from(categories)
-              .where(eq(categories.userId, userId))
-              .all()
-              .map((r) => r.id),
-          )
-          if (!updates.every((u) => owned.has(u.id))) return false
-          for (const u of updates) {
-            tx.update(categories)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(categories.id, u.id), eq(categories.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            categories,
+            { id: categories.id, sortOrder: categories.sortOrder },
+            [eq(categories.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

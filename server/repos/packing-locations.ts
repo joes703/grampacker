@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
 import { ownsList } from './owns-list'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db, Tx } from '../db'
@@ -276,35 +277,14 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          const owned = new Set(
-            tx
-              .select({ id: packingLocations.id })
-              .from(packingLocations)
-              .where(
-                and(
-                  eq(packingLocations.listId, listId),
-                  eq(packingLocations.userId, userId),
-                ),
-              )
-              .all()
-              .map((row) => row.id),
-          )
-          if (!updates.every((update) => owned.has(update.id))) return false
-          for (const update of updates) {
-            tx.update(packingLocations)
-              .set({ sortOrder: update.sortOrder })
-              .where(
-                and(
-                  eq(packingLocations.id, update.id),
-                  eq(packingLocations.listId, listId),
-                  eq(packingLocations.userId, userId),
-                ),
-              )
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            packingLocations,
+            { id: packingLocations.id, sortOrder: packingLocations.sortOrder },
+            [eq(packingLocations.listId, listId), eq(packingLocations.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

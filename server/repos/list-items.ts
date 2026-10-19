@@ -1,4 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
 import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
@@ -373,27 +374,14 @@ export function createListItemsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          // Owned-set membership in JS rather than inArray over the input:
-          // one query whatever the input size, and the per-list cap bounds
-          // the scan at 300 rows.
-          const owned = new Set(
-            tx
-              .select({ id: listItems.id })
-              .from(listItems)
-              .where(and(eq(listItems.listId, listId), eq(listItems.userId, userId)))
-              .all()
-              .map((r) => r.id),
-          )
-          if (!updates.every((u) => owned.has(u.id))) return false
-          for (const u of updates) {
-            tx.update(listItems)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(listItems.id, u.id), eq(listItems.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            listItems,
+            { id: listItems.id, sortOrder: listItems.sortOrder },
+            [eq(listItems.listId, listId), eq(listItems.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },
