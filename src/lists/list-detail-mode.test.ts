@@ -6,7 +6,6 @@ import { MemoryRouter } from 'react-router'
 import ListViewNav from './ListViewNav'
 import {
   deriveListMode,
-  isLegacyListPath,
   isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
@@ -46,21 +45,11 @@ describe('deriveListMode', () => {
   })
 })
 
-// The plain spellings are proven through deriveListMode above, which answers
-// 'pack' for a retired URL only through this predicate. This row adds the
+// The one predicate behind both the address-bar rewrite (ListDetailPage) and
+// the 'pack' answer for retired URLs (deriveListMode). The rows add the
 // router's case tolerance: an exact match would render Pack without the
 // address-bar rewrite.
 describe('isLegacyOrganizePath', () => {
-  it.each([
-    [`/lists/${LIST_ID}/ORGANIZE`, true],
-  ] as const)('%s -> %s', (pathname, expected) => {
-    expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(expected)
-  })
-})
-
-// The one predicate behind both the address-bar rewrite (ListDetailPage) and
-// the 'pack' answer for retired URLs (deriveListMode).
-describe('isLegacyListPath', () => {
   const legacy = [
     `/lists/${LIST_ID}/organize`,
     `/lists/${LIST_ID}/organize/`,
@@ -68,9 +57,12 @@ describe('isLegacyListPath', () => {
     `/lists/${LIST_ID}/PACK/ORGANIZE/`,
   ]
 
-  it.each([`/lists/${LIST_ID}/PACK/ORGANIZE/`])('%s is legacy', (pathname) => {
-    expect(isLegacyListPath(pathname, LIST_ID)).toBe(true)
-  })
+  it.each([`/lists/${LIST_ID}/ORGANIZE`, `/lists/${LIST_ID}/PACK/ORGANIZE/`])(
+    '%s is legacy',
+    (pathname) => {
+      expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(true)
+    },
+  )
 
   it('agrees with deriveListMode on every legacy spelling', () => {
     for (const pathname of legacy) {
@@ -84,7 +76,7 @@ describe('isLegacyListPath', () => {
     // canonical /lists/<id> is never legacy either: deriveListMode would
     // answer 'pack' for it.
     const target = persistedListPath(LIST_ID, 'pack')
-    expect(isLegacyListPath(target, LIST_ID)).toBe(false)
+    expect(isLegacyOrganizePath(target, LIST_ID)).toBe(false)
     expect(deriveListMode(target, LIST_ID)).toBe('pack')
   })
 })

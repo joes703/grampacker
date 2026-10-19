@@ -1,7 +1,7 @@
 import type { Category, PackingLocation } from '../lib/types'
 import type { ListItemGrouping } from '../lib/use-grouped-list-items'
 
-export function selectPackGrouping(
+function selectPackGrouping(
   categories: Category[],
   locations: PackingLocation[] | undefined,
 ): ListItemGrouping {
