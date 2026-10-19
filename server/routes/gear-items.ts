@@ -16,7 +16,11 @@ import {
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
-import type { CreateGearItemInput, UpdateGearItemPatch } from '../repos/gear-items'
+import type {
+  CreateGearItemInput,
+  ImportGearResult,
+  UpdateGearItemPatch,
+} from '../repos/gear-items'
 import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
@@ -32,6 +36,22 @@ import type { AppEnv } from '../env'
 //                                        category, all-or-nothing
 //   PATCH  /api/gear-items/:id         - session - own row or 404
 //   DELETE /api/gear-items/:id         - session - own row or 404
+// The import failure map, in the same exhaustive-switch pattern as the
+// write-failure maps in lists.ts: a new repo reason fails the build instead
+// of falling through to a wrong default. cap_exceeded here is the GEAR cap.
+function importGearFailure(
+  result: Extract<ImportGearResult, { ok: false }>,
+): { status: 400 | 422; error: string } {
+  switch (result.reason) {
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'category_cap_exceeded':
+      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+    case 'cap_exceeded':
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+  }
+}
+
 export const gearItemRoutes = new Hono<{
   Bindings: AppEnv
   Variables: SessionVars
@@ -127,16 +147,8 @@ gearItemRoutes.post('/import', async (c) => {
     })),
   })
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    if (result.reason === 'category_cap_exceeded') {
-      return c.json(
-        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
-        422,
-      )
-    }
-    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
+    const f = importGearFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   const body: ImportGearResponse = {
     createdCategories: result.createdCategories,

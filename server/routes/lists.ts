@@ -22,7 +22,13 @@ import {
 import { type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
-import type { ListRow } from '../repos/lists'
+import type {
+  DuplicateListResult,
+  FromSelectionResult,
+  ImportListResult,
+  ListRow,
+  ListWriteResult,
+} from '../repos/lists'
 import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
@@ -161,6 +167,35 @@ export function listItemFailure(
   }
 }
 
+
+// The list-write counterpart of listItemFailure above: the four list writes
+// used to re-type near-identical if-chains. Exhaustive on purpose - a new
+// repo reason fails the build here instead of falling through to a wrong
+// default status.
+function listWriteFailure(
+  result:
+    | Extract<ListWriteResult, { ok: false }>
+    | Extract<DuplicateListResult, { ok: false }>
+    | Extract<FromSelectionResult, { ok: false }>
+    | Extract<ImportListResult, { ok: false }>,
+): { status: 400 | 404 | 422; error: string } {
+  switch (result.reason) {
+    case 'not_found':
+      return { status: 404, error: 'Not found' }
+    case 'invalid_gear':
+      return { status: 400, error: 'Invalid gear item' }
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'cap_exceeded':
+      return { status: 422, error: `List limit reached (${LIST_CAP} per user)` }
+    case 'gear_cap_exceeded':
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+    case 'item_cap_exceeded':
+      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+    case 'category_cap_exceeded':
+      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+  }
+}
 // --------------------------------------------------------------------- lists
 
 listRoutes.get('/', async (c) => {
@@ -173,7 +208,8 @@ listRoutes.post('/', async (c) => {
   if (!parsed.ok) return parsed.response
   const result = await c.get('repos').lists.create(parsed.data.name)
   if (!result.ok) {
-    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -197,10 +233,8 @@ listRoutes.post('/from-selection', async (c) => {
       parsed.data.gearItemIds,
     )
   if (!result.ok) {
-    if (result.reason === 'invalid_gear') {
-      return c.json({ error: 'Invalid gear item' }, 400)
-    }
-    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -218,25 +252,8 @@ listRoutes.post('/import', async (c) => {
     })),
   })
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    if (result.reason === 'invalid_gear') {
-      return c.json({ error: 'Invalid gear item' }, 400)
-    }
-    if (result.reason === 'gear_cap_exceeded') {
-      return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
-    }
-    if (result.reason === 'item_cap_exceeded') {
-      return c.json({ error: `List item limit reached (${LIST_ITEM_CAP} per list)` }, 422)
-    }
-    if (result.reason === 'category_cap_exceeded') {
-      return c.json(
-        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
-        422,
-      )
-    }
-    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -244,10 +261,8 @@ listRoutes.post('/import', async (c) => {
 listRoutes.post('/:id/duplicate', async (c) => {
   const result = await c.get('repos').lists.duplicate(c.req.param('id'))
   if (!result.ok) {
-    if (result.reason === 'not_found') {
-      return c.json({ error: 'Not found' }, 404)
-    }
-    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
