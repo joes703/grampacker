@@ -362,6 +362,9 @@ violation — the maintenance hazard stands on its own.
 
 ### D2. Request-body parse/validate boilerplate copy-pasted 25 times, already drifting — MEDIUM (DRY)
 
+**CLOSED (Phase 2 PR).** parseBody owns the parse and the uniform 400;
+food's wording drift ended (tests-first).
+
 `const raw = await c.req.json().catch(() => null); const parsed =
 schema.safeParse(raw); if (!parsed.success) return c.json({ error: 'Invalid
 request body' }, 400)` — 25 occurrences across `server/routes/lists.ts`,
@@ -371,6 +374,8 @@ request body' }, 400)` — 25 occurrences across `server/routes/lists.ts`,
 and ends the wording drift.
 
 ### D3. `toEmbeddedGear` duplicates `toGearItemResponse` field-for-field — MEDIUM (DRY)
+
+**CLOSED (Phase 2 PR).** One shared mapper in routes/gear-item-response.ts.
 
 `server/routes/lists.ts:95-109` and `server/routes/gear-items.ts:49-63` are
 byte-identical bodies (11 fields, `costCents/100`, `gearStatusSchema.parse`,
@@ -394,6 +399,8 @@ purpose (`server/auth.ts:100`) that any caching must preserve.
 
 ### D5. `ownsList` implemented three times, identically — MEDIUM (DRY)
 
+**CLOSED (Phase 2 PR).** One ownsList(tx, userId, listId) in repos/owns-list.ts.
+
 `server/repos/list-items.ts:133-141`, `server/repos/food.ts:126-134`,
 `server/repos/packing-locations.ts:64-72`: the same nine-line select
 (list id + userId, limit 1, truthiness), differing only in `Boolean(row)` vs
@@ -402,6 +409,9 @@ This is the single most security-relevant predicate in the repo layer and it
 has three definitions. (jscpd confirms the clones.)
 
 ### D6. The owned-set `reorder` method is copy-pasted five times — MEDIUM (DRY)
+
+**CLOSED (Phase 2 PR).** reorderOwnedSet shared by all five; drizzle 0.45
+types it cleanly, so the stated type-gymnastics reason had expired.
 
 `server/repos/categories.ts:107-131`, `gear-items.ts:353-369`,
 `lists.ts:276-292`, `list-items.ts:390-418`, `packing-locations.ts:286-322`:
@@ -416,6 +426,8 @@ proven expired — a shared abstraction must demonstrate simpler types and
 equally visible ownership checks before it wins.
 
 ### D7. Food write routes return raw repo rows; every sibling maps field-by-field — MEDIUM (inconsistency)
+
+**CLOSED (Phase 2 PR).** Explicit toFoodItemResponse allowlist on both write paths.
 
 `server/routes/food.ts:75` (`c.json(result.row, 201)`) and `food.ts:102` ship
 `FoodItemRow` straight to the wire with no mapper and no
@@ -439,6 +451,8 @@ and tests are maintenance weight and the comment misleads.
 
 ### D9. Cap-failure mapping: shared switch for item writes, re-typed if-chains for list writes — LOW-MEDIUM (DRY)
 
+**CLOSED (Phase 2 PR).** listWriteFailure and importGearFailure extend the exhaustive-switch pattern.
+
 `server/routes/lists.ts:134-177` builds `listItemFailure` (exhaustive switch)
 for item writes, but list writes next to it re-type near-identical if-chains
 four times (create :192, from-selection :217-222, import :239-259, duplicate
@@ -447,6 +461,8 @@ patterns for one job.
 
 ### D10. "Append at max+1" computed two different ways, SQL shape inlined ~9 times — LOW-MEDIUM (inconsistency/DRY)
 
+**CLOSED (Phase 2 PR).** appendSortOrder owns the fragment; food's JS read-then-add converted.
+
 `coalesce((select max(sortOrder)+1 ...), 0)` hand-inlined at
 `lists.ts:191,432,451`, `gear-items.ts:155,233,251`, `categories.ts:53`,
 `list-items.ts:144,310` — while `food.ts:340-344,358` solves the identical
@@ -454,6 +470,8 @@ problem with a JS read-then-add. Both safe inside the immediate transaction,
 but a reader must work out why food is different (it isn't, meaningfully).
 
 ### D11. Small server items — LOW
+
+**CLOSED (Phase 2 PR).** All five items landed.
 
 - `catch { if (isListCapError) return cap_exceeded; throw }` around
   `withFreshSlug` appears 4× in `server/repos/lists.ts`
@@ -681,8 +699,10 @@ caller outside its own file's wrapper.
 ### H3. Over-exporting: ~80 exports/types used only in their defining file — LOW (API hygiene)
 
 **PARTIAL (Phase 1b PR):** the `scripts/` portion (`currentDefinitions`,
-`FORBIDDEN`) is closed. The rest is handled on a touched-file basis in
-Phases 2–6; any residue after Phase 6 is accepted.
+`FORBIDDEN`) is closed. **Phase 2 PR:** the server files it touched
+(`copyName`, `remapPackingLocationId`, the in-file-only cap matchers). The
+rest is handled on a touched-file basis in Phases 2–6; any residue after
+Phase 6 is accepted.
 
 knip flags 43 unused exports + 40 unused types; spot-checks show most are
 "exported but only used in-file" rather than dead (e.g. `copyName`,
