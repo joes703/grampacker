@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import { CATEGORY_CAP, GEAR_ITEM_CAP, gearStatusSchema } from '../../shared/gear'
 import {
   LIST_CAP,
@@ -186,9 +187,8 @@ listRoutes.get('/', async (c) => {
 })
 
 listRoutes.post('/', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createListRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c.get('repos').lists.create(parsed.data.name)
   if (!result.ok) {
     return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
@@ -197,18 +197,16 @@ listRoutes.post('/', async (c) => {
 })
 
 listRoutes.put('/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderListsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderListsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').lists.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 listRoutes.post('/from-selection', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createListFromSelectionRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createListFromSelectionRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .lists.createFromSelection(
@@ -226,9 +224,8 @@ listRoutes.post('/from-selection', async (c) => {
 })
 
 listRoutes.post('/import', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = importListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, importListRequestSchema)
+  if (!parsed.ok) return parsed.response
   // cost arrives in dollars on the wire and is stored as integer cents.
   // Converted here, at the route boundary, exactly as the gear import does.
   const result = await c.get('repos').lists.importFromCsv({
@@ -274,9 +271,8 @@ listRoutes.post('/:id/duplicate', async (c) => {
 })
 
 listRoutes.patch('/:id', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, updateListRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .lists.update(c.req.param('id'), parsed.data)
@@ -307,9 +303,8 @@ listRoutes.get('/:id/items', async (c) => {
 })
 
 listRoutes.post('/:id/items', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = addListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, addListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.addExisting(c.req.param('id'), parsed.data.gearItemId)
@@ -321,9 +316,8 @@ listRoutes.post('/:id/items', async (c) => {
 })
 
 listRoutes.post('/:id/items/quick-add', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = quickAddListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, quickAddListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.quickAdd(c.req.param('id'), parsed.data)
@@ -335,9 +329,8 @@ listRoutes.post('/:id/items/quick-add', async (c) => {
 })
 
 listRoutes.put('/:id/items/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderListItemsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderListItemsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c
     .get('repos')
     .listItems.reorder(c.req.param('id'), parsed.data)
@@ -350,9 +343,8 @@ listRoutes.put('/:id/items/order', async (c) => {
 // because "which column does this write" should be visible in the URL rather
 // than buried in a body field.
 listRoutes.put('/:id/items/pack-order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderPackListItemsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderPackListItemsRequestSchema)
+  if (!parsed.ok) return parsed.response
   // Union reorder since 0022: gear and food halves written in one transaction.
   // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
   // onto the same payload.
@@ -390,9 +382,8 @@ listRoutes.post('/:id/items/reset-ready', async (c) => {
 })
 
 listRoutes.patch('/:id/items/:itemId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, updateListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.update(c.req.param('id'), c.req.param('itemId'), parsed.data)

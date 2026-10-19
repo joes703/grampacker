@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
   PACKING_LOCATION_CAP,
   createPackingLocationRequestSchema,
@@ -34,9 +35,8 @@ packingLocationRoutes.get('/:id/packing-locations', async (c) => {
 })
 
 packingLocationRoutes.post('/:id/packing-locations', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createPackingLocationRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createPackingLocationRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .packingLocations.create(c.req.param('id'), parsed.data)
@@ -60,9 +60,8 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
 
 // Static /order is registered before /:locationId.
 packingLocationRoutes.put('/:id/packing-locations/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderPackingLocationsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderPackingLocationsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c
     .get('repos')
     .packingLocations.reorder(c.req.param('id'), parsed.data)
@@ -73,9 +72,8 @@ packingLocationRoutes.put('/:id/packing-locations/order', async (c) => {
 packingLocationRoutes.patch(
   '/:id/packing-locations/:locationId',
   async (c) => {
-    const raw = await c.req.json().catch(() => null)
-    const parsed = updatePackingLocationRequestSchema.safeParse(raw)
-    if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+    const parsed = await parseBody(c, updatePackingLocationRequestSchema)
+    if (!parsed.ok) return parsed.response
     const result = await c
       .get('repos')
       .packingLocations.rename(

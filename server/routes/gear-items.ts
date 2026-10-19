@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
   CATEGORY_CAP,
   GEAR_ITEM_CAP,
@@ -92,11 +93,8 @@ gearItemRoutes.get('/', async (c) => {
 })
 
 gearItemRoutes.post('/', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createGearItemRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, createGearItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.create(toCreateInput(parsed.data))
@@ -110,18 +108,14 @@ gearItemRoutes.post('/', async (c) => {
 })
 
 gearItemRoutes.put('/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, reorderRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').gearItems.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 gearItemRoutes.post('/import', async (c) => {
-  const raw = await c.req.json().catch(() => null)
   // Two-stage parse. Stage 1 validates the FULL shape - element schemas and
   // the relational refinements - with no array maxima, so anything malformed
   // (including a malformed OVERSIZED body) stays the uniform 400. Stage 2
@@ -131,10 +125,8 @@ gearItemRoutes.post('/import', async (c) => {
   // are checked first on purpose: every declared category must be
   // referenced, so 501 valid categories force >=501 items - when both caps
   // are blown, the category message is the actionable one.
-  const parsed = importGearStructureSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, importGearStructureSchema)
+  if (!parsed.ok) return parsed.response
   if (parsed.data.categories.length > CATEGORY_CAP) {
     return c.json(
       { error: `Category limit reached (${CATEGORY_CAP} per user)` },
@@ -178,22 +170,16 @@ gearItemRoutes.post('/import', async (c) => {
 })
 
 gearItemRoutes.post('/bulk-delete', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = bulkDeleteRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, bulkDeleteRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').gearItems.bulkDelete(parsed.data.ids)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 gearItemRoutes.post('/bulk-move', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = bulkMoveRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, bulkMoveRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.bulkMove(parsed.data.ids, parsed.data.categoryId)
@@ -207,11 +193,8 @@ gearItemRoutes.post('/bulk-move', async (c) => {
 })
 
 gearItemRoutes.patch('/:id', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateGearItemRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, updateGearItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.update(c.req.param('id'), toUpdatePatch(parsed.data))

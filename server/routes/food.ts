@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
   FOOD_ITEM_CAP,
   createFoodItemRequestSchema,
@@ -37,9 +38,8 @@ foodRoutes.get('/:id/food', async (c) => {
 })
 
 foodRoutes.put('/:id/food/days', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = setFoodDaysRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, setFoodDaysRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   // The repo answers with the estimate read inside the same transaction as
   // the write, so the response is exactly what committed.
@@ -51,9 +51,8 @@ foodRoutes.put('/:id/food/days', async (c) => {
 })
 
 foodRoutes.post('/:id/food/items', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createFoodItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, createFoodItemRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   const result = await c.get('repos').food.createItem(c.req.param('id'), parsed.data)
   if (!result.ok) {
@@ -77,9 +76,8 @@ foodRoutes.post('/:id/food/items', async (c) => {
 })
 
 foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateFoodItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, updateFoodItemRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   const result = await c
     .get('repos')
