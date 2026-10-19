@@ -51,7 +51,7 @@ export type RenamePackingLocationResult =
   | { ok: true; row: PackingLocationRow }
   | { ok: false; reason: 'not_found' | 'item_backed' }
 
-export function isPackingLocationCapError(err: unknown): boolean {
+function isPackingLocationCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'packing location cap exceeded')
 }
 

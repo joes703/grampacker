@@ -68,7 +68,7 @@ export type FoodWriteResult<T> =
         | 'conflict'
     }
 
-export function isFoodItemCapError(err: unknown): boolean {
+function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
 }
 

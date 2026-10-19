@@ -106,7 +106,7 @@ export type ImportListResult =
         | 'invalid_gear'
     }
 
-export function isListCapError(err: unknown): boolean {
+function isListCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list cap exceeded')
 }
 
@@ -175,11 +175,11 @@ function withFreshSlugCapped<R>(
 // Suffix used when duplicating a list. Truncates so the " (copy)" suffix
 // cannot push the name past the column's 256 CHECK (the old Postgres RPC had
 // that latent overflow).
-export function copyName(name: string): string {
+function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
 }
 
-export function remapPackingLocationId(
+function remapPackingLocationId(
   sourceId: string | null,
   idMap: ReadonlyMap<string, string>,
 ): string | null {
