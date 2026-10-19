@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
-import { categories, gearItems, listFoodItems, listItems, lists } from '../db/schema'
+import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
 import {
   isPackRankRangeError,
   isPackRankUniqueViolation,
@@ -130,16 +131,6 @@ function classifyWriteError(
 // write runs, and any failure rolls back everything the method wrote.
 // remove() is a single statement and needs no explicit transaction.
 export function createListItemsRepo(db: Db, userId: string) {
-  function ownsList(tx: Tx, listId: string): boolean {
-    const row = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
-      .limit(1)
-      .get()
-    return Boolean(row)
-  }
-
   function nextItemSortOrder(listId: string) {
     return sql`coalesce((select max(${listItems.sortOrder}) + 1 from ${listItems} where ${listItems.listId} = ${listId} and ${listItems.userId} = ${userId}), 0)`
   }
@@ -176,7 +167,7 @@ export function createListItemsRepo(db: Db, userId: string) {
   function resetFlag(listId: string, flag: 'isPacked' | 'isReady'): boolean {
     return db.transaction(
       (tx) => {
-        if (!ownsList(tx, listId)) return false
+        if (!ownsList(tx, userId, listId)) return false
         const now = Date.now()
         tx.update(listItems)
           .set({ [flag]: false, updatedAt: now })
@@ -208,7 +199,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     // null = list not owned (the route's 404); [] = owned but empty.
     async forList(listId: string): Promise<ListItemWithGear[] | null> {
       return db.transaction((tx) => {
-        if (!ownsList(tx, listId)) return null
+        if (!ownsList(tx, userId, listId)) return null
         // Joined same-owner read; the FK guarantees item.userId ==
         // gear.userId, the join condition re-asserts it anyway.
         return tx
@@ -234,7 +225,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): ListItemWriteResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             const gear = ownedGear(tx, gearItemId)
@@ -279,7 +270,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): ListItemWriteResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             if (input.categoryId !== null) {

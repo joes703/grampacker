@@ -1,11 +1,11 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { ownsList } from './owns-list'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db, Tx } from '../db'
 import {
   gearItems,
   listFoodItems,
   listItems,
-  lists,
   packingLocations,
 } from '../db/schema'
 import {
@@ -60,16 +60,6 @@ export function isPackingLocationCapError(err: unknown): boolean {
 // between a method's checks and its writes, and any failure rolls back
 // everything the method did.
 export function createPackingLocationsRepo(db: Db, userId: string) {
-  function ownsList(tx: Tx, listId: string): boolean {
-    const row = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
-      .limit(1)
-      .get()
-    return Boolean(row)
-  }
-
   // The list's locations in display order. create and rename read it back
   // inside their own transaction, so the row they return is the row that
   // committed.
@@ -107,7 +97,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     // list. Both states are significant to the Pack Mode grouping switch.
     async forList(listId: string): Promise<PackingLocationRow[] | null> {
       return db.transaction((tx) =>
-        ownsList(tx, listId) ? ownedList(tx, listId) : null,
+        ownsList(tx, userId, listId) ? ownedList(tx, listId) : null,
       )
     },
 
@@ -118,7 +108,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): CreatePackingLocationResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             let name: string
