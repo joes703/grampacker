@@ -151,6 +151,26 @@ export function withFreshSlug<T>(attempt: (slug: string) => T): T {
   throw new Error('slug generation exhausted retries')
 }
 
+// Every slug-minting write fails the same way: the list-cap trigger becomes
+// a result instead of a 500, and anything else stays thrown. The catch sits
+// OUTSIDE withFreshSlug, which is equivalent to the per-site try/catch it
+// replaces: withFreshSlug swallows only the slug-unique collision (and
+// retries) and rethrows everything else. `classify` lets the import convert
+// its other cap triggers too; it returns null for an error it does not know.
+function withFreshSlugCapped<R>(
+  attempt: (slug: string) => R,
+  classify?: (err: unknown) => R | null,
+): R | { ok: false; reason: 'cap_exceeded' } {
+  try {
+    return withFreshSlug(attempt)
+  } catch (err) {
+    if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+    const classified = classify?.(err) ?? null
+    if (classified !== null) return classified
+    throw err
+  }
+}
+
 // Suffix used when duplicating a list. Truncates so the " (copy)" suffix
 // cannot push the name past the column's 256 CHECK (the old Postgres RPC had
 // that latent overflow).
@@ -226,27 +246,22 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     async create(name: string): Promise<ListWriteResult> {
-      return withFreshSlug((slug): ListWriteResult => {
+      return withFreshSlugCapped((slug): ListWriteResult => {
         const now = Date.now()
-        try {
-          const row = db
-            .insert(lists)
-            .values({
-              id: crypto.randomUUID(),
-              userId,
-              name,
-              slug,
-              sortOrder: nextSortOrder(),
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning(cols)
-            .get()
-          return { ok: true, row }
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
+        const row = db
+          .insert(lists)
+          .values({
+            id: crypto.randomUUID(),
+            userId,
+            name,
+            slug,
+            sortOrder: nextSortOrder(),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(cols)
+          .get()
+        return { ok: true, row }
       })
     },
 
@@ -302,17 +317,12 @@ export function createListsRepo(db: Db, userId: string) {
     // the copy is one consistent snapshot and a late failure - the list cap
     // trigger included - leaves no half-copied list behind.
     async duplicate(id: string): Promise<DuplicateListResult> {
-      return withFreshSlug((slug): DuplicateListResult => {
-        try {
-          return db.transaction(
-            (tx) => duplicateInTransaction(tx, id, slug),
-            { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
-      })
+      return withFreshSlugCapped((slug): DuplicateListResult =>
+        db.transaction(
+          (tx) => duplicateInTransaction(tx, id, slug),
+          { behavior: 'immediate' },
+        ),
+      )
     },
 
     // Atomic CSV list import: the ownership checks, new categories, new
@@ -389,9 +399,9 @@ export function createListsRepo(db: Db, userId: string) {
           .map(({ index }, rank) => [index, rank]),
       )
 
-      return withFreshSlug((slug): ImportListResult => {
-        try {
-          return db.transaction(
+      return withFreshSlugCapped(
+        (slug): ImportListResult =>
+          db.transaction(
             (tx): ImportListResult => {
               if (existingCategoryIds.size > 0) {
                 const owned = ownedCategoryIds(tx)
@@ -479,21 +489,16 @@ export function createListsRepo(db: Db, userId: string) {
               return { ok: true, row }
             },
             { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          if (isGearCapError(err)) {
-            return { ok: false, reason: 'gear_cap_exceeded' }
-          }
-          if (isListItemCapError(err)) {
-            return { ok: false, reason: 'item_cap_exceeded' }
-          }
+          ),
+        (err) => {
+          if (isGearCapError(err)) return { ok: false, reason: 'gear_cap_exceeded' }
+          if (isListItemCapError(err)) return { ok: false, reason: 'item_cap_exceeded' }
           if (isCategoryCapError(err)) {
             return { ok: false, reason: 'category_cap_exceeded' }
           }
-          throw err
-        }
-      })
+          return null
+        },
+      )
     },
 
     // Gear-page "Create list from selection". All-or-nothing: one
@@ -504,9 +509,8 @@ export function createListsRepo(db: Db, userId: string) {
       description: string | null,
       gearItemIds: string[],
     ): Promise<FromSelectionResult> {
-      return withFreshSlug((slug): FromSelectionResult => {
-        try {
-          return db.transaction(
+      return withFreshSlugCapped((slug): FromSelectionResult =>
+        db.transaction(
             (tx): FromSelectionResult => {
               const owned = ownedGearIds(tx)
               if (!gearItemIds.every((id) => owned.has(id))) {
@@ -547,12 +551,8 @@ export function createListsRepo(db: Db, userId: string) {
               return { ok: true, row }
             },
             { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
-      })
+          ),
+      )
     },
 
     // Mint a new share link for a list the caller owns. The old slug stops

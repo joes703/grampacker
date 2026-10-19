@@ -141,22 +141,6 @@ export function createListItemsRepo(db: Db, userId: string) {
     )
   }
 
-  // The pack rank a row takes when it ARRIVES in a cohort: one past the
-  // cohort's current UNION maximum (gear and food together - the bag's
-  // contents are the union since 0022; see pack-reorder.ts). Cohort-scoped,
-  // not list-scoped - a list-wide maximum would make a location's orphans
-  // interleave into Unassigned by ranks that mean nothing to the user.
-  //
-  // Worn rows are counted. They render outside the packing tree but keep their
-  // rank reserved, so excluding them here would let an arrival land on a slot a
-  // worn row will come back to.
-  function nextPackSortOrderInCohort(
-    listId: string,
-    locationId: string | null,
-  ) {
-    return nextUnionPackRank(listId, userId, locationId)
-  }
-
   function ownedGear(tx: Tx, gearItemId: string): GearItemRow | undefined {
     return tx
       .select(gearCols)
@@ -249,7 +233,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 // cohort - independently of the document rank. Copying
                 // sortOrder here would drop it into the MIDDLE of pack order
                 // once the two sequences have diverged.
-                packSortOrder: nextPackSortOrderInCohort(listId, null),
+                packSortOrder: nextUnionPackRank(listId, userId, null),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -322,7 +306,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 isConsumable: input.isConsumable,
                 sortOrder: nextItemSortOrder(listId),
                 // Unassigned cohort, same as addExisting.
-                packSortOrder: nextPackSortOrderInCohort(listId, null),
+                packSortOrder: nextUnionPackRank(listId, userId, null),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -474,7 +458,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       set.packSortOrder = sql`case
         when ${listItems.packingLocationId} is ${patch.packingLocationId}
         then ${listItems.packSortOrder}
-        else ${nextPackSortOrderInCohort(listId, patch.packingLocationId)}
+        else ${nextUnionPackRank(listId, userId, patch.packingLocationId)}
       end`
     }
     // A real assignment is accepted only when the target location belongs

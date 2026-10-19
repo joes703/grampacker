@@ -11,11 +11,26 @@ import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
 import type { AppEnv } from '../env'
 
+// Authz matrix rows (docs/authz-matrix.md):
+//   GET    /api/lists/:id/packing-locations           - session - own list or 404
+//   POST   /api/lists/:id/packing-locations           - session - own list or 404;
+//                                                       named location or item-backed
+//                                                       container; 422 at the cap
+//   PUT    /api/lists/:id/packing-locations/order     - session - every id on THIS
+//                                                       list and user or 404, zero writes
+//   PATCH  /api/lists/:id/packing-locations/:locationId - session - own row or 404;
+//                                                       409 for item-backed (live gear
+//                                                       name is authoritative)
+//   DELETE /api/lists/:id/packing-locations/:locationId - session - own row or 404;
+//                                                       returns contents to Unassigned
+//
+// Session-gated by the hoisted api.use('/lists/*', requireSession) in
+// server/index.ts, shared with the other /lists sub-apps so one request pays
+// the session lookup once. There is no visible gate in this file on purpose.
 export const packingLocationRoutes = new Hono<{
   Bindings: AppEnv
   Variables: SessionVars
 }>()
-
 
 function toResponse(row: PackingLocationRow): PackingLocationResponse {
   return {

@@ -76,9 +76,18 @@ export type UpdateGearItemPatch = {
   status?: GearStatus
 }
 
-export type GearWriteResult =
+// Narrowed per method, like RotateShareLinkResult in lists.ts: create
+// writes a new row so it can hit the cap but cannot miss an existing one;
+// update touches an existing row so it can miss but cannot hit the cap. A
+// shared union would let the PATCH route's else-branch mislabel a cap error
+// as Not found.
+export type CreateGearResult =
   | { ok: true; row: GearItemRow }
-  | { ok: false; reason: 'cap_exceeded' | 'invalid_category' | 'not_found' }
+  | { ok: false; reason: 'cap_exceeded' | 'invalid_category' }
+
+export type UpdateGearResult =
+  | { ok: true; row: GearItemRow }
+  | { ok: false; reason: 'invalid_category' | 'not_found' }
 
 // The DB trigger enforces shared/gear.ts's GEAR_ITEM_CAP. A refused insert
 // maps to a friendly result without a read-then-insert race.
@@ -133,10 +142,10 @@ export function createGearItemsRepo(db: Db, userId: string) {
         .orderBy(asc(gearItems.sortOrder), asc(gearItems.name))
     },
 
-    async create(input: CreateGearItemInput): Promise<GearWriteResult> {
+    async create(input: CreateGearItemInput): Promise<CreateGearResult> {
       try {
         return db.transaction(
-          (tx): GearWriteResult => {
+          (tx): CreateGearResult => {
             if (input.categoryId !== null && !ownsCategory(tx, input.categoryId)) {
               return { ok: false, reason: 'invalid_category' }
             }
@@ -277,7 +286,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
     async update(
       id: string,
       patch: UpdateGearItemPatch,
-    ): Promise<GearWriteResult> {
+    ): Promise<UpdateGearResult> {
       const set: Record<string, unknown> = { updatedAt: Date.now() }
       if (patch.name !== undefined) set.name = patch.name
       if (patch.description !== undefined) set.description = patch.description
@@ -288,7 +297,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
         set.purchaseDate = patch.purchaseDate
       if (patch.status !== undefined) set.status = patch.status
       return db.transaction(
-        (tx): GearWriteResult => {
+        (tx): UpdateGearResult => {
           if (typeof patch.categoryId === 'string' && !ownsCategory(tx, patch.categoryId)) {
             return { ok: false, reason: 'invalid_category' }
           }
