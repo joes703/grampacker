@@ -1,27 +1,22 @@
 import { Hono } from 'hono'
 import { parseBody } from './parse-body'
+import { toGearItemResponse } from './gear-item-response'
 import {
   CATEGORY_CAP,
   GEAR_ITEM_CAP,
   bulkDeleteRequestSchema,
   bulkMoveRequestSchema,
   createGearItemRequestSchema,
-  gearStatusSchema,
   importGearStructureSchema,
   reorderRequestSchema,
   updateGearItemRequestSchema,
   type CreateGearItemRequest,
-  type GearItemResponse,
   type ImportGearResponse,
   type UpdateGearItemRequest,
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
-import type {
-  CreateGearItemInput,
-  GearItemRow,
-  UpdateGearItemPatch,
-} from '../repos/gear-items'
+import type { CreateGearItemInput, UpdateGearItemPatch } from '../repos/gear-items'
 import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
@@ -43,25 +38,6 @@ export const gearItemRoutes = new Hono<{
 }>()
 
 gearItemRoutes.use('*', requireSession)
-
-// Dollars <-> integer cents at the DTO edge; the epsilon guard in the
-// schema guarantees the rounding is exact.
-
-function toGearItemResponse(row: GearItemRow): GearItemResponse {
-  return {
-    id: row.id,
-    categoryId: row.categoryId,
-    name: row.name,
-    description: row.description,
-    weightGrams: row.weightGrams,
-    cost: row.costCents === null ? null : row.costCents / 100,
-    purchaseDate: row.purchaseDate,
-    status: gearStatusSchema.parse(row.status),
-    sortOrder: row.sortOrder,
-    createdAt: new Date(row.createdAt).toISOString(),
-    updatedAt: new Date(row.updatedAt).toISOString(),
-  }
-}
 
 function toCreateInput(body: CreateGearItemRequest): CreateGearItemInput {
   return {

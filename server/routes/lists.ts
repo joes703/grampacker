@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { parseBody } from './parse-body'
-import { CATEGORY_CAP, GEAR_ITEM_CAP, gearStatusSchema } from '../../shared/gear'
+import { toGearItemResponse } from './gear-item-response'
+import { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 import {
   LIST_CAP,
   LIST_ITEM_CAP,
@@ -20,7 +21,6 @@ import {
 } from '../../shared/lists'
 import { type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
-import type { GearItemRow } from '../repos/gear-items'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
 import type { ListRow } from '../repos/lists'
 import type { AppEnv } from '../env'
@@ -93,24 +93,6 @@ function toListResponse(row: ListRow): ListResponse {
   }
 }
 
-// Same dollars/ISO conversions as the gear routes, applied to the
-// embedded gear row.
-function toEmbeddedGear(row: GearItemRow) {
-  return {
-    id: row.id,
-    categoryId: row.categoryId,
-    name: row.name,
-    description: row.description,
-    weightGrams: row.weightGrams,
-    cost: row.costCents === null ? null : row.costCents / 100,
-    purchaseDate: row.purchaseDate,
-    status: gearStatusSchema.parse(row.status),
-    sortOrder: row.sortOrder,
-    createdAt: new Date(row.createdAt).toISOString(),
-    updatedAt: new Date(row.updatedAt).toISOString(),
-  }
-}
-
 function toListItemResponse(row: ListItemWithGear): ListItemResponse {
   return {
     id: row.item.id,
@@ -126,7 +108,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
     packSortOrder: row.item.packSortOrder,
     createdAt: new Date(row.item.createdAt).toISOString(),
     updatedAt: new Date(row.item.updatedAt).toISOString(),
-    gearItem: toEmbeddedGear(row.gear),
+    gearItem: toGearItemResponse(row.gear),
   }
 }
 
