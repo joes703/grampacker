@@ -22,7 +22,8 @@ export { LIST_CAP, LIST_ITEM_CAP, PACKING_LOCATION_CAP } from '../../shared/list
 export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
-export const MAX_ITEM_WEIGHT_GRAMS = 100000
+// Defined in shared/gear.ts next to weightGramsSchema.
+export { MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
 
 // Upper bound for a list item's quantity; drafts clamp to this. Consumed by
 // GearItemDialog's list-context field, Quick Add, CSV import and the row's
@@ -35,12 +36,6 @@ export const MAX_ITEM_WEIGHT_GRAMS = 100000
 export { MAX_LIST_ITEM_QUANTITY } from '../../shared/lists'
 
 // Max characters for an item/list/gear name field (input maxLength +
-// CSV-import slice).
-export const MAX_NAME_LENGTH = 256
-
-// Max characters for a description field (input maxLength + CSV-import
-// slice).
-export const MAX_DESC_LENGTH = 2000
-
-// Max characters for a gear category name field.
-export const MAX_CATEGORY_NAME = 128
+// CSV-import slice), a description field, and a gear category name field.
+// Defined in shared/gear.ts next to the request schemas they bound.
+export { MAX_CATEGORY_NAME, MAX_DESC_LENGTH, MAX_NAME_LENGTH } from '../../shared/gear'

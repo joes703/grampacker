@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-// @ts-expect-error - plain .mjs module without a declaration file
 import { parseUses } from './check-action-pins.mjs'
 
 // The checker guards the pin-by-SHA rule, so its own parser must not skip
