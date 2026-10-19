@@ -9,7 +9,7 @@ const dir = new URL('../migrations/', import.meta.url)
 const stripComments = (sql: string) =>
   sql.replaceAll(/\/\*[\s\S]*?\*\//g, ' ').replaceAll(/--[^\n]*/g, ' ')
 
-export const currentDefinitions = (): Map<string, string> => {
+const currentDefinitions = (): Map<string, string> => {
   const files = readdirSync(dir)
     .filter((name) => /^\d+_.*\.sql$/.test(name))
     .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10))
