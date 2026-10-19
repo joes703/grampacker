@@ -205,15 +205,6 @@ function CategorySectionInner(
             name slightly earlier and leaves every column coordinate intact.
             Hidden while renaming: the rename input needs that flexible space,
             and dragging a section mid-rename is not a real interaction. */}
-        {/* Category drag handle. Deliberately a sibling BEFORE the trailing
-            cluster, not a child of it: that cluster's Price/Purchased/Weight/
-            kebab columns are width-matched to GearItemRow's right-side
-            columns, so adding a control inside it would shift every label off
-            its row column. Sitting here, it takes its width from the
-            flex-1 min-w-0 title instead, which only truncates a long category
-            name slightly earlier and leaves every column coordinate intact.
-            Hidden while renaming: the rename input needs that flexible space,
-            and dragging a section mid-rename is not a real interaction. */}
         {!isUncategorized && dragHandleRef && !renaming && (
           <RowIconButton
             ref={dragHandleRef}
