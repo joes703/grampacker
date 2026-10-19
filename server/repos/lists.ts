@@ -496,47 +496,47 @@ export function createListsRepo(db: Db, userId: string) {
     ): Promise<FromSelectionResult> {
       return withFreshSlugCapped((slug): FromSelectionResult =>
         db.transaction(
-            (tx): FromSelectionResult => {
-              const owned = ownedGearIds(tx)
-              if (!gearItemIds.every((id) => owned.has(id))) {
-                return { ok: false, reason: 'invalid_gear' }
-              }
-              const newId = crypto.randomUUID()
-              const now = Date.now()
-              const row = tx
-                .insert(lists)
+          (tx): FromSelectionResult => {
+            const owned = ownedGearIds(tx)
+            if (!gearItemIds.every((id) => owned.has(id))) {
+              return { ok: false, reason: 'invalid_gear' }
+            }
+            const newId = crypto.randomUUID()
+            const now = Date.now()
+            const row = tx
+              .insert(lists)
+              .values({
+                id: newId,
+                userId,
+                name,
+                description,
+                slug,
+                sortOrder: nextSortOrder(),
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning(cols)
+              .get()
+            gearItemIds.forEach((gearItemId, i) => {
+              tx.insert(listItems)
                 .values({
-                  id: newId,
+                  id: crypto.randomUUID(),
                   userId,
-                  name,
-                  description,
-                  slug,
-                  sortOrder: nextSortOrder(),
+                  listId: newId,
+                  gearItemId,
+                  sortOrder: i,
+                  // One fresh list, everything Unassigned: one cohort, so
+                  // the selection index serves as both ranks.
+                  packSortOrder: i,
                   createdAt: now,
                   updatedAt: now,
                 })
-                .returning(cols)
-                .get()
-              gearItemIds.forEach((gearItemId, i) => {
-                tx.insert(listItems)
-                  .values({
-                    id: crypto.randomUUID(),
-                    userId,
-                    listId: newId,
-                    gearItemId,
-                    sortOrder: i,
-                    // One fresh list, everything Unassigned: one cohort, so
-                    // the selection index serves as both ranks.
-                    packSortOrder: i,
-                    createdAt: now,
-                    updatedAt: now,
-                  })
-                  .run()
-              })
-              return { ok: true, row }
-            },
-            { behavior: 'immediate' },
-          ),
+                .run()
+            })
+            return { ok: true, row }
+          },
+          { behavior: 'immediate' },
+        ),
       )
     },
 

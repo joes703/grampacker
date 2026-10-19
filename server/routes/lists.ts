@@ -196,6 +196,7 @@ function listWriteFailure(
       return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
   }
 }
+
 // --------------------------------------------------------------------- lists
 
 listRoutes.get('/', async (c) => {
