@@ -20,7 +20,7 @@
 !tsconfig.json
 !tsconfig.app.json
 !tsconfig.node.json
-!vite.node.config.ts
+!vite.client.config.ts
 !vite.server.config.ts
 
 # Excluded again inside the allowed directories: tests and their helpers

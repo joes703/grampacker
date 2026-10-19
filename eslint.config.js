@@ -5,7 +5,6 @@ export default tseslint.config(
   {
     ignores: [
       'dist',
-      '.superpowers',
     ],
   },
   ...tseslint.configs.recommended,

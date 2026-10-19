@@ -5,6 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -22,7 +25,7 @@
   // for both the browser and server and must stay free of node APIs, so a test
   // that needs one cannot live there.
   "include": [
-    "vite.node.config.ts",
+    "vite.client.config.ts",
     "vite.server.config.ts",
     "vitest.config.ts",
     "vitest.api.config.ts",
