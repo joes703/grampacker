@@ -46,22 +46,6 @@ export function isUniqueViolation(err: unknown, column: string): boolean {
   )
 }
 
-// A UNIQUE violation on ANY column - used where a repo prechecks a duplicate but
-// wants the DB's own unique index as the race backstop, and a composite/partial
-// index names several columns so a single-column match is impractical. Any
-// constraint code is accepted (SQLite reports SQLITE_CONSTRAINT_UNIQUE or
-// SQLITE_CONSTRAINT_PRIMARYKEY here): the message text "UNIQUE constraint
-// failed" already names the class, and the code only has to rule out
-// non-constraint errors.
-export function isAnyUniqueViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    root.message.includes('UNIQUE constraint failed') &&
-    isConstraint(root.code)
-  )
-}
-
 // The pack-rank unique indexes, and ONLY those: the cohort index and the
 // Unassigned partial index on each packable table (app-schema.ts,
 // list_items_pack_cohort_uq / list_items_pack_unassigned_uq and the
@@ -82,18 +66,6 @@ export function isPackRankUniqueViolation(err: unknown): boolean {
     root !== null &&
     root.code === 'SQLITE_CONSTRAINT_UNIQUE' &&
     PACK_RANK_UNIQUE_MESSAGES.has(root.message)
-  )
-}
-
-// A FOREIGN KEY violation. Used as the race backstop where a repo prechecks a
-// referenced row's ownership/existence but that row can be deleted between the
-// precheck and the insert - the FK then fires instead of a clean result.
-export function isForeignKeyViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    root.message.includes('FOREIGN KEY constraint failed') &&
-    isConstraint(root.code)
   )
 }
 

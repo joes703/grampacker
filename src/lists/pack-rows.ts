@@ -20,16 +20,6 @@ export function packRowRank(row: PackRow): number {
   return row.kind === 'gear' ? row.gear.packSortOrder : row.food.packSortOrder
 }
 
-export function packRowLocationId(row: PackRow): string | null {
-  return row.kind === 'gear'
-    ? row.gear.packingLocationId
-    : row.food.packingLocationId
-}
-
-export function packRowIsPacked(row: PackRow): boolean {
-  return row.kind === 'gear' ? row.gear.isPacked : row.food.isPacked
-}
-
 export function packRowName(row: PackRow): string {
   return row.kind === 'gear' ? row.gear.gearItem.name : row.food.name
 }

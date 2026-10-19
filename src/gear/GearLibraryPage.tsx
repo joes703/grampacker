@@ -453,11 +453,12 @@ export default function GearLibraryPage() {
   //      because the algebra is slice-based (filter to category, then
   //      arrayMove). The useReorderable hook is flat-only by design; a
   //      future second-pass extraction may take a groupBy option, but the
-  //      shape isn't proven yet (see CLAUDE.md / DECISIONS.md ADR 11).
+  //      shape isn't proven yet.
   //
   // Cross-category gear-item drops are deliberately rejected (item snaps
   // back); recategorizing happens via the edit modal or the multi-select
-  // bulk-move toolbar (per ADR 1).
+  // bulk-move toolbar, where the target is named rather than inferred from
+  // drop position.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e

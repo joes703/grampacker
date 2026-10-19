@@ -104,7 +104,7 @@ gearItemRoutes.post('/', async (c) => {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)
     }
-    return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
   }
   return c.json(toGearItemResponse(result.row), 201)
 })
@@ -168,7 +168,7 @@ gearItemRoutes.post('/import', async (c) => {
         422,
       )
     }
-    return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
   }
   const body: ImportGearResponse = {
     createdCategories: result.createdCategories,

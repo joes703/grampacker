@@ -261,12 +261,18 @@ describe('useCurrentListActions - createListMut', () => {
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
   })
 
-  it('does not navigate when createList rejects', async () => {
+  it('does not navigate when createList rejects, and the toast does not claim nothing was created', async () => {
     q.createList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
     act(() => { result.current.submitCreateList('New') })
     await waitFor(() => expect(result.current.createListMut.isError).toBe(true))
-    expect(showToast).toHaveBeenCalledWith("Couldn't create the list. Please try again.", { type: 'error' })
+    // A rejected response does not prove the non-idempotent POST did not
+    // commit (AGENTS.md "Traps"), so the copy must advise checking before a
+    // retry, not invite one.
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm the list was created. Refresh to check before trying again.",
+      { type: 'error' },
+    )
     expect(navigateSpy).not.toHaveBeenCalled()
   })
 })

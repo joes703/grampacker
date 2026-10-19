@@ -1,6 +1,6 @@
 import { env } from '../test/node-env'
 import { and, eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PACK_RANK_MAX } from '../../shared/lists'
 import app from '../index'
 import { createDb } from '../db'
@@ -893,6 +893,93 @@ describe('packing location CRUD, assignment, and integrity', () => {
     })
     expect(copiedLocation?.id).not.toBe(location.id)
     expect(copiedFood?.packingLocationId).toBe(copiedLocation?.id)
+  })
+})
+
+// A foreign-key failure inside create's transaction can only be a defect:
+// the ownership and container prechecks run in the same immediate
+// transaction as the insert, so no row can vanish between them. The repo
+// must let it 500 (AGENTS.md "let it 500"), not explain it away as a client
+// error that blames a container the request may never have named. Failures
+// are staged with test-only triggers, the
+// server/repos/food-transactions.test.ts pattern.
+describe('a foreign-key failure inside create is a 500, not a client error', () => {
+  const sqlite = env.DB
+  let consoleError: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    // The injected failures are unclassified errors, so the app logs a 500.
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleError.mockRestore()
+    sqlite.exec('DROP TRIGGER IF EXISTS test_inject_failure')
+  })
+
+  it('named location: the list vanishing mid-write is a 500 and rolls back', async () => {
+    const { cookie } = await signUpVerifiedUser('packing-fk-named@example.com', 'F')
+    const list = await createList(cookie, 'Trip')
+    // Delete the list just before the insert: the composite (list_id,
+    // user_id) foreign key fails. The request named no container, so a
+    // client error here would blame one that was never supplied.
+    sqlite.exec(`
+      CREATE TRIGGER test_inject_failure BEFORE INSERT ON packing_locations
+      WHEN NEW.list_id = '${list.id}' AND NEW.container_list_item_id IS NULL
+      BEGIN DELETE FROM lists WHERE id = '${list.id}'; END
+    `)
+
+    const res = await apiRequest(
+      cookie,
+      'POST',
+      `/api/lists/${list.id}/packing-locations`,
+      { name: 'Duffel' },
+    )
+    expect(res.status).toBe(500)
+    // The trigger's own delete rolled back with the failed insert.
+    expect(
+      sqlite.prepare('select id from lists where id = ?').get(list.id),
+    ).toBeDefined()
+  })
+
+  it('container: the item vanishing mid-write is a 500 and rolls back', async () => {
+    const { cookie } = await signUpVerifiedUser(
+      'packing-fk-container@example.com',
+      'F',
+    )
+    const list = await createList(cookie, 'Trip')
+    const item = await addItem(cookie, list.id, await createGear(cookie, 'Bear can'))
+    // The same-list guard trigger checks a superset of the container foreign
+    // key, so while it exists the foreign key can never be the first to
+    // fail. Drop it for this test only, to reach the foreign-key
+    // classification itself, and restore it afterwards.
+    const guard = sqlite
+      .prepare("select sql from sqlite_master where type = 'trigger' and name = ?")
+      .get('packing_locations_container_same_list_insert') as
+      | { sql: string }
+      | undefined
+    if (!guard) throw new Error('same-list guard trigger not found')
+    sqlite.exec('DROP TRIGGER packing_locations_container_same_list_insert')
+    try {
+      sqlite.exec(`
+        CREATE TRIGGER test_inject_failure BEFORE INSERT ON packing_locations
+        WHEN NEW.container_list_item_id = '${item.id}'
+        BEGIN DELETE FROM list_items WHERE id = '${item.id}'; END
+      `)
+
+      const res = await apiRequest(
+        cookie,
+        'POST',
+        `/api/lists/${list.id}/packing-locations`,
+        { containerListItemId: item.id },
+      )
+      expect(res.status).toBe(500)
+      expect(
+        sqlite.prepare('select id from list_items where id = ?').get(item.id),
+      ).toBeDefined()
+    } finally {
+      sqlite.exec(guard.sql)
+    }
   })
 })
 

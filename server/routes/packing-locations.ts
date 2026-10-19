@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import {
+  PACKING_LOCATION_CAP,
   createPackingLocationRequestSchema,
   reorderPackingLocationsRequestSchema,
   updatePackingLocationRequestSchema,
@@ -45,7 +46,7 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
     }
     if (result.reason === 'cap_exceeded') {
       return c.json(
-        { error: 'Packing location limit reached (30 per list)' },
+        { error: `Packing location limit reached (${PACKING_LOCATION_CAP} per list)` },
         422,
       )
     }

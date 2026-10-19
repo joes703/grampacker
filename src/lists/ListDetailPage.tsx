@@ -98,7 +98,7 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   deriveListMode,
-  isLegacyListPath,
+  isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
   type ListDetailMode,
@@ -283,7 +283,7 @@ function ListDetailInner({
   // /lists/<id>/organize/ then rendered Pack without the rewrite.
   const location = useLocation()
   const navigate = useNavigate()
-  const isLegacyPath = isLegacyListPath(location.pathname, listId)
+  const isLegacyPath = isLegacyOrganizePath(location.pathname, listId)
   const mode: ListDetailMode = deriveListMode(location.pathname, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a

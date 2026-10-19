@@ -28,16 +28,24 @@ export const gearStatusSchema = z.enum(GEAR_STATUSES)
 export type GearStatus = z.infer<typeof gearStatusSchema>
 
 // Caps mirror the old schema's CHECK constraints; the DB re-enforces them.
-const categoryNameSchema = z.string().trim().min(1).max(128)
-const gearNameSchema = z.string().trim().min(1).max(256)
+// Named constants, not literals, so src/lib/caps.ts can re-export them for
+// input maxLength and import clamps instead of hand-copying the numbers.
+export const MAX_CATEGORY_NAME = 128
+export const MAX_NAME_LENGTH = 256
+export const MAX_DESC_LENGTH = 2000
+// Upper bound (grams) for a single item's weight; drafts clamp to this.
+export const MAX_ITEM_WEIGHT_GRAMS = 100000
+
+const categoryNameSchema = z.string().trim().min(1).max(MAX_CATEGORY_NAME)
+const gearNameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH)
 // Empty string is not a valid description - clients send null to clear.
-const descriptionSchema = z.string().trim().min(1).max(2000)
+const descriptionSchema = z.string().trim().min(1).max(MAX_DESC_LENGTH)
 // Tenths of a gram, not whole grams: packing multiples of a small item makes
 // the fraction matter. One decimal -
 // it is the precision the UI renders, so everything storable is displayable,
 // and a rejected value is a real signal rather than silent rounding. Widening
 // to more decimals later is backwards-compatible; narrowing is not.
-export const weightGramsSchema = decimalNumber({ min: 0, max: 100000, decimals: 1 })
+export const weightGramsSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GRAMS, decimals: 1 })
 const idSchema = z.string().min(1).max(64)
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
