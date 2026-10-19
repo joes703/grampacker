@@ -87,7 +87,9 @@ export function useCurrentListActions() {
   const createListMut = useMutation({
     mutationKey: mutationKeys.createList(),
     mutationFn: ({ name }: CreateListVars) => createList(name),
-    meta: { errorToast: "Couldn't create the list. Please try again." },
+    // A rejected response does not prove the non-idempotent POST did not
+    // commit, so the copy advises checking before a retry (AGENTS.md "Traps").
+    meta: { errorToast: "Couldn't confirm the list was created. Refresh to check before trying again." },
     ...makeOptimisticInsert<List, CreateListVars>({
       qc,
       queryKey: queryKeys.lists(),
