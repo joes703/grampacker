@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
-import { CATEGORY_CAP, gearStatusSchema } from '../../shared/gear'
+import { CATEGORY_CAP, GEAR_ITEM_CAP, gearStatusSchema } from '../../shared/gear'
 import {
+  LIST_CAP,
+  LIST_ITEM_CAP,
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
@@ -157,9 +159,9 @@ export function listItemFailure(
         error: 'An item cannot be both worn and consumable',
       }
     case 'gear_cap_exceeded':
-      return { status: 422, error: 'Gear item limit reached (500 per user)' }
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
     case 'cap_exceeded':
-      return { status: 422, error: 'List item limit reached (300 per list)' }
+      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
     case 'pack_rank_exhausted':
       // Deliberately does NOT tell the user to reorder. An ordinary drag
       // permutes the ranks a cohort already holds, so it cannot compact
@@ -189,7 +191,7 @@ listRoutes.post('/', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
   const result = await c.get('repos').lists.create(parsed.data.name)
   if (!result.ok) {
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -218,7 +220,7 @@ listRoutes.post('/from-selection', async (c) => {
     if (result.reason === 'invalid_gear') {
       return c.json({ error: 'Invalid gear item' }, 400)
     }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -244,10 +246,10 @@ listRoutes.post('/import', async (c) => {
       return c.json({ error: 'Invalid gear item' }, 400)
     }
     if (result.reason === 'gear_cap_exceeded') {
-      return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+      return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
     }
     if (result.reason === 'item_cap_exceeded') {
-      return c.json({ error: 'List item limit reached (300 per list)' }, 422)
+      return c.json({ error: `List item limit reached (${LIST_ITEM_CAP} per list)` }, 422)
     }
     if (result.reason === 'category_cap_exceeded') {
       return c.json(
@@ -255,7 +257,7 @@ listRoutes.post('/import', async (c) => {
         422,
       )
     }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -266,7 +268,7 @@ listRoutes.post('/:id/duplicate', async (c) => {
     if (result.reason === 'not_found') {
       return c.json({ error: 'Not found' }, 404)
     }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    return c.json({ error: `List limit reached (${LIST_CAP} per user)` }, 422)
   }
   return c.json(toListResponse(result.row), 201)
 })
