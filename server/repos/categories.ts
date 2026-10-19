@@ -1,4 +1,5 @@
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
 import type { Db } from '../db'
 import { categories, gearItems } from '../db/schema'
 import { isTriggerAbort } from './db-errors'
@@ -50,7 +51,7 @@ export function createCategoriesRepo(db: Db, userId: string) {
             id: crypto.randomUUID(),
             userId,
             name,
-            sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+            sortOrder: appendSortOrder(categories, categories.sortOrder, eq(categories.userId, userId)),
             createdAt: Date.now(),
           })
           .returning(cols)

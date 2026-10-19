@@ -1,4 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
 import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
 import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
@@ -132,7 +133,12 @@ function classifyWriteError(
 // remove() is a single statement and needs no explicit transaction.
 export function createListItemsRepo(db: Db, userId: string) {
   function nextItemSortOrder(listId: string) {
-    return sql`coalesce((select max(${listItems.sortOrder}) + 1 from ${listItems} where ${listItems.listId} = ${listId} and ${listItems.userId} = ${userId}), 0)`
+    return appendSortOrder(
+      listItems,
+      listItems.sortOrder,
+      eq(listItems.listId, listId),
+      eq(listItems.userId, userId),
+    )
   }
 
   // The pack rank a row takes when it ARRIVES in a cohort: one past the
@@ -298,7 +304,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 name: input.name,
                 description: input.description,
                 weightGrams: input.weightGrams,
-                sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                 createdAt: now,
                 updatedAt: now,
               })

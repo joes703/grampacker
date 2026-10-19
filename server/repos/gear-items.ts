@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
 import type { GearStatus } from '../../shared/gear'
 import type { Db, Tx } from '../db'
 import { categories, gearItems } from '../db/schema'
@@ -152,7 +153,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                 costCents: input.costCents,
                 purchaseDate: input.purchaseDate,
                 status: input.status,
-                sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -230,7 +231,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                   id: c.id,
                   userId,
                   name: c.name,
-                  sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+                  sortOrder: appendSortOrder(categories, categories.sortOrder, eq(categories.userId, userId)),
                   createdAt: now,
                 })
                 .run()
@@ -248,7 +249,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                   purchaseDate: item.purchaseDate,
                   // Status is app-internal only; CSV import does not carry it.
                   status: 'active',
-                  sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                  sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                   createdAt: now,
                   updatedAt: now,
                 })

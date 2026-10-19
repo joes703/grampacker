@@ -1,4 +1,5 @@
-import { and, asc, eq, sql, type Table } from 'drizzle-orm'
+import { and, asc, eq, type Table } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
 import type { Db, Tx } from '../db'
 import {
   categories,
@@ -188,7 +189,7 @@ export function createListsRepo(db: Db, userId: string) {
   }
 
   function nextSortOrder() {
-    return sql`coalesce((select max(${lists.sortOrder}) + 1 from ${lists} where ${lists.userId} = ${userId}), 0)`
+    return appendSortOrder(lists, lists.sortOrder, eq(lists.userId, userId))
   }
 
   // The caller's category and gear ids, for the import and from-selection
@@ -429,7 +430,7 @@ export function createListsRepo(db: Db, userId: string) {
                     id: c.id,
                     userId,
                     name: c.name,
-                    sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+                    sortOrder: appendSortOrder(categories, categories.sortOrder, eq(categories.userId, userId)),
                     createdAt: now,
                   })
                   .run()
@@ -448,7 +449,7 @@ export function createListsRepo(db: Db, userId: string) {
                     // for it); status is app-internal only (same contract as
                     // the gear import).
                     status: 'active',
-                    sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                    sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                     createdAt: now,
                     updatedAt: now,
                   })

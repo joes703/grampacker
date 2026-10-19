@@ -1,4 +1,5 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
 import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
 import {
@@ -324,11 +325,6 @@ export function createFoodRepo(db: Db, userId: string) {
 
             const id = crypto.randomUUID()
             const now = Date.now()
-            const maxRow = tx
-              .select({ max: sql<number>`coalesce(max(${listFoodItems.sortOrder}), -1)` })
-              .from(listFoodItems)
-              .where(and(eq(listFoodItems.listId, listId), eq(listFoodItems.userId, userId)))
-              .get()
             tx.insert(listFoodItems)
               .values({
                 id,
@@ -342,7 +338,12 @@ export function createFoodRepo(db: Db, userId: string) {
                 // stored.
                 quantity: input.quantity,
                 isPerMeal: input.isPerMeal ?? true,
-                sortOrder: (maxRow?.max ?? -1) + 1,
+                sortOrder: appendSortOrder(
+                  listFoodItems,
+                  listFoodItems.sortOrder,
+                  eq(listFoodItems.listId, listId),
+                  eq(listFoodItems.userId, userId),
+                ),
                 // A new food item arrives Unassigned, one past that cohort's
                 // UNION maximum (gear and food - see pack-reorder.ts). DEFAULT
                 // 0 would collide with whatever already holds rank 0 there.
