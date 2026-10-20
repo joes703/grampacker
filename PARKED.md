@@ -24,3 +24,13 @@ Format: `- YYYY-MM-DD <idea> - <why it waits>`
 - 2026-10-18 Investigate repeated CI compilation/installation and image readiness waits only when comparable job timings identify a material delay. Obtain at least two baseline and two after runs on the same runner class before claiming savings or changing gates. Candidate details: `git show fd89242:docs/audits/2026-10-18-test-audit.md`, F12. No workflow changes are required for the test cleanup.
 - 2026-10-19 Converge the auth pages (src/auth/auth-ui.tsx) onto the app's shared style tokens - trigger: the Phase 4 presentation primitives from the 2026-10-19 remediation plan making it a two-line adoption, or the next visual change to those pages.
 - 2026-10-20 Refactor `InlineText`/`InlineWeight`/`InlineQuantity` onto the shared inline-edit machine (`src/components/InlineRenameInput.tsx` / `useCommitOnce`) - each still carries its own draft/prev-prop-sync/editing state copy. Deferred from Phase 4a because the diff is not mechanical: those controls swap display<->edit modes, sync external value changes mid-edit and commit typed values, which the rename machine does not model. Trigger: the next behavior change to any of the three controls (change one, converge all three).
+
+- 2026-10-20 Replace FoodView's single `foodBusy` flag (ORs six mutations +
+  checkingDays and freezes every control) with per-operation pending state.
+  Requires defining the food concurrency contract first: which operations may
+  overlap (day changes replace the whole cached food document; slot edits,
+  deletes, creates and quantity changes do not all commute), which stay
+  mutually exclusive, and how controls track per-item pending. The existing
+  global-freeze test in FoodView.test.tsx is then deliberately replaced as a
+  named policy change, not deleted as redundant. Trigger: the next FoodView
+  behavior change, or the first user-visible complaint about the freeze.
