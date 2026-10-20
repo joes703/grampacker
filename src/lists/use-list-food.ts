@@ -101,54 +101,13 @@ export function useListFood(listId: string) {
     mutationKey: mutationKeys.moveFoodItem(listId),
     mutationFn: ({ foodId, locationId }: MoveFoodVars) =>
       updateFoodItem(listId, foodId, { packingLocationId: locationId }),
-    onMutate: async ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const row = qc
-        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-        ?.items.find((item) => item.id === foodId)
-      const previousPlacement = row
-        ? { packingLocationId: row.packingLocationId, packSortOrder: row.packSortOrder }
-        : undefined
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId
-                  ? {
-                      ...item,
-                      packingLocationId: locationId,
-                      packSortOrder: nextPackSortOrder,
-                    }
-                  : item,
-              ),
-            }
-          : curr,
-      )
-      return { previousPlacement }
-    },
-    onError: (
-      _err: unknown,
-      { foodId }: MoveFoodVars,
-      ctx: {
-        previousPlacement:
-          | { packingLocationId: string | null; packSortOrder: number }
-          | undefined
-      } | undefined,
-    ) => {
-      const previousPlacement = ctx?.previousPlacement
-      if (previousPlacement) {
-        qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-          curr
-            ? {
-                ...curr,
-                items: curr.items.map((item) =>
-                  item.id === foodId ? { ...item, ...previousPlacement } : item,
-                ),
-              }
-            : curr,
-        )
-      }
+    onMutate: ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) =>
+      foodCache.patchRow(foodId, {
+        packingLocationId: locationId,
+        packSortOrder: nextPackSortOrder,
+      }),
+    onError: (_err, { foodId }, previousPlacement) => {
+      if (previousPlacement) foodCache.restoreRow(foodId, previousPlacement)
       // Same toast rule as moveItem (use-list-item-actions.ts): this is the
       // write behind a drag, and a silent rollback is indistinguishable from
       // the user dragging back.
