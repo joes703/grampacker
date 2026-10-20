@@ -26,6 +26,11 @@ import PrimaryButton from './PrimaryButton'
 //   nor the parent: the `mounted` ref gates both. Without the callback half
 //   of that gate, an abandoned create's success would call onCreated and
 //   close whatever dialog the parent has open NOW.
+//   The mounted ref cannot see a replacement that is QUEUED but not yet
+//   committed (unmount effects run at commit), so a parent whose editor slot
+//   can be replaced from a non-event context must ALSO guard its onCreated
+//   with a functional update against current state - GearLibraryPage's
+//   closeCategorySession is the shape.
 //
 // `create` must return a promise that settles for THIS call. With a TanStack
 // mutation shared across surfaces (addCategory is one observer shared by both

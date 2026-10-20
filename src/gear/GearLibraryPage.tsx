@@ -212,6 +212,20 @@ export default function GearLibraryPage() {
     setDialog(null)
   }
 
+  // The async way out of the editor, for its success callback ONLY (the user's
+  // own Escape/X goes through closeNewCategory above, unconditionally). A
+  // create can settle in the same tick as a replacement dialog that is already
+  // QUEUED but not yet committed - a CSV parse finishing queues import-preview
+  // through setDialog while the editor is still mounted - so the component's
+  // unmount guard cannot see it. This functional update decides against
+  // whatever is open NOW, queued replacements included, so a late success can
+  // never discard one.
+  function closeCategorySession(session: number) {
+    setDialog((prev) =>
+      prev?.type === 'add-category' && prev.session === session ? null : prev,
+    )
+  }
+
   // ── CSV import/export ─────────────────────────────────────────────────────────
   const {
     inputRef: importInputRef,
@@ -543,7 +557,7 @@ export default function GearLibraryPage() {
               key={dialog.session}
               variant="toolbar"
               create={(categoryName) => addCategory.mutateAsync(categoryName)}
-              onCreated={closeNewCategory}
+              onCreated={() => closeCategorySession(dialog.session)}
               onCancel={closeNewCategory}
             />
           )}
