@@ -181,34 +181,39 @@ type DialogState =
     }
 
 export default function ListDetailPage() {
-  // Default title for the wrapper; ListDetailInner overrides with the list
-  // name once it mounts and the list resolves. Stays as "Lists" briefly while
-  // the lists query is pending.
-  useDocumentTitle('Lists')
   // Mounted only at /lists/:id, so params.id is guaranteed by the route.
   // Asserting here narrows routeId to string for ListDetailInner's listId prop.
   const { id } = useParams<{ id: string }>()
   const routeId = id!
 
-  // isPending captures the "no data yet" window for first load. Passing it
-  // through to the inner lets the not-found branch wait for the query to
-  // settle before declaring the list missing — without this, the default
-  // empty-array fallback would render "List not found" on every cold load
-  // for ~1 paint before the query resolves. The session cookie scopes the
-  // fetch server-side; there is no client-side userId filter.
+  // key={routeId} forces a fresh ListDetailInner instance per list, so local
+  // state (open dialogs, draft inputs, etc.) doesn't leak when the user
+  // switches lists. That key is this wrapper's whole job: everything else,
+  // including the lists query, lives in the instance it remounts.
+  return <ListDetailInner key={routeId} listId={routeId} />
+}
+
+function ListDetailInner({ listId }: { listId: string }) {
+  // The lists collection, subscribed here rather than in the wrapper:
+  // TanStack dedupes subscriptions on the key, so this is the same fetch
+  // DesktopListsPanel and the wrapper would share anyway, and the flags are
+  // needed HERE - "is this list actually missing, or do we just not know?"
+  // needs `list`, which only this component resolves.
   //
-  // isError and isFetching are threaded through for the same reason isPending
-  // is, and they matter more: the `= []` default made a FAILED lists fetch
-  // indistinguishable from a successful empty one, so a dropped connection
-  // rendered the terminal "List not found" state - copy that tells the user
-  // their list was deleted - with no retry.
+  // isPending captures the "no data yet" window for first load, so the
+  // not-found branch can wait for the query to settle before declaring the
+  // list missing — without this, the default empty-array fallback would
+  // render "List not found" on every cold load for ~1 paint. The session
+  // cookie scopes the fetch server-side; there is no client-side userId
+  // filter.
   //
-  // Both flags are passed RAW rather than pre-reduced here, because the
-  // question they answer ("is this list actually missing, or do we just not
-  // know?") needs `list`, which only the inner resolves. In TanStack Query v5
-  // a failed background refetch sets status to 'error' while KEEPING the
+  // isError and isFetching matter more: the `= []` default made a FAILED
+  // lists fetch indistinguishable from a successful empty one, so a dropped
+  // connection rendered the terminal "List not found" state - copy that
+  // tells the user their list was deleted - with no retry. In TanStack Query
+  // v5 a failed background refetch sets status to 'error' while KEEPING the
   // cached collection, so `isError` alone cannot be used as a terminal
-  // failure signal - see the branches in ListDetailInner.
+  // failure signal - see the status branches below.
   const {
     data: listsData,
     isPending: listsLoading,
@@ -221,44 +226,9 @@ export default function ListDetailPage() {
     queryFn: fetchLists,
   })
   const lists = listsData ?? []
-  const retryLists = useCallback(() => {
+  const onRetryLists = useCallback(() => {
     void refetchLists()
   }, [refetchLists])
-
-  // key={routeId} forces a fresh ListDetailInner instance per list, so local
-  // state (open dialogs, draft inputs, etc.) doesn't leak when the user
-  // switches lists.
-  return (
-    <ListDetailInner
-      key={routeId}
-      listId={routeId}
-      lists={lists}
-      listsLoading={listsLoading}
-      listsFetching={listsFetching}
-      listsPaused={listsPaused}
-      listsIsError={listsIsError}
-      onRetryLists={retryLists}
-    />
-  )
-}
-
-function ListDetailInner({
-  listId,
-  lists,
-  listsLoading,
-  listsFetching,
-  listsPaused,
-  listsIsError,
-  onRetryLists,
-}: {
-  listId: string
-  lists: List[]
-  listsLoading: boolean
-  listsFetching: boolean
-  listsPaused: boolean
-  listsIsError: boolean
-  onRetryLists: () => void
-}) {
 
   // "Whatever we have is not a settled answer from the server." Any of the
   // three means the collection in hand may be incomplete or stale, so an
@@ -352,9 +322,8 @@ function ListDetailInner({
   const [newLocationName, setNewLocationName] = useState('')
 
   const list = lists.find((l) => l.id === listId)
-  // Inner overrides the wrapper's "Lists" default with the list name once
-  // it resolves; falls back to "Lists" while the lists query is pending so
-  // the title doesn't briefly drop to the bare app name.
+  // The list name once it resolves; "Lists" while the lists query is pending
+  // so the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
 
   // Only the path changes. The search string and hash travel with the URL
