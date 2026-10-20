@@ -48,7 +48,7 @@ import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
-import GearImportPreviewDialog from './GearImportPreviewDialog'
+import ImportPreviewDialog from '../components/ImportPreviewDialog'
 import Modal from '../components/Modal'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import InlineCreateCategory from '../components/InlineCreateCategory'
@@ -956,7 +956,7 @@ export default function GearLibraryPage() {
       )}
 
       {dialog?.type === 'import-preview' && (
-        <GearImportPreviewDialog
+        <ImportPreviewDialog
           rows={dialog.rows}
           saving={importItems.isPending}
           onConfirm={(rows) => importItems.mutate(rows)}
