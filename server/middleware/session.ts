@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import { createAuth } from '../auth'
+import { sessionAuth } from '../auth'
 import { createDb } from '../db'
 import { reposForUser, type UserRepos } from '../repos'
 import type { AppEnv } from '../env'
@@ -17,7 +17,7 @@ export const requireSession = createMiddleware<{
   Bindings: AppEnv
   Variables: SessionVars
 }>(async (c, next) => {
-  const session = await createAuth(c.env).api.getSession({
+  const session = await sessionAuth(c.env).api.getSession({
     headers: c.req.raw.headers,
   })
   if (!session) {

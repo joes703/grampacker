@@ -6,7 +6,9 @@ import type { AppEnv } from './env'
 // CLI-only config for `npx @better-auth/cli generate`. The fake env carries
 // only what authOptions reads during schema generation (adapter provider +
 // plugins - it never touches the database or sends email), so DB is an empty
-// stand-in. Runtime uses createAuth(env) in server/auth.ts with the real env.
+// stand-in. Runtime constructs from authOptions in server/auth.ts
+// (createAuth per /api/auth/* request, sessionAuth for the session gate)
+// with the real env.
 const fakeEnv: AppEnv = {
   DB: {} as Sqlite,
   BETTER_AUTH_SECRET: 'schema-generation-only',

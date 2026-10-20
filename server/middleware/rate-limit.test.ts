@@ -389,7 +389,7 @@ describe('auth rate limiting', () => {
       .run()
 
     const email = 'callback-429@example.com'
-    const res = await createAuth(env).api.signInMagicLink({
+    const res = await createAuth(env, {}).api.signInMagicLink({
       body: { email },
       headers: new Headers({ Origin: ORIGIN }),
       asResponse: true,
