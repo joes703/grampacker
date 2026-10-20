@@ -11,11 +11,7 @@ import {
 import { mutationKeys } from '../lib/queries/keys'
 import type { List } from '../lib/types'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
-import { useCsvFileInput } from '../lib/use-csv-file-input'
-import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
-import { useListImportMutation } from './use-list-import-mutation'
-import ListImportPreviewDialog from './ListImportPreviewDialog'
-import Modal from '../components/Modal'
+import { useListImportFlow } from './use-list-import-flow'
 import PrimaryButton from '../components/PrimaryButton'
 
 export const CREATE_FAILED_COPY =
@@ -30,21 +26,10 @@ export default function ListsEmptyState() {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [importPreview, setImportPreview] = useState<{ rows: ListCsvRow[]; filename: string } | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
 
-  const {
-    inputRef: importInputRef,
-    onChange: handleImportFile,
-    openPicker: openImportPicker,
-  } = useCsvFileInput<ListCsvRow>(parseListCsv, {
-    onParsed: (rows, filename) => setImportPreview({ rows, filename }),
-    onError: (message) => setImportError(message),
-  })
-
-  // Shared import hook (plan/preflight/POST + invalidate/navigate); this
-  // surface routes success/failure into its local dialog state.
-  const importMut = useListImportMutation()
+  // The whole CSV import surface (hidden input, preview, error dialog) in
+  // one shared hook; the data path inside it invalidates and navigates.
+  const { openImportPicker, importUi } = useListImportFlow()
 
   const createMut = useMutation({
     mutationKey: mutationKeys.createList(),
@@ -130,51 +115,7 @@ export default function ListsEmptyState() {
         </p>
       </div>
 
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
-
-      {importPreview && (
-        <ListImportPreviewDialog
-          rows={importPreview.rows}
-          saving={importMut.isPending}
-          onConfirm={() =>
-            importMut.mutate(
-              { name: nameFromCsvFilename(importPreview.filename), rows: importPreview.rows },
-              {
-                onSuccess: () => setImportPreview(null),
-                onError: (err) => {
-                  setImportPreview(null)
-                  setImportError(err instanceof Error ? err.message : 'Could not import CSV. Try again.')
-                },
-              },
-            )
-          }
-          onClose={() => setImportPreview(null)}
-        />
-      )}
-
-      {importError && (
-        <Modal open onClose={() => setImportError(null)} title="Import error" className="w-full max-w-sm">
-          <div className="p-6">
-            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
-            <p className="mb-4 text-sm text-red-600">{importError}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setImportError(null)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {importUi}
     </div>
   )
 }
