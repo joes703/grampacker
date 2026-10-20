@@ -238,6 +238,11 @@ is an edit-gear operation (not the same create-list dialog), and
 `GearLibraryPage.tsx:982` does not repeat the `savingAttempt` cleanup. The
 shared-concurrency-pattern concern stands in weakened form.
 
+**CLOSED (Phase 4b PR).** `src/lib/guarded-save.ts` (`runGuardedSave`) owns
+the install/settle/clear skeleton; the three genuine sites adopted it. The
+session-number variant was deleted by B7's remount-keyed editor. Mutation
+sequencing, error copy and saving-slot presence stay per-site.
+
 ### B6. The re-auth machine is duplicated across two settings sections — MEDIUM (DRY)
 
 The park-action/`'done' | 'reauth'` runner, replay-after-reauth,
@@ -248,6 +253,11 @@ and `src/settings/DeleteAccountSection.tsx:80-170,215-246`. Genuine divergence
 is small (error codes; the delete's user-id header). A fix to the replay logic
 must currently be made twice in security-sensitive code.
 
+**CLOSED (Phase 4b PR).** `src/auth/use-reauth.tsx` owns the machine
+(`useReauth` + `ReauthPrompt`); both sections converted, keeping their own
+runners (error codes, the delete's header decorator) and both section test
+suites passing unchanged.
+
 ### B7. Two independent inline create-category implementations on one mutation — MEDIUM (DRY)
 
 `GearLibraryPage.commitNewCategory` + `add-category` state
@@ -257,6 +267,11 @@ must currently be made twice in security-sensitive code.
 `addCategory.mutateAsync`, both hand-roll pending/error state, and both carry
 near-identical POST-retry-unsafe error copy. The shared-observer trap the page
 documents at :252 exists *because* there are two UIs.
+
+**CLOSED (Phase 4b PR).** `src/components/InlineCreateCategory.tsx` carries
+the coordination guarantees (pending guard, error-in-place, late answers made
+inert by the unmount guard) and the mutateAsync trap comment once; both
+surfaces converted, with a direct component test for the unmount guarantee.
 
 ### B8. Field-scoped optimistic lifecycle hand-rolled five times — MEDIUM (DRY)
 
@@ -269,6 +284,12 @@ and `moveFood` are line-for-line the same logic differing only in cache shape,
 down to the same toast and comments. `src/lib/queries/optimistic.ts:234-237`
 *documents* field-scoping as the rule for these caches — the helper it
 describes doesn't exist, so every new patch mutation re-implements ~50 lines.
+
+**CLOSED (Phase 4b PR).** `src/lib/queries/field-scoped.ts`
+(`fieldScopedCache` + `CacheShape`) is the documented helper, with direct
+contract tests; all five lifecycles converted one commit at a time, each
+keeping its own invalidation policy, promise ownership and error reporting.
+The resets stayed plain async functions on the primitive's lower level.
 
 ---
 
@@ -656,6 +677,10 @@ from this exact pattern — the worn-row rule drifted between renderer and
 planner until `section-rows.ts` centralized it (its header documents
 "audit F1"). The same fix is available and unapplied for a rule equally
 load-bearing for drag correctness.
+
+**CLOSED (Phase 4b PR).** `passesPackFilters` joined `isOrdinarySectionRow`
+in `section-rows.ts`; all three sites ask it, and the keep-them-in-step note
+is gone.
 
 ### F3. In-page handler/announcement copies — LOW (DRY)
 
