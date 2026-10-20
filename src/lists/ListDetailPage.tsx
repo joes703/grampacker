@@ -749,46 +749,57 @@ function ListDetailInner({ listId }: { listId: string }) {
     setAnnouncement('Move canceled.')
   }
 
-  function requestMove(itemId: string, locationId: string | null) {
-    const item = listItemsById.get(itemId)
+  // One implementation behind both move requests: a gear row and a food row
+  // differ only in where the name is looked up and which mutation moves
+  // them. Both are reachable only in pack mode - the row menus and the drag
+  // plans that call them are pack-gated - where packFoodItems is exactly
+  // listFood.items, so ONE rank source serves both (they used to differ by
+  // name only, and a reader had to prove the equivalence).
+  //
+  // nextPackSortOrder is the DESTINATION cohort's next UNION rank (gear and
+  // food - 0022), mirroring the server. A gear-only maximum here would park
+  // the row visually above food already in the bag until the refetch
+  // corrected it (GATE 2 finding). A move never touches sortOrder, so the
+  // row keeps its place in List view and on the share link.
+  //
+  // The write fires even when `name` is undefined (a row the caches no
+  // longer hold a name for); only the narration is skipped.
+  function requestMoveRow(
+    name: string | undefined,
+    locationId: string | null,
+    mutate: (
+      nextPackSortOrder: number,
+      callbacks: { onSuccess: () => void; onError: () => void },
+    ) => void,
+  ) {
     const destination = locationId === null
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
     narrated({
-      doing: item && destination ? `Moving ${item.gearItem.name} to ${destination}.` : undefined,
-      done: item && destination ? `Moved ${item.gearItem.name} to ${destination}.` : undefined,
-      failed: item ? `Could not move ${item.gearItem.name}.` : undefined,
+      doing: name && destination ? `Moving ${name} to ${destination}.` : undefined,
+      done: name && destination ? `Moved ${name} to ${destination}.` : undefined,
+      failed: name ? `Could not move ${name}.` : undefined,
       run: (callbacks) =>
-        moveItem.mutate({
-          itemId,
-          locationId,
-          // The DESTINATION cohort's next UNION rank (gear and food - 0022),
-          // mirroring the server. A gear-only maximum here would park the row
-          // visually above food already in the bag until the refetch corrected
-          // it (GATE 2 finding). A move never touches sortOrder, so the row
-          // keeps its place in List view and on the share link.
-          nextPackSortOrder: nextUnionPackRankFor(listItems, listFood.items, locationId),
-        }, callbacks),
+        mutate(nextUnionPackRankFor(listItems, listFood.items, locationId), callbacks),
     })
   }
 
+  function requestMove(itemId: string, locationId: string | null) {
+    requestMoveRow(
+      listItemsById.get(itemId)?.gearItem.name,
+      locationId,
+      (nextPackSortOrder, callbacks) =>
+        moveItem.mutate({ itemId, locationId, nextPackSortOrder }, callbacks),
+    )
+  }
+
   function requestMoveFood(foodId: string, locationId: string | null) {
-    const food = foodById.get(foodId)
-    const destination = locationId === null
-      ? 'Unassigned'
-      : realLocations.find((location) => location.id === locationId)?.name
-    narrated({
-      doing: food && destination ? `Moving ${food.name} to ${destination}.` : undefined,
-      done: food && destination ? `Moved ${food.name} to ${destination}.` : undefined,
-      failed: food ? `Could not move ${food.name}.` : undefined,
-      run: (callbacks) =>
-        moveFoodMut.mutate({
-          foodId,
-          locationId,
-          // The destination cohort's next UNION rank, mirroring the server.
-          nextPackSortOrder: nextUnionPackRankFor(listItems, packFoodItems, locationId),
-        }, callbacks),
-    })
+    requestMoveRow(
+      foodById.get(foodId)?.name,
+      locationId,
+      (nextPackSortOrder, callbacks) =>
+        moveFoodMut.mutate({ foodId, locationId, nextPackSortOrder }, callbacks),
+    )
   }
 
   // Single page-level drag handler over four id kinds.
