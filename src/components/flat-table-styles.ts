@@ -350,6 +350,19 @@ export const FLAT_TABLE_NUMERIC_TEXT = `text-xs ${NUMERIC_VALUE_TEXT}`
 // Hidden in print, where the checklist keeps its own geometry.
 export const PACK_ROW_WEIGHT_CELL = `hidden lg:inline-block ${COL_WEIGHT} text-gray-500 print:hidden`
 
+// The shared shell of a NON-pack item row (gear library and list detail).
+// px-3 mobile is intentional (not the canonical px-2 mobile ramp) - these
+// rows have fewer columns than pack mode and read better with a uniform
+// inset. lg:py-0 lets min-h-7 (28px) own the height on desktop so the
+// density tier actually applies. In the mobile-swipe case the padding and
+// background move onto the swipe foreground so the revealed action reaches
+// the row edge, and the shell keeps only its separator border.
+export function itemRowShell(mobileSwipe: boolean): string {
+  return `group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
+    mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0'
+  }`
+}
+
 // Compact stat panel body text (WeightTable cells). Denser than flat
 // row body text on mobile because these panels are summary surfaces,
 // not list rows. Desktop aligns to the shared 13px tier so summary

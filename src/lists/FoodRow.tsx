@@ -2,11 +2,16 @@ import type { FoodItemResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
 import ItemWeightValue from '../components/ItemWeightValue'
 import {
-  FLAT_TABLE_BODY_TEXT,
+  COL_ICON,
+  COL_QTY_EDIT,
+  COL_QTY_MOBILE,
+  COL_WEIGHT,
+  COL_WEIGHT_MOBILE,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
-  FLAT_TABLE_ROW,
+  itemRowShell,
 } from '../components/flat-table-styles'
+import { MobileRowBody, NameDescriptionCell } from '../components/ItemRowScaffold'
 import { ConsumableIcon } from './list-item-flags'
 
 // A food row in the CATEGORY arrangement and on the public share - the two
@@ -14,7 +19,9 @@ import { ConsumableIcon } from './list-item-flags'
 // counterpart; the two exist separately because they answer to different
 // skeletons, not because food behaves differently in each. Pack rows carry
 // checkboxes and a drag handle and align against the pack header; these align
-// against the ordinary category header (worn / consumable / qty / weight).
+// against the ordinary category header (worn / consumable / qty / weight),
+// through the same shell and cells ItemRow composes, so the two row kinds
+// cannot drift apart.
 //
 // Read-only, and that is a property of the SURFACE rather than a limitation.
 // A food item is authored in the Food view, where its schedule lives; a row
@@ -37,53 +44,40 @@ type Props = {
 
 export default function FoodRow({ food, weightUnit, isBelowLg = false }: Props) {
   return (
-    <div
-      // Matches ItemRow's non-pack row exactly, including the px-3 mobile
-      // inset it takes instead of the canonical padding ramp. A food row and
-      // a gear row sit in the same stack of sections on one page; a different
-      // inset on one of them reads as a rendering bug.
-      className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} gap-1.5 bg-white px-3 py-2 lg:py-0`}
-    >
+    <div className={itemRowShell(false)}>
       {isBelowLg ? (
         <div className="flex flex-1 items-center gap-2">
-          <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">
-            {food.name}
-          </span>
-          {/* The single worn/consumable slot mobile gear rows carry. Food is
-              consumable by definition - which is exactly why its grams land
-              in consumable weight rather than base weight. */}
-          <span className="shrink-0 w-6 inline-flex items-center justify-center">
-            <ConsumableIcon />
-          </span>
-          <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
-            {food.unitCount}
-          </span>
-          <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-            <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
-          </span>
+          {/* status 'active' renders no badge; food has no gear status. */}
+          <MobileRowBody status="active" name={food.name}>
+            {/* The single worn/consumable slot mobile gear rows carry. Food
+                is consumable by definition - which is exactly why its grams
+                land in consumable weight rather than base weight. */}
+            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+              <ConsumableIcon />
+            </span>
+            <span className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+              {food.unitCount}
+            </span>
+            <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+              <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
+            </span>
+          </MobileRowBody>
         </div>
       ) : (
         <>
-          {/* Name occupies the name column; the description column stays empty
-              because food has no description. Both are rendered so the columns
-              to the right land where the header says they will. */}
-          <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="flex-[2] min-w-0 flex items-center gap-1.5">
-              <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">
-                {food.name}
-              </span>
-            </div>
-            <div className="flex-[3] min-w-0" />
-          </div>
+          {/* Name occupies the name column; the description column stays
+              empty because food has no description. Both are rendered so the
+              columns to the right land where the header says they will. */}
+          <NameDescriptionCell status="active" name={food.name} description="" />
           {/* Worn slot stays empty - food is never worn. */}
-          <span className="shrink-0 w-6 inline-flex items-center justify-center" />
-          <span className="shrink-0 w-6 inline-flex items-center justify-center">
+          <span className={`${COL_ICON} inline-flex items-center justify-center`} />
+          <span className={`${COL_ICON} inline-flex items-center justify-center`}>
             <ConsumableIcon />
           </span>
-          <span className={`shrink-0 w-12 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+          <span className={`${COL_QTY_EDIT} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
             {food.unitCount}
           </span>
-          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+          <span className={`${COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
           </span>
         </>

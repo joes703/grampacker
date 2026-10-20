@@ -8,7 +8,6 @@ import { CircleMinus, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-reac
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import InlineText from '../components/InlineText'
 import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import {
@@ -19,15 +18,14 @@ import {
   COL_WEIGHT,
   COL_WEIGHT_MOBILE,
   FLAT_TABLE_BODY_TEXT,
-  FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
-  FLAT_TABLE_ROW,
-  FLAT_TABLE_ROW_PADDING,
   PACK_ROW_WEIGHT_CELL,
-  PRINT_UNTRUNCATE,
+  itemRowShell,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
+import { MobileRowBody, NameDescriptionCell } from '../components/ItemRowScaffold'
+import PackRowFrame from './PackRowFrame'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import InlineWeight from '../components/InlineWeight'
@@ -36,7 +34,6 @@ import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
 import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
-import PackModeCheckbox from './PackModeCheckbox'
 
 // Single source of truth for a list item row. Used by both the authenticated
 // list detail view and the public share view.
@@ -137,108 +134,48 @@ export default function ItemRow({
   const editable = Boolean(onUpdate)
   const showKebab = Boolean(onDelete)
 
-  // Pack mode: checklist row — name, worn/consumable status, qty.
-  // On mobile, the right-side stack (worn / consumable / qty) used to leave
-  // visible empty space between the icon slots and the qty column. Tighter
-  // gaps (gap-0.5) and narrower w/c slots (w-6) below lg pull them together
-  // without changing the desktop layout.
+  // Pack mode: checklist row — name, worn/consumable status, qty. The
+  // skeleton (shell, grip slot, Ready checkbox, wrapping label, print
+  // squares) is PackRowFrame, shared with SortableFoodRow so gear and food
+  // read as one checklist; this file keeps only the gear-specific cells.
   if (packMode) {
     return (
-      <div
-        ref={outerRef}
-        style={outerStyle}
-        // gap-2 lg:gap-2.5 controls the space between the Ready checkbox
-        // (left) and the wrapping label that hosts Packed + name. Bumped
-        // from gap-0.5 lg:gap-1.5 so the two checkboxes don't read as
-        // a single cluster on touch.
-        className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 print:gap-1 transition-colors ${
-          // Calmer "done" treatment than a green tint — the gray background
-          // pairs with the text-gray-500 line-through inside the label to
-          // read as completed without celebrating. print:bg-transparent
-          // keeps the paper checklist visually neutral.
-          item.isPacked ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
-        }`}
-      >
-        {/* Drag grip leads the row, matching the organizer row this replaced.
-            Pack mode used to render none: structural changes were considered
-            inert while checking items off, so reordering and moving between
-            locations lived in a separate Organize view. Pack IS that view
-            now. */}
-        {dragHandle}
-        {/* Ready checkbox sits OUTSIDE the wrapping label below so that
-            clicking the row's name still toggles Packed (the muscle-memory
-            destination). With implicit label association, the browser
-            forwards a non-input click on the label to its FIRST nested
-            input — putting Ready there would steal that gesture. Ready
-            gets its own aria-label since it's no longer wrapped. */}
-        <PackModeCheckbox
-          variant="ready"
-          checked={item.isReady}
-          onChange={(checked) => onUpdate?.({ isReady: checked })}
-          ariaLabel={`Mark ${name} ready`}
-          title="Ready"
-          standaloneLabel
-        />
-        <span
-          aria-hidden="true"
-          className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-        />
-        {/* Wrapping label means clicking/tapping the name toggles packed,
-            and screen readers announce the item name as the checkbox's
-            accessible name (no separate aria-label needed). */}
-        <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
-          <PackModeCheckbox
-            variant="packed"
-            checked={item.isPacked}
-            onChange={(checked) => onUpdate?.({ isPacked: checked })}
-          />
-          {/* Print-only empty checkbox. The native input above is suppressed
-              in print because browsers render its checked state visually,
-              and the printed sheet should be a blank checklist regardless
-              of which items the user has already marked digitally. */}
-          <span
-            aria-hidden="true"
-            className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-          />
-          {/* Status sits between the packed checkbox and the name. Badge
-              returns null for 'active' so the common case takes no space;
-              non-active rows pick up a small icon without disturbing the
-              checkbox affordance. */}
+      <PackRowFrame
+        name={name}
+        isPacked={item.isPacked}
+        isReady={item.isReady}
+        onUpdate={onUpdate}
+        outerRef={outerRef}
+        outerStyle={outerStyle}
+        // Drag grip leads the row, matching the organizer row this replaced.
+        // Pack mode used to render none: structural changes were considered
+        // inert while checking items off, so reordering and moving between
+        // locations lived in a separate Organize view. Pack IS that view now.
+        dragHandle={dragHandle}
+        // Status sits between the packed checkbox and the name. Badge
+        // returns null for 'active' so the common case takes no space.
+        statusBadge={
           <GearStatusBadge status={item.gearItem.status} compact className="shrink-0 print:hidden" />
-          {/* Name + description at lg+ in the same 2:3 proportion as edit
-              mode. <lg keeps the single-column name-only layout (mirrors
-              MobileRowBody's edit-mode treatment of dropping description
-              on small viewports). */}
-          <div className="flex flex-1 min-w-0 items-center gap-3">
-            <div className="flex-[2] min-w-0">
-              <span
-                className={`block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
-                  item.isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
-                }`}
-              >
-                {name}
-              </span>
-            </div>
-            <div className="hidden lg:block lg:flex-[3] min-w-0">
-              <span
-                className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
-                  // gray-500, not gray-300: gray-300 is #d1d5dc, which is
-                  // 1.41:1 against the bg-gray-50 a packed row sits on - not
-                  // "faint", effectively invisible. A packed row is still
-                  // operable (this is inside the label that unpacks it), so
-                  // none of it is exempt as an inactive control. gray-500 is
-                  // the lightest token that clears 4.5:1 there (4.63:1), which
-                  // means the description can no longer fade a step further
-                  // than the name; the line-through and the gray row carry
-                  // "done" instead, and they carry it without relying on color.
-                  item.isPacked ? 'text-gray-500 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
-                }`}
-              >
-                {description}
-              </span>
-            </div>
-          </div>
-        </label>
+        }
+        description={
+          <span
+            className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
+              // gray-500, not gray-300: gray-300 is #d1d5dc, which is
+              // 1.41:1 against the bg-gray-50 a packed row sits on - not
+              // "faint", effectively invisible. A packed row is still
+              // operable (this is inside the label that unpacks it), so
+              // none of it is exempt as an inactive control. gray-500 is
+              // the lightest token that clears 4.5:1 there (4.63:1), which
+              // means the description can no longer fade a step further
+              // than the name; the line-through and the gray row carry
+              // "done" instead, and they carry it without relying on color.
+              item.isPacked ? 'text-gray-500 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
+            }`}
+          >
+            {description}
+          </span>
+        }
+      >
         <span className={`${COL_ICON} inline-flex items-center justify-center`}>
           {item.isWorn && <WornIcon />}
         </span>
@@ -248,15 +185,11 @@ export default function ItemRow({
         <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
-        {/* Weight. Deliberately a SIBLING of the label above, never a child:
-            that label wraps the Packed checkbox, so anything inside it
-            becomes part of the toggle gesture - a weight there would mark the
-            item packed on click, and an INPUT there would be unusable.
-
-            That boundary is what makes editing in place possible here at all.
-            Name and description sit inside the label and so stay in the
-            dialog; weight is the one field you actually want to fix while
-            packing, and it happens to be the one that can be.
+        {/* Weight. A SIBLING of the frame's label, never a child (the frame
+            header owns the rule: anything inside the label joins the Packed
+            toggle gesture). Name and description sit inside the label and so
+            stay in the dialog; weight is the one field you actually want to
+            fix while packing, and it happens to be the one that can be.
 
             lg+ only. The mobile pack row already drops its description for
             room, and a w-24 cell at 375px would crush the name - mobile Pack
@@ -282,7 +215,7 @@ export default function ItemRow({
             NEITHER was true - an adversarial review caught it - so name the
             two places rather than asserting it happens somewhere. */}
         {rowAction}
-      </div>
+      </PackRowFrame>
     )
   }
 
@@ -295,20 +228,11 @@ export default function ItemRow({
   // wrapper owns its own overflow-hidden instead).
   const mobileSwipe = isBelowLg && Boolean(onDelete)
 
-  // Normal (edit / read-only) row: aligned columns matching the category header
+  // Normal (edit / read-only) row: aligned columns matching the category
+  // header. The shell recipe (and its px-3 mobile inset rationale) lives in
+  // itemRowShell, shared with GearItemRow.
   return (
-    <div
-      ref={outerRef}
-      style={outerStyle}
-      // Non-pack normal row keeps px-3 mobile inline (not the canonical
-      // FLAT_TABLE_ROW_PADDING px-2 mobile ramp) because the mobile read
-      // body has fewer columns than pack mode, so a uniform px-3 inset
-      // reads better than the tighter px-2. Desktop drops py-0 alongside
-      // the new min-h-7 so the row reaches the 28px target.
-      className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
-        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0'
-      }`}
-    >
+    <div ref={outerRef} style={outerStyle} className={itemRowShell(mobileSwipe)}>
       {dragHandle}
 
       {mobileSwipe ? (
@@ -323,7 +247,7 @@ export default function ItemRow({
           allowFullSwipe
         >
           <div className="flex flex-1 items-center gap-1 px-3 py-2">
-            <MobileRowBody
+            <ListMobileRowBody
               item={item}
               name={name}
               weightUnit={weightUnit}
@@ -334,7 +258,7 @@ export default function ItemRow({
       ) : isBelowLg ? (
         /* Mobile read-only (share) row — no swipe, no kebab; tap is inert. */
         <div className="flex flex-1 items-center gap-1">
-          <MobileRowBody
+          <ListMobileRowBody
             item={item}
             name={name}
             weightUnit={weightUnit}
@@ -342,43 +266,17 @@ export default function ItemRow({
           />
         </div>
       ) : (
-        /* Desktop branch (≥ lg) — display:contents so children flow into the
-           outer flex layout. Internal structure preserved verbatim from the
-           interactive single-row layout that has shipped to date. */
+        /* Desktop branch (≥ lg). The name/description 2:3 cell is the shared
+           NameDescriptionCell (editable per-handler, static on the share
+           view); the columns after it are this surface's own. */
         <>
-        {/* Name + description as proportional columns — name : description = 2 : 3.
-            Status badge is the first thing inside the name cell; null-for-
-            active means active rows reserve no extra whitespace, while
-            non-active rows pick up a subtle leading icon. */}
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <div className="flex-[2] min-w-0 flex items-center gap-1.5">
-            <GearStatusBadge status={item.gearItem.status} compact className="shrink-0 print:hidden" />
-            {onSaveName ? (
-              <InlineText
-                value={name}
-                onSave={onSaveName}
-                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
-              />
-            ) : (
-              <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
-            )}
-          </div>
-          <div className="flex-[3] min-w-0">
-            {onSaveDescription ? (
-              // allowEmpty: clearing removes the description; the page's
-              // write boundary converts '' to the null the contract takes.
-              <InlineText
-                value={description}
-                placeholder="Add description"
-                allowEmpty
-                onSave={onSaveDescription}
-                className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
-              />
-            ) : (
-              <span className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}>{description}</span>
-            )}
-          </div>
-        </div>
+        <NameDescriptionCell
+          status={item.gearItem.status}
+          name={name}
+          description={description}
+          onSaveName={onSaveName}
+          onSaveDescription={onSaveDescription}
+        />
 
         {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise.
             Branch on `onUpdate` directly (not the derived `editable` bool) so
@@ -467,13 +365,12 @@ export default function ItemRow({
   )
 }
 
-// Mobile row body — name + a single worn/consumable indicator slot + qty +
-// weight. Description is dropped on mobile (it's redundant with the modal
-// editor and waste viewport on a 375 px screen). Worn and consumable share
-// one slot since the DB CHECK constraint guarantees they're mutually
-// exclusive. The wrapping element is a <button> when onTap is provided
-// (tap opens the edit dialog) and a plain <div> otherwise.
-function MobileRowBody({
+// This surface's mobile row: the shared badge+name body plus a single
+// worn/consumable indicator slot, qty and weight. Description is dropped on
+// mobile (it's redundant with the modal editor and waste viewport on a
+// 375 px screen). Worn and consumable share one slot since the DB CHECK
+// constraint guarantees they're mutually exclusive.
+function ListMobileRowBody({
   item,
   name,
   weightUnit,
@@ -486,15 +383,13 @@ function MobileRowBody({
 }) {
   const itemWeight = item.gearItem.weightGrams
   const itemWeightLabel = formatItemWeight(itemWeight, weightUnit)
-  const cells = (
-    <>
-      <div className="flex-1 min-w-0 flex items-center gap-1.5">
-        {/* Inline status badge — returns null for 'active' so the common
-            case reserves no extra space. Worn/consumable stays in its own
-            slot below so a worn item can also show "needs repair". */}
-        <GearStatusBadge status={item.gearItem.status} compact className="shrink-0 print:hidden" />
-        <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
-      </div>
+  return (
+    <MobileRowBody
+      status={item.gearItem.status}
+      name={name}
+      onTap={onTap}
+      tapLabel={`Edit ${name}, quantity ${item.quantity}, ${itemWeightLabel}`}
+    >
       {/* Single worn/consumable indicator slot */}
       <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         {item.isWorn ? <WornIcon /> : item.isConsumable ? <ConsumableIcon /> : null}
@@ -505,21 +400,8 @@ function MobileRowBody({
       <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
         <ItemWeightValue grams={itemWeight} unit={weightUnit} />
       </span>
-    </>
+    </MobileRowBody>
   )
-  if (onTap) {
-    return (
-      <button
-        type="button"
-        onClick={onTap}
-        aria-label={`Edit ${name}, quantity ${item.quantity}, ${itemWeightLabel}`}
-        className="flex flex-1 min-w-0 items-center gap-2 text-left"
-      >
-        {cells}
-      </button>
-    )
-  }
-  return <div className="flex flex-1 min-w-0 items-center gap-2">{cells}</div>
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Items: Remove
