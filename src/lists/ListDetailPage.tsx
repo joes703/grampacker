@@ -1940,4 +1940,3 @@ function ListDetailInner({ listId }: { listId: string }) {
     </div>
   )
 }
-
