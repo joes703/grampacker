@@ -176,8 +176,8 @@ vi.mock('./CategorySection', () => ({
 }))
 
 vi.mock('./GearOptionsButton', () => ({
-  default: (props: { onNewCategory: () => void }) => (
-    <button type="button" onClick={props.onNewCategory}>New category</button>
+  default: (props: { gearOptions: { onNewCategory: () => void } }) => (
+    <button type="button" onClick={props.gearOptions.onNewCategory}>New category</button>
   ),
 }))
 

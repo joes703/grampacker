@@ -14,6 +14,7 @@ const WIDTHS = {
   48: { className: 'w-48', px: 192 },
   56: { className: 'w-56', px: 224 },
   64: { className: 'w-64', px: 256 },
+  80: { className: 'w-80', px: 320 },
 } as const
 
 export type KebabMenuContext = {

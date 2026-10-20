@@ -1,15 +1,9 @@
 import { Settings2 } from 'lucide-react'
 import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
-import GearOptionsContent from './GearOptionsContent'
+import GearOptionsContent, { type GearOptionsHandlers } from './GearOptionsContent'
 
 type Props = {
-  onNewCategory: () => void
-  onImport: () => void
-  onExport: () => void
-  canExport: boolean
-  onCollapseAll: () => void
-  onExpandAll: () => void
-  canCollapseExpand: boolean
+  gearOptions: GearOptionsHandlers
   /** False until BOTH gear items and categories have resolved. Disables the
    *  trigger outright: every row in the panel either builds a write from the
    *  library snapshot or has nothing to act on without it. Mirrors
@@ -43,7 +37,7 @@ function OptionsTrigger({ ref, onClick, open, disabled }: KebabTriggerProps) {
 // MobileGearActionBar owns the equivalent surface there. The panel goes
 // through the shared KebabMenu shell, which also gives it the viewport
 // flip/clamp the old hand-anchored version lacked.
-export default function GearOptionsButton({ libraryReady, ...props }: Props) {
+export default function GearOptionsButton({ libraryReady, gearOptions }: Props) {
   return (
     <KebabMenu
       width={64}
@@ -53,7 +47,7 @@ export default function GearOptionsButton({ libraryReady, ...props }: Props) {
       disabled={!libraryReady}
       trigger={OptionsTrigger}
     >
-      {({ close }) => <GearOptionsContent {...props} onAction={close} />}
+      {({ close }) => <GearOptionsContent {...gearOptions} onAction={close} />}
     </KebabMenu>
   )
 }

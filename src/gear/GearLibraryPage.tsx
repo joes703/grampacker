@@ -57,6 +57,7 @@ import BulkActionsToolbar from './BulkActionsToolbar'
 import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
 import MobileGearActionBar from './MobileGearActionBar'
 import GearOptionsButton from './GearOptionsButton'
+import { type GearOptionsHandlers } from './GearOptionsContent'
 import ConfirmDialog from '../components/ConfirmDialog'
 import StatusPanel from '../components/StatusPanel'
 import PrimaryButton from '../components/PrimaryButton'
@@ -504,6 +505,19 @@ export default function GearLibraryPage() {
     [],
   )
 
+  // The one options bundle, consumed by both Options surfaces (the desktop
+  // GearOptionsButton popover and MobileGearActionBar's modal). These used
+  // to be twin 8-prop lists kept in lockstep by hand.
+  const gearOptions: GearOptionsHandlers = {
+    onNewCategory: () => setDialog(openNewCategory()),
+    onImport: () => setDialog({ type: 'import-explainer' }),
+    onExport: handleExport,
+    canExport: libraryReady && allItems.length > 0,
+    onCollapseAll: () => resetCollapsed(collapsibleKeys),
+    onExpandAll: expandAll,
+    canCollapseExpand: collapsibleKeys.length > 0,
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="print:pb-0">
@@ -606,16 +620,7 @@ export default function GearLibraryPage() {
               <Plus size={14} />
               New item
             </button>
-            <GearOptionsButton
-              libraryReady={libraryReady}
-              onNewCategory={() => setDialog(openNewCategory())}
-              onImport={() => setDialog({ type: 'import-explainer' })}
-              onExport={handleExport}
-              canExport={libraryReady && allItems.length > 0}
-              onCollapseAll={() => resetCollapsed(collapsibleKeys)}
-              onExpandAll={expandAll}
-              canCollapseExpand={collapsibleKeys.length > 0}
-            />
+            <GearOptionsButton libraryReady={libraryReady} gearOptions={gearOptions} />
           </div>
         </div>
 
@@ -988,13 +993,7 @@ export default function GearLibraryPage() {
       <MobileGearActionBar
         libraryReady={libraryReady}
         onNewItem={() => setDialog({ type: 'create-item', saveError: null })}
-        onNewCategory={() => setDialog(openNewCategory())}
-        onImport={() => setDialog({ type: 'import-explainer' })}
-        onExport={handleExport}
-        canExport={libraryReady && allItems.length > 0}
-        onCollapseAll={() => resetCollapsed(collapsibleKeys)}
-        onExpandAll={expandAll}
-        canCollapseExpand={collapsibleKeys.length > 0}
+        gearOptions={gearOptions}
       />
     </div>
   )

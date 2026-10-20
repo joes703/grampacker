@@ -1,6 +1,9 @@
 import { ChevronsDownUp, ChevronsUpDown, Download, FolderPlus, Upload } from 'lucide-react'
 
-type Props = {
+// The one options prop bundle. GearLibraryPage builds it once and passes it
+// through GearOptionsButton and MobileGearActionBar as a single `gearOptions`
+// object - these used to be three hand-copied 8-prop lists in lockstep.
+export type GearOptionsHandlers = {
   onNewCategory: () => void
   onImport: () => void
   onExport: () => void
@@ -8,6 +11,9 @@ type Props = {
   onCollapseAll: () => void
   onExpandAll: () => void
   canCollapseExpand: boolean
+}
+
+type Props = GearOptionsHandlers & {
   /** Optional callback fired before each action runs so the parent
    *  (desktop popover or mobile modal) can dismiss itself first. */
   onAction?: () => void

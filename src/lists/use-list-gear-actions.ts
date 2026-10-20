@@ -1,16 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  queryKeys,
-  createCategory,
-  nextCategorySortOrder,
   updateGearItem,
   deleteGearItem,
-  makeOptimisticInsert,
   makeOptimisticGearItemUpdate,
   makeOptimisticGearItemDelete,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { randomTempId } from '../lib/random-temp-id'
+import { addCategoryMutationOptions } from '../lib/add-category-mutation'
 import type { Category } from '../lib/types'
 
 // Gear/category inventory writes reachable from ListDetailPage. These write
@@ -74,17 +70,7 @@ export function useListGearActions(categories: Category[]) {
 
   const addCategoryMut = useMutation({
     mutationKey: mutationKeys.addCategoryFromList(),
-    mutationFn: (name: string) => createCategory(name),
-    ...makeOptimisticInsert<Category, string>({
-      qc,
-      queryKey: queryKeys.categories(),
-      optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
-        name,
-        sortOrder: nextCategorySortOrder(categories),
-        createdAt: new Date().toISOString(),
-      }),
-    }),
+    ...addCategoryMutationOptions(qc, categories),
   })
 
   return {

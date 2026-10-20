@@ -1,8 +1,7 @@
 import type { Category, ListItemWithGear } from '../types'
-import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
-import { parseCostFromColumn } from './money'
-import { toGrams } from './units'
-import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../caps'
+import { toCsv } from './core'
+import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
+import { MAX_LIST_ITEM_QUANTITY } from '../caps'
 
 // Parse output. The CSV column HEADERS keep the Lighterpack shape
 // (byte-identical to the old repo's export), but the parsed TS row is
@@ -36,41 +35,19 @@ function toBool(v: string | undefined): boolean {
 
 // Parses a Lighterpack-style CSV into list import rows.
 // Accepts: Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
-// Also accepts our own list export format.
+// Also accepts our own list export format. The shared preamble (size gate,
+// column resolution incl. the load-bearing cost-over-price precedence)
+// lives in parse-common.ts.
 export function parseListCsv(text: string): ListCsvRow[] | string {
-  const rows = parseCsv(text)
-  const [sample] = rows
-  if (!sample) return 'File appears empty or has no data rows.'
-  if (rows.length > MAX_CSV_ROWS) {
-    return `This file has more than ${MAX_CSV_ROWS.toLocaleString('en-US')} rows, which is too many to import at once. Split it into smaller files and import them one at a time.`
-  }
-
-  const keys = Object.keys(sample)
-
-  const nameKey   = keys.find((k) => k === 'name' || k === 'item name')
-  const weightKey = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
-  const unitKey   = keys.find((k) => k === 'unit')
-  const descKey   = keys.find((k) => k === 'description' || k === 'desc' || k === 'notes')
-  const catKey    = keys.find((k) => k === 'category')
-  const qtyKey    = keys.find((k) => k === 'quantity' || k === 'qty')
-  const wornKey   = keys.find((k) => k === 'worn' || k === 'is_worn')
-  const consumKey = keys.find((k) => k === 'consumable' || k === 'is_consumable')
-  // Same two-pass precedence as the gear importer: our own `cost` wins over
-  // Lighterpack's `price`, and column order in the source file is irrelevant.
-  // WHICH column won also decides how a 0 reads - 0 in `cost` is genuinely
-  // free, 0 in `price` is unset (see parseCostFromColumn). That matters most
-  // here: list exports downloaded before this change hardcoded price=0 on
-  // EVERY row, so reading those as real would import a whole list as free.
-  const ownCostKey = keys.find((k) => k === 'cost')
-  const costKey   = ownCostKey ?? keys.find((k) => k === 'price')
-  const costKind  = ownCostKey ? 'cost' as const : 'price' as const
-
-  if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
-  if (!weightKey) return 'Missing required column: "weight_grams" or "weight"'
+  const parsed = parseCsvWithCommonColumns(text)
+  if (typeof parsed === 'string') return parsed
+  const { rows, cols } = parsed
+  const qtyKey    = cols.keys.find((k) => k === 'quantity' || k === 'qty')
+  const wornKey   = cols.keys.find((k) => k === 'worn' || k === 'is_worn')
+  const consumKey = cols.keys.find((k) => k === 'consumable' || k === 'is_consumable')
 
   return rows
     .map((row) => {
-      const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
       const rawQty = qtyKey ? parseInt(row[qtyKey] ?? '1', 10) : 1
       const isWorn = wornKey ? toBool(row[wornKey]) : false
       const isConsumable = consumKey ? toBool(row[consumKey]) : false
@@ -80,14 +57,10 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
       // the UI.
       const bothSet = isWorn && isConsumable
       return {
-        name:         (row[nameKey] ?? '').trim().slice(0, MAX_NAME_LENGTH),
-        description:  descKey ? (row[descKey] || null) : null,
-        weightGrams:  toGrams(row[weightKey] ?? '0', unit),
-        categoryName: catKey ? (row[catKey] ?? '') : '',
+        ...commonRowFields(row, cols),
         quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, MAX_LIST_ITEM_QUANTITY),
         isWorn:       bothSet ? false : isWorn,
         isConsumable: bothSet ? false : isConsumable,
-        cost:         costKey ? parseCostFromColumn(row[costKey], costKind) : null,
       }
     })
     .filter((r) => r.name.length > 0)
