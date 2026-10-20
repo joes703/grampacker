@@ -14,6 +14,17 @@
 export const WORN_ICON_CLASS = 'text-purple-600'
 export const CONSUMABLE_ICON_CLASS = 'text-orange-600'
 
+// Click-to-place: the row being moved stays put and stays INTERACTIVE, so it
+// gets a marker, not the 0.4 drag fade - fading would take the row's lightest
+// text below its contrast floor while the user is still expected to use it.
+// Inline style (Tailwind blue-50 / blue-400, matching the insertion slots and
+// the mode banner) because it merges into the dnd-kit outer style object in
+// use-sortable-row.ts.
+export const PLACING_ROW_STYLE = {
+  backgroundColor: '#eff6ff',
+  boxShadow: 'inset 3px 0 0 0 #60a5fa',
+} as const
+
 // Soft pill backgrounds for gear status badges. These intentionally preserve
 // the original stronger text-on-tint treatment.
 export const NEEDS_REPAIR_BADGE_CLASS =

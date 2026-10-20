@@ -1,12 +1,10 @@
 import { memo, useState, useRef, useEffect } from 'react'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
+import { useSortableRow, type SortableHandleProps } from '../lib/use-sortable-row'
 import { SortableGearItemRow } from './GearItemRow'
 import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
@@ -50,9 +48,7 @@ type CategorySectionProps = {
 
 function CategorySectionInner(
   props: CategorySectionProps & {
-    dragHandleRef?: (node: HTMLButtonElement | null) => void
-    dragHandleListeners?: DraggableSyntheticListeners
-    dragHandleAttributes?: DraggableAttributes
+    dragHandleProps?: SortableHandleProps
   },
 ) {
   const {
@@ -72,9 +68,7 @@ function CategorySectionInner(
     onRenameCategory,
     onDeleteCategory,
     itemReorderPending,
-    dragHandleRef,
-    dragHandleListeners,
-    dragHandleAttributes,
+    dragHandleProps,
   } = props
 
   const [renaming, setRenaming] = useState(false)
@@ -203,11 +197,9 @@ function CategorySectionInner(
             name slightly earlier and leaves every column coordinate intact.
             Hidden while renaming: the rename input needs that flexible space,
             and dragging a section mid-rename is not a real interaction. */}
-        {!isUncategorized && dragHandleRef && !renaming && (
+        {!isUncategorized && dragHandleProps && !renaming && (
           <RowIconButton
-            ref={dragHandleRef}
-            {...dragHandleListeners}
-            {...dragHandleAttributes}
+            {...dragHandleProps}
             variant="dragHandle"
             touchSafe
             ariaLabel={`Reorder ${name}`}
@@ -360,31 +352,15 @@ export const SortableCategorySection = memo(function SortableCategorySection(
   props: CategorySectionProps & { id: string; reorderPending?: boolean },
 ) {
   const { id, reorderPending, ...rest } = props
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: makeDnDId('category', id), disabled: reorderPending })
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'category',
+    id,
+    disabled: reorderPending,
+  })
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.4 : 1,
-      }}
-    >
-      <CategorySectionInner
-        {...rest}
-        dragHandleRef={asButtonRef(setActivatorNodeRef)}
-        dragHandleListeners={listeners}
-        dragHandleAttributes={attributes}
-      />
+    <div ref={outerRef} style={outerStyle}>
+      <CategorySectionInner {...rest} dragHandleProps={handleProps} />
     </div>
   )
 })

@@ -244,6 +244,13 @@ export const ROW_CONTROL_TARGET =
 export const ROW_LEADING_CONTROL_TARGET =
   `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_LEADING_TARGET} items-center justify-center rounded`
 
+// Desktop-only hover reveal for a row control (drag grips): invisible until
+// the row (`group`) is hovered or the control itself is keyboard-focused.
+// Call sites pass '' instead below lg - a touch viewport has no hover to
+// reveal with, so the control must stay visible.
+export const ROW_HOVER_REVEAL =
+  'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'
+
 // ---------------------------------------------------------------------------
 // Body typography tokens
 // ---------------------------------------------------------------------------

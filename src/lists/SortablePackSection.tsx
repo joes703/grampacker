@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
+import { useSortableRow } from '../lib/use-sortable-row'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
@@ -32,36 +33,22 @@ export function useSortableLocationSection({
   location: PackingLocation
   reorderPending: boolean
 }) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-    isOver,
-  } = useSortable({
-    id: makeDnDId('packing-location', location.id),
+  const { outerRef, outerStyle, isOver, handleProps } = useSortableRow({
+    kind: 'packing-location',
+    id: location.id,
     // A temp- id is an optimistic row the server has not confirmed. Dragging
     // it would address a location that does not exist yet.
     disabled: reorderPending || location.id.startsWith('temp-'),
   })
 
   return {
-    setNodeRef,
+    setNodeRef: outerRef,
     isOver,
-    style: {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.4 : 1,
-    },
+    style: outerStyle,
     dragHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
+        {...handleProps}
         disabled={reorderPending}
         variant="dragHandle"
         ariaLabel={`Drag ${location.name} to reorder`}

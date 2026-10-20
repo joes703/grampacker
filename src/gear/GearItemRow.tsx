@@ -1,12 +1,9 @@
 import { memo, type ReactNode } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
-import { makeDnDId } from '../lib/dnd-ids'
+import { useSortableRow } from '../lib/use-sortable-row'
 import InlineText from '../components/InlineText'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineWeight from '../components/InlineWeight'
@@ -19,6 +16,7 @@ import {
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
+  ROW_HOVER_REVEAL,
 } from '../components/flat-table-styles'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
@@ -291,24 +289,11 @@ function GearRowKebab({
 export const SortableGearItemRow = memo(function SortableGearItemRow(
   props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'> & { reorderPending?: boolean },
 ) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('gear-item', props.item.id),
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'gear-item',
+    id: props.item.id,
     disabled: props.selectMode || props.reorderPending,
   })
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
 
   // Use a dedicated grip at every viewport. Keep it inside the flat-table
   // surface: those surfaces use overflow-hidden for rounded corners, so an
@@ -318,14 +303,12 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
   const handle =
     props.selectMode ? undefined : (
       <RowIconButton
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
+        {...handleProps}
         variant="dragHandle"
         touchSafe
         ariaLabel={`Reorder ${props.item.name}`}
         icon={<GripVertical size={14} />}
-        className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
+        className={props.isBelowLg ? '' : ROW_HOVER_REVEAL}
       />
     )
 
@@ -333,8 +316,8 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
     <GearItemRow
       {...props}
       dragHandle={handle}
-      outerRef={setNodeRef}
-      outerStyle={sortableStyle}
+      outerRef={outerRef}
+      outerStyle={outerStyle}
     />
   )
 })
