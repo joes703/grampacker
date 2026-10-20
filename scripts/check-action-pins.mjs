@@ -31,6 +31,7 @@
 // network, which is why it retries before giving up.
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const WORKFLOWS_DIR = '.github/workflows'
 const API = 'https://api.github.com'
@@ -38,8 +39,24 @@ const RETRIES = 3
 
 // `uses: owner/repo@ref` or `owner/repo/subpath@ref`, with whatever trails it.
 // Deliberately loose on the ref so a tag-pinned action is CAUGHT below rather
-// than skipped by a regex that only recognizes SHAs.
-const USES = /^\s*(?:-\s*)?uses:\s*(?<action>[^@\s'"]+)@(?<ref>[^\s'"#]+)\s*(?<trailer>#.*)?$/
+// than skipped by a regex that only recognizes SHAs. YAML allows the value to
+// be quoted, so an optional matching quote pair is accepted too - a checker
+// that skips `uses: "owner/repo@v4"` silently waves the tag pin through.
+const USES = /^\s*(?:-\s*)?uses:\s*(?<quote>['"]?)(?<action>[^@\s'"]+)@(?<ref>[^\s'"#]+)\k<quote>\s*(?<trailer>#.*)?$/
+
+// One workflow line -> its pin, or null for a line this check does not guard.
+// Exported for the unit test; the network checks below stay untested.
+/** @param {string} line @returns {{ action: string, ref: string, trailer: string } | null} */
+export const parseUses = (line) => {
+  const match = USES.exec(line)
+  if (!match) return null
+  const { action, ref, trailer } = /** @type {Record<string, string | undefined>} */ (match.groups ?? {})
+  if (!action || !ref) return null
+  // A local action (`./.github/actions/x`) or a docker:// ref has no
+  // upstream tag to resolve and is not what this guards.
+  if (action.startsWith('./') || action.startsWith('docker://')) return null
+  return { action, ref, trailer: trailer?.trim() ?? '' }
+}
 
 const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? ''
 
@@ -97,14 +114,9 @@ const collectPins = () => {
     readFileSync(path, 'utf8')
       .split('\n')
       .forEach((line, index) => {
-        const match = USES.exec(line)
-        if (!match) return
-        const { action, ref, trailer } = /** @type {Record<string, string | undefined>} */ (match.groups ?? {})
-        if (!action || !ref) return
-        // A local action (`./.github/actions/x`) or a docker:// ref has no
-        // upstream tag to resolve and is not what this guards.
-        if (action.startsWith('./') || action.startsWith('docker://')) return
-        pins.push({ where: `${path}:${index + 1}`, action, ref, trailer: trailer?.trim() ?? '' })
+        const pin = parseUses(line)
+        if (!pin) return
+        pins.push({ where: `${path}:${index + 1}`, ...pin })
       })
   }
   return pins
@@ -153,4 +165,8 @@ const main = async () => {
   console.log(`\nAction pins: ${pins.length} verified against upstream tags.`)
 }
 
-await main()
+// Run only when invoked as a script; the test imports parseUses and must not
+// trigger the network checks.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main()
+}

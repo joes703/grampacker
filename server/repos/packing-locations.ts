@@ -1,16 +1,16 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
+import { ownsList } from './owns-list'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db, Tx } from '../db'
 import {
   gearItems,
   listFoodItems,
   listItems,
-  lists,
   packingLocations,
 } from '../db/schema'
 import {
   isPackRankUniqueViolation,
-  isForeignKeyViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -51,7 +51,7 @@ export type RenamePackingLocationResult =
   | { ok: true; row: PackingLocationRow }
   | { ok: false; reason: 'not_found' | 'item_backed' }
 
-export function isPackingLocationCapError(err: unknown): boolean {
+function isPackingLocationCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'packing location cap exceeded')
 }
 
@@ -61,16 +61,6 @@ export function isPackingLocationCapError(err: unknown): boolean {
 // between a method's checks and its writes, and any failure rolls back
 // everything the method did.
 export function createPackingLocationsRepo(db: Db, userId: string) {
-  function ownsList(tx: Tx, listId: string): boolean {
-    const row = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
-      .limit(1)
-      .get()
-    return Boolean(row)
-  }
-
   // The list's locations in display order. create and rename read it back
   // inside their own transaction, so the row they return is the row that
   // committed.
@@ -108,7 +98,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     // list. Both states are significant to the Pack Mode grouping switch.
     async forList(listId: string): Promise<PackingLocationRow[] | null> {
       return db.transaction((tx) =>
-        ownsList(tx, listId) ? ownedList(tx, listId) : null,
+        ownsList(tx, userId, listId) ? ownedList(tx, listId) : null,
       )
     },
 
@@ -119,7 +109,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): CreatePackingLocationResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             let name: string
@@ -190,7 +180,9 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       } catch (err) {
         // The database's own rules, still the final word inside the
         // transaction: the per-list cap trigger, one location per container
-        // item, the same-list trigger, and the composite ownership FK.
+        // item, and the same-list trigger. A foreign-key failure is not
+        // classified: the prechecks run in this same transaction, so it can
+        // only be a defect - let it 500.
         if (isPackingLocationCapError(err)) {
           return { ok: false, reason: 'cap_exceeded' }
         }
@@ -198,9 +190,6 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           return { ok: false, reason: 'already_container' }
         }
         if (isTriggerAbort(err, 'container item does not belong to this list')) {
-          return { ok: false, reason: 'invalid_container_item' }
-        }
-        if (isForeignKeyViolation(err)) {
           return { ok: false, reason: 'invalid_container_item' }
         }
         throw err
@@ -288,35 +277,14 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          const owned = new Set(
-            tx
-              .select({ id: packingLocations.id })
-              .from(packingLocations)
-              .where(
-                and(
-                  eq(packingLocations.listId, listId),
-                  eq(packingLocations.userId, userId),
-                ),
-              )
-              .all()
-              .map((row) => row.id),
-          )
-          if (!updates.every((update) => owned.has(update.id))) return false
-          for (const update of updates) {
-            tx.update(packingLocations)
-              .set({ sortOrder: update.sortOrder })
-              .where(
-                and(
-                  eq(packingLocations.id, update.id),
-                  eq(packingLocations.listId, listId),
-                  eq(packingLocations.userId, userId),
-                ),
-              )
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            packingLocations,
+            { id: packingLocations.id, sortOrder: packingLocations.sortOrder },
+            [eq(packingLocations.listId, listId), eq(packingLocations.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

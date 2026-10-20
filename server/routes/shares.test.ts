@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sharedListResponseSchema } from '../../shared/lists'
+import { sharedListResponseSchema } from '../../shared/shares'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 

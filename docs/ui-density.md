@@ -318,6 +318,21 @@ The frame is **column alignment, not tree indentation**: a section header is
 not a parent node, and these strips are treated as column headers whose
 trailing labels align to row values on purpose.
 
+## Column widths
+
+A section header's label stubs must sit exactly above the row cells below
+them. Header and row therefore compose the same `COL_*` width token
+(`flat-table-styles.ts`): `COL_ICON` (worn/consumable/kebab slot),
+`COL_QTY` (pack rows), `COL_QTY_EDIT` (edit-row `InlineQuantity`),
+`COL_QTY_MOBILE`, `COL_WEIGHT` (desktop weight), `COL_WEIGHT_MOBILE`,
+`COL_PRICE`, `COL_DATE`. One token per COLUMN, not per width - two columns
+that share a width today may diverge. Tokens carry width + `shrink-0` only;
+alignment and typography compose at the call site.
+
+`ROW_HOVER_REVEAL` is the desktop-only hover reveal for in-row drag grips
+(invisible until the row is hovered or the grip is focused); below `lg` the
+call site passes `''` because touch has no hover.
+
 ## Typography
 
 ### Headings and labels
@@ -402,6 +417,13 @@ Rows separated by a container-level `divide-y` must not use `FLAT_TABLE_ROW`
 `INLINE_EDIT_FOCUS_RING` exists because inline-edit controls already use a
 blue border to mean "editing", so keyboard focus needs a separate ring.
 
+### Buttons
+
+Primary actions are the `PrimaryButton` component. `SECONDARY_BUTTON` is the
+quiet action beside one (Cancel and its siblings in dialog footers): same
+box as PrimaryButton's md size, gray text, gray hover. It was the same
+literal string in 8 files before it was hoisted.
+
 ### Form fields
 
 `FORM_INPUT` is the canonical text/number/select field: `rounded-lg` shell,
@@ -438,8 +460,13 @@ shadowed with no overflow clipping. Both share border tone, radius, and fill
 so the global chrome language stays unified; they vary on shadow and clipping
 intentionally.
 
-Call sites compose it with `fixed z-50 w-XX` plus a body padding (`py-1` for
-menu-row popovers, `p-2`/`p-3` for embedded panels).
+The composition (`fixed z-50` + a literal width class + body padding) lives
+in `KebabMenu` (`src/components/KebabMenu.tsx`), which is the one shell for
+kebab/portal menus: trigger, anchor math, dismiss semantics, aria and the
+surface. New row or header menus compose `KebabMenu`, not the raw pieces;
+only a popover that is genuinely not a menu (e.g. `ListSettingsButton`'s
+embedded panel) composes `POPOVER_SURFACE` directly (`py-1` for menu rows,
+`p-2`/`p-3` for embedded panels).
 
 ## Tailwind v4 scanning
 

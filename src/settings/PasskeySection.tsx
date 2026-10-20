@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { authClient, passkeysSupported } from '../lib/auth-client'
+import InlineRenameInput from '../components/InlineRenameInput'
 import { authErrorMessage } from '../auth/auth-errors'
 import { ErrorText } from '../auth/auth-ui'
 import { authenticatorName } from '../lib/passkey-authenticator-names'
@@ -48,42 +49,6 @@ function createdLabel(createdAt: PasskeyRow['createdAt']): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
 }
 
-// Inline rename input, same idiom as the list rename rows: select-on-open,
-// Enter submits, Escape cancels, blur submits.
-function RenameInput({
-  draft,
-  onDraftChange,
-  onSubmit,
-  onCancel,
-}: {
-  draft: string
-  onDraftChange: (v: string) => void
-  onSubmit: () => void
-  onCancel: () => void
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    inputRef.current?.select()
-  }, [])
-
-  return (
-    <input
-      ref={inputRef}
-      autoFocus
-      type="text"
-      value={draft}
-      aria-label="Passkey name"
-      onChange={(e) => onDraftChange(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onSubmit()
-        if (e.key === 'Escape') onCancel()
-      }}
-      onBlur={onSubmit}
-      className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
-    />
-  )
-}
 
 export default function PasskeySection() {
   const [rows, setRows] = useState<PasskeyRow[] | null>(null)
@@ -331,11 +296,13 @@ export default function PasskeySection() {
               className="flex items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2"
             >
               {renaming?.id === row.id ? (
-                <RenameInput
-                  draft={renaming.draft}
-                  onDraftChange={(v) => setRenaming({ id: row.id, draft: v })}
+                <InlineRenameInput
+                  value={renaming.draft}
+                  onChange={(v) => setRenaming({ id: row.id, draft: v })}
                   onSubmit={() => void submitRename()}
                   onCancel={() => setRenaming(null)}
+                  ariaLabel="Passkey name"
+                  className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none"
                 />
               ) : (
                 <>

@@ -21,7 +21,7 @@ export const PARAM_BUDGET_PER_STATEMENT = Math.floor(SQLITE_MAX_PARAMS / 4)
 // column reports fewer keys than drizzle binds. One caveat keeps the bound
 // honest: a cell holding a multi-parameter sql`` expression would cost more
 // than one parameter - none of the callers does that.
-export function rowsPerStatement(table: Table): number {
+function rowsPerStatement(table: Table): number {
   const columns = Object.keys(getTableColumns(table)).length
   return Math.max(1, Math.floor(PARAM_BUDGET_PER_STATEMENT / columns))
 }

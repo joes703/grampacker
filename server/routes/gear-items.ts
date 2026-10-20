@@ -1,16 +1,16 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
+import { toGearItemResponse } from './gear-item-response'
 import {
   CATEGORY_CAP,
   GEAR_ITEM_CAP,
   bulkDeleteRequestSchema,
   bulkMoveRequestSchema,
   createGearItemRequestSchema,
-  gearStatusSchema,
   importGearStructureSchema,
   reorderRequestSchema,
   updateGearItemRequestSchema,
   type CreateGearItemRequest,
-  type GearItemResponse,
   type ImportGearResponse,
   type UpdateGearItemRequest,
 } from '../../shared/gear'
@@ -18,7 +18,7 @@ import { requireSession, type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
 import type {
   CreateGearItemInput,
-  GearItemRow,
+  ImportGearResult,
   UpdateGearItemPatch,
 } from '../repos/gear-items'
 import type { AppEnv } from '../env'
@@ -36,31 +36,28 @@ import type { AppEnv } from '../env'
 //                                        category, all-or-nothing
 //   PATCH  /api/gear-items/:id         - session - own row or 404
 //   DELETE /api/gear-items/:id         - session - own row or 404
+// The import failure map, in the same exhaustive-switch pattern as the
+// write-failure maps in lists.ts: a new repo reason fails the build instead
+// of falling through to a wrong default. cap_exceeded here is the GEAR cap.
+function importGearFailure(
+  result: Extract<ImportGearResult, { ok: false }>,
+): { status: 400 | 422; error: string } {
+  switch (result.reason) {
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'category_cap_exceeded':
+      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+    case 'cap_exceeded':
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+  }
+}
+
 export const gearItemRoutes = new Hono<{
   Bindings: AppEnv
   Variables: SessionVars
 }>()
 
 gearItemRoutes.use('*', requireSession)
-
-// Dollars <-> integer cents at the DTO edge; the epsilon guard in the
-// schema guarantees the rounding is exact.
-
-function toGearItemResponse(row: GearItemRow): GearItemResponse {
-  return {
-    id: row.id,
-    categoryId: row.categoryId,
-    name: row.name,
-    description: row.description,
-    weightGrams: row.weightGrams,
-    cost: row.costCents === null ? null : row.costCents / 100,
-    purchaseDate: row.purchaseDate,
-    status: gearStatusSchema.parse(row.status),
-    sortOrder: row.sortOrder,
-    createdAt: new Date(row.createdAt).toISOString(),
-    updatedAt: new Date(row.updatedAt).toISOString(),
-  }
-}
 
 function toCreateInput(body: CreateGearItemRequest): CreateGearItemInput {
   return {
@@ -92,11 +89,8 @@ gearItemRoutes.get('/', async (c) => {
 })
 
 gearItemRoutes.post('/', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createGearItemRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, createGearItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.create(toCreateInput(parsed.data))
@@ -104,24 +98,20 @@ gearItemRoutes.post('/', async (c) => {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)
     }
-    return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
   }
   return c.json(toGearItemResponse(result.row), 201)
 })
 
 gearItemRoutes.put('/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, reorderRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').gearItems.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 gearItemRoutes.post('/import', async (c) => {
-  const raw = await c.req.json().catch(() => null)
   // Two-stage parse. Stage 1 validates the FULL shape - element schemas and
   // the relational refinements - with no array maxima, so anything malformed
   // (including a malformed OVERSIZED body) stays the uniform 400. Stage 2
@@ -131,10 +121,8 @@ gearItemRoutes.post('/import', async (c) => {
   // are checked first on purpose: every declared category must be
   // referenced, so 501 valid categories force >=501 items - when both caps
   // are blown, the category message is the actionable one.
-  const parsed = importGearStructureSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, importGearStructureSchema)
+  if (!parsed.ok) return parsed.response
   if (parsed.data.categories.length > CATEGORY_CAP) {
     return c.json(
       { error: `Category limit reached (${CATEGORY_CAP} per user)` },
@@ -159,16 +147,8 @@ gearItemRoutes.post('/import', async (c) => {
     })),
   })
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    if (result.reason === 'category_cap_exceeded') {
-      return c.json(
-        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
-        422,
-      )
-    }
-    return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
+    const f = importGearFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   const body: ImportGearResponse = {
     createdCategories: result.createdCategories,
@@ -178,22 +158,16 @@ gearItemRoutes.post('/import', async (c) => {
 })
 
 gearItemRoutes.post('/bulk-delete', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = bulkDeleteRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, bulkDeleteRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').gearItems.bulkDelete(parsed.data.ids)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 gearItemRoutes.post('/bulk-move', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = bulkMoveRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, bulkMoveRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.bulkMove(parsed.data.ids, parsed.data.categoryId)
@@ -207,11 +181,8 @@ gearItemRoutes.post('/bulk-move', async (c) => {
 })
 
 gearItemRoutes.patch('/:id', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateGearItemRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, updateGearItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .gearItems.update(c.req.param('id'), toUpdatePatch(parsed.data))

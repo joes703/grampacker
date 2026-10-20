@@ -9,6 +9,11 @@ permissions:
   contents: read
 
 jobs:
+  # The checkout/node/install/build/test/migrations steps are deliberately
+  # duplicated in image.yml's pre-publish job, which re-proves a commit at
+  # dispatch time. A reusable workflow would remove the copy but add a third
+  # workflow file with its own pin and permissions surface. If a step here
+  # changes, change its copy in image.yml in the same commit.
   verify:
     name: Verify
     runs-on: ubuntu-latest
@@ -64,7 +69,8 @@ jobs:
       # it. This catches only PARSE-level mistakes - duplicate keys, tabs, bad
       # indentation - which is what silently changes a config's meaning. It does
       # NOT check the schema: a misspelled key is valid YAML and Dependabot just
-      # ignores it. See .yamllint.yml. Pinned so a linter release cannot fail an
-      # unrelated PR.
+      # ignores it. See .yamllint.yml. The npm script owns the yamllint version
+      # pin (so local runs and CI cannot diverge); pinned so a linter release
+      # cannot fail an unrelated PR.
       - name: Check (YAML parses as intended)
-        run: pipx install yamllint==1.37.1 && yamllint .github/ .yamllint.yml
+        run: npm run check:yaml

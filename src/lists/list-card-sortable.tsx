@@ -1,9 +1,6 @@
 import { GripVertical } from 'lucide-react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { ROW_LEADING_CONTROL_TARGET } from '../components/flat-table-styles'
-import { asButtonRef } from '../lib/dnd'
-import { makeDnDId } from '../lib/dnd-ids'
+import { useSortableRow } from '../lib/use-sortable-row'
 
 // Shared dnd-kit wiring for list-card rows. Both ListsPage's row table and
 // DesktopListsPanel's compact rail row render the same shape (drag handle
@@ -40,24 +37,11 @@ export function useListCardSortable({
   outerStyle: React.CSSProperties
   dragHandle: React.ReactNode
 } {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('list-card', listId),
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'list-card',
+    id: listId,
     disabled,
   })
-
-  const outerStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
 
   // ROW_LEADING_CONTROL_TARGET = 40px touch / 28x20px pointer (see
   // flat-table-styles). Every leading grip in the app reads this one token, so
@@ -69,10 +53,8 @@ export function useListCardSortable({
   // TouchSensor's press-and-hold delay gates accidental drags.
   const dragHandle = (
     <button
-      ref={asButtonRef(setActivatorNodeRef)}
       type="button"
-      {...listeners}
-      {...attributes}
+      {...handleProps}
       aria-label={`Reorder ${listName}`}
       className={`${ROW_LEADING_CONTROL_TARGET} shrink-0 text-gray-500 cursor-grab touch-none hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing`}
     >
@@ -80,7 +62,7 @@ export function useListCardSortable({
     </button>
   )
 
-  return { outerRef: setNodeRef, outerStyle, dragHandle }
+  return { outerRef, outerStyle, dragHandle }
 }
 
 // Inline-rename input chrome for list rows. Both ListsPage's row table

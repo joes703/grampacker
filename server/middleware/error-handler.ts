@@ -220,18 +220,22 @@ type Incident = {
 // a client otherwise. No user id, deliberately: it is not resolved at throw time
 // on every route, the app has one user, and an identifier in logs for no signal
 // is not free.
+// The one-line announcement written when the log budget trips, built in one
+// place so the two writers below cannot drift apart.
+function suppressionAnnouncement(path?: string): string {
+  return JSON.stringify({
+    event: 'server-error-suppressed',
+    detail: `more than ${DETAILED_BUDGET} errors in ${WINDOW_MS}ms; further errors in this window are not logged`,
+    ...(path === undefined ? {} : { path }),
+  })
+}
+
 function recordIncident({ source, method, path, status, err }: Incident): string | undefined {
   const slot = claimLogSlot(Date.now())
   if (slot === 'silent') return undefined
 
   if (slot === 'announce-suppression') {
-    console.error(
-      JSON.stringify({
-        event: 'server-error-suppressed',
-        detail: `more than ${DETAILED_BUDGET} errors in ${WINDOW_MS}ms; further errors in this window are not logged`,
-        path,
-      }),
-    )
+    console.error(suppressionAnnouncement(path))
     return undefined
   }
 
@@ -277,12 +281,7 @@ export function recordAuthLog(
   if (slot === 'silent') return
   const sink = level === 'warn' ? console.warn : console.error
   if (slot === 'announce-suppression') {
-    sink(
-      JSON.stringify({
-        event: 'server-error-suppressed',
-        detail: `more than ${DETAILED_BUDGET} errors in ${WINDOW_MS}ms; further errors in this window are not logged`,
-      }),
-    )
+    sink(suppressionAnnouncement())
     return
   }
   const describe = (value: unknown) =>

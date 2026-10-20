@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
+  FOOD_ITEM_CAP,
   createFoodItemRequestSchema,
   setFoodDaysRequestSchema,
   updateFoodItemRequestSchema,
+  type FoodItemResponse,
   type ListFoodResponse,
 } from '../../shared/food'
+import type { FoodItemRow } from '../repos/food'
 import { type SessionVars } from '../middleware/session'
 import type { AppEnv } from '../env'
 
@@ -23,6 +27,27 @@ import type { AppEnv } from '../env'
 // leaves this module is the PLAN: the day grid, the meal slots, and every
 // item's slot ids and pack state.
 
+
+// The explicit allowlist between the repo row and the wire, like every
+// sibling route: a field added to the row reaches the response only by
+// being named here (server/repos/public-shares.ts states the philosophy).
+function toFoodItemResponse(row: FoodItemRow): FoodItemResponse {
+  return {
+    id: row.id,
+    name: row.name,
+    weightGrams: row.weightGrams,
+    quantity: row.quantity,
+    isPerMeal: row.isPerMeal,
+    unitCount: row.unitCount,
+    sortOrder: row.sortOrder,
+    isPacked: row.isPacked,
+    isReady: row.isReady,
+    packingLocationId: row.packingLocationId,
+    packSortOrder: row.packSortOrder,
+    slotIds: row.slotIds,
+  }
+}
+
 export const foodRoutes = new Hono<{
   Bindings: AppEnv
   Variables: SessionVars
@@ -36,9 +61,8 @@ foodRoutes.get('/:id/food', async (c) => {
 })
 
 foodRoutes.put('/:id/food/days', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = setFoodDaysRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, setFoodDaysRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   // The repo answers with the estimate read inside the same transaction as
   // the write, so the response is exactly what committed.
@@ -50,15 +74,14 @@ foodRoutes.put('/:id/food/days', async (c) => {
 })
 
 foodRoutes.post('/:id/food/items', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createFoodItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, createFoodItemRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   const result = await c.get('repos').food.createItem(c.req.param('id'), parsed.data)
   if (!result.ok) {
     if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
     if (result.reason === 'cap_exceeded') {
-      return c.json({ error: 'Food item limit reached (200 per list)' }, 422)
+      return c.json({ error: `Food item limit reached (${FOOD_ITEM_CAP} per list)` }, 422)
     }
     // The arrival rank claims one past the Unassigned union maximum, so
     // these are reachable here exactly as they are on the PATCH move path.
@@ -72,13 +95,12 @@ foodRoutes.post('/:id/food/items', async (c) => {
     // silently dropping the placement.
     return c.json({ error: 'Invalid slots' }, 400)
   }
-  return c.json(result.row, 201)
+  return c.json(toFoodItemResponse(result.row), 201)
 })
 
 foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateFoodItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request' }, 400)
+  const parsed = await parseBody(c, updateFoodItemRequestSchema)
+  if (!parsed.ok) return parsed.response
 
   const result = await c
     .get('repos')
@@ -99,7 +121,7 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     }
     return c.json({ error: 'Not found' }, 404)
   }
-  return c.json(result.row)
+  return c.json(toFoodItemResponse(result.row))
 })
 
 foodRoutes.delete('/:id/food/items/:itemId', async (c) => {

@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
-import { CATEGORY_CAP, gearStatusSchema } from '../../shared/gear'
+import { parseBody } from './parse-body'
+import { toGearItemResponse } from './gear-item-response'
+import { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 import {
+  LIST_CAP,
+  LIST_ITEM_CAP,
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
-  importListRequestSchema,
   normalizeReorderPackRequest,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
@@ -15,11 +18,17 @@ import {
   type ListItemResponse,
   type ListResponse,
 } from '../../shared/lists'
+import { importListRequestSchema } from '../../shared/list-import'
 import { type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
-import type { GearItemRow } from '../repos/gear-items'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'
-import type { ListRow } from '../repos/lists'
+import type {
+  DuplicateListResult,
+  FromSelectionResult,
+  ImportListResult,
+  ListRow,
+  ListWriteResult,
+} from '../repos/lists'
 import type { AppEnv } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
@@ -90,24 +99,6 @@ function toListResponse(row: ListRow): ListResponse {
   }
 }
 
-// Same dollars/ISO conversions as the gear routes, applied to the
-// embedded gear row.
-function toEmbeddedGear(row: GearItemRow) {
-  return {
-    id: row.id,
-    categoryId: row.categoryId,
-    name: row.name,
-    description: row.description,
-    weightGrams: row.weightGrams,
-    cost: row.costCents === null ? null : row.costCents / 100,
-    purchaseDate: row.purchaseDate,
-    status: gearStatusSchema.parse(row.status),
-    sortOrder: row.sortOrder,
-    createdAt: new Date(row.createdAt).toISOString(),
-    updatedAt: new Date(row.updatedAt).toISOString(),
-  }
-}
-
 function toListItemResponse(row: ListItemWithGear): ListItemResponse {
   return {
     id: row.item.id,
@@ -123,7 +114,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
     packSortOrder: row.item.packSortOrder,
     createdAt: new Date(row.item.createdAt).toISOString(),
     updatedAt: new Date(row.item.updatedAt).toISOString(),
-    gearItem: toEmbeddedGear(row.gear),
+    gearItem: toGearItemResponse(row.gear),
   }
 }
 
@@ -157,9 +148,9 @@ export function listItemFailure(
         error: 'An item cannot be both worn and consumable',
       }
     case 'gear_cap_exceeded':
-      return { status: 422, error: 'Gear item limit reached (500 per user)' }
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
     case 'cap_exceeded':
-      return { status: 422, error: 'List item limit reached (300 per list)' }
+      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
     case 'pack_rank_exhausted':
       // Deliberately does NOT tell the user to reorder. An ordinary drag
       // permutes the ranks a cohort already holds, so it cannot compact
@@ -176,6 +167,36 @@ export function listItemFailure(
   }
 }
 
+
+// The list-write counterpart of listItemFailure above: the four list writes
+// used to re-type near-identical if-chains. Exhaustive on purpose - a new
+// repo reason fails the build here instead of falling through to a wrong
+// default status.
+function listWriteFailure(
+  result:
+    | Extract<ListWriteResult, { ok: false }>
+    | Extract<DuplicateListResult, { ok: false }>
+    | Extract<FromSelectionResult, { ok: false }>
+    | Extract<ImportListResult, { ok: false }>,
+): { status: 400 | 404 | 422; error: string } {
+  switch (result.reason) {
+    case 'not_found':
+      return { status: 404, error: 'Not found' }
+    case 'invalid_gear':
+      return { status: 400, error: 'Invalid gear item' }
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'cap_exceeded':
+      return { status: 422, error: `List limit reached (${LIST_CAP} per user)` }
+    case 'gear_cap_exceeded':
+      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+    case 'item_cap_exceeded':
+      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+    case 'category_cap_exceeded':
+      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+  }
+}
+
 // --------------------------------------------------------------------- lists
 
 listRoutes.get('/', async (c) => {
@@ -184,29 +205,27 @@ listRoutes.get('/', async (c) => {
 })
 
 listRoutes.post('/', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createListRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c.get('repos').lists.create(parsed.data.name)
   if (!result.ok) {
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
 
 listRoutes.put('/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderListsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderListsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').lists.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 listRoutes.post('/from-selection', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createListFromSelectionRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createListFromSelectionRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .lists.createFromSelection(
@@ -215,18 +234,15 @@ listRoutes.post('/from-selection', async (c) => {
       parsed.data.gearItemIds,
     )
   if (!result.ok) {
-    if (result.reason === 'invalid_gear') {
-      return c.json({ error: 'Invalid gear item' }, 400)
-    }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
 
 listRoutes.post('/import', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = importListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, importListRequestSchema)
+  if (!parsed.ok) return parsed.response
   // cost arrives in dollars on the wire and is stored as integer cents.
   // Converted here, at the route boundary, exactly as the gear import does.
   const result = await c.get('repos').lists.importFromCsv({
@@ -237,25 +253,8 @@ listRoutes.post('/import', async (c) => {
     })),
   })
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    if (result.reason === 'invalid_gear') {
-      return c.json({ error: 'Invalid gear item' }, 400)
-    }
-    if (result.reason === 'gear_cap_exceeded') {
-      return c.json({ error: 'Gear item limit reached (500 per user)' }, 422)
-    }
-    if (result.reason === 'item_cap_exceeded') {
-      return c.json({ error: 'List item limit reached (300 per list)' }, 422)
-    }
-    if (result.reason === 'category_cap_exceeded') {
-      return c.json(
-        { error: `Category limit reached (${CATEGORY_CAP} per user)` },
-        422,
-      )
-    }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
@@ -263,18 +262,15 @@ listRoutes.post('/import', async (c) => {
 listRoutes.post('/:id/duplicate', async (c) => {
   const result = await c.get('repos').lists.duplicate(c.req.param('id'))
   if (!result.ok) {
-    if (result.reason === 'not_found') {
-      return c.json({ error: 'Not found' }, 404)
-    }
-    return c.json({ error: 'List limit reached (100 per user)' }, 422)
+    const f = listWriteFailure(result)
+    return c.json({ error: f.error }, f.status)
   }
   return c.json(toListResponse(result.row), 201)
 })
 
 listRoutes.patch('/:id', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateListRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, updateListRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .lists.update(c.req.param('id'), parsed.data)
@@ -305,9 +301,8 @@ listRoutes.get('/:id/items', async (c) => {
 })
 
 listRoutes.post('/:id/items', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = addListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, addListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.addExisting(c.req.param('id'), parsed.data.gearItemId)
@@ -319,9 +314,8 @@ listRoutes.post('/:id/items', async (c) => {
 })
 
 listRoutes.post('/:id/items/quick-add', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = quickAddListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, quickAddListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.quickAdd(c.req.param('id'), parsed.data)
@@ -333,9 +327,8 @@ listRoutes.post('/:id/items/quick-add', async (c) => {
 })
 
 listRoutes.put('/:id/items/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderListItemsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderListItemsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c
     .get('repos')
     .listItems.reorder(c.req.param('id'), parsed.data)
@@ -348,9 +341,8 @@ listRoutes.put('/:id/items/order', async (c) => {
 // because "which column does this write" should be visible in the URL rather
 // than buried in a body field.
 listRoutes.put('/:id/items/pack-order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderPackListItemsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderPackListItemsRequestSchema)
+  if (!parsed.ok) return parsed.response
   // Union reorder since 0022: gear and food halves written in one transaction.
   // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
   // onto the same payload.
@@ -388,9 +380,8 @@ listRoutes.post('/:id/items/reset-ready', async (c) => {
 })
 
 listRoutes.patch('/:id/items/:itemId', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateListItemRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, updateListItemRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .listItems.update(c.req.param('id'), c.req.param('itemId'), parsed.data)

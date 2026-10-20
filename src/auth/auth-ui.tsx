@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 
-// Deliberately minimal: the real visual system arrives with the SPA
-// transplant in phase 2. These are functional, honest forms.
+// The auth pages keep their own minimal styles instead of composing the
+// app's token system (src/components/flat-table-styles.ts): they render
+// before sign-in, outside the app shell, and have stayed simple enough that
+// converging them has not paid for itself. PARKED.md records the trigger.
 
 export const LABEL = 'block text-sm font-medium text-gray-700'
 

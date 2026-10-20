@@ -3,7 +3,7 @@ import type { GearCsvRow } from '../lib/csv'
 import { formatItemWeight } from '../lib/weight'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../components/flat-table-styles'
 import { MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
@@ -63,7 +63,7 @@ export default function GearImportPreviewDialog({ rows, saving, onConfirm, onClo
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          className={SECONDARY_BUTTON}
         >
           Cancel
         </button>

@@ -44,28 +44,23 @@ function normalizeListPath(pathname: string): string {
   return pathname.replace(/\/+$/, '').toLowerCase()
 }
 
-/** The retired Organize URLs, in both shapes that ever shipped. */
+/**
+ * The retired Organize URLs, in both shapes that ever shipped.
+ * ListDetailPage rewrites any of them to /pack, and deriveListMode answers
+ * 'pack' for all of them - one predicate for both, so the address bar and
+ * the rendered view cannot disagree again. The converse does not hold: the
+ * canonical /pack derives to Pack and is not legacy.
+ */
 export function isLegacyOrganizePath(pathname: string, listId: string): boolean {
   const base = `/lists/${listId.toLowerCase()}`
   const normalized = normalizeListPath(pathname)
   return normalized === `${base}/organize` || normalized === `${base}/pack/organize`
 }
 
-/**
- * The retired URL spellings this page still honors. ListDetailPage rewrites
- * any of them to /pack, and deriveListMode answers 'pack' for all of them -
- * one predicate for both, so the address bar and the rendered view cannot
- * disagree again. The converse does not hold: the canonical /pack derives to
- * Pack and is not legacy.
- */
-export function isLegacyListPath(pathname: string, listId: string): boolean {
-  return isLegacyOrganizePath(pathname, listId)
-}
-
 export function deriveListMode(pathname: string, listId: string): ListDetailMode {
   // Organize resolves to Pack rather than to a dead route: the view it named
   // is now part of Pack, so that is where an old link should land.
-  if (isLegacyListPath(pathname, listId)) return 'pack'
+  if (isLegacyOrganizePath(pathname, listId)) return 'pack'
   const base = `/lists/${listId.toLowerCase()}`
   const normalized = normalizeListPath(pathname)
   if (normalized === `${base}/food`) return 'food'

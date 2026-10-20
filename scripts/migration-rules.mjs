@@ -14,7 +14,7 @@ const GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|--[^\n]*(?:\n|$))+`
 const rx = (source) => new RegExp(source, 'i')
 
 /** @type {Array<[RegExp, string]>} */
-export const FORBIDDEN = [
+const FORBIDDEN = [
   [rx(String.raw`\bdrop${GAP}table\b`), 'DROP TABLE (a rebuild, or a table other rows cascade from)'],
   [
     rx(String.raw`\balter${GAP}table\b[\s\S]*\brename\b`),

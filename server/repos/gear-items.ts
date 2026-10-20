@@ -1,4 +1,6 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
+import { appendSortOrder } from './append-sort-order'
 import type { GearStatus } from '../../shared/gear'
 import type { Db, Tx } from '../db'
 import { categories, gearItems } from '../db/schema'
@@ -75,9 +77,18 @@ export type UpdateGearItemPatch = {
   status?: GearStatus
 }
 
-export type GearWriteResult =
+// Narrowed per method, like RotateShareLinkResult in lists.ts: create
+// writes a new row so it can hit the cap but cannot miss an existing one;
+// update touches an existing row so it can miss but cannot hit the cap. A
+// shared union would let the PATCH route's else-branch mislabel a cap error
+// as Not found.
+export type CreateGearResult =
   | { ok: true; row: GearItemRow }
-  | { ok: false; reason: 'cap_exceeded' | 'invalid_category' | 'not_found' }
+  | { ok: false; reason: 'cap_exceeded' | 'invalid_category' }
+
+export type UpdateGearResult =
+  | { ok: true; row: GearItemRow }
+  | { ok: false; reason: 'invalid_category' | 'not_found' }
 
 // The DB trigger enforces shared/gear.ts's GEAR_ITEM_CAP. A refused insert
 // maps to a friendly result without a read-then-insert race.
@@ -132,10 +143,10 @@ export function createGearItemsRepo(db: Db, userId: string) {
         .orderBy(asc(gearItems.sortOrder), asc(gearItems.name))
     },
 
-    async create(input: CreateGearItemInput): Promise<GearWriteResult> {
+    async create(input: CreateGearItemInput): Promise<CreateGearResult> {
       try {
         return db.transaction(
-          (tx): GearWriteResult => {
+          (tx): CreateGearResult => {
             if (input.categoryId !== null && !ownsCategory(tx, input.categoryId)) {
               return { ok: false, reason: 'invalid_category' }
             }
@@ -152,7 +163,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                 costCents: input.costCents,
                 purchaseDate: input.purchaseDate,
                 status: input.status,
-                sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -230,7 +241,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                   id: c.id,
                   userId,
                   name: c.name,
-                  sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+                  sortOrder: appendSortOrder(categories, categories.sortOrder, eq(categories.userId, userId)),
                   createdAt: now,
                 })
                 .run()
@@ -248,7 +259,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                   purchaseDate: item.purchaseDate,
                   // Status is app-internal only; CSV import does not carry it.
                   status: 'active',
-                  sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                  sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                   createdAt: now,
                   updatedAt: now,
                 })
@@ -276,7 +287,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
     async update(
       id: string,
       patch: UpdateGearItemPatch,
-    ): Promise<GearWriteResult> {
+    ): Promise<UpdateGearResult> {
       const set: Record<string, unknown> = { updatedAt: Date.now() }
       if (patch.name !== undefined) set.name = patch.name
       if (patch.description !== undefined) set.description = patch.description
@@ -287,7 +298,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
         set.purchaseDate = patch.purchaseDate
       if (patch.status !== undefined) set.status = patch.status
       return db.transaction(
-        (tx): GearWriteResult => {
+        (tx): UpdateGearResult => {
           if (typeof patch.categoryId === 'string' && !ownsCategory(tx, patch.categoryId)) {
             return { ok: false, reason: 'invalid_category' }
           }
@@ -347,23 +358,18 @@ export function createGearItemsRepo(db: Db, userId: string) {
       )
     },
 
-    // Same contract as the categories repo's reorder (kept in lockstep;
-    // a generic helper costs more in drizzle type gymnastics than the
-    // dozen duplicated lines are worth).
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          if (!ownsAllGearIds(tx, updates.map((u) => u.id))) return false
-          for (const u of updates) {
-            tx.update(gearItems)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(gearItems.id, u.id), eq(gearItems.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            gearItems,
+            { id: gearItems.id, sortOrder: gearItems.sortOrder },
+            [eq(gearItems.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },

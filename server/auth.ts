@@ -477,8 +477,33 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
 }
 
 // This is config wiring only - no I/O happens until a handler runs.
-export function createAuth(env: AppEnv, incident?: AuthIncident) {
+//
+// Per-request on purpose, and the holder is REQUIRED: an instance built here
+// is bound to one request's incident, so it must never be cached or shared -
+// concurrent requests would overwrite each other's error. The holderless,
+// cacheable construction lives in sessionAuth below; keeping the two
+// signatures apart is what stops a request-bound instance from entering the
+// cache. server/auth-cache.test.ts pins both sides.
+export function createAuth(env: AppEnv, incident: AuthIncident) {
   return betterAuth(authOptions(env, incident))
 }
 
 export type Auth = ReturnType<typeof createAuth>
+
+// The ONE auth instance requireSession reads sessions through, cached per env
+// object (the Node entry builds a single env at startup and hands it to every
+// request, so production constructs this once; a test that swaps DB passes a
+// copied env and gets its own instance). Safe to share precisely because it
+// has no incident holder: requireSession never serves /api/auth/*, so an
+// error from getSession surfaces through the app's own error handler. Never
+// add an incident parameter here.
+const sessionInstances = new WeakMap<AppEnv, Auth>()
+
+export function sessionAuth(env: AppEnv): Auth {
+  let auth = sessionInstances.get(env)
+  if (!auth) {
+    auth = betterAuth(authOptions(env))
+    sessionInstances.set(env, auth)
+  }
+  return auth
+}

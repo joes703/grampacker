@@ -36,6 +36,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, parseGearCsv, downloadCsv, type GearCsvRow } from '../lib/csv'
 import { assertGearImportWithinCaps, planGearImport } from '../lib/csv/import-plan'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
+import { SECONDARY_BUTTON } from '../components/flat-table-styles'
 import { showToast } from '../lib/toast'
 import type { Category, GearItem } from '../lib/types'
 import { MAX_CATEGORY_NAME } from '../lib/caps'
@@ -453,11 +454,12 @@ export default function GearLibraryPage() {
   //      because the algebra is slice-based (filter to category, then
   //      arrayMove). The useReorderable hook is flat-only by design; a
   //      future second-pass extraction may take a groupBy option, but the
-  //      shape isn't proven yet (see CLAUDE.md / DECISIONS.md ADR 11).
+  //      shape isn't proven yet.
   //
   // Cross-category gear-item drops are deliberately rejected (item snaps
   // back); recategorizing happens via the edit modal or the multi-select
-  // bulk-move toolbar (per ADR 1).
+  // bulk-move toolbar, where the target is named rather than inferred from
+  // drop position.
   function handleDragEnd(e: DragEndEvent) {
     setActiveId(null)
     const { active, over } = e
@@ -1015,7 +1017,7 @@ export default function GearLibraryPage() {
               <button
                 type="button"
                 onClick={() => setDialog(null)}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                className={SECONDARY_BUTTON}
               >
                 Cancel
               </button>
@@ -1031,21 +1033,15 @@ export default function GearLibraryPage() {
       )}
 
       {dialog?.type === 'import-error' && (
-        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
-          <div className="p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-2">Import error</h2>
-            <p className="text-sm text-red-600 mb-4">{dialog.message}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDialog(null)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title="Import error"
+          message={dialog.message}
+          messageTone="danger"
+          confirmLabel="Close"
+          cancel={false}
+          onConfirm={() => setDialog(null)}
+          onCancel={() => setDialog(null)}
+        />
       )}
 
       {dialog?.type === 'import-preview' && (

@@ -46,7 +46,7 @@ const env: AppEnv = {
 
 const httpServer = createServer()
 const vite = await createViteServer({
-  configFile: 'vite.node.config.ts',
+  configFile: 'vite.client.config.ts',
   appType: 'spa',
   server: { middlewareMode: true, hmr: { server: httpServer } },
 })

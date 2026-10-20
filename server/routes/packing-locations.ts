@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
+  PACKING_LOCATION_CAP,
   createPackingLocationRequestSchema,
   reorderPackingLocationsRequestSchema,
   updatePackingLocationRequestSchema,
@@ -9,11 +11,26 @@ import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
 import type { AppEnv } from '../env'
 
+// Authz matrix rows (docs/authz-matrix.md):
+//   GET    /api/lists/:id/packing-locations           - session - own list or 404
+//   POST   /api/lists/:id/packing-locations           - session - own list or 404;
+//                                                       named location or item-backed
+//                                                       container; 422 at the cap
+//   PUT    /api/lists/:id/packing-locations/order     - session - every id on THIS
+//                                                       list and user or 404, zero writes
+//   PATCH  /api/lists/:id/packing-locations/:locationId - session - own row or 404;
+//                                                       409 for item-backed (live gear
+//                                                       name is authoritative)
+//   DELETE /api/lists/:id/packing-locations/:locationId - session - own row or 404;
+//                                                       returns contents to Unassigned
+//
+// Session-gated by the hoisted api.use('/lists/*', requireSession) in
+// server/index.ts, shared with the other /lists sub-apps so one request pays
+// the session lookup once. There is no visible gate in this file on purpose.
 export const packingLocationRoutes = new Hono<{
   Bindings: AppEnv
   Variables: SessionVars
 }>()
-
 
 function toResponse(row: PackingLocationRow): PackingLocationResponse {
   return {
@@ -33,9 +50,8 @@ packingLocationRoutes.get('/:id/packing-locations', async (c) => {
 })
 
 packingLocationRoutes.post('/:id/packing-locations', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createPackingLocationRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, createPackingLocationRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c
     .get('repos')
     .packingLocations.create(c.req.param('id'), parsed.data)
@@ -45,7 +61,7 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
     }
     if (result.reason === 'cap_exceeded') {
       return c.json(
-        { error: 'Packing location limit reached (30 per list)' },
+        { error: `Packing location limit reached (${PACKING_LOCATION_CAP} per list)` },
         422,
       )
     }
@@ -59,9 +75,8 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
 
 // Static /order is registered before /:locationId.
 packingLocationRoutes.put('/:id/packing-locations/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderPackingLocationsRequestSchema.safeParse(raw)
-  if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+  const parsed = await parseBody(c, reorderPackingLocationsRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c
     .get('repos')
     .packingLocations.reorder(c.req.param('id'), parsed.data)
@@ -72,9 +87,8 @@ packingLocationRoutes.put('/:id/packing-locations/order', async (c) => {
 packingLocationRoutes.patch(
   '/:id/packing-locations/:locationId',
   async (c) => {
-    const raw = await c.req.json().catch(() => null)
-    const parsed = updatePackingLocationRequestSchema.safeParse(raw)
-    if (!parsed.success) return c.json({ error: 'Invalid request body' }, 400)
+    const parsed = await parseBody(c, updatePackingLocationRequestSchema)
+    if (!parsed.ok) return parsed.response
     const result = await c
       .get('repos')
       .packingLocations.rename(

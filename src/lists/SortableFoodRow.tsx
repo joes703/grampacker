@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
 import type { FoodItemResponse } from '../../shared/food'
-import { asButtonRef } from '../lib/dnd'
-import { makeDnDId } from '../lib/dnd-ids'
+import { useSortableRow } from '../lib/use-sortable-row'
 import type { WeightUnit } from '../lib/weight'
 import InlineWeight from '../components/InlineWeight'
 import RowIconButton from '../components/RowIconButton'
 import {
+  COL_ICON,
+  COL_QTY,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
@@ -44,44 +43,28 @@ export default function SortableFoodRow({
   onUpdate,
   rowAction,
 }: Props) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('packing-food-item', food.id),
-    disabled: reorderPending,
-  })
-
-  // Same placing tint as SortableItemRow: the row being click-to-placed
-  // stays put and stays interactive, so it gets a marker, not the drag fade.
+  // Same placing tint as SortableItemRow (PLACING_ROW_STYLE): the row being
+  // click-to-placed stays put and stays interactive, so it gets a marker,
+  // not the drag fade.
   const isPlacing = useIsPlacing(food.id)
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    ...(isPlacing
-      ? { backgroundColor: '#eff6ff', boxShadow: 'inset 3px 0 0 0 #60a5fa' }
-      : null),
-  }
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'packing-food-item',
+    id: food.id,
+    disabled: reorderPending,
+    placing: isPlacing,
+  })
 
   return (
     <div
-      ref={setNodeRef}
-      style={sortableStyle}
+      ref={outerRef}
+      style={outerStyle}
       className={`${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${FLAT_TABLE_ROW_PADDING} gap-2 lg:gap-2.5 print:gap-1 transition-colors ${
         food.isPacked ? 'bg-gray-50 print:bg-transparent' : 'bg-white'
       }`}
     >
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
+        {...handleProps}
         disabled={reorderPending}
         variant="dragHandle"
         ariaLabel={`Reorder or move ${food.name}`}
@@ -129,11 +112,11 @@ export default function SortableFoodRow({
       {/* Worn slot stays empty (food is never worn); the consumable slot is
           always lit - food is consumable by definition, which is exactly why
           its grams already count toward consumable weight. */}
-      <span className="shrink-0 w-6 inline-flex items-center justify-center" />
-      <span className="shrink-0 w-6 inline-flex items-center justify-center">
+      <span className={`${COL_ICON} inline-flex items-center justify-center`} />
+      <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         <ConsumableIcon />
       </span>
-      <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
+      <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.unitCount}
       </span>
       {/* Same component and the same PACK_ROW_WEIGHT_CELL as the gear pack row:

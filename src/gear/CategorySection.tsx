@@ -1,19 +1,20 @@
-import { memo, useState, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X, MoreVertical } from 'lucide-react'
+import { memo, useState } from 'react'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import { useSortableRow, type SortableHandleProps } from '../lib/use-sortable-row'
 import { SortableGearItemRow } from './GearItemRow'
+import InlineRenameInput from '../components/InlineRenameInput'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
-import { useCommitOnce } from '../lib/use-commit-once'
 import {
+  COL_DATE,
+  COL_ICON,
+  COL_PRICE,
+  COL_WEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
@@ -21,7 +22,6 @@ import {
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
   INLINE_EDIT_FOCUS_RING,
-  POPOVER_SURFACE,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 
@@ -52,9 +52,7 @@ type CategorySectionProps = {
 
 function CategorySectionInner(
   props: CategorySectionProps & {
-    dragHandleRef?: (node: HTMLButtonElement | null) => void
-    dragHandleListeners?: DraggableSyntheticListeners
-    dragHandleAttributes?: DraggableAttributes
+    dragHandleProps?: SortableHandleProps
   },
 ) {
   const {
@@ -74,25 +72,22 @@ function CategorySectionInner(
     onRenameCategory,
     onDeleteCategory,
     itemReorderPending,
-    dragHandleRef,
-    dragHandleListeners,
-    dragHandleAttributes,
+    dragHandleProps,
   } = props
 
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(category?.name ?? '')
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (renaming) renameInputRef.current?.focus()
-  }, [renaming])
 
   function commitRename() {
     const trimmed = renameDraft.trim()
     if (trimmed && category && trimmed !== category.name) {
       onRenameCategory(category.id, trimmed)
     }
+    setRenaming(false)
+  }
+
+  function cancelRename() {
+    setRenameDraft(category?.name ?? '')
     setRenaming(false)
   }
 
@@ -154,20 +149,13 @@ function CategorySectionInner(
 
         {/* Category name / rename input */}
         {renaming ? (
-          <input
-            ref={renameInputRef}
+          <InlineRenameInput
             value={renameDraft}
-            onChange={(e) => setRenameDraft(e.target.value)}
-            onBlur={() => commitOnce(commitRename)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitOnce(commitRename)
-              if (e.key === 'Escape') {
-                commitOnce(() => {
-                  setRenameDraft(category?.name ?? '')
-                  setRenaming(false)
-                })
-              }
-            }}
+            onChange={setRenameDraft}
+            onSubmit={commitRename}
+            onCancel={cancelRename}
+            selectOnOpen={false}
+            ariaLabel="Category name"
             className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : (
@@ -205,20 +193,9 @@ function CategorySectionInner(
             name slightly earlier and leaves every column coordinate intact.
             Hidden while renaming: the rename input needs that flexible space,
             and dragging a section mid-rename is not a real interaction. */}
-        {/* Category drag handle. Deliberately a sibling BEFORE the trailing
-            cluster, not a child of it: that cluster's Price/Purchased/Weight/
-            kebab columns are width-matched to GearItemRow's right-side
-            columns, so adding a control inside it would shift every label off
-            its row column. Sitting here, it takes its width from the
-            flex-1 min-w-0 title instead, which only truncates a long category
-            name slightly earlier and leaves every column coordinate intact.
-            Hidden while renaming: the rename input needs that flexible space,
-            and dragging a section mid-rename is not a real interaction. */}
-        {!isUncategorized && dragHandleRef && !renaming && (
+        {!isUncategorized && dragHandleProps && !renaming && (
           <RowIconButton
-            ref={dragHandleRef}
-            {...dragHandleListeners}
-            {...dragHandleAttributes}
+            {...dragHandleProps}
             variant="dragHandle"
             touchSafe
             ariaLabel={`Reorder ${name}`}
@@ -229,9 +206,9 @@ function CategorySectionInner(
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
           <div className="flex items-center gap-1.5 ml-auto">
-            {/* Desktop column labels — widths and gap mirror GearItemRow's
-               right-side columns (w-20 cost, w-24 purchase date, w-24
-               weight, w-6 kebab) so labels sit directly above row values.
+            {/* Desktop column labels — each composes the same COL_* width
+               token as GearItemRow's matching cell (flat-table-styles), so
+               labels sit directly above row values by construction.
                No horizontal nudge is needed any more: the header now uses the
                row's own px-3 + gap-1.5, so the two rails share coordinates
                outright instead of compensating for a 4px difference.
@@ -244,14 +221,14 @@ function CategorySectionInner(
                kebab removed, so labels would no longer match columns). */}
             {items.length > 0 && !collapsed && (
               <div aria-hidden="true" className="hidden lg:contents">
-                <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_EYEBROW}`}>Price</span>
-                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Purchased</span>
-                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Weight</span>
+                <span className={`${COL_PRICE} text-right ${FLAT_TABLE_EYEBROW}`}>Price</span>
+                <span className={`${COL_DATE} text-right ${FLAT_TABLE_EYEBROW}`}>Purchased</span>
+                <span className={`${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW}`}>Weight</span>
                 {/* Uncategorized has no category-level kebab in the header,
                    but item rows still render a per-row kebab in non-select
                    mode. Without this spacer, the labels above would slide
                    1.875rem (w-6 + gap-1.5) right of the row column edges. */}
-                {!category && <span className="shrink-0 w-6" />}
+                {!category && <span className={COL_ICON} />}
               </div>
             )}
             {category && (
@@ -283,10 +260,7 @@ function CategorySectionInner(
             <RowIconButton
               touchSafe
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setRenameDraft(category?.name ?? '')
-                setRenaming(false)
-              }}
+              onClick={cancelRename}
               title="Cancel rename"
               ariaLabel="Cancel rename"
               icon={<X size={14} />}
@@ -339,31 +313,10 @@ function CategoryKebab({
   onRename: () => void
   onDelete: () => void
 }) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        touchSafe
-        ref={triggerRef}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (menuOpen) close()
-          else openMenu()
-        }}
-        ariaLabel="Category options"
-        icon={<MoreVertical size={14} />}
-      />
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label="Category actions"
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
+    <KebabMenu touchSafe ariaLabel="Category options" menuLabel="Category actions">
+      {({ close }) => (
+        <>
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
             Rename
           </RowMenuItem>
@@ -371,10 +324,9 @@ function CategoryKebab({
           <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
             Delete category
           </RowMenuItem>
-        </div>,
-        document.body,
+        </>
       )}
-    </>
+    </KebabMenu>
   )
 }
 
@@ -393,31 +345,15 @@ export const SortableCategorySection = memo(function SortableCategorySection(
   props: CategorySectionProps & { id: string; reorderPending?: boolean },
 ) {
   const { id, reorderPending, ...rest } = props
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: makeDnDId('category', id), disabled: reorderPending })
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'category',
+    id,
+    disabled: reorderPending,
+  })
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.4 : 1,
-      }}
-    >
-      <CategorySectionInner
-        {...rest}
-        dragHandleRef={asButtonRef(setActivatorNodeRef)}
-        dragHandleListeners={listeners}
-        dragHandleAttributes={attributes}
-      />
+    <div ref={outerRef} style={outerStyle}>
+      <CategorySectionInner {...rest} dragHandleProps={handleProps} />
     </div>
   )
 })

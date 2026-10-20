@@ -47,6 +47,10 @@ export type PackReorderResult =
 // are the union, and a per-table maximum would land a new gear row visually
 // ABOVE food already sitting at higher ranks in the same bag.
 //
+// Worn rows are counted. They render outside the packing tree but keep their
+// rank reserved, so excluding them would let an arrival land on a slot a
+// worn row will come back to.
+//
 // Identifiers are hand-written: drizzle renders interpolated columns
 // unqualified inside correlated subqueries (the AGENTS.md sql`` trap), and
 // this fragment is embedded into UPDATE ... SET on both tables.

@@ -861,3 +861,32 @@ describe('food: duplication carries the counting mode', () => {
     expect(copied.items[0]!.unitCount).toBe(4)
   })
 })
+
+describe('food: an unparseable body answers 400 with the shared copy', () => {
+  // Every other route family says 'Invalid request body'; food said
+  // 'Invalid request' until the shared parseBody helper ended the drift.
+  it('uses the same wording as every sibling route on all three write paths', async () => {
+    const { cookie } = await signUpVerifiedUser('food-copy@example.com', 'FC')
+    const listId = await createList(cookie, 'Trip')
+    await setDays(cookie, listId, 1)
+    const plan = await getFood(cookie, listId)
+    await addItem(cookie, listId, {
+      name: 'Oats',
+      weightGrams: 80,
+      quantity: 1,
+      slotIds: [slotOf(plan, 1, 'breakfast').id],
+    })
+    const itemId = (await getFood(cookie, listId)).items[0]!.id
+
+    const bad: Array<[string, string]> = [
+      ['PUT', `/api/lists/${listId}/food/days`],
+      ['POST', `/api/lists/${listId}/food/items`],
+      ['PATCH', `/api/lists/${listId}/food/items/${itemId}`],
+    ]
+    for (const [method, path] of bad) {
+      const res = await apiRequest(cookie, method, path, { nonsense: true })
+      expect(res.status, `${method} ${path}`).toBe(400)
+      expect(await res.json(), `${method} ${path}`).toEqual({ error: 'Invalid request body' })
+    }
+  })
+})

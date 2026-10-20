@@ -1,8 +1,6 @@
 import { z } from 'zod'
-
-// Same shape as the id guard in shared/lists.ts; kept local so this module
-// has no dependency on the list DTOs.
-const idSchema = z.string().min(1).max(64)
+import { decimalNumber } from './decimal'
+import { idSchema, nonEmptyPatch, uniqueIds } from './schema-primitives'
 
 // Food estimate DTOs and limits, shared by client and server.
 //
@@ -27,7 +25,7 @@ export const FOOD_SLOT_CAP = FOOD_DAY_CAP * 3
 export const MEALS = ['breakfast', 'lunch', 'dinner'] as const
 export type Meal = (typeof MEALS)[number]
 
-export const foodSlotResponseSchema = z.object({
+const foodSlotResponseSchema = z.object({
   id: z.string(),
   dayNumber: z.number().int(),
   meal: z.enum(MEALS),
@@ -79,19 +77,23 @@ export type SetFoodDaysRequest = z.infer<typeof setFoodDaysRequestSchema>
 const slotIdsSchema = z
   .array(idSchema)
   .max(FOOD_SLOT_CAP)
-  .refine((ids) => new Set(ids).size === ids.length, {
-    message: 'slotIds must be unique',
-  })
+  .refine(uniqueIds, { message: 'slotIds must be unique' })
 
-export const foodNameSchema = z.string().trim().min(1).max(128)
-export const foodWeightSchema = z.number().min(0).max(100000)
+const foodNameSchema = z.string().trim().min(1).max(128)
+// The same one-decimal bound as gear weight (shared/gear.ts
+// weightGramsSchema, where the rationale lives): the UI renders tenths, so
+// everything storable is displayable. The max is pinned to
+// MAX_ITEM_WEIGHT_GRAMS by src/lists/AddFoodForm.test.tsx. Values stored
+// before this bound existed stay readable - the response schema is a plain
+// number - so it gates new writes only.
+export const foodWeightSchema = decimalNumber({ min: 0, max: 100000, decimals: 1 })
 // The ceiling in ONE place for everything TypeScript can reach: the request
 // schema below, the add form's validation and max attribute, and the carrying
 // row's inline clamp. The DATABASE holds its own copy as a CHECK literal in
 // shipped migration 0017 - SQL cannot import a constant - and
 // scripts/quantity-bounds.test.ts is what keeps the two honest.
 export const FOOD_QUANTITY_MAX = 9999
-export const foodQuantitySchema = z.number().int().min(1).max(FOOD_QUANTITY_MAX)
+const foodQuantitySchema = z.number().int().min(1).max(FOOD_QUANTITY_MAX)
 
 export const createFoodItemRequestSchema = z
   .object({
@@ -109,27 +111,25 @@ export type CreateFoodItemRequest = z.infer<typeof createFoodItemRequestSchema>
 // slotIds OMITTED means "leave the associations alone"; slotIds: [] means
 // "unschedule this item". Those are different operations and the DTO has to
 // keep them distinguishable.
-export const updateFoodItemRequestSchema = z
-  .object({
-    name: foodNameSchema.optional(),
-    weightGrams: foodWeightSchema.optional(),
-    quantity: foodQuantitySchema.optional(),
-    isPerMeal: z.boolean().optional(),
-    slotIds: slotIdsSchema.optional(),
-    // Pack state. packingLocationId null means Unassigned; omitted means
-    // "leave the assignment alone" - the same absent-vs-null PATCH semantics
-    // as everything else. packSortOrder is deliberately NOT patchable here:
-    // ranks move only through the pack-order permutation endpoint.
-    isPacked: z.boolean().optional(),
-    isReady: z.boolean().optional(),
-    packingLocationId: idSchema.nullable().optional(),
-  })
-  .strict()
-  .refine((patch) => Object.keys(patch).length > 0, {
-    message: 'at least one field is required',
-  })
+export const updateFoodItemRequestSchema = nonEmptyPatch(
+  z
+    .object({
+      name: foodNameSchema.optional(),
+      weightGrams: foodWeightSchema.optional(),
+      quantity: foodQuantitySchema.optional(),
+      isPerMeal: z.boolean().optional(),
+      slotIds: slotIdsSchema.optional(),
+      // Pack state. packingLocationId null means Unassigned; omitted means
+      // "leave the assignment alone" - the same absent-vs-null PATCH semantics
+      // as everything else. packSortOrder is deliberately NOT patchable here:
+      // ranks move only through the pack-order permutation endpoint.
+      isPacked: z.boolean().optional(),
+      isReady: z.boolean().optional(),
+      packingLocationId: idSchema.nullable().optional(),
+    })
+    .strict(),
+)
 export type UpdateFoodItemRequest = z.infer<typeof updateFoodItemRequestSchema>
-
 
 /**
  * What you CARRY of a food item: the one definition, imported by the server

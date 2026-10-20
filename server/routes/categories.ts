@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { parseBody } from './parse-body'
 import {
   CATEGORY_CAP,
   createCategoryRequestSchema,
@@ -39,11 +40,8 @@ categoryRoutes.get('/', async (c) => {
 })
 
 categoryRoutes.post('/', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = createCategoryRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, createCategoryRequestSchema)
+  if (!parsed.ok) return parsed.response
   const result = await c.get('repos').categories.create(parsed.data.name)
   if (!result.ok) {
     return c.json(
@@ -57,22 +55,16 @@ categoryRoutes.post('/', async (c) => {
 // Registered before /:id so the static segment cannot be captured as a
 // param (Hono prefers static matches, but explicit order costs nothing).
 categoryRoutes.put('/order', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = reorderRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, reorderRequestSchema)
+  if (!parsed.ok) return parsed.response
   const ok = await c.get('repos').categories.reorder(parsed.data)
   if (!ok) return c.json({ error: 'Not found' }, 404)
   return c.body(null, 204)
 })
 
 categoryRoutes.patch('/:id', async (c) => {
-  const raw = await c.req.json().catch(() => null)
-  const parsed = updateCategoryRequestSchema.safeParse(raw)
-  if (!parsed.success) {
-    return c.json({ error: 'Invalid request body' }, 400)
-  }
+  const parsed = await parseBody(c, updateCategoryRequestSchema)
+  if (!parsed.ok) return parsed.response
   const row = await c
     .get('repos')
     .categories.rename(c.req.param('id'), parsed.data.name)

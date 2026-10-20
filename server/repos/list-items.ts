@@ -1,6 +1,9 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
+import { appendSortOrder } from './append-sort-order'
+import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
-import { categories, gearItems, listFoodItems, listItems, lists } from '../db/schema'
+import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
 import {
   isPackRankRangeError,
   isPackRankUniqueViolation,
@@ -130,34 +133,13 @@ function classifyWriteError(
 // write runs, and any failure rolls back everything the method wrote.
 // remove() is a single statement and needs no explicit transaction.
 export function createListItemsRepo(db: Db, userId: string) {
-  function ownsList(tx: Tx, listId: string): boolean {
-    const row = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
-      .limit(1)
-      .get()
-    return Boolean(row)
-  }
-
   function nextItemSortOrder(listId: string) {
-    return sql`coalesce((select max(${listItems.sortOrder}) + 1 from ${listItems} where ${listItems.listId} = ${listId} and ${listItems.userId} = ${userId}), 0)`
-  }
-
-  // The pack rank a row takes when it ARRIVES in a cohort: one past the
-  // cohort's current UNION maximum (gear and food together - the bag's
-  // contents are the union since 0022; see pack-reorder.ts). Cohort-scoped,
-  // not list-scoped - a list-wide maximum would make a location's orphans
-  // interleave into Unassigned by ranks that mean nothing to the user.
-  //
-  // Worn rows are counted. They render outside the packing tree but keep their
-  // rank reserved, so excluding them here would let an arrival land on a slot a
-  // worn row will come back to.
-  function nextPackSortOrderInCohort(
-    listId: string,
-    locationId: string | null,
-  ) {
-    return nextUnionPackRank(listId, userId, locationId)
+    return appendSortOrder(
+      listItems,
+      listItems.sortOrder,
+      eq(listItems.listId, listId),
+      eq(listItems.userId, userId),
+    )
   }
 
   function ownedGear(tx: Tx, gearItemId: string): GearItemRow | undefined {
@@ -176,7 +158,7 @@ export function createListItemsRepo(db: Db, userId: string) {
   function resetFlag(listId: string, flag: 'isPacked' | 'isReady'): boolean {
     return db.transaction(
       (tx) => {
-        if (!ownsList(tx, listId)) return false
+        if (!ownsList(tx, userId, listId)) return false
         const now = Date.now()
         tx.update(listItems)
           .set({ [flag]: false, updatedAt: now })
@@ -208,7 +190,7 @@ export function createListItemsRepo(db: Db, userId: string) {
     // null = list not owned (the route's 404); [] = owned but empty.
     async forList(listId: string): Promise<ListItemWithGear[] | null> {
       return db.transaction((tx) => {
-        if (!ownsList(tx, listId)) return null
+        if (!ownsList(tx, userId, listId)) return null
         // Joined same-owner read; the FK guarantees item.userId ==
         // gear.userId, the join condition re-asserts it anyway.
         return tx
@@ -234,7 +216,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): ListItemWriteResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             const gear = ownedGear(tx, gearItemId)
@@ -252,7 +234,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 // cohort - independently of the document rank. Copying
                 // sortOrder here would drop it into the MIDDLE of pack order
                 // once the two sequences have diverged.
-                packSortOrder: nextPackSortOrderInCohort(listId, null),
+                packSortOrder: nextUnionPackRank(listId, userId, null),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -279,7 +261,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): ListItemWriteResult => {
-            if (!ownsList(tx, listId)) {
+            if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
             if (input.categoryId !== null) {
@@ -307,7 +289,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 name: input.name,
                 description: input.description,
                 weightGrams: input.weightGrams,
-                sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -325,7 +307,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 isConsumable: input.isConsumable,
                 sortOrder: nextItemSortOrder(listId),
                 // Unassigned cohort, same as addExisting.
-                packSortOrder: nextPackSortOrderInCohort(listId, null),
+                packSortOrder: nextUnionPackRank(listId, userId, null),
                 createdAt: now,
                 updatedAt: now,
               })
@@ -392,27 +374,14 @@ export function createListItemsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          // Owned-set membership in JS rather than inArray over the input:
-          // one query whatever the input size, and the per-list cap bounds
-          // the scan at 300 rows.
-          const owned = new Set(
-            tx
-              .select({ id: listItems.id })
-              .from(listItems)
-              .where(and(eq(listItems.listId, listId), eq(listItems.userId, userId)))
-              .all()
-              .map((r) => r.id),
-          )
-          if (!updates.every((u) => owned.has(u.id))) return false
-          for (const u of updates) {
-            tx.update(listItems)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(listItems.id, u.id), eq(listItems.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            listItems,
+            { id: listItems.id, sortOrder: listItems.sortOrder },
+            [eq(listItems.listId, listId), eq(listItems.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },
@@ -477,7 +446,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       set.packSortOrder = sql`case
         when ${listItems.packingLocationId} is ${patch.packingLocationId}
         then ${listItems.packSortOrder}
-        else ${nextPackSortOrderInCohort(listId, patch.packingLocationId)}
+        else ${nextUnionPackRank(listId, userId, patch.packingLocationId)}
       end`
     }
     // A real assignment is accepted only when the target location belongs

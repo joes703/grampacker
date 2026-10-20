@@ -98,7 +98,7 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   deriveListMode,
-  isLegacyListPath,
+  isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
   type ListDetailMode,
@@ -283,7 +283,7 @@ function ListDetailInner({
   // /lists/<id>/organize/ then rendered Pack without the rewrite.
   const location = useLocation()
   const navigate = useNavigate()
-  const isLegacyPath = isLegacyListPath(location.pathname, listId)
+  const isLegacyPath = isLegacyOrganizePath(location.pathname, listId)
   const mode: ListDetailMode = deriveListMode(location.pathname, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
@@ -976,7 +976,7 @@ function ListDetailInner({
   //
   // Be precise about what that costs, because the obvious reading is wrong:
   // this repo runs the compiler's LINT rules but not its transform (plain
-  // `react()` in vite.node.config.ts, no babel-plugin-react-compiler in
+  // `react()` in vite.client.config.ts, no babel-plugin-react-compiler in
   // package.json). So nothing memoizes these for us - they genuinely
   // recompute every render. That is affordable on its own terms: a handful of
   // linear passes over at most 30 locations and 300 items, well under a
@@ -1367,8 +1367,10 @@ function ListDetailInner({
       },
       onSaveGearName: (gearId: string, n: string) =>
         updateGearItem.mutate({ id: gearId, patch: { name: n } }),
+      // ''->null: the row's description cell emits '' on clear (allowEmpty),
+      // and the write contract takes null, never ''.
       onSaveGearDescription: (gearId: string, d: string) =>
-        updateGearItem.mutate({ id: gearId, patch: { description: d } }),
+        updateGearItem.mutate({ id: gearId, patch: { description: d || null } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
       onEditGearItem: openGearEditor,
