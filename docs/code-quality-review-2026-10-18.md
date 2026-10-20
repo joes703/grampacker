@@ -120,6 +120,10 @@ share DTO is the one surface AGENTS.md names as an invariant and sits in the
 middle of request-validation plumbing. `shares.ts` and `list-import.ts` are
 natural seams.
 
+**CLOSED (Phase 3 PR).** Split into `shared/lists.ts` (CRUD, items,
+packing locations, reorders), `shared/shares.ts` (the public share DTOs) and
+`shared/list-import.ts`; import sites updated, no re-export shims.
+
 ### A5. `ListDetailPage` wrapper drills six lists-query props into Inner — LOW (readability)
 
 `src/lists/ListDetailPage.tsx:209-257`: the outer component exists to supply
@@ -534,6 +538,10 @@ the UI renders tenths, and `shared/lists.ts:289` documents food weight as
 This is the one place the schema duplication has already produced a
 behavioral inconsistency rather than just a hazard.
 
+**CLOSED (Phase 3 PR).** `foodWeightSchema` is now
+`decimalNumber({min: 0, max: 100000, decimals: 1})`; gates new writes only.
+`shared/food-weight.test.ts` pins it.
+
 ### E3. `shared/lists.ts` re-inlines schema fragments two lines below a comment forbidding it — MEDIUM (DRY)
 
 `lists.ts:416-418` says "costSchema is imported from ./gear rather than
@@ -545,6 +553,9 @@ Same pattern at `lists.ts:137` (quick-add name creates a gear item without
 the gear name shape) and `lists.ts:402` (import category name re-inlines
 `categoryNameSchema`).
 
+**CLOSED (Phase 3 PR).** Quick-add and the list import now compose
+`gearNameSchema`, `categoryNameSchema` and the shared `descriptionSchema`.
+
 ### E4. Five copies of the id/tempId guard, three of `uniqueIds` — MEDIUM (DRY)
 
 `z.string().min(1).max(64)` appears as `idSchema` in `shared/gear.ts:41`,
@@ -555,6 +566,10 @@ the gear name shape) and `lists.ts:402` (import category name re-inlines
 — but the repo already has the leaf-module pattern for this
 (`shared/decimal.ts`), and lists.ts imports from gear.ts anyway. No sync tests.
 
+**CLOSED (Phase 3 PR).** `shared/schema-primitives.ts` (leaf) owns
+`idSchema`, `tempIdSchema`, `uniqueIds`, `descriptionSchema`,
+`sortOrderSchema` and the `nonEmptyPatch` refine.
+
 ### E5. The import relational-integrity check is factored in gear.ts, rewritten by hand in lists.ts — MEDIUM (DRY)
 
 `shared/gear.ts:209-240` (`refineImportGearRelations`) implements
@@ -564,6 +579,10 @@ messages like `'unreferenced category tempId'`) plus a structurally identical
 gear half. The worn/consumable refine repeats three times in lists.ts
 (:151, :178, :439). ~70 collapsible lines, plus 400-message drift risk.
 
+**CLOSED (Phase 3 PR).** `refineTempIdRelations(noun, declared, refs, ctx)`
+in gear.ts serves the gear import and both list-import layers; messages
+unchanged. `wornConsumableExclusive` wraps all three worn/consumable sites.
+
 ### E6. Empty-patch guard: two idioms, two messages — LOW (inconsistency)
 
 `gear.ts:131` and `lists.ts:76,175` use `Object.values(v).some(f => f !==
@@ -571,6 +590,10 @@ undefined)` / `'empty patch'`; `food.ts:128` uses `Object.keys(patch).length >
 0` / `'at least one field is required'`. A TS caller passing
 `{name: undefined}` passes food's check and fails the others; inconsistent
 400 copy leaks to clients.
+
+**CLOSED (Phase 3 PR).** One `nonEmptyPatch` idiom (defined-field check,
+message `'empty patch'`) on all four patch schemas; named behavior change -
+food now rejects `{name: undefined}`. `shared/empty-patch.test.ts` pins it.
 
 ---
 
@@ -708,7 +731,11 @@ caller outside its own file's wrapper.
 `FORBIDDEN`) is closed. **Phase 2 PR:** the server files it touched
 (`copyName`, `remapPackingLocationId`, the in-file-only cap matchers). The
 rest is handled on a touched-file basis in Phases 2–6; any residue after
-Phase 6 is accepted.
+Phase 6 is accepted. **Phase 3 PR:** the `shared/` portion - in-file-only
+schemas unexported, dead type aliases removed; request-contract types named
+by `docs/authz-matrix.md` (e.g. `QuickAddListItemRequest`,
+`ImportGearRequest`) stay exported because the binding matrix references
+them.
 
 knip flags 43 unused exports + 40 unused types; spot-checks show most are
 "exported but only used in-file" rather than dead (e.g. `copyName`,

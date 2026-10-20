@@ -4,8 +4,8 @@ import {
   listResponseSchema,
   listItemResponseSchema,
   packingLocationResponseSchema,
-  sharedListResponseSchema,
 } from '../../shared/lists'
+import { sharedListResponseSchema } from '../../shared/shares'
 import {
   categoryResponseSchema,
   gearItemResponseSchema,
