@@ -255,9 +255,12 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   non-ASCII.
 - Export a symbol only when another file imports it (tests count). A dead
   `export` advertises an API that does not exist and `noUnusedLocals`
-  cannot see it, so it rots silently. The in-file-only exports left after
-  the 2026-10 cleanup are accepted on a touched-file basis; do not add new
-  ones.
+  cannot see it, so it rots silently. Exception: request-contract types
+  that `docs/authz-matrix.md` names (e.g. `QuickAddListItemRequest`,
+  `ImportGearRequest`) stay exported even with no code importer - the
+  binding matrix references them. The other in-file-only exports left
+  after the 2026-10 cleanup are accepted on a touched-file basis; do not
+  add new ones.
 - Finish what the change implies (all five call sites, not one), but do not
   expand scope beyond the task.
 
