@@ -397,6 +397,12 @@ could use a cached instance. *Codex caveats:* no measured performance penalty
 was demonstrated, and the per-request incident holder has a real isolation
 purpose (`server/auth.ts:100`) that any caching must preserve.
 
+**CLOSED (Phase 2b PR):** `sessionAuth(env)` caches one holderless instance
+per env object (WeakMap) for `requireSession`; `createAuth(env, incident)` now
+requires the holder and stays per-request for `/api/auth/*`, so a
+request-bound instance cannot enter the cache. `server/auth-cache.test.ts`
+pins both sides.
+
 ### D5. `ownsList` implemented three times, identically — MEDIUM (DRY)
 
 **CLOSED (Phase 2 PR).** One ownsList(tx, userId, listId) in repos/owns-list.ts.
