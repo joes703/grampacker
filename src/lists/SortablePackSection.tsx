@@ -1,16 +1,16 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
+import { useSortableRow } from '../lib/use-sortable-row'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MoreVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
-import { createPortal } from 'react-dom'
+import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
 import { asButtonRef } from '../lib/dnd'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
-import { FLAT_TABLE_HEADER_TITLE, POPOVER_SURFACE } from '../components/flat-table-styles'
+import { FLAT_TABLE_HEADER_TITLE } from '../components/flat-table-styles'
 
 // The drag + admin chrome for a packing-location section in pack mode.
 //
@@ -33,36 +33,22 @@ export function useSortableLocationSection({
   location: PackingLocation
   reorderPending: boolean
 }) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-    isOver,
-  } = useSortable({
-    id: makeDnDId('packing-location', location.id),
+  const { outerRef, outerStyle, isOver, handleProps } = useSortableRow({
+    kind: 'packing-location',
+    id: location.id,
     // A temp- id is an optimistic row the server has not confirmed. Dragging
     // it would address a location that does not exist yet.
     disabled: reorderPending || location.id.startsWith('temp-'),
   })
 
   return {
-    setNodeRef,
+    setNodeRef: outerRef,
     isOver,
-    style: {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.4 : 1,
-    },
+    style: outerStyle,
     dragHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
+        {...handleProps}
         disabled={reorderPending}
         variant="dragHandle"
         ariaLabel={`Drag ${location.name} to reorder`}
@@ -174,54 +160,35 @@ export function PackSectionMenu({
   onRename: () => void
   onDelete: () => void
 }) {
-  const { open, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        touchSafe
-        ref={triggerRef}
-        onClick={() => open ? close() : openMenu()}
-        ariaLabel={`${title} options`}
-        icon={<MoreVertical size={14} />}
-      />
-      {open && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label={`${title} actions`}
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
-          {itemBacked ? (
-            <RowMenuItem icon={<PackageOpen size={13} />} onClick={() => {
+    <KebabMenu touchSafe ariaLabel={`${title} options`} menuLabel={`${title} actions`}>
+      {({ close }) =>
+        itemBacked ? (
+          <RowMenuItem icon={<PackageOpen size={13} />} onClick={() => {
+            close()
+            onDelete()
+          }}>
+            Stop using as container
+          </RowMenuItem>
+        ) : (
+          <>
+            <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
+              close()
+              onRename()
+            }}>
+              Rename
+            </RowMenuItem>
+            <RowMenuSeparator />
+            <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
               close()
               onDelete()
             }}>
-              Stop using as container
+              Delete location
             </RowMenuItem>
-          ) : (
-            <>
-              <RowMenuItem icon={<Pencil size={13} />} onClick={() => {
-                close()
-                onRename()
-              }}>
-                Rename
-              </RowMenuItem>
-              <RowMenuSeparator />
-              <RowMenuItem icon={<Trash2 size={13} />} tone="danger" onClick={() => {
-                close()
-                onDelete()
-              }}>
-                Delete location
-              </RowMenuItem>
-            </>
-          )}
-        </div>,
-        document.body,
-      )}
-    </>
+          </>
+        )
+      }
+    </KebabMenu>
   )
 }
 

@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { FORM_INPUT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FORM_INPUT, SECONDARY_BUTTON } from '../components/flat-table-styles'
 import { LIST_CAP, LIST_ITEM_CAP, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
@@ -37,13 +36,7 @@ export default function CreateListFromSelectionDialog({
   const canSubmit = !blocked && !saving && trimmed.length > 0
 
   return (
-    <Modal open onClose={onClose} title="Create list from selection" className="w-full max-w-md" closeOnBackdropClick={false}>
-      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-        <h2 className="text-base font-semibold text-gray-900">Create list from selection</h2>
-        <button type="button" onClick={onClose} aria-label="Close" className={`${ROW_CONTROL_TARGET} text-gray-500 hover:text-gray-600`}>
-          <X size={18} />
-        </button>
-      </div>
+    <Modal open onClose={onClose} title="Create list from selection" header className="w-full max-w-md" closeOnBackdropClick={false}>
       <form
         onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit(trimmed, description.trim() || null) }}
       >
@@ -117,7 +110,7 @@ export default function CreateListFromSelectionDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              className={SECONDARY_BUTTON}
             >
               Cancel
             </button>

@@ -1,26 +1,26 @@
 import { memo, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { WeightUnit } from '../lib/weight'
-import { asButtonRef } from '../lib/dnd'
-import { makeDnDId } from '../lib/dnd-ids'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import { useSortableRow } from '../lib/use-sortable-row'
 import InlineText from '../components/InlineText'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineWeight from '../components/InlineWeight'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import {
+  COL_DATE,
+  COL_PRICE,
+  COL_WEIGHT,
+  COL_WEIGHT_MOBILE,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
-  POPOVER_SURFACE,
+  ROW_HOVER_REVEAL,
 } from '../components/flat-table-styles'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
@@ -78,7 +78,7 @@ export default function GearItemRow({
             pick up a small leading icon, active rows take no space. */}
         <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
         <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-        <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+        <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
           <ItemWeightValue grams={item.weightGrams} unit={weightUnit} />
         </span>
       </button>
@@ -156,19 +156,23 @@ export default function GearItemRow({
             </div>
             {(item.description !== null || !selectMode) && (
               <div className="flex-[3] min-w-0">
+                {/* allowEmpty + the ''->null conversion: clearing the field
+                    is how a description is removed, and the write contract
+                    takes null, never ''. */}
                 <InlineText
                   value={item.description ?? ''}
                   placeholder="Add description"
-                  onSave={(v) => onInlineSave(item.id, { description: v })}
+                  allowEmpty
+                  onSave={(v) => onInlineSave(item.id, { description: v || null })}
                   className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
                 />
               </div>
             )}
           </div>
-          <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+          <span className={`${COL_PRICE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatCost(item.cost)}
           </span>
-          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+          <span className={`${COL_DATE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatPurchaseDate(item.purchaseDate)}
           </span>
           {/* The same control the list rows use. This page could only edit a
@@ -181,7 +185,7 @@ export default function GearItemRow({
             unit={weightUnit}
             onSave={selectMode ? undefined : (w) => onInlineSave(item.id, { weightGrams: w })}
             itemName={item.name}
-            className="shrink-0 w-24 text-gray-600"
+            className={`${COL_WEIGHT} text-gray-600`}
           />
           {!selectMode && (
             <GearRowKebab
@@ -231,12 +235,9 @@ function formatPurchaseDate(date: string | null): string {
   return DATE_FORMATTER.format(d)
 }
 
-// Kebab popover — three-dot button + portal-rendered menu. Mirrors
-// `RowKebab` on the list page (src/lists/ItemRow.tsx) so both pages share
-// one row-action pattern. Items: Edit (opens GearItemDialog), Delete from
-// inventory (red, opens the confirm dialog). Each row owns its own popover
-// state so multiple kebabs can't open at once and the dismiss listeners
-// only target the relevant menu.
+// Row kebab — Edit (opens GearItemDialog), quick status, Delete from
+// inventory (red, opens the confirm dialog). Mirrors `RowKebab` on the list
+// page (src/lists/ItemRow.tsx) so both pages share one row-action pattern.
 function GearRowKebab({
   status,
   onEdit,
@@ -248,26 +249,10 @@ function GearRowKebab({
   onDelete: () => void
   onSetStatus: (s: GearStatus) => void
 }) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        ariaLabel="Item options"
-        icon={<MoreVertical size={14} />}
-      />
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label="Item actions"
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
+    <KebabMenu ariaLabel="Item options" menuLabel="Item actions">
+      {({ close }) => (
+        <>
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
             Edit
           </RowMenuItem>
@@ -288,10 +273,9 @@ function GearRowKebab({
           >
             Delete from inventory
           </RowMenuItem>
-        </div>,
-        document.body,
+        </>
       )}
-    </>
+    </KebabMenu>
   )
 }
 
@@ -313,24 +297,11 @@ function GearRowKebab({
 export const SortableGearItemRow = memo(function SortableGearItemRow(
   props: Omit<Props, 'dragHandle' | 'outerRef' | 'outerStyle'> & { reorderPending?: boolean },
 ) {
-  const {
-    attributes,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: makeDnDId('gear-item', props.item.id),
+  const { outerRef, outerStyle, handleProps } = useSortableRow({
+    kind: 'gear-item',
+    id: props.item.id,
     disabled: props.selectMode || props.reorderPending,
   })
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
 
   // Use a dedicated grip at every viewport. Keep it inside the flat-table
   // surface: those surfaces use overflow-hidden for rounded corners, so an
@@ -340,14 +311,12 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
   const handle =
     props.selectMode ? undefined : (
       <RowIconButton
-        ref={asButtonRef(setActivatorNodeRef)}
-        {...listeners}
-        {...attributes}
+        {...handleProps}
         variant="dragHandle"
         touchSafe
         ariaLabel={`Reorder ${props.item.name}`}
         icon={<GripVertical size={14} />}
-        className={props.isBelowLg ? '' : 'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity'}
+        className={props.isBelowLg ? '' : ROW_HOVER_REVEAL}
       />
     )
 
@@ -355,8 +324,8 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
     <GearItemRow
       {...props}
       dragHandle={handle}
-      outerRef={setNodeRef}
-      outerStyle={sortableStyle}
+      outerRef={outerRef}
+      outerStyle={outerStyle}
     />
   )
 })

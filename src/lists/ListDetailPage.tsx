@@ -1367,8 +1367,10 @@ function ListDetailInner({
       },
       onSaveGearName: (gearId: string, n: string) =>
         updateGearItem.mutate({ id: gearId, patch: { name: n } }),
+      // ''->null: the row's description cell emits '' on clear (allowEmpty),
+      // and the write contract takes null, never ''.
       onSaveGearDescription: (gearId: string, d: string) =>
-        updateGearItem.mutate({ id: gearId, patch: { description: d } }),
+        updateGearItem.mutate({ id: gearId, patch: { description: d || null } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
       onEditGearItem: openGearEditor,

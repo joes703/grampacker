@@ -126,3 +126,43 @@ describe('Modal', () => {
     expect(document.activeElement).toBe(dialog)
   })
 })
+
+// Opt-in header chrome: one title + close-X recipe instead of each dialog
+// re-typing its own h2. The X must honor preventDismiss - it is a dismissal
+// path like Escape and the backdrop.
+describe('Modal header', () => {
+  it('renders the title heading and a close X that calls onClose', () => {
+    const onClose = vi.fn()
+    const { getByRole } = render(
+      <Modal open onClose={onClose} title="Create thing" header>
+        <div>body</div>
+      </Modal>,
+    )
+    expect(getByRole('heading', { name: 'Create thing' })).toBeTruthy()
+    fireEvent.click(getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the close X under preventDismiss', () => {
+    const onClose = vi.fn()
+    const { getByRole } = render(
+      <Modal open onClose={onClose} title="Saving" header preventDismiss>
+        <div>body</div>
+      </Modal>,
+    )
+    const x = getByRole('button', { name: 'Close' }) as HTMLButtonElement
+    expect(x.disabled).toBe(true)
+    fireEvent.click(x)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('renders no header by default', () => {
+    const { queryByRole } = render(
+      <Modal open onClose={() => {}} title="Plain">
+        <div>body</div>
+      </Modal>,
+    )
+    expect(queryByRole('heading')).toBeNull()
+    expect(queryByRole('button', { name: 'Close' })).toBeNull()
+  })
+})

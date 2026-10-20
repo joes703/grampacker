@@ -58,3 +58,37 @@ describe('InlineText commit-once', () => {
     expect(onSave).toHaveBeenLastCalledWith('Second')
   })
 })
+
+// Empty drafts: by default a cleared draft commits nothing (name fields keep
+// the non-blank rule). `allowEmpty` opts a field into emitting '' so its
+// caller can convert to the null the write contract requires - the contract
+// rejects '' (shared/schema-primitives.ts descriptionSchema).
+describe('InlineText empty drafts', () => {
+  it('without allowEmpty, clearing the value commits nothing', () => {
+    const { onSave, input } = openEditor()
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('with allowEmpty, clearing a non-empty value commits the empty string', () => {
+    const onSave = vi.fn()
+    render(<InlineText value="Old note" onSave={onSave} allowEmpty />)
+    fireEvent.click(screen.getByText('Old note'))
+    const input = screen.getByDisplayValue('Old note')
+    fireEvent.change(input, { target: { value: '  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith('')
+  })
+
+  it('with allowEmpty, an already-empty value commits nothing', () => {
+    const onSave = vi.fn()
+    render(
+      <InlineText value="" placeholder="Add description" onSave={onSave} allowEmpty />,
+    )
+    fireEvent.click(screen.getByText('Add description'))
+    fireEvent.blur(screen.getByDisplayValue(''))
+    expect(onSave).not.toHaveBeenCalled()
+  })
+})

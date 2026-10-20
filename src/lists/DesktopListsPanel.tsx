@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
   DndContext,
@@ -15,7 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CopyPlus, Download, MoreVertical, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { CopyPlus, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import {
   queryKeys,
   fetchLists,
@@ -30,7 +29,8 @@ import { useCurrentListActions } from './use-current-list-actions'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
+import InlineRenameInput from '../components/InlineRenameInput'
 import { useCommitOnce } from '../lib/use-commit-once'
 import DraftBadge from '../components/DraftBadge'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -39,7 +39,6 @@ import {
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_ROW,
   FLAT_TABLE_SURFACE,
-  POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -90,6 +89,23 @@ type DialogState =
   | { type: 'confirm-delete'; list: List }
   | { type: 'import-preview'; rows: ListCsvRow[]; filename: string }
   | { type: 'import-error'; message: string }
+
+// Hoisted trigger for the header plus menu (KebabMenu `trigger` must be a
+// stable component, not an inline closure, or it remounts every render).
+function HeaderPlusTrigger({ ref, onClick, open }: Omit<KebabTriggerProps, 'disabled'>) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      aria-label="New list or import CSV"
+      aria-expanded={open}
+      className={`ml-auto ${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
+    >
+      <Plus size={14} />
+    </button>
+  )
+}
 
 export default function DesktopListsPanel({
   lists: listsSeed,
@@ -178,22 +194,6 @@ export default function DesktopListsPanel({
     if (nextPath) void navigate(nextPath)
   }
 
-  // Header plus-button menu: New list / Import CSV. Anchored to the plus
-  // button via useAnchoredMenu (same hook every row kebab uses), so dismiss
-  // semantics (outside mousedown, scroll, resize, escape) match every other
-  // popover in the app. Destructured because the lint plugin
-  // (react-hooks/refs) reads any nested `.menuPos` access as a ref access
-  // during render; pulling the values out at the top of the component sides
-  // with the row pattern already in use across the codebase.
-  const {
-    open: headerMenuOpen,
-    openMenu: openHeaderMenu,
-    close: closeHeaderMenu,
-    triggerRef: headerMenuTriggerRef,
-    menuRef: headerMenuRef,
-    menuPos: headerMenuPos,
-  } = useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
-
   return (
     <div className={`flex flex-col ${FLAT_TABLE_SURFACE} ${className ?? ''}`}>
       {/* Section header — visually matches the gear picker's "Add from gear"
@@ -202,34 +202,21 @@ export default function DesktopListsPanel({
           competing with the gear search field below. */}
       <div className="relative flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
         <span className={FLAT_TABLE_EYEBROW}>Lists</span>
-        <button
-          ref={headerMenuTriggerRef}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            e.preventDefault()
-            if (headerMenuOpen) closeHeaderMenu()
-            else openHeaderMenu()
-          }}
-          aria-label="New list or import CSV"
-          aria-expanded={headerMenuOpen}
-          className={`ml-auto ${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-200/60 hover:text-gray-800`}
+        {/* The plus trigger keeps its own chrome (darker hover to read
+            against the gray-50 strip), so it goes through `trigger`;
+            the menu, anchor and dismiss semantics stay the shared ones. */}
+        <KebabMenu
+          width={44}
+          ariaLabel="New list or import CSV"
+          menuLabel="Create or import list"
+          trigger={HeaderPlusTrigger}
         >
-          <Plus size={14} />
-        </button>
-        {headerMenuOpen && headerMenuPos && 'left' in headerMenuPos &&
-          createPortal(
-            <div
-              ref={headerMenuRef}
-              role="group"
-              aria-label="Create or import list"
-              className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
-              style={{ top: headerMenuPos.top, left: headerMenuPos.left }}
-            >
+          {({ close }) => (
+            <>
               <RowMenuItem
                 icon={<Plus size={13} />}
                 onClick={() => {
-                  closeHeaderMenu()
+                  close()
                   setDialog({ type: 'creating', draft: '' })
                 }}
               >
@@ -238,15 +225,15 @@ export default function DesktopListsPanel({
               <RowMenuItem
                 icon={<Upload size={13} />}
                 onClick={() => {
-                  closeHeaderMenu()
+                  close()
                   openImportPicker()
                 }}
               >
                 Import CSV
               </RowMenuItem>
-            </div>,
-            document.body,
+            </>
           )}
+        </KebabMenu>
       </div>
 
       {/* Hidden CSV input. The file picker fires from openImportPicker(),
@@ -510,15 +497,6 @@ function ListPanelRow({
   outerStyle,
   dragHandle,
 }: ListPanelRowProps) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (renaming) renameInputRef.current?.select()
-  }, [renaming])
-
   // Highlight state: soft blue rest tint + medium-weight name so the user
   // can locate the open list immediately on every render. Hover stays on
   // gray-100 across both states so click feedback is consistent.
@@ -533,17 +511,11 @@ function ListPanelRow({
         className={rowClass}
       >
         {dragHandle}
-        <input
-          ref={renameInputRef}
-          autoFocus
-          type="text"
+        <InlineRenameInput
           value={renameDraft}
-          onChange={(e) => onRenameDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitOnce(onSubmitRename)
-            if (e.key === 'Escape') commitOnce(onCancelRename)
-          }}
-          onBlur={() => commitOnce(onSubmitRename)}
+          onChange={onRenameDraftChange}
+          onSubmit={onSubmitRename}
+          onCancel={onCancelRename}
           className={`min-w-0 flex-1 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>
@@ -573,31 +545,9 @@ function ListPanelRow({
       </Link>
       {list.isDraft && <DraftBadge className="ml-2 shrink-0" />}
 
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          e.preventDefault()
-          if (menuOpen) close()
-          else openMenu()
-        }}
-        aria-label="List options"
-        aria-expanded={menuOpen}
-        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
-      >
-        <MoreVertical size={14} />
-      </button>
-
-      {menuOpen && menuPos && 'left' in menuPos &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="group"
-            aria-label={`${list.name} actions`}
-            className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
-            style={{ top: menuPos.top, left: menuPos.left }}
-          >
+      <KebabMenu touchSafe width={44} ariaLabel="List options" menuLabel={`${list.name} actions`}>
+        {({ close }) => (
+          <>
             <RowMenuItem
               icon={<Pencil size={13} />}
               onClick={() => {
@@ -637,9 +587,9 @@ function ListPanelRow({
             >
               Delete
             </RowMenuItem>
-          </div>,
-          document.body,
+          </>
         )}
+      </KebabMenu>
     </li>
   )
 }

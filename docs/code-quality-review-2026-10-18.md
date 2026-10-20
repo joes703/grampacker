@@ -154,6 +154,11 @@ per site and `MoveToLocationMenu.tsx:238` switches to a modal on mobile; a
 shared shell must take those as part of its contract. The eight-fold scaffold
 duplication itself is confirmed.
 
+**CLOSED (Phase 4a PR).** `src/components/KebabMenu.tsx` is the one shell
+(trigger, anchor, dismiss, aria, surface); width, the mobile-modal escape
+hatch and a custom trigger component are props. All eight sites converted;
+`GearOptionsButton` adopted it and gained flip/clamp (named change).
+
 ### B2. dnd-kit sortable-wrapper wiring re-spelled five-plus times — MEDIUM (DRY)
 
 `useSortable` destructure → `{ transform: CSS.Transform.toString(transform),
@@ -173,6 +178,11 @@ not every wrapper repeats the same grip classes — `SortablePackSection.tsx:60`
 differs — so "identical five times" overstates it; the core style/wiring
 recipe duplication is confirmed.
 
+**CLOSED (Phase 4a PR).** `src/lib/use-sortable-row.ts` owns the recipe
+(typed id, outer style, spreadable handleProps); the placing tint is
+`PLACING_ROW_STYLE`, the grip reveal is `ROW_HOVER_REVEAL`. The container
+section stays raw on purpose (two drag identities).
+
 ### B3. The inline-rename/edit idiom is hand-rolled four-plus times beyond the Inline\* trio — MEDIUM (DRY)
 
 `InlineText`/`InlineWeight`/`InlineQuantity` already each carry their own copy
@@ -188,6 +198,10 @@ silently diverge per surface. *Codex caveat:* several of these sites already
 share `useCommitOnce`, so "the entire re-entrancy mechanism hand-rolled" is
 too strong; what repeats is the keyboard/blur/draft idiom around it.
 
+**CLOSED (Phase 4a PR).** `src/components/InlineRenameInput.tsx` owns the
+machine; all four raw sites converted. Converging the Inline* trio is
+PARKED.md 2026-10-20 (non-mechanical diff).
+
 ### B4. Modal chrome re-typed per dialog; `title` is aria-only — MEDIUM-LOW (DRY/inconsistency)
 
 Every dialog re-renders its own `<h2>` of the string it already passed as
@@ -202,6 +216,12 @@ import-error modal (1033–1049) is `ConfirmDialog` minus the cancel button.
 *Codex caveat:* `Modal.title` being aria-only is the component's documented
 API (`Modal.tsx:16`), not an accident — the finding is the re-typed chrome,
 not a Modal bug.
+
+**CLOSED (Phase 4a PR).** Modal gained the opt-in `header` (title + X,
+preventDismiss-aware); `SECONDARY_BUTTON` replaced the 8 cancel strings;
+`ConfirmDialog` gained the one-button variant and absorbed the inline
+import-error modal. Headers that genuinely differ (scroll-pinned, subtitle,
+the compact mobile family) deliberately keep their own.
 
 ### B5. The identity-guarded "attempt" save pattern is hand-copied four times — MEDIUM (DRY)
 
@@ -317,6 +337,10 @@ stubs that must mirror `src/gear/GearItemRow.tsx:168-185`'s cell widths
 hand-maintained spacer for the uncategorized case; the lists side repeats the
 pattern (`CategoryGroup` header stubs vs `ItemRow` cells).
 `flat-table-styles.ts` exists precisely to own such recipes.
+
+**CLOSED (Phase 4a PR).** `COL_*` width tokens (one per column); both
+tables' headers and rows compose the same token. Documented in
+`docs/ui-density.md` "Column widths".
 
 ### C6. `lib/csv/gear.ts` ↔ `lib/csv/list.ts` share a 30-line clone — MEDIUM (DRY)
 

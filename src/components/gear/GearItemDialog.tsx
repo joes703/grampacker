@@ -3,7 +3,7 @@ import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } fr
 import type { Category, GearItem } from '../../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
-import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET } from '../flat-table-styles'
+import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../flat-table-styles'
 import FormLabel from '../FormLabel'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
@@ -508,7 +508,7 @@ export default function GearItemDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              className={SECONDARY_BUTTON}
             >
               Cancel
             </button>

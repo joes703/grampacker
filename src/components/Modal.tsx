@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { addToastHost, removeToastHost } from '../lib/toast-host'
+import { ROW_CONTROL_TARGET } from './flat-table-styles'
 
 // Wrapper around the native <dialog> element opened with showModal(), which
 // gives us focus trap, top-layer rendering, scroll lock, and Escape-to-close
@@ -31,6 +33,14 @@ type Props = {
    * pointing at a hidden dialog with no way back to the error/retry UI.
    */
   preventDismiss?: boolean
+  /**
+   * Opt-in shared header chrome: the title as a visible heading plus a
+   * close X, above the children. The X is a dismissal path like Escape and
+   * the backdrop, so it is disabled under preventDismiss. Dialogs whose
+   * header genuinely differs (a subtitle inside it, or a header pinned
+   * above its own scroll region) keep their own.
+   */
+  header?: boolean
 }
 
 export default function Modal({
@@ -41,6 +51,7 @@ export default function Modal({
   className,
   closeOnBackdropClick = true,
   preventDismiss = false,
+  header = false,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   // Where ToastViewport renders while this dialog is open (src/lib/toast-host.ts):
@@ -142,6 +153,20 @@ export default function Modal({
       // every dialog - ConfirmDialog, MobileOptionsModal, Settings.
       className={`m-auto rounded-xl bg-white p-0 shadow-lg backdrop:bg-black/40 focus:outline-none print:hidden ${className ?? ''}`}
     >
+      {header && (
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 pt-5 pb-3">
+          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={preventDismiss}
+            aria-label="Close"
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600 disabled:opacity-40`}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
       {children}
       {/* The toast region portaled in here is position: fixed and relies on the
           VIEWPORT staying its containing block, so it sits where it does
