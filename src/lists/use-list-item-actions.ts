@@ -10,6 +10,7 @@ import {
   makeOptimisticDelete,
   type ListItemPatch,
 } from '../lib/queries'
+import { arrayShape, fieldScopedCache } from '../lib/queries/field-scoped'
 import { mutationKeys } from '../lib/queries/keys'
 import { showToast } from '../lib/toast'
 import { nextUnionPackRankFor } from './pack-rows'
@@ -70,6 +71,14 @@ export function useListItemActions(
 ) {
   const qc = useQueryClient()
 
+  // Field-scoped access to this list's items cache (snapshot only the touched
+  // fields; restore onto the CURRENT row): src/lib/queries/field-scoped.ts.
+  const listItemsCache = fieldScopedCache(
+    qc,
+    queryKeys.listItems(listId),
+    arrayShape<ListItemWithGear>(),
+  )
+
   const addItem = useMutation({
     mutationKey: mutationKeys.addListItem(listId),
     mutationFn: (item: GearItem) => addListItem(listId, item.id),
@@ -107,15 +116,16 @@ export function useListItemActions(
     }),
   })
 
-  // Hand-rolled FIELD-SCOPED optimistic lifecycle instead of
-  // makeOptimisticUpdate: the generic helper snapshots and restores the
-  // WHOLE cached array, so a failing patch's rollback would wipe every
-  // concurrent sibling's successful optimistic write (fail Packed while
-  // Ready succeeds on the same item -> the Ready tick vanishes). Here
-  // onMutate snapshots only the fields THIS patch touches and onError
-  // restores only those fields onto the CURRENT row, so concurrent patches
-  // compose - the same pattern as use-list-reset-actions' field-scoped
-  // rollbacks.
+  // FIELD-SCOPED instead of makeOptimisticUpdate: the generic helper
+  // snapshots and restores the WHOLE cached array, so a failing patch's
+  // rollback would wipe every concurrent sibling's successful optimistic
+  // write (fail Packed while Ready succeeds on the same item -> the Ready
+  // tick vanishes). fieldScopedCache.patchRow/restoreRow compose instead.
+  //
+  // patchRow's cancel is awaited, like the shared helpers in
+  // lib/queries/optimistic.ts: this is a checkbox tap (Packed / Ready), not
+  // a drag, so there is no drop animation that needs the write to land in
+  // the same tick - the reason reorder alone stays sync.
   //
   // mutationKey drives the last-one-out invalidation gate in onSettled. Two
   // parallel updateItem calls (e.g. tapping Packed then Ready in quick
@@ -134,32 +144,10 @@ export function useListItemActions(
     mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(listId, itemId, patch),
-    onMutate: async ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) => {
-      // Awaited, like the shared helpers in lib/queries/optimistic.ts: an
-      // unawaited cancel lets an in-flight refetch resolve after the optimistic
-      // write and clobber it with stale server state. This is a checkbox tap
-      // (Packed / Ready), not a drag, so there is no drop animation that needs the
-      // write to land in the same tick - the reason reorder alone stays sync.
-      await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-      const rows = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-      const row = rows?.find((i) => i.id === itemId)
-      if (!row) return undefined
-      const patchKeys = (Object.keys(patch) as (keyof ListItemPatch)[]).filter(
-        (k) => patch[k] !== undefined,
-      )
-      const prevFields = Object.fromEntries(
-        patchKeys.map((k) => [k, row[k]]),
-      ) as Partial<ListItemWithGear>
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr?.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
-      )
-      return { itemId, prevFields }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (!ctx) return
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr?.map((i) => (i.id === ctx.itemId ? { ...i, ...ctx.prevFields } : i)),
-      )
+    onMutate: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
+      listItemsCache.patchRow(itemId, patch),
+    onError: (_err, { itemId }, prevFields) => {
+      if (prevFields) listItemsCache.restoreRow(itemId, prevFields)
     },
     onSettled: () => {
       // `> 1` = true siblings still pending (the settling mutation counts
