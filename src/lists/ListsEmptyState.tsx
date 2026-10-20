@@ -1,29 +1,17 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router'
 import { Plus, Upload } from 'lucide-react'
 import { FORM_INPUT } from '../components/flat-table-styles'
-import {
-  queryKeys,
-  createList,
-  makeOptimisticInsert,
-} from '../lib/queries'
-import { mutationKeys } from '../lib/queries/keys'
-import type { List } from '../lib/types'
-import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
+import { useCurrentListActions, CREATE_FAILED_COPY } from './use-current-list-actions'
 import { useListImportFlow } from './use-list-import-flow'
 import PrimaryButton from '../components/PrimaryButton'
 
-export const CREATE_FAILED_COPY =
-  "Couldn't confirm the list was created. Refresh to check before trying again."
+export { CREATE_FAILED_COPY }
 
 // Empty state shown to a brand-new user when they have zero lists.
 // Two paths: name-and-create a blank list, or import a CSV which creates
 // a list and populates it in one go (mirrors the import button on the
 // lists page header for users who already have lists).
 export default function ListsEmptyState() {
-  const navigate = useNavigate()
-  const qc = useQueryClient()
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -31,36 +19,22 @@ export default function ListsEmptyState() {
   // one shared hook; the data path inside it invalidates and navigates.
   const { openImportPicker, importUi } = useListImportFlow()
 
-  const createMut = useMutation({
-    mutationKey: mutationKeys.createList(),
-    mutationFn: (n: string) => createList(n),
-    // sortOrder 0 is correct here: this empty state only renders when
-    // lists.length === 0, where nextListSortOrder([]) === 0, so the new
-    // list is the first one. The server assigns the same slot.
-    ...makeOptimisticInsert<List, string>({
-      qc,
-      queryKey: queryKeys.lists(),
-      optimistic: (n) => optimisticListPlaceholder({ name: n, sortOrder: 0 }),
-    }),
-    onSuccess: (list) => {
-      void navigate(`/lists/${list.id}`)
-    },
-    // Toasted, because this surface cannot report inline: the optimistic
-    // placeholder makes lists.length 1, ListsPage stops rendering the empty
-    // state, and the component holding the inline error - and the
-    // call-site onError below - is gone before the rejection arrives. The
-    // call-site onError still fires while the component is mounted, so the
-    // inline copy stays for that case; the toast is what survives the
-    // unmount. Copy claims only what a rejected request proves: the server
-    // may have committed and lost only the response.
-    meta: { errorToast: CREATE_FAILED_COPY },
-  })
+  // THE create path - the same optimistic placeholder, append-slot snapshot
+  // and navigate-on-success every other surface uses. This surface used to
+  // hand-roll its own mutation under the same mutation key with a different
+  // variables shape. The placeholder's failure feedback is the hook's toast:
+  // the placeholder makes lists.length 1, ListsPage stops rendering the
+  // empty state, and the component holding the inline error - and the
+  // call-site onError below - is gone before the rejection arrives. The
+  // call-site onError still fires while the component is mounted, so the
+  // inline copy stays for that case; the toast is what survives the unmount.
+  const { createListMut, submitCreateList } = useCurrentListActions()
 
   function submit() {
     const trimmed = name.trim()
-    if (!trimmed || createMut.isPending) return
+    if (!trimmed || createListMut.isPending) return
     setError(null)
-    createMut.mutate(trimmed, {
+    submitCreateList(trimmed, {
       onError: (err) => {
         setError(err instanceof Error ? err.message : CREATE_FAILED_COPY)
       },
@@ -86,7 +60,7 @@ export default function ListsEmptyState() {
           />
           <PrimaryButton
             onClick={submit}
-            disabled={!name.trim() || createMut.isPending}
+            disabled={!name.trim() || createListMut.isPending}
             className="gap-1.5"
           >
             <Plus size={14} /> Create
