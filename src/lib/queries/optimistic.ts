@@ -233,8 +233,8 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
 // Its rollback restores the WHOLE array as it was at onMutate, undoing any other
 // write to the cache that landed in the meantime, even one the server saved.
 // Where other rows are written concurrently (the list-items and food caches,
-// with their Packed/Ready ticks) roll back field-scoped instead, as updateItem
-// and moveItem in src/lists/use-list-item-actions.ts do.
+// with their Packed/Ready ticks) roll back field-scoped instead, through
+// fieldScopedCache in src/lib/queries/field-scoped.ts.
 export function makeOptimisticUpdate<TList extends { id: string }, TInput>(opts: CommonOpts & {
   id: (input: TInput) => string
   apply: (item: TList, input: TInput) => TList
