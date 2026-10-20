@@ -1,11 +1,7 @@
-import { createPortal } from 'react-dom'
-import { ArrowUpDown, MapPin, MoreVertical, PackageMinus, PackagePlus, Pencil, Trash2 } from 'lucide-react'
+import { ArrowUpDown, MapPin, PackageMinus, PackagePlus, Pencil, Trash2 } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
-import RowIconButton from '../components/RowIconButton'
-import { POPOVER_SURFACE } from '../components/flat-table-styles'
+import KebabMenu, { type KebabMenuContext } from '../components/KebabMenu'
 import { RowMenuItem } from '../components/RowMenuItem'
-import MobileOptionsModal from '../components/MobileOptionsModal'
 
 type BaseProps = {
   itemId: string
@@ -105,9 +101,6 @@ export default function MoveToLocationMenu({
   onUseAsContainer,
   onStopUsingAsContainer,
 }: Props) {
-  const { open, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 224 })
-
   const choices = [
     ...locations
       .filter((location) =>
@@ -117,7 +110,7 @@ export default function MoveToLocationMenu({
       .map((location) => ({ id: location.id as string | null, name: location.name })),
     { id: null, name: 'Unassigned' },
   ]
-  const moveRows = choices.map((choice) => (
+  const moveRows = ({ close }: KebabMenuContext) => choices.map((choice) => (
     <RowMenuItem
       key={choice.id ?? '__unassigned__'}
       icon={<MapPin size={13} />}
@@ -130,7 +123,7 @@ export default function MoveToLocationMenu({
       {choice.name}
     </RowMenuItem>
   ))
-  const rows = (
+  const rows = ({ close, triggerRef }: KebabMenuContext) => (
     <>
       {/* Leads the menu, behind its own rule. Editing is the only entry that
           changes the ITEM rather than where it sits, so it does not want to
@@ -184,7 +177,7 @@ export default function MoveToLocationMenu({
           <div className="my-1 border-t border-gray-100" />
         </>
       ) : null}
-      {moveRows}
+      {moveRows({ close, triggerRef })}
       {onStopUsingAsContainer ? (
         <>
           <div className="my-1 border-t border-gray-100" />
@@ -225,32 +218,16 @@ export default function MoveToLocationMenu({
   )
 
   return (
-    <>
-      <RowIconButton
-        touchSafe
-        ref={triggerRef}
-        onClick={() => open ? close() : openMenu()}
-        disabled={disabled}
-        ariaLabel={`Open ${itemName} packing options`}
-        title="Packing options"
-        icon={<MoreVertical size={14} />}
-      />
-      {mobile && open ? (
-        <MobileOptionsModal open={open} onClose={close} title={`${itemName} packing options`}>
-          <div ref={menuRef} className="space-y-1">{rows}</div>
-        </MobileOptionsModal>
-      ) : !mobile && open && menuPos && 'left' in menuPos ? createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label={`${itemName} packing options`}
-          className={`fixed z-50 w-56 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
-          {rows}
-        </div>,
-        document.body,
-      ) : null}
-    </>
+    <KebabMenu
+      touchSafe
+      width={56}
+      mobileModal={mobile}
+      disabled={disabled}
+      ariaLabel={`Open ${itemName} packing options`}
+      menuLabel={`${itemName} packing options`}
+      title="Packing options"
+    >
+      {rows}
+    </KebabMenu>
   )
 }

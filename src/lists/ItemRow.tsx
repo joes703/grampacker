@@ -1,16 +1,15 @@
 import { type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 // This module is on the public share view's critical path
 // (SharePage -> CategoryGroup -> ItemRow), and a share view is read-only: it
 // can never drag anything. A VALUE import from @dnd-kit here would pull the
 // whole drag-and-drop library into the anonymous bundle. That is exactly what
 // SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
-import { CircleMinus, MoreVertical, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
+import { CircleMinus, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import {
   FLAT_TABLE_BODY_TEXT,
@@ -20,7 +19,6 @@ import {
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
   PACK_ROW_WEIGHT_CELL,
-  POPOVER_SURFACE,
   PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
@@ -533,26 +531,10 @@ function RowKebab({
   onDeleteFromInventory?: () => void
   onSetGearStatus?: (status: GearStatus) => void
 }) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        ariaLabel="Item options"
-        icon={<MoreVertical size={14} />}
-      />
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label="Item actions"
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
+    <KebabMenu ariaLabel="Item options" menuLabel="Item actions">
+      {({ close }) => (
+        <>
           <RowMenuItem
             icon={<CircleMinus size={13} />}
             onClick={() => { close(); onRemoveFromList() }}
@@ -586,9 +568,8 @@ function RowKebab({
               </RowMenuItem>
             </>
           )}
-        </div>,
-        document.body,
+        </>
       )}
-    </>
+    </KebabMenu>
   )
 }

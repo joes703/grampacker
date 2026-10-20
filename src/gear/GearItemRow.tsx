@@ -1,17 +1,16 @@
 import { memo, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MoreVertical, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, Pencil, Trash2 } from 'lucide-react'
 import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import InlineText from '../components/InlineText'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineWeight from '../components/InlineWeight'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
@@ -20,7 +19,6 @@ import {
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_ROW,
-  POPOVER_SURFACE,
 } from '../components/flat-table-styles'
 import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
@@ -231,12 +229,9 @@ function formatPurchaseDate(date: string | null): string {
   return DATE_FORMATTER.format(d)
 }
 
-// Kebab popover — three-dot button + portal-rendered menu. Mirrors
-// `RowKebab` on the list page (src/lists/ItemRow.tsx) so both pages share
-// one row-action pattern. Items: Edit (opens GearItemDialog), Delete from
-// inventory (red, opens the confirm dialog). Each row owns its own popover
-// state so multiple kebabs can't open at once and the dismiss listeners
-// only target the relevant menu.
+// Row kebab — Edit (opens GearItemDialog), quick status, Delete from
+// inventory (red, opens the confirm dialog). Mirrors `RowKebab` on the list
+// page (src/lists/ItemRow.tsx) so both pages share one row-action pattern.
 function GearRowKebab({
   status,
   onEdit,
@@ -248,26 +243,10 @@ function GearRowKebab({
   onDelete: () => void
   onSetStatus: (s: GearStatus) => void
 }) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        ref={triggerRef}
-        onClick={(e) => { e.stopPropagation(); if (menuOpen) close(); else openMenu() }}
-        ariaLabel="Item options"
-        icon={<MoreVertical size={14} />}
-      />
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label="Item actions"
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
+    <KebabMenu ariaLabel="Item options" menuLabel="Item actions">
+      {({ close }) => (
+        <>
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onEdit() }}>
             Edit
           </RowMenuItem>
@@ -288,10 +267,9 @@ function GearRowKebab({
           >
             Delete from inventory
           </RowMenuItem>
-        </div>,
-        document.body,
+        </>
       )}
-    </>
+    </KebabMenu>
   )
 }
 

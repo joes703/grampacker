@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import {
   DndContext,
@@ -37,13 +36,12 @@ import DraftBadge from '../components/DraftBadge'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { useNow } from '../lib/use-now'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
+import KebabMenu from '../components/KebabMenu'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
-  POPOVER_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -559,8 +557,6 @@ function ListRow({
   outerStyle,
   dragHandle,
 }: ListRowProps) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 176 })
   const renameInputRef = useRef<HTMLInputElement>(null)
   const commitOnce = useCommitOnce()
 
@@ -627,58 +623,42 @@ function ListRow({
 
       <RowMeta list={list} now={now} />
 
-      {/* Kebab. Hidden during rename above. Live ARIA expanded so screen
-          readers track the menu state. */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          e.preventDefault()
-          if (menuOpen) close()
-          else openMenu()
-        }}
-        aria-label="List options"
-        aria-expanded={menuOpen}
-        className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-600`}
+      {/* Kebab. Hidden during rename above. */}
+      <KebabMenu
+        touchSafe
+        width={44}
+        icon={<MoreVertical size={16} />}
+        ariaLabel="List options"
+        menuLabel={`${list.name} actions`}
       >
-        <MoreVertical size={16} />
-      </button>
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label={`${list.name} actions`}
-          className={`fixed z-50 w-44 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
-          <RowMenuItem
-            icon={<Pencil size={13} />}
-            onClick={() => { close(); onStartRename() }}
-          >
-            Rename
-          </RowMenuItem>
-          <RowMenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
-            Share…
-          </RowMenuItem>
-          <RowMenuItem
-            icon={<Download size={13} />}
-            onClick={() => { close(); onExport() }}
-            disabled={exporting}
-          >
-            {exporting ? 'Exporting…' : 'Export CSV'}
-          </RowMenuItem>
-          <RowMenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
-            Duplicate
-          </RowMenuItem>
-          <RowMenuSeparator />
-          <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
-            Delete
-          </RowMenuItem>
-        </div>,
-        document.body,
-      )}
+        {({ close }) => (
+          <>
+            <RowMenuItem
+              icon={<Pencil size={13} />}
+              onClick={() => { close(); onStartRename() }}
+            >
+              Rename
+            </RowMenuItem>
+            <RowMenuItem icon={<Globe size={13} />} onClick={() => { close(); onShare() }}>
+              Share…
+            </RowMenuItem>
+            <RowMenuItem
+              icon={<Download size={13} />}
+              onClick={() => { close(); onExport() }}
+              disabled={exporting}
+            >
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </RowMenuItem>
+            <RowMenuItem icon={<CopyPlus size={13} />} onClick={() => { close(); onDuplicate() }}>
+              Duplicate
+            </RowMenuItem>
+            <RowMenuSeparator />
+            <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
+              Delete
+            </RowMenuItem>
+          </>
+        )}
+      </KebabMenu>
     </li>
   )
 }

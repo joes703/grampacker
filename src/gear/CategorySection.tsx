@@ -1,15 +1,14 @@
 import { memo, useState, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X, MoreVertical } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { asButtonRef } from '../lib/dnd'
 import { makeDnDId } from '../lib/dnd-ids'
-import { useAnchoredMenu } from '../lib/use-anchored-menu'
 import { SortableGearItemRow } from './GearItemRow'
+import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { useCommitOnce } from '../lib/use-commit-once'
@@ -21,7 +20,6 @@ import {
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
   INLINE_EDIT_FOCUS_RING,
-  POPOVER_SURFACE,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 
@@ -330,31 +328,10 @@ function CategoryKebab({
   onRename: () => void
   onDelete: () => void
 }) {
-  const { open: menuOpen, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: 192 })
-
   return (
-    <>
-      <RowIconButton
-        touchSafe
-        ref={triggerRef}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (menuOpen) close()
-          else openMenu()
-        }}
-        ariaLabel="Category options"
-        icon={<MoreVertical size={14} />}
-      />
-
-      {menuOpen && menuPos && 'left' in menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="group"
-          aria-label="Category actions"
-          className={`fixed z-50 w-48 py-1 ${POPOVER_SURFACE}`}
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
+    <KebabMenu touchSafe ariaLabel="Category options" menuLabel="Category actions">
+      {({ close }) => (
+        <>
           <RowMenuItem icon={<Pencil size={13} />} onClick={() => { close(); onRename() }}>
             Rename
           </RowMenuItem>
@@ -362,10 +339,9 @@ function CategoryKebab({
           <RowMenuItem icon={<Trash2 size={13} />} onClick={() => { close(); onDelete() }} tone="danger">
             Delete category
           </RowMenuItem>
-        </div>,
-        document.body,
+        </>
       )}
-    </>
+    </KebabMenu>
   )
 }
 

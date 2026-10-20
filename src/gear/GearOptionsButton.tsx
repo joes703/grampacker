@@ -1,8 +1,5 @@
-import { useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Settings2 } from 'lucide-react'
-import { usePortalPopover } from '../lib/use-portal-popover'
-import { POPOVER_SURFACE } from '../components/flat-table-styles'
+import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
 import GearOptionsContent from './GearOptionsContent'
 
 type Props = {
@@ -20,56 +17,43 @@ type Props = {
   libraryReady: boolean
 }
 
-// Desktop popover trigger for Gear page rare/utility actions (New category,
-// Import/Export CSV, Collapse all, Expand all). Mirrors the ListSettingsButton shape:
-// usePortalPopover for dismiss + portal-rendered panel anchored to the
-// trigger's bottom-right. Hidden at <md because MobileGearActionBar owns
-// the equivalent surface there.
-export default function GearOptionsButton({ libraryReady, ...props }: Props) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  const open = pos !== null
-
-  function openPopover() {
-    if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
-  }
-
-  usePortalPopover({
-    isOpen: open,
-    onClose: () => setPos(null),
-    triggerRef,
-    contentRef: popoverRef,
-  })
-
+// The labeled toolbar trigger. Hoisted because KebabMenu's `trigger` must be
+// a stable component; `disabled` arrives through the trigger contract
+// (KebabMenu forwards its own disabled prop).
+function OptionsTrigger({ ref, onClick, open, disabled }: KebabTriggerProps) {
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => (open ? setPos(null) : openPopover())}
-        disabled={!libraryReady}
-        title="Gear options"
-        aria-label="Gear options"
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        <Settings2 size={14} />
-        Options
-      </button>
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title="Gear options"
+      aria-label="Gear options"
+      aria-expanded={open}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      <Settings2 size={14} />
+      Options
+    </button>
+  )
+}
 
-      {open && pos && createPortal(
-        <div
-          ref={popoverRef}
-          className={`fixed z-50 w-64 p-2 ${POPOVER_SURFACE}`}
-          style={{ top: pos.top, right: pos.right }}
-        >
-          <GearOptionsContent {...props} onAction={() => setPos(null)} />
-        </div>,
-        document.body,
-      )}
-    </>
+// Desktop popover trigger for Gear page rare/utility actions (New category,
+// Import/Export CSV, Collapse all, Expand all). Hidden at <md because
+// MobileGearActionBar owns the equivalent surface there. The panel goes
+// through the shared KebabMenu shell, which also gives it the viewport
+// flip/clamp the old hand-anchored version lacked.
+export default function GearOptionsButton({ libraryReady, ...props }: Props) {
+  return (
+    <KebabMenu
+      width={64}
+      contentClassName="p-2"
+      ariaLabel="Gear options"
+      menuLabel="Gear options"
+      disabled={!libraryReady}
+      trigger={OptionsTrigger}
+    >
+      {({ close }) => <GearOptionsContent {...props} onAction={close} />}
+    </KebabMenu>
   )
 }
