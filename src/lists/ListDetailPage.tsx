@@ -1,9 +1,8 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
 import {
   queryKeys,
@@ -30,7 +29,7 @@ import {
   clearLastListPath,
   getListIdFromListPath,
 } from '../lib/last-list-path'
-import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { parseDnDId } from '../lib/dnd-ids'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { useStableWornItems } from '../lib/use-stable-worn-items'
 import {
@@ -78,12 +77,12 @@ import {
   type ListDetailMode,
 } from './list-detail-mode'
 import { selectPackGroupingState } from './packing-grouping'
-import { buildPackingTree, type PackingTreeLocation } from './packing-tree'
+import { buildPackingTree } from './packing-tree'
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { useListDnd, EMPTY_FOOD_ITEMS } from './use-list-dnd'
 import MoveToLocationMenu from './MoveToLocationMenu'
 import PackLocationControls from './PackLocationControls'
-import { PackLocationSection } from './PackLocationSection'
+import PackingLocationTree from './PackingLocationTree'
 import PrintListHeader from './PrintListHeader'
 import { PlacementProvider } from './placement-context'
 import { DroppableUnassignedSection } from './SortablePackSection'
@@ -1048,75 +1047,39 @@ function ListDetailInner({ listId }: { listId: string }) {
     </>
   )
 
-  function renderPackingLocationNode(
-    node: PackingTreeLocation,
-    depth = 0,
-  ): ReactNode {
-    const location = node.location
-    const containerItem = node.containerItem
-    return (
-      <PackLocationSection
-        key={location.id}
-        node={node}
-        depth={depth}
-        groupProps={sharedGroupProps}
-        renderRowAction={renderPackRowAction}
-        packFoodRows={foodByLocation.get(location.id) ?? EMPTY_FOOD_ITEMS}
-        renderFoodRowAction={packFoodRowAction}
-        containerAction={containerItem ? (
-          <MoveToLocationMenu
-            itemId={containerItem.id}
-            itemName={containerItem.gearItem.name}
-            currentLocationId={containerItem.packingLocationId}
-            locations={realLocations}
-            mobile={isBelowLg}
-            disabled={itemDragPending}
-            locationsUnavailable={!packingLocationsResolved}
-            containerCreationDisabled={
-              packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
-            }
-            isContainer
-            excludedLocationIds={containerMoveExclusions.get(containerItem.id)}
-            onMove={(locationId) => requestMove(containerItem.id, locationId)}
-            // The container's own row. Removing it necessarily takes the
-            // location with it (container_list_item_id cascades) and drops its
-            // contents to Unassigned - requestRemoveListItem routes exactly
-            // this case through a confirm that names both consequences.
-            onRemoveFromList={() => requestRemoveListItem(containerItem)}
-            // A container's own row lives in the section header, so the
-            // ordinary row kebab never renders for it. Without this, the one
-            // item you cannot edit from Pack would be the bag itself.
-            onEdit={() => openGearEditor(containerItem.gearItem.id)}
-            onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
-          />
-        ) : undefined}
-        itemReorderPending={anyItemReorderPending}
-        locationReorderPending={locationReorderPending || locationCreationPending}
-        movePending={itemDragPending}
-        renaming={renamingLocationId === location.id}
-        onStartRename={() => setRenamingLocationId(location.id)}
-        onCancelRename={() => setRenamingLocationId(null)}
-        onRename={(name) => renameLocation.mutate({ id: location.id, name })}
-        onDelete={() => setDeleteLocationTarget(location)}
-      >
-        {/* Nested containers get their OWN SortableContext. Sorting is
-            scoped to a set of siblings, so without a context per level a
-            nested section resolves against the root list, the strategy's
-            auto-shift computes against the wrong neighbors, and a nested
-            reorder produces no usable drop. */}
-        {node.children.length > 0 && (
-          <SortableContext
-            items={node.children.map((child) =>
-              makeDnDId('packing-location', child.location.id),
-            )}
-            strategy={verticalListSortingStrategy}
-          >
-            {node.children.map((child) => renderPackingLocationNode(child, depth + 1))}
-          </SortableContext>
-        )}
-      </PackLocationSection>
-    )
-  }
+  // The container header's menu, built here beside the row menus because it
+  // shares their orchestration (requestMove, requestRemoveListItem,
+  // openGearEditor). PackingLocationTree calls back into this per node.
+  const renderContainerAction = (
+    containerItem: ListItemWithGear,
+    location: PackingLocation,
+  ) => (
+    <MoveToLocationMenu
+      itemId={containerItem.id}
+      itemName={containerItem.gearItem.name}
+      currentLocationId={containerItem.packingLocationId}
+      locations={realLocations}
+      mobile={isBelowLg}
+      disabled={itemDragPending}
+      locationsUnavailable={!packingLocationsResolved}
+      containerCreationDisabled={
+        packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
+      }
+      isContainer
+      excludedLocationIds={containerMoveExclusions.get(containerItem.id)}
+      onMove={(locationId) => requestMove(containerItem.id, locationId)}
+      // The container's own row. Removing it necessarily takes the
+      // location with it (container_list_item_id cascades) and drops its
+      // contents to Unassigned - requestRemoveListItem routes exactly
+      // this case through a confirm that names both consequences.
+      onRemoveFromList={() => requestRemoveListItem(containerItem)}
+      // A container's own row lives in the section header, so the
+      // ordinary row kebab never renders for it. Without this, the one
+      // item you cannot edit from Pack would be the bag itself.
+      onEdit={() => openGearEditor(containerItem.gearItem.id)}
+      onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
+    />
+  )
 
   // ── Loading / not found ────────────────────────────────────────────────────
 
@@ -1483,14 +1446,22 @@ function ListDetailInner({ listId }: { listId: string }) {
                               reorderPending={anyItemReorderPending}
                             />
                           </DroppableUnassignedSection>
-                          <SortableContext
-                            items={packingTree.roots.map((node) =>
-                              makeDnDId('packing-location', node.location.id),
-                            )}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {packingTree.roots.map((node) => renderPackingLocationNode(node))}
-                          </SortableContext>
+                          <PackingLocationTree
+                            roots={packingTree.roots}
+                            groupProps={sharedGroupProps}
+                            renderRowAction={renderPackRowAction}
+                            renderFoodRowAction={packFoodRowAction}
+                            renderContainerAction={renderContainerAction}
+                            foodByLocation={foodByLocation}
+                            itemReorderPending={anyItemReorderPending}
+                            locationReorderPending={locationReorderPending || locationCreationPending}
+                            movePending={itemDragPending}
+                            renamingLocationId={renamingLocationId}
+                            onStartRename={setRenamingLocationId}
+                            onCancelRename={() => setRenamingLocationId(null)}
+                            onRename={(id, name) => renameLocation.mutate({ id, name })}
+                            onDeleteLocation={setDeleteLocationTarget}
+                          />
                         </>
                       ) : (
                         <>
