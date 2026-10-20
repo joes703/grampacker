@@ -27,16 +27,12 @@ import {
   fetchGearItems,
   fetchLists,
   createListFromSelection,
-  importGearItems,
   reorderCategories,
   reorderGearItems,
   makeOptimisticReorder,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { gearItemsToCsv, parseGearCsv, downloadCsv, type GearCsvRow } from '../lib/csv'
-import { assertGearImportWithinCaps, planGearImport } from '../lib/csv/import-plan'
-import { useCsvFileInput } from '../lib/use-csv-file-input'
-import { SECONDARY_BUTTON } from '../components/flat-table-styles'
+import { gearItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
 import type { Category, GearItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -48,8 +44,6 @@ import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
-import ImportPreviewDialog from '../components/ImportPreviewDialog'
-import Modal from '../components/Modal'
 import GearItemDialog from '../components/gear/GearItemDialog'
 import InlineCreateCategory from '../components/InlineCreateCategory'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
@@ -60,8 +54,8 @@ import GearOptionsButton from './GearOptionsButton'
 import { type GearOptionsHandlers } from './GearOptionsContent'
 import ConfirmDialog from '../components/ConfirmDialog'
 import StatusPanel from '../components/StatusPanel'
-import PrimaryButton from '../components/PrimaryButton'
 import { useDocumentTitle } from '../lib/use-document-title'
+import { useGearImportFlow } from './use-gear-import-flow'
 import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
@@ -90,9 +84,6 @@ type DialogState =
   | { type: 'add-category'; session: number }
   | { type: 'bulk-move' }
   | { type: 'bulk-delete' }
-  | { type: 'import-explainer' }
-  | { type: 'import-preview'; rows: GearCsvRow[] }
-  | { type: 'import-error'; message: string }
 
 
 export default function GearLibraryPage() {
@@ -215,12 +206,13 @@ export default function GearLibraryPage() {
 
   // The async way out of the editor, for its success callback ONLY (the user's
   // own Escape/X goes through closeNewCategory above, unconditionally). A
-  // create can settle in the same tick as a replacement dialog that is already
-  // QUEUED but not yet committed - a CSV parse finishing queues import-preview
-  // through setDialog while the editor is still mounted - so the component's
-  // unmount guard cannot see it. This functional update decides against
-  // whatever is open NOW, queued replacements included, so a late success can
-  // never discard one.
+  // create can settle in the same tick as a replacement update that is
+  // already QUEUED but not yet committed - a CSV parse finishing closes the
+  // editor through the import flow's onBeforeOpen, and the editor is inline,
+  // so another dialog can be opened over a create still in flight - and the
+  // component's unmount guard cannot see a queued update. This functional
+  // update decides against whatever is open NOW, queued replacements
+  // included, so a late success can never discard one.
   function closeCategorySession(session: number) {
     setDialog((prev) =>
       prev?.type === 'add-category' && prev.session === session ? null : prev,
@@ -228,17 +220,16 @@ export default function GearLibraryPage() {
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
-  const {
-    inputRef: importInputRef,
-    onChange: handleImportFile,
-    openPicker: openImportPicker,
-  } = useCsvFileInput<GearCsvRow>(
-    parseGearCsv,
-    {
-      onParsed: (rows) => setDialog({ type: 'import-preview', rows }),
-      onError: (message) => setDialog({ type: 'import-error', message }),
-    },
-  )
+  // The whole import flow (explainer, file input, preview, POST, error
+  // dialog) lives in the hook; onBeforeOpen clears this page's dialog union
+  // whenever the flow opens one of ITS dialogs, so the two state machines
+  // never both hold a surface - the same coordination the shared union used
+  // to provide when the import dialogs were variants of it.
+  const { openImportExplainer, importUi } = useGearImportFlow({
+    categories,
+    allItems,
+    onBeforeOpen: () => setDialog(null),
+  })
 
   function handleExport() {
     try {
@@ -248,38 +239,6 @@ export default function GearLibraryPage() {
       showToast("Couldn't export the gear library. Please try again.", { type: 'error' })
     }
   }
-
-  // Confirmed import: plan against the current library snapshot (dedup +
-  // category resolution, see src/lib/csv/import-plan.ts), then one POST -
-  // the server creates categories + items atomically. Rows that all match
-  // existing gear plan to zero new items; skip the POST (the endpoint
-  // rejects empty imports) and just close.
-  const importItems = useMutation({
-    mutationKey: mutationKeys.importGearItems(),
-    mutationFn: async (rows: GearCsvRow[]) => {
-      const plan = planGearImport(rows, categories, allItems)
-      if (plan.newItems.length === 0) return
-      // Preflight BOTH caps (gear and categories) against existing + new,
-      // like the list import always did - the thrown message lands in the
-      // import-error dialog with a specific fix instead of the server's
-      // generic cap answer.
-      assertGearImportWithinCaps(plan, allItems.length, categories.length)
-      await importGearItems({ categories: plan.newCategories, items: plan.newItems })
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.categories() })
-      void qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-      setDialog(null)
-    },
-    // Surface failures (e.g. the 500-item cap) in the existing
-    // import-error dialog instead of leaving the preview open with no
-    // feedback.
-    onError: (err) =>
-      setDialog({
-        type: 'import-error',
-        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
-      }),
-  })
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
   // Category write actions (add / rename / delete) live in a dedicated hook; it
@@ -510,7 +469,7 @@ export default function GearLibraryPage() {
   // to be twin 8-prop lists kept in lockstep by hand.
   const gearOptions: GearOptionsHandlers = {
     onNewCategory: () => setDialog(openNewCategory()),
-    onImport: () => setDialog({ type: 'import-explainer' }),
+    onImport: openImportExplainer,
     onExport: handleExport,
     canExport: libraryReady && allItems.length > 0,
     onCollapseAll: () => resetCollapsed(collapsibleKeys),
@@ -521,16 +480,8 @@ export default function GearLibraryPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="print:pb-0">
-      {/* Hidden file input for CSV import. Mounted at the page level so
-          it's always reachable via importInputRef.current.click(), even
-          while the explainer dialog is unmounting. */}
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
+      {/* The import flow's hidden file input and dialogs. */}
+      {importUi}
       {/* Page header. Both viewports expose only the
           frequent actions (search + New item + Select + Options);
           rare/utility actions (New category, Collapse / Expand all) live
@@ -668,7 +619,7 @@ export default function GearLibraryPage() {
       ) : allItems.length === 0 && categories.length === 0 ? (
         <GearLibraryEmptyState
           onCreateItem={() => setDialog({ type: 'create-item', saveError: null })}
-          onImport={() => setDialog({ type: 'import-explainer' })}
+          onImport={openImportExplainer}
           onCreateCategory={() => setDialog(openNewCategory())}
         />
       ) : search.trim() !== '' && searchFiltered.length === 0 ? (
@@ -915,56 +866,6 @@ export default function GearLibraryPage() {
               },
             })
           }}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.type === 'import-explainer' && (
-        <Modal open onClose={() => setDialog(null)} title="Import gear inventory" className="w-full max-w-md">
-          <div className="p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-3">Import gear inventory</h2>
-            <p className="text-sm text-gray-600 mb-3">
-              Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
-            </p>
-            <p className="text-sm text-gray-600 mb-5">
-              Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDialog(null)}
-                className={SECONDARY_BUTTON}
-              >
-                Cancel
-              </button>
-              <PrimaryButton
-                type="button"
-                onClick={() => { setDialog(null); openImportPicker() }}
-              >
-                Continue
-              </PrimaryButton>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {dialog?.type === 'import-error' && (
-        <ConfirmDialog
-          title="Import error"
-          message={dialog.message}
-          messageTone="danger"
-          confirmLabel="Close"
-          cancel={false}
-          onConfirm={() => setDialog(null)}
-          onCancel={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.type === 'import-preview' && (
-        <ImportPreviewDialog
-          rows={dialog.rows}
-          saving={importItems.isPending}
-          onConfirm={(rows) => importItems.mutate(rows)}
           onClose={() => setDialog(null)}
         />
       )}
