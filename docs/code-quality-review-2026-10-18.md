@@ -66,6 +66,17 @@ Severity scale: **High** = real maintenance hazard or active drift;
 
 ### A1. `ListDetailInner` is a 2,200-line God component — HIGH (readability)
 
+**CLOSED (Phase 6 PR).** Tier 1: PackLocationControls moved to its own file;
+the wrapper's lists query moved into ListDetailInner (A5). Tier 2, after
+characterization tests and a Codex-reviewed interface design: the DnD +
+placement orchestration (handlers, narration, reorder mutations, packing
+derivations) moved to `use-list-dnd.ts`, and the recursive location-section
+renderer to `PackingLocationTree.tsx`. The F3 dedups landed as separate
+commits first. The page keeps its render, dialog orchestration and stable
+handler layer - that remainder is the page's own business and is accepted;
+the thin ConfirmDialog blocks were deliberately not extracted (indirection
+without reduced coupling).
+
 `src/lists/ListDetailPage.tsx:242-2467`. One component body owns: five query
 subscriptions (417–528), DnD orchestration for four drag-id kinds (730–909),
 click-to-place mode and its two lifecycle effects (662–728, 1082–1106),
@@ -85,6 +96,15 @@ stands; those two absolute claims do not.
 
 ### A2. `GearLibraryPage`'s 11-variant `DialogState` is three state machines in one file — HIGH (readability)
 
+**CLOSED (Phase 6 PR; partly by Phases 4b/5).** The CSV import flow (explainer,
+file input, preview, mutation, error dialog) moved to `use-gear-import-flow.tsx`
+on the Phase 5 shared pieces, dropping its three union variants; the union's
+anti-stacking coordination survives as onBeforeOpen, tested including the
+late-rejection route. The add-category editor had already collapsed onto
+InlineCreateCategory (Phase 4b) - its session coordination stays in the union
+exactly as the caveat below requires. The save orchestration converged on
+runGuardedSave (Phase 4b); what remains per dialog is its own strings.
+
 `src/gear/GearLibraryPage.tsx:72-94` (11 variants; the review originally said
 12) mixes true modals (`create-item`, `edit-item`, `delete-*`, `bulk-*`), an
 inline header editor modeled as a dialog with its own session counter and
@@ -101,6 +121,12 @@ races against async dialog replacement) — any split must preserve that
 coordination, not just relocate the code.
 
 ### A3. `CategoryGroup` serves six section flavors through ~35 props — MEDIUM (overbuilt/readability)
+
+**CLOSED (Phase 6 PR; split declined with reason).** The six flavors share the
+contracts that must never fork (column alignment, the memo contract, collapse
+wiring, the share-path no-dnd-kit rule), so a split would re-spell those per
+file without reducing the prop surface. The header now carries the flavor map,
+the sentinel rules, and the bar for adding a flavor.
 
 `src/lists/CategoryGroup.tsx:125-314` (859 lines total) covers share category,
 edit category, pack location, pack container-header, the Worn pseudo-section
@@ -125,6 +151,9 @@ packing locations, reorders), `shared/shares.ts` (the public share DTOs) and
 `shared/list-import.ts`; import sites updated, no re-export shims.
 
 ### A5. `ListDetailPage` wrapper drills six lists-query props into Inner — LOW (readability)
+
+**CLOSED (Phase 6 PR).** Inner owns the query; the wrapper only supplies
+`key={routeId}`.
 
 `src/lists/ListDetailPage.tsx:209-257`: the outer component exists to supply
 `key={routeId}` but also owns the lists query and drills
@@ -673,6 +702,17 @@ food now rejects `{name: undefined}`. `shared/empty-patch.test.ts` pins it.
 
 ### F1. The memo-stability discipline is hand-maintained, and its payoff is admitted void for pack location sections — HIGH (overbuilt/readability)
 
+**CLOSED (Phase 6 PR; profiled, outcome (b)).** Measured in jsdom at the
+cap-level worst case (300 items / 30 locations): one isPacked tick commits in
+~140ms jsdom (~15-45ms browser estimate), linear in row count - inside the
+100ms interaction budget even at the extreme. The measurement also showed
+stable menu callbacks alone cannot restore the memo hits (every list-items
+write rebuilds packingTree, handing each section a fresh items array), so the
+fix is strictly bigger than assumed. The pack-section defeat is accepted and
+the numbers plus re-profile trigger live in the KNOWN TRADE comment; the
+discipline stays where it pays (edit mode, the library panel). No callback
+dependencies changed.
+
 Six `eslint-disable-next-line react-hooks/exhaustive-deps` suppressions in
 `src/lists/ListDetailPage.tsx` (1164, 1230, 1239, 1300, 1385) plus a
 membership-signature hack (`gearIdsKey`, 938–946) guard `[]`-deps callbacks
@@ -710,6 +750,12 @@ in `section-rows.ts`; all three sites ask it, and the keep-them-in-step note
 is gone.
 
 ### F3. In-page handler/announcement copies — LOW (DRY)
+
+**CLOSED (Phase 6 PR + Phase 5 PR).** The narration trio has one owner
+(`narrated`), the two move requests share `requestMoveRow` with ONE stated
+rank source, and both moved into `use-list-dnd.ts`. The DragOverlay stub
+handlers were closed by Phase 5's ListRow (actions optional; clones omit
+them).
 
 `src/lists/ListDetailPage.tsx:760-783` (`requestMove`) vs `:785-804`
 (`requestMoveFood`) are identical modulo gear/food lookup; the
@@ -806,8 +852,8 @@ caller outside its own file's wrapper.
 **PARTIAL (Phase 1b PR):** the `scripts/` portion (`currentDefinitions`,
 `FORBIDDEN`) is closed. **Phase 2 PR:** the server files it touched
 (`copyName`, `remapPackingLocationId`, the in-file-only cap matchers). The
-rest is handled on a touched-file basis in Phases 2–6; any residue after
-Phase 6 is accepted. **Phase 3 PR:** the `shared/` portion - in-file-only
+rest was handled on a touched-file basis in Phases 2–6; the residue left
+after Phase 6 is accepted, per the remediation plan. **Phase 3 PR:** the `shared/` portion - in-file-only
 schemas unexported, dead type aliases removed; request-contract types named
 by `docs/authz-matrix.md` (e.g. `QuickAddListItemRequest`,
 `ImportGearRequest`) stay exported because the binding matrix references
@@ -826,6 +872,8 @@ documented CLI-only config; `fflate` loads via dynamic import in
 `DownloadAllData.tsx:33`; server test fixture assets are read from disk.)
 
 ### H4. Options prop-bundle threaded in triplicate — LOW (readability)
+
+**Verified still closed in Phase 6 (A2 split kept the single bundle).**
 
 `src/gear/GearLibraryPage.tsx:691-700` and `:1081-1091` pass the identical
 8-prop `onNewCategory/onImport/onExport/...` set to `GearOptionsButton` and
