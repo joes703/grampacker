@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import {
   DndContext,
@@ -37,6 +37,7 @@ import { useDocumentTitle } from '../lib/use-document-title'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { useNow } from '../lib/use-now'
 import KebabMenu from '../components/KebabMenu'
+import InlineRenameInput from '../components/InlineRenameInput'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
   DESKTOP_ROW_HEIGHT,
@@ -557,13 +558,6 @@ function ListRow({
   outerStyle,
   dragHandle,
 }: ListRowProps) {
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (renaming) renameInputRef.current?.select()
-  }, [renaming])
-
   // Row chrome: a flex strip inside the shared bordered container. No
   // hover-shadow — the container is the visual anchor, and a per-row
   // lift would re-introduce the card feel this refactor is replacing.
@@ -588,17 +582,11 @@ function ListRow({
     return (
       <li ref={outerRef as React.Ref<HTMLLIElement>} style={outerStyle} className={rowClass}>
         {dragHandle}
-        <input
-          ref={renameInputRef}
-          autoFocus
-          type="text"
+        <InlineRenameInput
           value={renameDraft}
-          onChange={(e) => onRenameDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitOnce(onSubmitRename)
-            if (e.key === 'Escape') commitOnce(onCancelRename)
-          }}
-          onBlur={() => commitOnce(onSubmitRename)}
+          onChange={onRenameDraftChange}
+          onSubmit={onSubmitRename}
+          onCancel={onCancelRename}
           className={`flex-1 min-w-0 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>

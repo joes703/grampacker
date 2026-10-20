@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect } from 'react'
+import { memo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category, GearItem } from '../lib/types'
@@ -6,10 +6,10 @@ import type { WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useSortableRow, type SortableHandleProps } from '../lib/use-sortable-row'
 import { SortableGearItemRow } from './GearItemRow'
+import InlineRenameInput from '../components/InlineRenameInput'
 import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
-import { useCommitOnce } from '../lib/use-commit-once'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
@@ -73,18 +73,17 @@ function CategorySectionInner(
 
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState(category?.name ?? '')
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (renaming) renameInputRef.current?.focus()
-  }, [renaming])
 
   function commitRename() {
     const trimmed = renameDraft.trim()
     if (trimmed && category && trimmed !== category.name) {
       onRenameCategory(category.id, trimmed)
     }
+    setRenaming(false)
+  }
+
+  function cancelRename() {
+    setRenameDraft(category?.name ?? '')
     setRenaming(false)
   }
 
@@ -146,20 +145,13 @@ function CategorySectionInner(
 
         {/* Category name / rename input */}
         {renaming ? (
-          <input
-            ref={renameInputRef}
+          <InlineRenameInput
             value={renameDraft}
-            onChange={(e) => setRenameDraft(e.target.value)}
-            onBlur={() => commitOnce(commitRename)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitOnce(commitRename)
-              if (e.key === 'Escape') {
-                commitOnce(() => {
-                  setRenameDraft(category?.name ?? '')
-                  setRenaming(false)
-                })
-              }
-            }}
+            onChange={setRenameDraft}
+            onSubmit={commitRename}
+            onCancel={cancelRename}
+            selectOnOpen={false}
+            ariaLabel="Category name"
             className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : (
@@ -264,10 +256,7 @@ function CategorySectionInner(
             <RowIconButton
               touchSafe
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setRenameDraft(category?.name ?? '')
-                setRenaming(false)
-              }}
+              onClick={cancelRename}
               title="Cancel rename"
               ariaLabel="Cancel rename"
               icon={<X size={14} />}

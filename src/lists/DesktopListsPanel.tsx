@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
   DndContext,
@@ -30,6 +30,7 @@ import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
+import InlineRenameInput from '../components/InlineRenameInput'
 import { useCommitOnce } from '../lib/use-commit-once'
 import DraftBadge from '../components/DraftBadge'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
@@ -496,13 +497,6 @@ function ListPanelRow({
   outerStyle,
   dragHandle,
 }: ListPanelRowProps) {
-  const renameInputRef = useRef<HTMLInputElement>(null)
-  const commitOnce = useCommitOnce()
-
-  useEffect(() => {
-    if (renaming) renameInputRef.current?.select()
-  }, [renaming])
-
   // Highlight state: soft blue rest tint + medium-weight name so the user
   // can locate the open list immediately on every render. Hover stays on
   // gray-100 across both states so click feedback is consistent.
@@ -517,17 +511,11 @@ function ListPanelRow({
         className={rowClass}
       >
         {dragHandle}
-        <input
-          ref={renameInputRef}
-          autoFocus
-          type="text"
+        <InlineRenameInput
           value={renameDraft}
-          onChange={(e) => onRenameDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitOnce(onSubmitRename)
-            if (e.key === 'Escape') commitOnce(onCancelRename)
-          }}
-          onBlur={() => commitOnce(onSubmitRename)}
+          onChange={onRenameDraftChange}
+          onSubmit={onSubmitRename}
+          onCancel={onCancelRename}
           className={`min-w-0 flex-1 ${LIST_RENAME_INPUT_CLASS}`}
         />
       </li>
