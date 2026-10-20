@@ -317,6 +317,12 @@ and the kebab menus differ (the page has Share and different ordering). The
 duplicated workflows (import wiring, rename row, new-list inline, sortable
 row) are confirmed; the two files are overlapping variants, not exact twins.
 
+**CLOSED (Phase 5 PR).** `src/lists/ListRow.tsx` (ListRow + SortableListRow +
+NewListInline, variants as props) and `src/lists/use-list-import-flow.tsx`
+own the shared pieces; all three surfaces converted, the triplicated import
+wiring deleted, and the DragOverlay clones pass no handlers (the F3
+presentation/behavior split).
+
 ### C2. `GearItemRow` re-builds `ItemRow`'s scaffolding verbatim — MEDIUM (DRY, cross-area)
 
 The outer row class is the *same template literal* in both:
@@ -330,6 +336,10 @@ parallel `SwipeableRow` wrappers (`GearItemRow.tsx:122-133` vs
 scaffold and mobile body do not. A density fix to "the row" means editing two
 files that must agree character-for-character.
 
+**CLOSED (Phase 5 PR).** `itemRowShell` (flat-table-styles) owns the shell
+recipe; `src/components/ItemRowScaffold.tsx` owns NameDescriptionCell and
+MobileRowBody; both rows compose them.
+
 ### C3. `SortableFoodRow`/`FoodRow` are copy-synchronized clones of `ItemRow`'s two layouts — MEDIUM (DRY)
 
 `src/lists/SortableFoodRow.tsx:72-155` repeats `src/lists/ItemRow.tsx:141-282`'s
@@ -340,6 +350,10 @@ w-6/w-10 column skeleton). `FoodRow.tsx:349-404`'s own comment says it
 any pack-row density or print change must be made twice and re-verified for
 checkbox-column alignment — the drift class the token system exists to prevent.
 
+**CLOSED (Phase 5 PR).** `src/lists/PackRowFrame.tsx` owns the pack-row
+skeleton (dnd-free; the emitted share bundle verified clean); FoodRow
+composes itemRowShell + the shared cells and the missed COL_* tokens.
+
 ### C4. `GearImportPreviewDialog` and `ListImportPreviewDialog` are the same dialog — MEDIUM (DRY)
 
 `src/gear/GearImportPreviewDialog.tsx` vs `src/lists/ListImportPreviewDialog.tsx`
@@ -349,6 +363,10 @@ Name/Weight/Category columns and cell classes, identical
 Cancel/`Import N item(s)` footer. The list one adds a Flags column and two
 captions — a `columns`/`notes` prop, not a second ~100-line file. Drift has
 already started: the gear one lost the `ml-4` on its close button.
+
+**CLOSED (Phase 5 PR).** `src/components/ImportPreviewDialog.tsx` owns the
+dialog (titleSuffix/notes/extraColumn props); the gear copy is deleted and
+the lost ml-4 restored.
 
 ### C5. Column alignment between headers and rows is a comment-enforced contract — MEDIUM-LOW (DRY)
 
@@ -372,6 +390,12 @@ clone: `src/gear/use-gear-category-actions.ts:37-49` vs
 `src/gear/GearOptionsButton.tsx:28-52` vs `src/lists/ListSettingsButton.tsx:16-40`
 (25-line clone).
 
+**CLOSED (Phase 5 PR).** `lib/csv/parse-common.ts` owns the shared parse
+preamble + base fields; import-plan's twin cap blocks collapsed into
+assertAccountCaps; `lib/add-category-mutation.ts` owns the one add-category
+recipe (per-surface mutationKeys kept); ListSettingsButton went through the
+shared KebabMenu shell like GearOptionsButton did in 4a.
+
 ### C7. Three list-creation code paths for one operation — MEDIUM (DRY)
 
 `src/lists/use-current-list-actions.ts:87-114` (`submitCreateList`) exists to
@@ -386,6 +410,9 @@ corrections:* "three code paths" counted UI entry points — there are two
 implementations; and the divergence already has a user-visible consequence:
 the two paths disagree on retry safety (see K2), so this is not merely a
 hypothetical hazard.
+
+**CLOSED (Phase 5 PR).** ListsEmptyState adopts submitCreateList; one
+implementation, one variables shape, one CREATE_FAILED_COPY under the key.
 
 ---
 
@@ -805,6 +832,9 @@ documented CLI-only config; `fflate` loads via dynamic import in
 `MobileGearActionBar`, which forwards it again to `GearOptionsContent` —
 three prop lists in lockstep. (jscpd flags the twin blocks.)
 
+**CLOSED (Phase 5 PR).** GearOptionsContent exports GearOptionsHandlers;
+the page builds one `gearOptions` object consumed by both surfaces.
+
 ---
 
 ## I. Minor bugs found along the way (quality review, not a bug hunt)
@@ -812,10 +842,13 @@ three prop lists in lockstep. (jscpd flags the twin blocks.)
 - **FoodView double-invalidates on create**: `src/lists/FoodView.tsx:116`
   (`onSuccess: invalidateFood`) plus a second `invalidateFood()` in the
   per-call `onSuccess` at `:235`. Harmless, wasteful.
+  **CLOSED (Phase 5 PR):** the per-call copy is gone.
 - **One `busy` boolean freezes all of FoodView**: `:198-205` ORs six mutations
   plus `checkingDays` and disables every control while any one write is in
   flight — serialize-everything UX at odds with the field-scoped concurrency
   the pack side implements.
+  **PARKED (Phase 5 PR):** needs the food concurrency contract defined
+  first — PARKED.md 2026-10-20, with the trigger.
 - **`InlineText` cannot clear a value**: `src/components/InlineText.tsx:38-42`
   silently discards an emptied draft — right for names, wrong for the
   description call sites (`GearItemRow.tsx:159-165`, `ItemRow.tsx:363-369`),
@@ -826,6 +859,8 @@ three prop lists in lockstep. (jscpd flags the twin blocks.)
   cells stop lining up; meanwhile name/description stay editable in select
   mode while weight goes static and the kebab hides — three different answers
   to "is this row editable during selection".
+  **CLOSED (Phase 5 PR):** named policy change — everything read-only during
+  selection; the description column renders on every row.
 - **Gear PATCH can mislabel a cap error as 404** (D11, unreachable today).
 
 ## J. Config/CI nits — LOW

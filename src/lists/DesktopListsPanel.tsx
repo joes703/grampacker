@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 import {
   DndContext,
   DragOverlay,
@@ -14,34 +14,25 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CopyPlus, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { Plus, Upload } from 'lucide-react'
 import {
   queryKeys,
   fetchLists,
   reorderLists,
 } from '../lib/queries'
-import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
-import { useCsvFileInput } from '../lib/use-csv-file-input'
-import { useListImportMutation } from './use-list-import-mutation'
-import ListImportPreviewDialog from './ListImportPreviewDialog'
-import Modal from '../components/Modal'
 import { useCurrentListActions } from './use-current-list-actions'
+import { useListImportFlow } from './use-list-import-flow'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId } from '../lib/dnd-ids'
-import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
-import InlineRenameInput from '../components/InlineRenameInput'
-import { useCommitOnce } from '../lib/use-commit-once'
-import DraftBadge from '../components/DraftBadge'
-import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
+import { RowMenuItem } from '../components/RowMenuItem'
 import {
-  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
-  FLAT_TABLE_ROW,
   FLAT_TABLE_SURFACE,
   ROW_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { ListRow, NewListInline, SortableListRow, type ListRowActions } from './ListRow'
 import { pickListAfterDelete } from './pick-list-after-delete'
 import type { List } from '../lib/types'
 
@@ -53,15 +44,12 @@ import type { List } from '../lib/types'
 //
 // Reuses existing canonical paths instead of forking:
 //   - useCurrentListActions for rename / duplicate / delete
-//   - reorderLists + assignSortOrderSlots for DnD
-//   - RowMenuItem / RowMenuSeparator for kebab content
-//   - FLAT_TABLE_SURFACE / FLAT_TABLE_ROW / ROW_CONTROL_TARGET for the
-//     visual grammar so this reads like the gear picker below it
+//   - the shared ListRow (variant 'panel') for the sortable row + kebab
+//   - useListImportFlow for the whole CSV import surface
 //
 // What this panel deliberately does NOT carry:
 //   - Share. Sharing lives in List options (ListSettingsPanel) inside the
 //     open list, not in the Lists switcher.
-//   - The Duplicate is row-specific only (no header bulk Duplicate).
 //   - Mobile rendering. Bottom nav + /lists own that path today.
 
 type Props = {
@@ -82,13 +70,13 @@ type Props = {
 }
 
 // Local dialog state, mirroring the union-of-variants pattern used elsewhere
-// in this codebase. Share is intentionally absent (lives in List options).
+// in this codebase. Share is intentionally absent (lives in List options);
+// the import preview/error pair lives inside useListImportFlow, which closes
+// this union when it opens.
 type DialogState =
   | { type: 'creating'; draft: string }
   | { type: 'renaming'; list: List; draft: string }
   | { type: 'confirm-delete'; list: List }
-  | { type: 'import-preview'; rows: ListCsvRow[]; filename: string }
-  | { type: 'import-error'; message: string }
 
 // Hoisted trigger for the header plus menu (KebabMenu `trigger` must be a
 // stable component, not an inline closure, or it remounts every render).
@@ -114,7 +102,7 @@ export default function DesktopListsPanel({
 }: Props) {
   const navigate = useNavigate()
 
-  // Shared current-list actions. Same code path used by ListsPage card kebab
+  // Shared current-list actions. Same code path used by ListsPage row kebab
   // and the in-list List options popover, so create/rename/duplicate/delete/
   // export semantics stay identical across surfaces. createListMut navigates
   // on success; this panel owns closing the create dialog at the call site.
@@ -148,22 +136,11 @@ export default function DesktopListsPanel({
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
-  // Hidden file input + parser wiring for "Import CSV". The same
-  // useCsvFileInput hook every import surface uses, so parse/abort/error
-  // handling stays on one path.
-  const {
-    inputRef: importInputRef,
-    onChange: handleImportFile,
-    openPicker: openImportPicker,
-  } = useCsvFileInput<ListCsvRow>(parseListCsv, {
-    onParsed: (rows, filename) => setDialog({ type: 'import-preview', rows, filename }),
-    onError: (message) => setDialog({ type: 'import-error', message }),
+  // The whole CSV import surface (hidden input, preview, error dialog) in
+  // one shared hook; onBeforeOpen keeps this panel's dialog union exclusive.
+  const { openImportPicker, importUi } = useListImportFlow({
+    onBeforeOpen: () => setDialog(null),
   })
-
-  // Shared import hook (plan/preflight/POST + invalidate/navigate); this
-  // panel owns closing the dialog on success and routing failures into the
-  // import-error dialog via the call-site onSuccess/onError below.
-  const importMut = useListImportMutation()
 
   // Desktop-only panel, so MouseSensor + KeyboardSensor is enough. No
   // TouchSensor: the surrounding aside is `hidden lg:flex`, and bringing it
@@ -193,6 +170,26 @@ export default function DesktopListsPanel({
     deleteListMut.mutate(target.id)
     if (nextPath) void navigate(nextPath)
   }
+
+  const rowActions = (list: List): ListRowActions => ({
+    renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
+    renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
+    onRenameDraftChange: (v) => setDialog({ type: 'renaming', list, draft: v }),
+    onStartRename: () => setDialog({ type: 'renaming', list, draft: list.name }),
+    onSubmitRename: () => {
+      if (dialog?.type !== 'renaming') return
+      const trimmed = dialog.draft.trim()
+      if (trimmed && trimmed !== list.name) {
+        renameMut.mutate({ id: list.id, name: trimmed })
+      }
+      setDialog(null)
+    },
+    onCancelRename: () => setDialog(null),
+    onDuplicate: () => duplicateMut.mutate(list),
+    onExport: () => void exportCsv(list),
+    exporting: exportingListId === list.id,
+    onDelete: () => setDialog({ type: 'confirm-delete', list }),
+  })
 
   return (
     <div className={`flex flex-col ${FLAT_TABLE_SURFACE} ${className ?? ''}`}>
@@ -236,23 +233,15 @@ export default function DesktopListsPanel({
         </KebabMenu>
       </div>
 
-      {/* Hidden CSV input. The file picker fires from openImportPicker(),
-          dispatched by the header menu. Re-using the existing useCsvFileInput
-          hook means no separate parser/abort/error path. */}
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
+      {importUi}
 
       {/* Inline "New list" draft input. Rendered as the first row of the
           scroll body so it sits visually adjacent to the rest of the list
           rather than floating in the header strip. Enter submits, Escape
-          cancels — same shape ListsPage uses inline next to its header. */}
+          cancels, blur submits — the shared NewListInline's row variant. */}
       {dialog?.type === 'creating' && (
-        <NewListInlineRow
+        <NewListInline
+          variant="row"
           draft={dialog.draft}
           saving={createListMut.isPending}
           onChange={(v) => setDialog({ type: 'creating', draft: v })}
@@ -286,27 +275,10 @@ export default function DesktopListsPanel({
                 <SortableListRow
                   key={list.id}
                   list={list}
+                  variant="panel"
                   isCurrent={list.id === currentListId}
-                  renaming={dialog?.type === 'renaming' && dialog.list.id === list.id}
-                  renameDraft={
-                    dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : ''
-                  }
                   reorderPending={reorderPending}
-                  onRenameDraftChange={(v) => setDialog({ type: 'renaming', list, draft: v })}
-                  onStartRename={() => setDialog({ type: 'renaming', list, draft: list.name })}
-                  onSubmitRename={() => {
-                    if (dialog?.type !== 'renaming') return
-                    const trimmed = dialog.draft.trim()
-                    if (trimmed && trimmed !== list.name) {
-                      renameMut.mutate({ id: list.id, name: trimmed })
-                    }
-                    setDialog(null)
-                  }}
-                  onCancelRename={() => setDialog(null)}
-                  onDuplicate={() => duplicateMut.mutate(list)}
-                  onExport={() => void exportCsv(list)}
-                  exporting={exportingListId === list.id}
-                  onDelete={() => setDialog({ type: 'confirm-delete', list })}
+                  actions={rowActions(list)}
                 />
               ))}
             </ul>
@@ -315,19 +287,10 @@ export default function DesktopListsPanel({
             {activeList ? (
               <div className={`${FLAT_TABLE_SURFACE} shadow-lg`}>
                 <ul>
-                  <ListPanelRow
+                  <ListRow
                     list={activeList}
+                    variant="panel"
                     isCurrent={activeList.id === currentListId}
-                    renaming={false}
-                    renameDraft=""
-                    onRenameDraftChange={() => {}}
-                    onStartRename={() => {}}
-                    onSubmitRename={() => {}}
-                    onCancelRename={() => {}}
-                    onDuplicate={() => {}}
-                    onExport={() => {}}
-                    exporting={false}
-                    onDelete={() => {}}
                   />
                 </ul>
               </div>
@@ -349,247 +312,6 @@ export default function DesktopListsPanel({
           onConfirm={() => deleteListWithNavigation(dialog.list)}
         />
       )}
-
-      {/* Import preview — reuses the existing ListImportPreviewDialog so
-          both import surfaces show the same confirmation UI. */}
-      {dialog?.type === 'import-preview' && (
-        <ListImportPreviewDialog
-          rows={dialog.rows}
-          saving={importMut.isPending}
-          onConfirm={() =>
-            importMut.mutate(
-              { name: nameFromCsvFilename(dialog.filename), rows: dialog.rows },
-              {
-                onSuccess: () => setDialog(null),
-                onError: (err) =>
-                  setDialog({
-                    type: 'import-error',
-                    message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
-                  }),
-              },
-            )
-          }
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {/* Import error. Same plain modal shape ListsPage uses; intentionally
-          duplicated (it's four lines of JSX, not a shared component). */}
-      {dialog?.type === 'import-error' && (
-        <Modal open onClose={() => setDialog(null)} title="Import error" className="w-full max-w-sm">
-          <div className="p-6">
-            <h2 className="mb-2 text-base font-semibold text-gray-900">Import error</h2>
-            <p className="mb-4 text-sm text-red-600">{dialog.message}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDialog(null)}
-                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
-  )
-}
-
-// Inline first-row draft for "New list". Lives inside the scrollable body so
-// it doesn't bulk up the header strip when a user opens the menu.
-function NewListInlineRow({
-  draft,
-  saving,
-  onChange,
-  onSubmit,
-  onCancel,
-}: {
-  draft: string
-  saving: boolean
-  onChange: (v: string) => void
-  onSubmit: () => void
-  onCancel: () => void
-}) {
-  const commitOnce = useCommitOnce()
-  return (
-    <div className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 bg-blue-50/40`}>
-      <input
-        autoFocus
-        type="text"
-        placeholder="List name"
-        value={draft}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commitOnce(onSubmit)
-          if (e.key === 'Escape') commitOnce(onCancel)
-        }}
-        onBlur={() => commitOnce(onSubmit)}
-        disabled={saving}
-        className="min-w-0 flex-1 rounded border border-blue-400 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
-  )
-}
-
-type ListPanelRowProps = {
-  list: List
-  isCurrent: boolean
-  renaming: boolean
-  renameDraft: string
-  onRenameDraftChange: (v: string) => void
-  onStartRename: () => void
-  onSubmitRename: () => void
-  onCancelRename: () => void
-  onDuplicate: () => void
-  onExport: () => void
-  exporting: boolean
-  onDelete: () => void
-  outerRef?: (el: HTMLElement | null) => void
-  outerStyle?: React.CSSProperties
-  dragHandle?: React.ReactNode
-}
-
-// Sortable wrapper for the panel row. Wires the outer ref + transform
-// style + drag-handle button via the shared useListCardSortable hook
-// (see list-card-sortable.tsx) and forwards everything else to
-// ListPanelRow. Disabled while renaming or while a prior reorder is in
-// flight (the latter avoids the rollback-clobber race that two
-// overlapping reorders can hit). The hook places the grip inside the row
-// (not in the gutter outside the clipped FLAT_TABLE_SURFACE) so it
-// remains visible. gripIconSize defaults to 14 for this denser surface;
-// the ListsPage card-page row passes 16 explicitly.
-function SortableListRow(
-  props: Omit<ListPanelRowProps, 'outerRef' | 'outerStyle' | 'dragHandle'> & { reorderPending?: boolean },
-) {
-  const { outerRef, outerStyle, dragHandle } = useListCardSortable({
-    listId: props.list.id,
-    listName: props.list.name,
-    disabled: props.renaming || props.reorderPending,
-  })
-  return (
-    <ListPanelRow
-      {...props}
-      outerRef={outerRef}
-      outerStyle={outerStyle}
-      dragHandle={dragHandle}
-    />
-  )
-}
-
-// Single row. Uses FLAT_TABLE_ROW so the row tracks the shared density layer.
-// Current-list highlight: a soft blue tint + medium-weight name so the user
-// can see at a glance which list this workspace is showing.
-function ListPanelRow({
-  list,
-  isCurrent,
-  renaming,
-  renameDraft,
-  onRenameDraftChange,
-  onStartRename,
-  onSubmitRename,
-  onCancelRename,
-  onDuplicate,
-  onExport,
-  exporting,
-  onDelete,
-  outerRef,
-  outerStyle,
-  dragHandle,
-}: ListPanelRowProps) {
-  // Highlight state: soft blue rest tint + medium-weight name so the user
-  // can locate the open list immediately on every render. Hover stays on
-  // gray-100 across both states so click feedback is consistent.
-  const activeBg = isCurrent ? 'bg-blue-50' : ''
-  const rowClass = `${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 ${activeBg} hover:bg-gray-100`
-
-  if (renaming) {
-    return (
-      <li
-        ref={outerRef as React.Ref<HTMLLIElement>}
-        style={outerStyle}
-        className={rowClass}
-      >
-        {dragHandle}
-        <InlineRenameInput
-          value={renameDraft}
-          onChange={onRenameDraftChange}
-          onSubmit={onSubmitRename}
-          onCancel={onCancelRename}
-          className={`min-w-0 flex-1 ${LIST_RENAME_INPUT_CLASS}`}
-        />
-      </li>
-    )
-  }
-
-  return (
-    <li
-      ref={outerRef as React.Ref<HTMLLIElement>}
-      style={outerStyle}
-      className={rowClass}
-    >
-      {dragHandle}
-
-      {/* Name is the primary click target. Link instead of button so middle-
-          click / cmd-click open in a new tab — same behavior as the gear
-          picker's row buttons would NOT give (those toggle membership). */}
-      <Link
-        to={`/lists/${list.id}`}
-        className={`min-w-0 flex-1 truncate ${FLAT_TABLE_BODY_TEXT} ${
-          isCurrent ? 'font-medium text-gray-900' : 'font-normal text-gray-700'
-        } focus:outline-none focus:underline`}
-        aria-label={`Open ${list.name}`}
-        aria-current={isCurrent ? 'page' : undefined}
-      >
-        {list.name}
-      </Link>
-      {list.isDraft && <DraftBadge className="ml-2 shrink-0" />}
-
-      <KebabMenu touchSafe width={44} ariaLabel="List options" menuLabel={`${list.name} actions`}>
-        {({ close }) => (
-          <>
-            <RowMenuItem
-              icon={<Pencil size={13} />}
-              onClick={() => {
-                close()
-                onStartRename()
-              }}
-            >
-              Rename
-            </RowMenuItem>
-            <RowMenuItem
-              icon={<CopyPlus size={13} />}
-              onClick={() => {
-                close()
-                onDuplicate()
-              }}
-            >
-              Duplicate
-            </RowMenuItem>
-            <RowMenuItem
-              icon={<Download size={13} />}
-              onClick={() => {
-                close()
-                onExport()
-              }}
-              disabled={exporting}
-            >
-              {exporting ? 'Exporting…' : 'Export CSV'}
-            </RowMenuItem>
-            <RowMenuSeparator />
-            <RowMenuItem
-              icon={<Trash2 size={13} />}
-              onClick={() => {
-                close()
-                onDelete()
-              }}
-              tone="danger"
-            >
-              Delete
-            </RowMenuItem>
-          </>
-        )}
-      </KebabMenu>
-    </li>
   )
 }

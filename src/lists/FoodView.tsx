@@ -232,7 +232,9 @@ export default function FoodView({ listId }: { listId: string }) {
       busy={foodBusy}
       onSetDays={(days, onSettled) => void changeDays(days, onSettled)}
       onAddItem={(input, onSuccess) =>
-        foodItemCreateMut.mutate(input, { onSuccess: () => { invalidateFood(); onSuccess() } })
+        // invalidateFood runs in the mutation's own onSuccess (which TanStack
+        // fires before this per-call one); repeating it here double-fetched.
+        foodItemCreateMut.mutate(input, { onSuccess })
       }
       onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
       onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}

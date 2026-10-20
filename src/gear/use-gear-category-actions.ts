@@ -1,16 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   queryKeys,
-  createCategory,
   renameCategory as renameCategoryRequest,
   deleteCategory,
-  nextCategorySortOrder,
-  makeOptimisticInsert,
   makeOptimisticUpdate,
   makeOptimisticDelete,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { randomTempId } from '../lib/random-temp-id'
+import { addCategoryMutationOptions } from '../lib/add-category-mutation'
 import type { Category } from '../lib/types'
 
 // Category write actions for GearLibraryPage: the three category write
@@ -35,17 +32,7 @@ export function useGearCategoryActions(categories: Category[]) {
 
   const addCategory = useMutation({
     mutationKey: mutationKeys.addGearCategory(),
-    mutationFn: (name: string) => createCategory(name),
-    ...makeOptimisticInsert<Category, string>({
-      qc,
-      queryKey: queryKeys.categories(),
-      optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
-        name,
-        sortOrder: nextCategorySortOrder(categories),
-        createdAt: new Date().toISOString(),
-      }),
-    }),
+    ...addCategoryMutationOptions(qc, categories),
   })
 
   const renameCategory = useMutation({

@@ -1,8 +1,6 @@
 import type { GearItem, Category } from '../types'
-import { toCsv, parseCsv, MAX_CSV_ROWS } from './core'
-import { parseCostFromColumn } from './money'
-import { toGrams } from './units'
-import { MAX_NAME_LENGTH } from '../caps'
+import { toCsv } from './core'
+import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
 
 // Parse output. The CSV column HEADERS stay snake_case (Lighterpack-shaped;
 // no longer byte-identical to the old repo's export, which carried a second
@@ -62,55 +60,19 @@ export function gearItemsToCsv(items: GearItem[], categories: Category[]): strin
 // Returns parsed rows ready for import, or an error string.
 // Accepts our own export format AND the Lighterpack format:
 //   Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
+// The shared preamble (size gate, column resolution incl. the load-bearing
+// cost-over-price precedence) lives in parse-common.ts.
 export function parseGearCsv(text: string): GearCsvRow[] | string {
-  const rows = parseCsv(text)
-  const [sample] = rows
-  if (!sample) return 'File appears empty or has no data rows.'
-  if (rows.length > MAX_CSV_ROWS) {
-    return `This file has more than ${MAX_CSV_ROWS.toLocaleString('en-US')} rows, which is too many to import at once. Split it into smaller files and import them one at a time.`
-  }
-
-  const keys = Object.keys(sample)
-
-  // Resolve column names (case-insensitive, support aliases)
-  const nameKey   = keys.find((k) => k === 'name' || k === 'item name')
-  const weightKey = keys.find((k) => k === 'weight_grams' || k === 'weight (g)' || k === 'weight')
-  const unitKey   = keys.find((k) => k === 'unit')
-  const descKey   = keys.find((k) => k === 'description' || k === 'desc' || k === 'notes')
-  const catKey    = keys.find((k) => k === 'category')
-  // cost: prefer our column name; fall back to Lighterpack's "price" so a
-  // Lighterpack export imports its prices directly. Two-pass lookup (not
-  // a single find with OR) so column order in the source CSV doesn't
-  // matter.
-  //
-  // The precedence is load-bearing for BACKWARD COMPATIBILITY: exports
-  // downloaded before the columns were collapsed carry price=0 alongside
-  // the real cost=N, so cost must win or re-importing one of those older
-  // files would read the fake 0 and wipe every price. Current exports emit
-  // cost alone.
-  //
-  // WHICH column won also decides how a 0 reads: 0 in `cost` is genuinely
-  // free, 0 in `price` is unset (see parseCostFromColumn).
-  const ownCostKey = keys.find((k) => k === 'cost')
-  const costKey   = ownCostKey ?? keys.find((k) => k === 'price')
-  const costKind  = ownCostKey ? 'cost' as const : 'price' as const
-  const dateKey   = keys.find((k) => k === 'purchase_date' || k === 'purchase date')
-
-  if (!nameKey)   return 'Missing required column: "name" or "Item Name"'
-  if (!weightKey) return 'Missing required column: "weight_grams" or "weight"'
+  const parsed = parseCsvWithCommonColumns(text)
+  if (typeof parsed === 'string') return parsed
+  const { rows, cols } = parsed
+  const dateKey = cols.keys.find((k) => k === 'purchase_date' || k === 'purchase date')
 
   return rows
-    .map((row) => {
-      const unit = unitKey ? (row[unitKey] ?? 'g') : 'g'
-      return {
-        name:         (row[nameKey] ?? '').trim().slice(0, MAX_NAME_LENGTH),
-        description:  descKey ? (row[descKey] || null) : null,
-        weightGrams:  toGrams(row[weightKey] ?? '0', unit),
-        categoryName: catKey ? (row[catKey] ?? '') : '',
-        cost:         costKey ? parseCostFromColumn(row[costKey], costKind) : null,
-        purchaseDate: dateKey ? parseIsoDate(row[dateKey]) : null,
-      }
-    })
+    .map((row) => ({
+      ...commonRowFields(row, cols),
+      purchaseDate: dateKey ? parseIsoDate(row[dateKey]) : null,
+    }))
     .filter((r) => r.name.length > 0)
 }
 

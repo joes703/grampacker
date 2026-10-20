@@ -29,6 +29,12 @@ import type { Category, List } from '../lib/types'
 // placeholder where the server row will land.
 type CreateListVars = { name: string; sortOrder: number }
 
+// A rejected response does not prove the non-idempotent POST did not commit,
+// so the copy advises checking before a retry (AGENTS.md "Traps"). Exported
+// for the surfaces (and tests) that show it inline as well as by toast.
+export const CREATE_FAILED_COPY =
+  "Couldn't confirm the list was created. Refresh to check before trying again."
+
 // Shared current-list actions hook. Both the /lists card kebab
 // (ListsPage) and the in-list List options popover/modal
 // (ListSettingsPanel) call this to get the same rename / duplicate /
@@ -87,9 +93,7 @@ export function useCurrentListActions() {
   const createListMut = useMutation({
     mutationKey: mutationKeys.createList(),
     mutationFn: ({ name }: CreateListVars) => createList(name),
-    // A rejected response does not prove the non-idempotent POST did not
-    // commit, so the copy advises checking before a retry (AGENTS.md "Traps").
-    meta: { errorToast: "Couldn't confirm the list was created. Refresh to check before trying again." },
+    meta: { errorToast: CREATE_FAILED_COPY },
     ...makeOptimisticInsert<List, CreateListVars>({
       qc,
       queryKey: queryKeys.lists(),

@@ -4,25 +4,22 @@ import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { WeightUnit } from '../lib/weight'
 import { useSortableRow } from '../lib/use-sortable-row'
-import InlineText from '../components/InlineText'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineWeight from '../components/InlineWeight'
 import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
+import { MobileRowBody, NameDescriptionCell } from '../components/ItemRowScaffold'
 import {
   COL_DATE,
   COL_PRICE,
   COL_WEIGHT,
   COL_WEIGHT_MOBILE,
-  FLAT_TABLE_BODY_TEXT,
-  FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
-  FLAT_TABLE_ROW,
   ROW_HOVER_REVEAL,
+  itemRowShell,
 } from '../components/flat-table-styles'
-import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 
 type Props = {
@@ -66,22 +63,19 @@ export default function GearItemRow({
 }: Props) {
   const mobileSwipe = isBelowLg && !selectMode
 
+  // The shared badge+name body; this surface's only trailing cell is weight.
   const mobileBody = (
     <div className="flex flex-1 items-center gap-2">
-      <button
-        type="button"
-        onClick={selectMode ? () => onToggleSelect(item.id) : () => onEdit(item)}
-        aria-label={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
-        className="flex flex-1 min-w-0 items-center gap-2 text-left"
+      <MobileRowBody
+        status={item.status}
+        name={item.name}
+        onTap={selectMode ? () => onToggleSelect(item.id) : () => onEdit(item)}
+        tapLabel={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
       >
-        {/* GearStatusBadge returns null for 'active' — non-active rows
-            pick up a small leading icon, active rows take no space. */}
-        <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
-        <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
         <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
           <ItemWeightValue grams={item.weightGrams} unit={weightUnit} />
         </span>
-      </button>
+      </MobileRowBody>
     </div>
   )
 
@@ -89,13 +83,9 @@ export default function GearItemRow({
     <div
       ref={outerRef}
       style={outerStyle}
-      // px-3 mobile is intentional (not the canonical px-2 mobile ramp) — the
-      // gear-inventory row has fewer columns than pack mode and reads better
-      // with a uniform inset. lg:py-0 lets min-h-7 (28px) own the height on
-      // desktop so the new density actually applies.
-      className={`group relative ${FLAT_TABLE_ROW} ${FLAT_TABLE_BODY_TEXT} ${
-        mobileSwipe ? '' : 'gap-1.5 bg-white px-3 py-2 lg:py-0'
-      } ${
+      // The shared shell recipe (and its px-3 mobile inset rationale) lives
+      // in itemRowShell; this row adds its selection tint on top.
+      className={`${itemRowShell(mobileSwipe)} ${
         selected ? 'bg-blue-50' : 'hover:bg-gray-50'
       }`}
     >
@@ -143,32 +133,24 @@ export default function GearItemRow({
            action affordance. Hidden in select mode (selection itself
            replaces per-row actions). */
         <>
-          <div className="flex-1 min-w-0 flex items-center gap-3">
-            <div className="flex-[2] min-w-0 flex items-center gap-1.5">
-              {/* Inline status badge — null-for-active means no reserved
-                  whitespace; non-active rows pick up a subtle leading icon. */}
-              <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
-              <InlineText
-                value={item.name}
-                onSave={(v) => onInlineSave(item.id, { name: v })}
-                className="block min-w-0 flex-1 truncate font-normal text-gray-900"
-              />
-            </div>
-            {(item.description !== null || !selectMode) && (
-              <div className="flex-[3] min-w-0">
-                {/* allowEmpty + the ''->null conversion: clearing the field
-                    is how a description is removed, and the write contract
-                    takes null, never ''. */}
-                <InlineText
-                  value={item.description ?? ''}
-                  placeholder="Add description"
-                  allowEmpty
-                  onSave={(v) => onInlineSave(item.id, { description: v || null })}
-                  className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
-                />
-              </div>
-            )}
-          </div>
+          {/* The ''->null conversion in onSaveDescription: clearing the
+              field is how a description is removed, and the write contract
+              takes null, never ''.
+
+              Select mode drops BOTH cells to static, the same rule as the
+              weight cell and the hidden kebab: the row's affordances belong
+              to the selection while it is on (pinned in GearItemRow.test).
+              The static description keeps its column on every row, so name
+              cells stay aligned whether or not a description exists. */}
+          <NameDescriptionCell
+            status={item.status}
+            name={item.name}
+            description={item.description ?? ''}
+            onSaveName={selectMode ? undefined : (v) => onInlineSave(item.id, { name: v })}
+            onSaveDescription={
+              selectMode ? undefined : (v) => onInlineSave(item.id, { description: v || null })
+            }
+          />
           <span className={`${COL_PRICE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatCost(item.cost)}
           </span>

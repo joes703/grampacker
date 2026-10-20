@@ -3,21 +3,16 @@ import { useLocation } from 'react-router'
 import { Plus, Settings2 } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
-import GearOptionsContent from './GearOptionsContent'
+import GearOptionsContent, { type GearOptionsHandlers } from './GearOptionsContent'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 
 type Props = {
   /** Open the canonical "New item" dialog. */
   onNewItem: () => void
-  /** Gear Options modal handlers — rare/utility actions. */
-  onNewCategory: () => void
-  onImport: () => void
-  onExport: () => void
-  canExport: boolean
-  onCollapseAll: () => void
-  onExpandAll: () => void
-  canCollapseExpand: boolean
+  /** Gear Options modal handlers — rare/utility actions, as the one bundle
+   *  GearLibraryPage builds for both Options surfaces. */
+  gearOptions: GearOptionsHandlers
   /** False until BOTH gear items and categories have resolved. Every action
    *  behind Add and Options reads the library snapshot to build its write, and
    *  a pending or failed fetch renders as an empty array - see
@@ -43,13 +38,7 @@ type Props = {
 //   - Renders only on /gear because it's mounted by GearLibraryPage.
 export default function MobileGearActionBar({
   onNewItem,
-  onNewCategory,
-  onImport,
-  onExport,
-  canExport,
-  onCollapseAll,
-  onExpandAll,
-  canCollapseExpand,
+  gearOptions,
   libraryReady,
 }: Props) {
   useSuppressMobilePrimaryNav()
@@ -89,16 +78,7 @@ export default function MobileGearActionBar({
         onClose={() => setOptionsOpen(false)}
         title="Gear options"
       >
-        <GearOptionsContent
-          onNewCategory={onNewCategory}
-          onImport={onImport}
-          onExport={onExport}
-          canExport={canExport}
-          onCollapseAll={onCollapseAll}
-          onExpandAll={onExpandAll}
-          canCollapseExpand={canCollapseExpand}
-          onAction={() => setOptionsOpen(false)}
-        />
+        <GearOptionsContent {...gearOptions} onAction={() => setOptionsOpen(false)} />
       </MobileOptionsModal>
     </>
   )
