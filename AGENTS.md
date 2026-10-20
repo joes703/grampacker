@@ -212,6 +212,17 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
 - **Never commit or install something you did not look at.** Feature branches,
   one logical change per commit, no unrelated cleanups folded in. Stage exact
   paths, never `git add -A`.
+- **Use non-linking citations for external GitHub issues and PRs** in
+  agent-authored commit messages (including branch commits and the final
+  squash message), PR/issue titles and bodies, comments, release text and
+  annotated tag messages: write `tailscale issue 21816`, not `owner/repo#N`
+  or a GitHub issue/PR URL. References can create lasting events on another
+  project's thread; commit-sourced events cannot be removed through the web
+  UI or public API, and Support removal is not guaranteed. Do not rely on
+  backticks: Markdown protection does not establish safety in commit messages
+  or titles, and text can be copied into squash messages. Relevant `#N`
+  references within this repo are fine. This restriction does not apply to
+  repository file contents, which do not create these events.
 - `npm ci`, unless a dependency change is the point: then an explicit
   `npm install <pkg>`, a stated reason, and a read of the lockfile diff. Never
   `npm audit fix --force` (plain `npm audit` is fine). `overrides` are ranges
