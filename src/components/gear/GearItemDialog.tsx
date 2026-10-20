@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from 'react'
-import { Check, CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
+import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../../lib/types'
 import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
 import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../flat-table-styles'
 import FormLabel from '../FormLabel'
+import InlineCreateCategory from '../InlineCreateCategory'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_CATEGORY_NAME } from '../../lib/caps'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../../lib/caps'
 
 export type GearPatch = {
   name: string
@@ -81,10 +82,9 @@ export default function GearItemDialog({
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
   const [worn, setWorn] = useState(listContext?.isWorn ?? false)
   const [consumable, setConsumable] = useState(listContext?.isConsumable ?? false)
+  // Visibility only: the editor itself (draft, pending, error, late-answer
+  // protection) is the shared InlineCreateCategory, remounted fresh each open.
   const [newCategoryOpen, setNewCategoryOpen] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [creatingCategory, setCreatingCategory] = useState(false)
-  const [categoryError, setCategoryError] = useState<string | null>(null)
 
   // Form state is initialized from props by the useState initializers above;
   // there is no reset effect because the dialog is keyed on the target's id
@@ -133,27 +133,6 @@ export default function GearItemDialog({
     const next = !consumable
     setConsumable(next)
     if (next) setWorn(false)
-  }
-
-  async function handleCreateCategory() {
-    const trimmed = newCategoryName.trim()
-    if (!trimmed || !onCreateCategory) return
-    setCreatingCategory(true)
-    setCategoryError(null)
-    try {
-      const created = await onCreateCategory(trimmed)
-      setCategoryId(created.id)
-      setNewCategoryName('')
-      setNewCategoryOpen(false)
-    } catch {
-      // Not "try again": createCategory is a POST that mints an id, so a commit
-      // whose response was lost would be duplicated by a blind retry - and category
-      // names are not unique, so nothing stops it. See the rule in
-      // src/lib/mutation-error-handler.ts.
-      setCategoryError("Couldn't confirm the category was created. Refresh before retrying, in case it was.")
-    } finally {
-      setCreatingCategory(false)
-    }
   }
 
   const isEdit = Boolean(item)
@@ -255,7 +234,6 @@ export default function GearItemDialog({
                 onChange={(e) => {
                   if (e.target.value === '__new_category__') {
                     setNewCategoryOpen(true)
-                    setCategoryError(null)
                   } else {
                     setCategoryId(e.target.value || null)
                   }
@@ -270,53 +248,17 @@ export default function GearItemDialog({
                 ))}
                 {onCreateCategory && <option value="__new_category__">+ New category</option>}
               </select>
-              {newCategoryOpen && (
-                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Category name"
-                    maxLength={MAX_CATEGORY_NAME}
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        void handleCreateCategory()
-                      }
-                      if (e.key === 'Escape') {
-                        setNewCategoryName('')
-                        setNewCategoryOpen(false)
-                        setCategoryError(null)
-                      }
-                    }}
-                    className={`w-full min-w-0 ${FORM_INPUT}`}
-                  />
-                  <PrimaryButton
-                    type="button"
-                    onClick={() => void handleCreateCategory()}
-                    disabled={creatingCategory || !newCategoryName.trim()}
-                    aria-label="Create category"
-                    size="icon"
-                    disabledOpacity="40"
-                  >
-                    <Check size={16} />
-                  </PrimaryButton>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewCategoryName('')
-                      setNewCategoryOpen(false)
-                      setCategoryError(null)
-                    }}
-                    aria-label="Cancel new category"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:text-gray-600"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
+              {newCategoryOpen && onCreateCategory && (
+                <InlineCreateCategory
+                  variant="form"
+                  create={onCreateCategory}
+                  onCreated={(created) => {
+                    setCategoryId(created.id)
+                    setNewCategoryOpen(false)
+                  }}
+                  onCancel={() => setNewCategoryOpen(false)}
+                />
               )}
-              {categoryError && <p className="mt-1 text-xs text-red-600">{categoryError}</p>}
             </div>
           </div>
           {/* Cost + Purchase date. Keep the same two-column mobile rhythm

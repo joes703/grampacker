@@ -20,7 +20,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import {
   queryKeys,
   fetchCategories,
@@ -39,7 +39,6 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { SECONDARY_BUTTON } from '../components/flat-table-styles'
 import { showToast } from '../lib/toast'
 import type { Category, GearItem } from '../lib/types'
-import { MAX_CATEGORY_NAME } from '../lib/caps'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useToggleSet } from '../lib/use-toggle-set'
@@ -51,6 +50,7 @@ import GearItemRow from './GearItemRow'
 import GearImportPreviewDialog from './GearImportPreviewDialog'
 import Modal from '../components/Modal'
 import GearItemDialog from '../components/gear/GearItemDialog'
+import InlineCreateCategory from '../components/InlineCreateCategory'
 import BulkMoveCategoryDialog from './BulkMoveCategoryDialog'
 import BulkActionsToolbar from './BulkActionsToolbar'
 import CreateListFromSelectionDialog from './CreateListFromSelectionDialog'
@@ -80,14 +80,12 @@ type DialogState =
   // deletes launched directly from the row kebab or trash icon.
   | { type: 'delete-item'; item: GearItem; returnDialog?: DialogState }
   | { type: 'delete-category'; category: Category }
-  // The inline category editor is a SESSION, not a flag. Its draft, its error and
-  // its in-flight state all live here so that every transition is one functional
-  // setDialog guarded on `session` - which makes a late answer's decision atomic
-  // with respect to whatever else replaced the editor. An earlier draft kept these
-  // in separate useState and inferred "the user left" from an effect on the dialog;
-  // that lost races against the async dialog replacements this page already has
-  // (CSV import completion).
-  | { type: 'add-category'; session: number; name: string; error: string | null; pending: boolean }
+  // The inline category editor is a SESSION, not a flag: `session` is the
+  // editor's React key, so reopening remounts a fresh InlineCreateCategory.
+  // The draft, error and in-flight state live inside that component, and a
+  // create that settles after the editor was replaced (another dialog, a CSV
+  // import finishing, plain close) is made inert by its unmount guard.
+  | { type: 'add-category'; session: number }
   | { type: 'bulk-move' }
   | { type: 'bulk-delete' }
   | { type: 'import-explainer' }
@@ -188,16 +186,13 @@ export default function GearLibraryPage() {
   const { set: collapsed, toggle: toggleCollapse, clear: expandAll, reset: resetCollapsed } = useToggleSet<string>()
   const { weightUnit } = useWeightUnit()
   const isBelowLg = useIsBelowLg()
-  // Monotonic id for each opening of the inline category editor. The editor has no
-  // stable object to compare (its state changes on every keystroke), so the session
-  // number is its identity.
+  // Monotonic id for each opening of the inline category editor, used as its
+  // React key: opening "New category" while the editor is already up remounts
+  // it with a clean draft and detaches any create still in flight.
   const categorySessionRef = useRef(0)
   const openNewCategory = (): DialogState => ({
     type: 'add-category',
     session: (categorySessionRef.current += 1),
-    name: '',
-    error: null,
-    pending: false,
   })
   // The GearItemDialog save currently awaiting a response, held as the exact
   // DialogState object it was submitted from. Two jobs, both identity-based:
@@ -212,65 +207,8 @@ export default function GearLibraryPage() {
     clearSelected()
   }
 
-  // Every transition of the inline category editor goes through this: apply `next`
-  // only if the editor is STILL open on the same session. That is what makes a late
-  // answer safe no matter what replaced the editor in the meantime - another dialog,
-  // a CSV import finishing, or the user simply closing it -
-  // without needing to know in advance what the routes out are.
-  function updateCategorySession(
-    session: number,
-    next: (prev: Extract<DialogState, { type: 'add-category' }>) => DialogState | null,
-  ) {
-    setDialog((prev) =>
-      prev?.type === 'add-category' && prev.session === session ? next(prev) : prev,
-    )
-  }
-
   function closeNewCategory() {
     setDialog(null)
-  }
-
-  // The editor holds its own error rather than raising a toast, and stays open with
-  // the typed name until the create actually succeeds. Both halves are deliberate.
-  //
-  // No toast because `addCategory` is shared with GearItemDialog's "create
-  // category" affordance, which is inside a modal and so reports inline (the modal
-  // rule in src/lib/mutation-error-handler.ts); a toast as well would say it
-  // twice. Closing on the
-  // optimistic insert is out because the placeholder takes the next sort order and
-  // so lands at the END of the category list, which on a library of any size is
-  // below the fold: it can appear and roll back without ever being on screen.
-  function commitNewCategory(editor: Extract<DialogState, { type: 'add-category' }>) {
-    const name = editor.name.trim()
-    // Category names are NOT unique in the schema, so a second submit while the
-    // first is out quietly creates a duplicate - and Enter repeats on its own. The
-    // primary block is the UI: `pending` disables both the input and the Add button,
-    // which is what the double-submit test actually exercises. This early return is
-    // the backstop for any future caller that reaches the function directly.
-    if (!name || editor.pending) return
-    const { session } = editor
-    updateCategorySession(session, (prev) => ({ ...prev, error: null, pending: true }))
-    // mutateAsync, NOT mutate with per-call callbacks. `addCategory` is ONE mutation
-    // observer shared with GearItemDialog's create-category affordance, and TanStack
-    // detaches the observer from the previous mutation on every new mutate call - so
-    // per-call callbacks here would simply never run. That overlap IS reachable:
-    // abandon an in-flight inline create by opening New item, then create a category
-    // from inside the dialog. The promise mutateAsync returns belongs to THIS
-    // mutation and settles regardless of what the observer does next.
-    void (async () => {
-      try {
-        await addCategory.mutateAsync(name)
-        updateCategorySession(session, () => null)
-      } catch {
-        updateCategorySession(session, (prev) => ({
-          ...prev,
-          pending: false,
-          // POST, so no blind retry - see the note on the item dialog's message.
-          error:
-            "Couldn't confirm the category was created. Refresh before retrying, in case it was.",
-        }))
-      }
-    })()
   }
 
   // ── CSV import/export ─────────────────────────────────────────────────────────
@@ -332,7 +270,7 @@ export default function GearLibraryPage() {
   // owns the optimistic insert/update/delete, including the delete's cross-cache
   // invalidation that re-renders gear/list views after the DB sets the affected
   // gear_items.categoryId to NULL. The page keeps category reorder (in the
-  // useReorderable hook), the commitNewCategory glue, and the stable handler
+  // useReorderable hook), the InlineCreateCategory wiring, and the stable handler
   // layer that feeds memoized sections (it destructures renameCategory.mutate /
   // removeCategory.mutate below).
   const { addCategory, renameCategory, removeCategory } = useGearCategoryActions(categories)
@@ -593,57 +531,20 @@ export default function GearLibraryPage() {
             />
           </div>
 
-          {/* Inline "New category" input — only present while the
-              add-category dialog state is active. Triggered from
-              either the desktop Options popover or the mobile Options
-              modal. Hidden by default on every viewport; visible
-              full-width on mobile, inline on desktop when active. The
-              shared input here keeps a single source of truth instead
-              of duplicating the inline editor per surface. */}
+          {/* Inline "New category" editor — only mounted while the
+              add-category dialog state is active. Triggered from either the
+              desktop Options popover or the mobile Options modal; visible
+              full-width on mobile, inline on desktop. The shared component
+              (also used inside GearItemDialog) owns the draft, the pending
+              guard and the late-answer protection. */}
           {dialog?.type === 'add-category' && (
-            <div className="flex w-full md:w-auto flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Category name"
-                  maxLength={MAX_CATEGORY_NAME}
-                  value={dialog.name}
-                  disabled={dialog.pending}
-                  onChange={(e) =>
-                    updateCategorySession(dialog.session, (prev) => ({
-                      ...prev,
-                      name: e.target.value,
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitNewCategory(dialog)
-                    if (e.key === 'Escape') closeNewCategory()
-                  }}
-                  className="w-44 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                />
-                <PrimaryButton
-                  onClick={() => commitNewCategory(dialog)}
-                  disabled={!dialog.name.trim() || dialog.pending}
-                  size="sm"
-                  disabledOpacity="40"
-                >
-                  {dialog.pending ? 'Adding…' : 'Add'}
-                </PrimaryButton>
-                <button
-                  onClick={closeNewCategory}
-                  className="rounded p-1.5 text-gray-500 hover:text-gray-600"
-                  aria-label="Cancel new category"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              {dialog.error && (
-                <p role="alert" className="text-xs text-red-600">
-                  {dialog.error}
-                </p>
-              )}
-            </div>
+            <InlineCreateCategory
+              key={dialog.session}
+              variant="toolbar"
+              create={(categoryName) => addCategory.mutateAsync(categoryName)}
+              onCreated={closeNewCategory}
+              onCancel={closeNewCategory}
+            />
           )}
 
           {/* Select pill — visible on every viewport. Frequent enough on
