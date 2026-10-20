@@ -178,31 +178,13 @@ export function useListItemActions(
     mutationKey: mutationKeys.moveListItem(listId),
     mutationFn: ({ itemId, locationId }: MoveItemVars) =>
       updateListItem(listId, itemId, { packingLocationId: locationId }),
-    onMutate: async ({ itemId, locationId, nextPackSortOrder }: MoveItemVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-      const row = qc
-        .getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-        ?.find((i) => i.id === itemId)
-      if (!row) return undefined
-      const previousPlacement = {
-        packingLocationId: row.packingLocationId,
-        packSortOrder: row.packSortOrder,
-      }
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr?.map((i) =>
-          i.id === itemId
-            ? { ...i, packingLocationId: locationId, packSortOrder: nextPackSortOrder }
-            : i,
-        ),
-      )
-      return { itemId, previousPlacement }
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx) {
-        qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-          curr?.map((i) => (i.id === ctx.itemId ? { ...i, ...ctx.previousPlacement } : i)),
-        )
-      }
+    onMutate: ({ itemId, locationId, nextPackSortOrder }: MoveItemVars) =>
+      listItemsCache.patchRow(itemId, {
+        packingLocationId: locationId,
+        packSortOrder: nextPackSortOrder,
+      }),
+    onError: (_err, { itemId }, previousPlacement) => {
+      if (previousPlacement) listItemsCache.restoreRow(itemId, previousPlacement)
       // Toasted for the reorder reason rather than the delete one (see the rule
       // in src/lib/mutation-error-handler.ts): this is the write behind a DRAG,
       // and a rollback that sends the row back where it came from is
