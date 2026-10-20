@@ -16,4 +16,4 @@ export type {
   PublicList,
   PublicListItem,
   SharedListResponse,
-} from '../../shared/lists'
+} from '../../shared/shares'

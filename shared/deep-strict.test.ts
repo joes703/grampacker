@@ -5,8 +5,8 @@ import {
   listResponseSchema,
   listItemResponseSchema,
   packingLocationResponseSchema,
-  sharedListResponseSchema,
 } from './lists'
+import { sharedListResponseSchema } from './shares'
 import { categoryResponseSchema, importGearResponseSchema } from './gear'
 import { listFoodResponseSchema } from './food'
 import { meResponseSchema } from './me'

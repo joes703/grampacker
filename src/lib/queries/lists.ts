@@ -1,13 +1,15 @@
 import {
   listResponseSchema,
-  sharedListResponseSchema,
   type CreateListFromSelectionRequest,
-  type ImportListRequestInput,
   type ListResponse,
   type ReorderListsRequest,
-  type SharedListResponse,
   type UpdateListRequest,
 } from '../../../shared/lists'
+import { type ImportListRequestInput } from '../../../shared/list-import'
+import {
+  sharedListResponseSchema,
+  type SharedListResponse,
+} from '../../../shared/shares'
 import { ApiError, apiFetch, apiFetchVoid } from '../api'
 
 // The SPA-side list type IS the shared DTO (see categories.ts for the

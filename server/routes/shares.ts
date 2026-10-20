@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { sharedListResponseSchema, type SharedListResponse } from '../../shared/lists'
+import { sharedListResponseSchema, type SharedListResponse } from '../../shared/shares'
 import { deepStrict } from '../../shared/deep-strict'
 import {
   attachPublicShares,

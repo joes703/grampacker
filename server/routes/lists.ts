@@ -8,7 +8,6 @@ import {
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
-  importListRequestSchema,
   normalizeReorderPackRequest,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
@@ -19,6 +18,7 @@ import {
   type ListItemResponse,
   type ListResponse,
 } from '../../shared/lists'
+import { importListRequestSchema } from '../../shared/list-import'
 import { type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
 import type { ListItemWithGear, ListItemWriteResult } from '../repos/list-items'

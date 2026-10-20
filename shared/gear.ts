@@ -1,5 +1,13 @@
 import { z } from 'zod'
 import { decimalNumber } from './decimal'
+import {
+  descriptionSchema,
+  idSchema,
+  nonEmptyPatch,
+  sortOrderSchema,
+  tempIdSchema,
+  uniqueIds,
+} from './schema-primitives'
 
 // DTO contracts for /api/categories and /api/gear-items. Response schemas
 // are the allowlist: fields not named here never leave the server (user_id
@@ -30,23 +38,23 @@ export type GearStatus = z.infer<typeof gearStatusSchema>
 // Caps mirror the old schema's CHECK constraints; the DB re-enforces them.
 // Named constants, not literals, so src/lib/caps.ts can re-export them for
 // input maxLength and import clamps instead of hand-copying the numbers.
+// (The description bound lives in shared/schema-primitives.ts beside its
+// schema; gear and lists share it.)
 export const MAX_CATEGORY_NAME = 128
 export const MAX_NAME_LENGTH = 256
-export const MAX_DESC_LENGTH = 2000
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 export const MAX_ITEM_WEIGHT_GRAMS = 100000
 
-const categoryNameSchema = z.string().trim().min(1).max(MAX_CATEGORY_NAME)
-const gearNameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH)
-// Empty string is not a valid description - clients send null to clear.
-const descriptionSchema = z.string().trim().min(1).max(MAX_DESC_LENGTH)
+// Exported for the list import, which creates gear-library rows (categories
+// and gear) and must hold them to these same bounds.
+export const categoryNameSchema = z.string().trim().min(1).max(MAX_CATEGORY_NAME)
+export const gearNameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH)
 // Tenths of a gram, not whole grams: packing multiples of a small item makes
 // the fraction matter. One decimal -
 // it is the precision the UI renders, so everything storable is displayable,
 // and a rejected value is a real signal rather than silent rounding. Widening
 // to more decimals later is backwards-compatible; narrowing is not.
 export const weightGramsSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GRAMS, decimals: 1 })
-const idSchema = z.string().min(1).max(64)
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
 // the wrong tool for money and numeric(10,2) does not exist in SQLite).
@@ -67,8 +75,6 @@ const isoDateSchema = z
     },
     { message: 'not a real calendar date' },
   )
-
-const sortOrderSchema = z.number().int().min(-1_000_000_000).max(1_000_000_000)
 
 // ---------------------------------------------------------------- categories
 
@@ -125,27 +131,22 @@ export type CreateGearItemRequestInput = z.input<
 >
 
 // PATCH semantics: absent = unchanged, null = clear (nullable fields only).
-export const updateGearItemRequestSchema = z
-  .object({
-    name: gearNameSchema.optional(),
-    description: descriptionSchema.nullable().optional(),
-    weightGrams: weightGramsSchema.optional(),
-    categoryId: idSchema.nullable().optional(),
-    cost: costSchema.nullable().optional(),
-    purchaseDate: isoDateSchema.nullable().optional(),
-    status: gearStatusSchema.optional(),
-  })
-  .strict()
-  .refine((v) => Object.values(v).some((field) => field !== undefined), {
-    message: 'empty patch',
-  })
+export const updateGearItemRequestSchema = nonEmptyPatch(
+  z
+    .object({
+      name: gearNameSchema.optional(),
+      description: descriptionSchema.nullable().optional(),
+      weightGrams: weightGramsSchema.optional(),
+      categoryId: idSchema.nullable().optional(),
+      cost: costSchema.nullable().optional(),
+      purchaseDate: isoDateSchema.nullable().optional(),
+      status: gearStatusSchema.optional(),
+    })
+    .strict(),
+)
 export type UpdateGearItemRequest = z.infer<typeof updateGearItemRequestSchema>
 
 // ------------------------------------------------------------------ bulk ops
-
-function uniqueIds(ids: string[]): boolean {
-  return new Set(ids).size === ids.length
-}
 
 // All-or-nothing: one non-owned id rejects the whole call, zero writes.
 // The 500 here is a TRANSPORT bound shared by /gear-items/order and
@@ -189,13 +190,11 @@ export type BulkMoveRequest = z.infer<typeof bulkMoveRequestSchema>
 // client plans the import (CSV parse + dedup against its library snapshot)
 // and references not-yet-created categories by a client-minted tempId; the
 // server mints the real ids.
-const tempIdSchema = z.string().min(1).max(64)
 
 export const importCategoryRefSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('existing'), id: idSchema }).strict(),
   z.object({ kind: z.literal('new'), tempId: tempIdSchema }).strict(),
 ])
-export type ImportCategoryRef = z.infer<typeof importCategoryRefSchema>
 
 const importGearCategoryEntrySchema = z
   .object({ tempId: tempIdSchema, name: categoryNameSchema })
@@ -211,40 +210,41 @@ const importGearItemEntrySchema = z
   })
   .strict()
 
-// The relational half of well-formedness, shared by BOTH schema variants
-// below: an oversized body with duplicate tempIds or dangling references is
-// MALFORMED (uniform 400), never merely over-cap (422).
-function refineImportGearRelations(
-  req: {
-    categories: { tempId: string }[]
-    items: { category: { kind: string; tempId?: string } | null }[]
-  },
+// The relational half of import well-formedness, shared by both gear-import
+// variants below and by the list import's category and gear layers: declared
+// tempIds must be unique, every `kind: 'new'` reference must resolve against
+// them, and every declared entry must be referenced - rejecting orphans keeps
+// an import endpoint from being a row-spam vector. An oversized body with
+// these defects is MALFORMED (uniform 400), never merely over-cap (422).
+// `noun` appears in the issue messages. Returns false when an issue was
+// added, so a caller checking several layers stops at the first defect.
+export function refineTempIdRelations(
+  noun: 'category' | 'gear',
+  declared: readonly { tempId: string }[],
+  refs: readonly ({ kind: string; tempId?: string } | null | undefined)[],
   ctx: z.RefinementCtx,
-): void {
-  const tempIds = req.categories.map((c) => c.tempId)
+): boolean {
+  const tempIds = declared.map((d) => d.tempId)
   if (!uniqueIds(tempIds)) {
-    ctx.addIssue({ code: 'custom', message: 'duplicate category tempIds' })
-    return
+    ctx.addIssue({ code: 'custom', message: `duplicate ${noun} tempIds` })
+    return false
   }
-  const declared = new Set(tempIds)
+  const declaredSet = new Set(tempIds)
   const referenced = new Set<string>()
-  for (const item of req.items) {
-    if (item.category?.kind !== 'new') continue
-    const tempId = item.category.tempId as string
-    if (!declared.has(tempId)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `unknown category tempId: ${tempId}`,
-      })
-      return
+  for (const ref of refs) {
+    if (ref?.kind !== 'new') continue
+    const tempId = ref.tempId as string
+    if (!declaredSet.has(tempId)) {
+      ctx.addIssue({ code: 'custom', message: `unknown ${noun} tempId: ${tempId}` })
+      return false
     }
     referenced.add(tempId)
   }
-  // Every declared category must be used - rejecting orphans keeps the
-  // endpoint from being a category-spam vector.
-  if (referenced.size !== declared.size) {
-    ctx.addIssue({ code: 'custom', message: 'unreferenced category tempId' })
+  if (referenced.size !== declaredSet.size) {
+    ctx.addIssue({ code: 'custom', message: `unreferenced ${noun} tempId` })
+    return false
   }
+  return true
 }
 
 // One construction, two variants differing ONLY in the array maxima - the
@@ -260,7 +260,14 @@ function importGearSchema(caps: { categories: number; items: number } | null) {
       items: caps ? items.max(caps.items) : items,
     })
     .strict()
-    .superRefine(refineImportGearRelations)
+    .superRefine((req, ctx) => {
+      refineTempIdRelations(
+        'category',
+        req.categories,
+        req.items.map((i) => i.category),
+        ctx,
+      )
+    })
 }
 
 // The public contract: maxima are the REAL caps (the triggers abort at 500,

@@ -36,6 +36,10 @@ export { MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
 export { MAX_LIST_ITEM_QUANTITY } from '../../shared/lists'
 
 // Max characters for an item/list/gear name field (input maxLength +
-// CSV-import slice), a description field, and a gear category name field.
-// Defined in shared/gear.ts next to the request schemas they bound.
-export { MAX_CATEGORY_NAME, MAX_DESC_LENGTH, MAX_NAME_LENGTH } from '../../shared/gear'
+// CSV-import slice) and a gear category name field. Defined in
+// shared/gear.ts next to the request schemas they bound.
+export { MAX_CATEGORY_NAME, MAX_NAME_LENGTH } from '../../shared/gear'
+
+// Description bound, shared by gear and lists; defined beside its schema in
+// shared/schema-primitives.ts.
+export { MAX_DESC_LENGTH } from '../../shared/schema-primitives'
