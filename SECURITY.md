@@ -656,6 +656,26 @@ session; every statement gates itself on the slug and `is_shared`.
 
   `/api/health` is unmetered for the same reason and returns one boolean.
 
+- **A same-list trigger abort on packing-location creation answers 400, not
+  500.** The membership precheck runs inside the same immediate transaction
+  (`server/repos/packing-locations.ts`), so the database trigger firing
+  anyway means a server defect, and the repo rule for that case is "let it
+  500" - foreign-key failures there now do. The trigger abort was
+  deliberately left mapped to `invalid_container_item` (a client error) when
+  that was fixed; the question of reclassifying it was recorded and is
+  carried here. Accepted because the answer is wrong only about blame, never
+  about data. Trigger to revisit: this catch ever observed firing in
+  production logs, or the next change to this repository file.
+
+- **The CI verify gates are duplicated between `ci.yml` and `image.yml`.**
+  Kept deliberately (the 2026-10 code-quality remediation looked at unifying
+  and declined): the publish path must run its own gates even if `ci.yml`
+  changes, and both files carry comments saying the copies move together.
+  The accepted risk is drift - a gate added to `ci.yml` alone does not guard
+  an image publish until someone notices the comment. Trigger for unifying
+  (a reusable workflow): the first gate that silently missed one of the two
+  files, or the next CI restructuring.
+
 - **A list cache can show a deleted gear row.** The gear delete fan-out
   (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches
   that hold the gear when it starts. A list fetch already in flight that
