@@ -28,7 +28,6 @@ export function NameDescriptionCell({
   description,
   onSaveName,
   onSaveDescription,
-  showDescription = true,
 }: {
   status: GearStatus
   name: string
@@ -37,7 +36,6 @@ export function NameDescriptionCell({
   // allowEmpty on the inline control: clearing removes the description; the
   // caller's write boundary converts '' to the null the contract takes.
   onSaveDescription?: (description: string) => void
-  showDescription?: boolean
 }) {
   return (
     <div className="flex-1 min-w-0 flex items-center gap-3">
@@ -53,23 +51,21 @@ export function NameDescriptionCell({
           <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
         )}
       </div>
-      {showDescription && (
-        <div className="flex-[3] min-w-0">
-          {onSaveDescription ? (
-            <InlineText
-              value={description}
-              placeholder="Add description"
-              allowEmpty
-              onSave={onSaveDescription}
-              className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
-            />
-          ) : (
-            <span className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}>
-              {description}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="flex-[3] min-w-0">
+        {onSaveDescription ? (
+          <InlineText
+            value={description}
+            placeholder="Add description"
+            allowEmpty
+            onSave={onSaveDescription}
+            className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
+          />
+        ) : (
+          <span className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}>
+            {description}
+          </span>
+        )}
+      </div>
     </div>
   )
 }

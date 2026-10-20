@@ -135,14 +135,21 @@ export default function GearItemRow({
         <>
           {/* The ''->null conversion in onSaveDescription: clearing the
               field is how a description is removed, and the write contract
-              takes null, never ''. */}
+              takes null, never ''.
+
+              Select mode drops BOTH cells to static, the same rule as the
+              weight cell and the hidden kebab: the row's affordances belong
+              to the selection while it is on (pinned in GearItemRow.test).
+              The static description keeps its column on every row, so name
+              cells stay aligned whether or not a description exists. */}
           <NameDescriptionCell
             status={item.status}
             name={item.name}
             description={item.description ?? ''}
-            onSaveName={(v) => onInlineSave(item.id, { name: v })}
-            onSaveDescription={(v) => onInlineSave(item.id, { description: v || null })}
-            showDescription={item.description !== null || !selectMode}
+            onSaveName={selectMode ? undefined : (v) => onInlineSave(item.id, { name: v })}
+            onSaveDescription={
+              selectMode ? undefined : (v) => onInlineSave(item.id, { description: v || null })
+            }
           />
           <span className={`${COL_PRICE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatCost(item.cost)}

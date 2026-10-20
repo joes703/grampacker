@@ -169,3 +169,29 @@ describe('GearItemRow inline description clearing', () => {
     expect(props.onInlineSave).not.toHaveBeenCalled()
   })
 })
+
+// POLICY: in select mode the row's affordances belong to the selection -
+// everything is read-only. The weight cell and the hidden kebab already
+// followed this rule; name and description used to stay editable, giving
+// three different answers to "is this row editable during selection".
+describe('GearItemRow select mode', () => {
+  it('name and description are read-only during selection', () => {
+    const props = baseProps()
+    render(<GearItemRow item={gear()} {...props} selectMode />)
+    fireEvent.click(screen.getByText('Tent'))
+    fireEvent.click(screen.getByText('Two-person'))
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(props.onInlineSave).not.toHaveBeenCalled()
+  })
+
+  it('keeps the description column on rows without one, so name cells align', () => {
+    // Dropping the flex-[3] cell on description-less rows while rows with a
+    // description kept the 2:3 split made name cells stop lining up in
+    // select mode. The column (an exceptional structural assert: the flex
+    // proportion IS the regression) must exist on every row.
+    const { container } = render(
+      <GearItemRow item={gear({ description: null })} {...baseProps()} selectMode />,
+    )
+    expect(container.querySelector('.flex-\\[3\\]')).not.toBeNull()
+  })
+})
