@@ -114,6 +114,7 @@ import {
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
 import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
+import { passesPackFilters } from './section-rows'
 import {
   nextUnionPackRankFor,
   packRowName,
@@ -1029,14 +1030,11 @@ function ListDetailInner({
   const packFoodItems = mode === 'pack' ? listFood.items : EMPTY_FOOD_ITEMS
   const foodById = new Map(packFoodItems.map((food) => [food.id, food]))
   // Filtered food rows, mirroring packFilteredItemIds for gear: hidden rows
-  // must not participate in reorder planning.
+  // must not participate in reorder planning. Same shared predicate as the
+  // renderer and the gear planner (section-rows.ts).
   const packFilteredFoodIds = new Set(
     packFoodItems
-      .filter(
-        (food) =>
-          (showUnpackedOnly && food.isPacked) ||
-          (showUnreadyOnly && food.isReady),
-      )
+      .filter((food) => !passesPackFilters(food, { showUnpackedOnly, showUnreadyOnly }))
       .map((food) => food.id),
   )
   // Food rows grouped by the location the page will actually RENDER. An

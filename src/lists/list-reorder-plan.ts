@@ -5,7 +5,7 @@ import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
 import type { UnionRankUpdates } from './pack-rows'
 import { derivePackReorderExclusions } from './packing-tree'
-import { isOrdinarySectionRow } from './section-rows'
+import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
 
 // Planning for a drag that ends over an `item:` row - the List view's
 // document-order reorder and the Pack view's category-fallback reorder. Pure:
@@ -16,27 +16,20 @@ import { isOrdinarySectionRow } from './section-rows'
 // plan, these functions decide WHAT the plan is, and only the latter is
 // worth testing in isolation.
 
-// Rows the pack-mode filters have hidden. A hidden row must be neither a
-// reorder source nor a reorder neighbor: the sort slots are computed from the
-// rows the user can actually see, so counting an invisible row would drop the
-// dragged row somewhere other than where it was released.
-//
-// Written against the same predicate shape CategoryGroup renders with
-// (AND of the two filters). The expression is duplicated there, not shared,
-// so a change to one must be made to both - keep them in step.
+// Rows the pack-mode filters have hidden, by the shared predicate in
+// section-rows.ts - the one CategoryGroup renders with, so what the planner
+// permutes over is exactly what the user sees.
 export function deriveFilteredItemIds(
   items: ListItemWithGear[],
-  { showUnpackedOnly, showUnreadyOnly }: {
+  filters: {
     showUnpackedOnly: boolean
     showUnreadyOnly: boolean
   },
 ): Set<string> {
   const hidden = new Set<string>()
-  if (!showUnpackedOnly && !showUnreadyOnly) return hidden
+  if (!filters.showUnpackedOnly && !filters.showUnreadyOnly) return hidden
   for (const item of items) {
-    const visible =
-      (!showUnpackedOnly || !item.isPacked) && (!showUnreadyOnly || !item.isReady)
-    if (!visible) hidden.add(item.id)
+    if (!passesPackFilters(item, filters)) hidden.add(item.id)
   }
   return hidden
 }
