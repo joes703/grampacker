@@ -8,6 +8,12 @@ import type { ListItemPatch } from '../lib/queries'
 import type { WeightUnit } from '../lib/weight'
 import { useIsPrinting } from '../lib/use-is-printing'
 import {
+  COL_ICON,
+  COL_QTY,
+  COL_QTY_EDIT,
+  COL_QTY_MOBILE,
+  COL_WEIGHT,
+  COL_WEIGHT_MOBILE,
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
@@ -604,45 +610,45 @@ function CategoryGroup({
             {/* Desktop column-stubs (≥ lg) — align with desktop ItemRow's
                 worn/consumable/qty/weight/kebab columns. */}
             <div className="hidden lg:contents">
-              <div className="shrink-0 w-6" />
-              <div className="shrink-0 w-6" />
-              <div className={`shrink-0 w-12 text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={COL_ICON} />
+              <div className={COL_ICON} />
+              <div className={`${COL_QTY_EDIT} text-right ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
-              <div className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={`${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW}`}>
                 Weight
               </div>
-              {showKebabSlot && <div className="shrink-0 w-6" />}
+              {showKebabSlot && <div className={COL_ICON} />}
             </div>
             {/* Mobile column-stubs (< lg) — single w/c slot, narrower qty
                 and weight columns matching MobileRowBody. No kebab stub. */}
             <div className="lg:hidden flex items-center gap-2">
-              <div className="shrink-0 w-6" />
-              <div className={`shrink-0 w-8 text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={COL_ICON} />
+              <div className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
-              <div className={`shrink-0 w-20 text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_EYEBROW}`}>
                 Weight
               </div>
             </div>
           </>
         ) : containerItem ? (
           <>
-            <span className="shrink-0 w-6 inline-flex items-center justify-center">
+            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
               {containerItem.isWorn && <WornIcon />}
             </span>
-            <span className="shrink-0 w-6 inline-flex items-center justify-center">
+            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
               {containerItem.isConsumable && <ConsumableIcon />}
             </span>
-            <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+            <span className={`${COL_QTY} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
               {containerItem.quantity}
             </span>
           </>
         ) : (
           <>
-            <div className="shrink-0 w-6" />
-            <div className="shrink-0 w-6" />
-            <div className={`shrink-0 w-10 text-right ${FLAT_TABLE_EYEBROW}`}>
+            <div className={COL_ICON} />
+            <div className={COL_ICON} />
+            <div className={`${COL_QTY} text-right ${FLAT_TABLE_EYEBROW}`}>
               Qty
             </div>
           </>
@@ -748,8 +754,8 @@ function CategoryGroup({
               ) : null}
               <div className={`flex-1 min-w-0 ${onAddItem ? 'lg:hidden' : ''}`} />
               <div className="hidden lg:contents">
-                <div className="shrink-0 w-6" />
-                <div className="shrink-0 w-6" />
+                <div className={COL_ICON} />
+                <div className={COL_ICON} />
                 <div className="shrink-0 min-w-[9.375rem] text-right text-gray-700">
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}
@@ -758,10 +764,10 @@ function CategoryGroup({
                     weightUnit={weightUnit}
                   />
                 </div>
-                {showKebabSlot && <div className="shrink-0 w-6" />}
+                {showKebabSlot && <div className={COL_ICON} />}
               </div>
               <div className="lg:hidden flex items-center gap-2">
-                <div className="shrink-0 w-6" />
+                <div className={COL_ICON} />
                 <div className="shrink-0 min-w-[7.5rem] text-right text-gray-700">
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}

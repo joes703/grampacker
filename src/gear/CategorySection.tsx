@@ -11,6 +11,10 @@ import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import {
+  COL_DATE,
+  COL_ICON,
+  COL_PRICE,
+  COL_WEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
@@ -202,9 +206,9 @@ function CategorySectionInner(
         {/* Header actions — hidden in select mode */}
         {!selectMode && !renaming && (
           <div className="flex items-center gap-1.5 ml-auto">
-            {/* Desktop column labels — widths and gap mirror GearItemRow's
-               right-side columns (w-20 cost, w-24 purchase date, w-24
-               weight, w-6 kebab) so labels sit directly above row values.
+            {/* Desktop column labels — each composes the same COL_* width
+               token as GearItemRow's matching cell (flat-table-styles), so
+               labels sit directly above row values by construction.
                No horizontal nudge is needed any more: the header now uses the
                row's own px-3 + gap-1.5, so the two rails share coordinates
                outright instead of compensating for a 4px difference.
@@ -217,14 +221,14 @@ function CategorySectionInner(
                kebab removed, so labels would no longer match columns). */}
             {items.length > 0 && !collapsed && (
               <div aria-hidden="true" className="hidden lg:contents">
-                <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_EYEBROW}`}>Price</span>
-                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Purchased</span>
-                <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_EYEBROW}`}>Weight</span>
+                <span className={`${COL_PRICE} text-right ${FLAT_TABLE_EYEBROW}`}>Price</span>
+                <span className={`${COL_DATE} text-right ${FLAT_TABLE_EYEBROW}`}>Purchased</span>
+                <span className={`${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW}`}>Weight</span>
                 {/* Uncategorized has no category-level kebab in the header,
                    but item rows still render a per-row kebab in non-select
                    mode. Without this spacer, the labels above would slide
                    1.875rem (w-6 + gap-1.5) right of the row column edges. */}
-                {!category && <span className="shrink-0 w-6" />}
+                {!category && <span className={COL_ICON} />}
               </div>
             )}
             {category && (

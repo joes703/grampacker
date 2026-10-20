@@ -12,6 +12,10 @@ import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import {
+  COL_DATE,
+  COL_PRICE,
+  COL_WEIGHT,
+  COL_WEIGHT_MOBILE,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
@@ -74,7 +78,7 @@ export default function GearItemRow({
             pick up a small leading icon, active rows take no space. */}
         <GearStatusBadge status={item.status} compact className="shrink-0 print:hidden" />
         <span className="flex-1 min-w-0 truncate font-normal text-gray-900">{item.name}</span>
-        <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+        <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
           <ItemWeightValue grams={item.weightGrams} unit={weightUnit} />
         </span>
       </button>
@@ -165,10 +169,10 @@ export default function GearItemRow({
               </div>
             )}
           </div>
-          <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+          <span className={`${COL_PRICE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatCost(item.cost)}
           </span>
-          <span className={`shrink-0 w-24 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+          <span className={`${COL_DATE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
             {formatPurchaseDate(item.purchaseDate)}
           </span>
           {/* The same control the list rows use. This page could only edit a
@@ -181,7 +185,7 @@ export default function GearItemRow({
             unit={weightUnit}
             onSave={selectMode ? undefined : (w) => onInlineSave(item.id, { weightGrams: w })}
             itemName={item.name}
-            className="shrink-0 w-24 text-gray-600"
+            className={`${COL_WEIGHT} text-gray-600`}
           />
           {!selectMode && (
             <GearRowKebab

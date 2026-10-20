@@ -6,6 +6,8 @@ import type { WeightUnit } from '../lib/weight'
 import InlineWeight from '../components/InlineWeight'
 import RowIconButton from '../components/RowIconButton'
 import {
+  COL_ICON,
+  COL_QTY,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_ROW,
@@ -110,11 +112,11 @@ export default function SortableFoodRow({
       {/* Worn slot stays empty (food is never worn); the consumable slot is
           always lit - food is consumable by definition, which is exactly why
           its grams already count toward consumable weight. */}
-      <span className="shrink-0 w-6 inline-flex items-center justify-center" />
-      <span className="shrink-0 w-6 inline-flex items-center justify-center">
+      <span className={`${COL_ICON} inline-flex items-center justify-center`} />
+      <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         <ConsumableIcon />
       </span>
-      <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
+      <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.unitCount}
       </span>
       {/* Same component and the same PACK_ROW_WEIGHT_CELL as the gear pack row:

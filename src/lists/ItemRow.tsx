@@ -12,6 +12,12 @@ import InlineText from '../components/InlineText'
 import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import {
+  COL_ICON,
+  COL_QTY,
+  COL_QTY_EDIT,
+  COL_QTY_MOBILE,
+  COL_WEIGHT,
+  COL_WEIGHT_MOBILE,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_BODY_TEXT_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
@@ -233,13 +239,13 @@ export default function ItemRow({
             </div>
           </div>
         </label>
-        <span className="shrink-0 w-6 inline-flex items-center justify-center">
+        <span className={`${COL_ICON} inline-flex items-center justify-center`}>
           {item.isWorn && <WornIcon />}
         </span>
-        <span className="shrink-0 w-6 inline-flex items-center justify-center">
+        <span className={`${COL_ICON} inline-flex items-center justify-center`}>
           {item.isConsumable && <ConsumableIcon />}
         </span>
-        <span className={`shrink-0 w-10 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
+        <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
         {/* Weight. Deliberately a SIBLING of the label above, never a child:
@@ -267,7 +273,7 @@ export default function ItemRow({
           className={PACK_ROW_WEIGHT_CELL}
           // While editing the cell becomes a flex row (input + unit toggle),
           // so it cannot keep inline-block.
-          editingClassName="hidden lg:flex shrink-0 w-24 print:hidden"
+          editingClassName={`hidden lg:flex ${COL_WEIGHT} print:hidden`}
         />
         {/* Packing menu (move to location / use as container). Not print-hidden
             here: the injected control is a RowIconButton, which carries
@@ -393,12 +399,12 @@ export default function ItemRow({
                 silently loses the flag, while the read-only branch below keeps
                 it. Same empty w-6 box when the flag is off, so the column rail
                 stays aligned either way. */}
-            <span className="hidden print:inline-flex shrink-0 w-6 items-center justify-center">
+            <span className={`hidden print:inline-flex ${COL_ICON} items-center justify-center`}>
               {item.isWorn && <WornIcon />}
             </span>
           </>
         ) : (
-          <span className="shrink-0 w-6 inline-flex items-center justify-center">
+          <span className={`${COL_ICON} inline-flex items-center justify-center`}>
             {item.isWorn && <WornIcon />}
           </span>
         )}
@@ -415,12 +421,12 @@ export default function ItemRow({
               icon={<UtensilsCrossed size={14} />}
             />
             {/* Print-only static indicator; see the worn toggle above. */}
-            <span className="hidden print:inline-flex shrink-0 w-6 items-center justify-center">
+            <span className={`hidden print:inline-flex ${COL_ICON} items-center justify-center`}>
               {item.isConsumable && <ConsumableIcon />}
             </span>
           </>
         ) : (
-          <span className="shrink-0 w-6 inline-flex items-center justify-center">
+          <span className={`${COL_ICON} inline-flex items-center justify-center`}>
             {item.isConsumable && <ConsumableIcon />}
           </span>
         )}
@@ -431,7 +437,7 @@ export default function ItemRow({
           max={MAX_LIST_ITEM_QUANTITY}
           onSave={editable && onUpdate ? (quantity) => onUpdate({ quantity }) : undefined}
           itemName={name}
-          className="w-12"
+          className={COL_QTY_EDIT}
         />
 
         {/* Weight — clickable when editable, static otherwise */}
@@ -440,7 +446,7 @@ export default function ItemRow({
           unit={weightUnit}
           onSave={onSaveWeight}
           itemName={name}
-          className="shrink-0 w-24 text-gray-600"
+          className={`${COL_WEIGHT} text-gray-600`}
         />
 
         {/* Kebab — Remove from list (always when handler present), Edit + Delete
@@ -490,13 +496,13 @@ function MobileRowBody({
         <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
       </div>
       {/* Single worn/consumable indicator slot */}
-      <span className="shrink-0 w-6 inline-flex items-center justify-center">
+      <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         {item.isWorn ? <WornIcon /> : item.isConsumable ? <ConsumableIcon /> : null}
       </span>
-      <span className={`shrink-0 w-8 text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+      <span className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
-      <span className={`shrink-0 w-20 text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+      <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
         <ItemWeightValue grams={itemWeight} unit={weightUnit} />
       </span>
     </>

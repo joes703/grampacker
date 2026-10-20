@@ -244,6 +244,24 @@ export const ROW_CONTROL_TARGET =
 export const ROW_LEADING_CONTROL_TARGET =
   `inline-flex ${MOBILE_ROW_CONTROL_TARGET} ${DESKTOP_ROW_LEADING_TARGET} items-center justify-center rounded`
 
+// ---------------------------------------------------------------------------
+// Column-width tokens
+// ---------------------------------------------------------------------------
+// A section header's label stubs must sit exactly above the row cells below
+// them, so header and row compose the SAME width token - a hand-mirrored
+// width is how the two drift. Width + shrink only; alignment and typography
+// compose at the call site. One token per COLUMN, not per width: Price and
+// the mobile weight both happen to be w-20 today, but they are different
+// columns that may diverge.
+export const COL_ICON = 'shrink-0 w-6' // worn/consumable/kebab slot
+export const COL_QTY = 'shrink-0 w-10' // pack-row quantity
+export const COL_QTY_EDIT = 'shrink-0 w-12' // edit-row InlineQuantity
+export const COL_QTY_MOBILE = 'shrink-0 w-8'
+export const COL_WEIGHT = 'shrink-0 w-24' // desktop weight cell
+export const COL_WEIGHT_MOBILE = 'shrink-0 w-20'
+export const COL_PRICE = 'shrink-0 w-20' // gear table price
+export const COL_DATE = 'shrink-0 w-24' // gear table purchase date
+
 // Desktop-only hover reveal for a row control (drag grips): invisible until
 // the row (`group`) is hovered or the control itself is keyboard-focused.
 // Call sites pass '' instead below lg - a touch viewport has no hover to
@@ -330,7 +348,7 @@ export const FLAT_TABLE_NUMERIC_TEXT = `text-xs ${NUMERIC_VALUE_TEXT}`
 // both, so a cell that differs on one of them pushes every column to its
 // right out of line. lg+ only: a w-24 cell at 375px would crush the name.
 // Hidden in print, where the checklist keeps its own geometry.
-export const PACK_ROW_WEIGHT_CELL = 'hidden lg:inline-block shrink-0 w-24 text-gray-500 print:hidden'
+export const PACK_ROW_WEIGHT_CELL = `hidden lg:inline-block ${COL_WEIGHT} text-gray-500 print:hidden`
 
 // Compact stat panel body text (WeightTable cells). Denser than flat
 // row body text on mobile because these panels are summary surfaces,
