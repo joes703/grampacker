@@ -656,6 +656,15 @@ session; every statement gates itself on the slug and `is_shared`.
 
   `/api/health` is unmetered for the same reason and returns one boolean.
 
+- **The CI verify gates are duplicated between `ci.yml` and `image.yml`.**
+  Kept deliberately (the 2026-10 code-quality remediation looked at unifying
+  and declined): the publish path must run its own gates even if `ci.yml`
+  changes, and both files carry comments saying the copies move together.
+  The accepted risk is drift - a gate added to `ci.yml` alone does not guard
+  an image publish until someone notices the comment. Trigger for unifying
+  (a reusable workflow): the first gate that silently missed one of the two
+  files, or the next CI restructuring.
+
 - **A list cache can show a deleted gear row.** The gear delete fan-out
   (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches
   that hold the gear when it starts. A list fetch already in flight that
