@@ -152,10 +152,14 @@ export default function GearItemRow({
             </div>
             {(item.description !== null || !selectMode) && (
               <div className="flex-[3] min-w-0">
+                {/* allowEmpty + the ''->null conversion: clearing the field
+                    is how a description is removed, and the write contract
+                    takes null, never ''. */}
                 <InlineText
                   value={item.description ?? ''}
                   placeholder="Add description"
-                  onSave={(v) => onInlineSave(item.id, { description: v })}
+                  allowEmpty
+                  onSave={(v) => onInlineSave(item.id, { description: v || null })}
                   className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
                 />
               </div>

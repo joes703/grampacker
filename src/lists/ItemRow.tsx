@@ -359,9 +359,12 @@ export default function ItemRow({
           </div>
           <div className="flex-[3] min-w-0">
             {onSaveDescription ? (
+              // allowEmpty: clearing removes the description; the page's
+              // write boundary converts '' to the null the contract takes.
               <InlineText
                 value={description}
                 placeholder="Add description"
+                allowEmpty
                 onSave={onSaveDescription}
                 className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT_MUTED}`}
               />

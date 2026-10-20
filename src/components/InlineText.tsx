@@ -9,6 +9,11 @@ type Props = {
   className?: string
   /** Edit title hint shown on hover */
   title?: string
+  /** Clearing the field commits '' (default: a cleared draft commits
+   *  nothing, the non-blank rule for name fields). The write contracts
+   *  reject '' for nullable text columns, so a caller setting this must
+   *  convert the empty emission to null at its write boundary. */
+  allowEmpty?: boolean
 }
 
 export default function InlineText({
@@ -17,6 +22,7 @@ export default function InlineText({
   onSave,
   className = '',
   title = 'Edit',
+  allowEmpty = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -37,7 +43,7 @@ export default function InlineText({
 
   function save() {
     const trimmed = draft.trim()
-    if (trimmed && trimmed !== value) onSave(trimmed)
+    if (trimmed !== value && (trimmed || allowEmpty)) onSave(trimmed)
     setEditing(false)
   }
 

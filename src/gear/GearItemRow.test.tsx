@@ -144,3 +144,28 @@ describe('GearItemRow inline weight', () => {
     expect(screen.getByLabelText('1200 g')).toBeInTheDocument()
   })
 })
+
+// Clearing the two inline text cells diverges on purpose: a description
+// clears to NULL (the write contract rejects '' - clients send null), while
+// a name keeps the non-blank rule and commits nothing.
+describe('GearItemRow inline description clearing', () => {
+  it('clearing the description saves null', () => {
+    const props = baseProps()
+    render(<GearItemRow item={gear()} {...props} />)
+    fireEvent.click(screen.getByText('Two-person'))
+    const input = screen.getByDisplayValue('Two-person')
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(props.onInlineSave).toHaveBeenCalledWith('gear-1', { description: null })
+  })
+
+  it('clearing the name saves nothing', () => {
+    const props = baseProps()
+    render(<GearItemRow item={gear()} {...props} />)
+    fireEvent.click(screen.getByText('Tent'))
+    const input = screen.getByDisplayValue('Tent')
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(props.onInlineSave).not.toHaveBeenCalled()
+  })
+})
