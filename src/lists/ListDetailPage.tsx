@@ -626,6 +626,29 @@ function ListDetailInner({ listId }: { listId: string }) {
   // changed anything.
   const [announcement, setAnnouncement] = useState('')
 
+  // The narration trio every packing write follows: say what is starting,
+  // then say it landed or that it could not. One owner so the four sites
+  // (gear move, food move, click-to-place, pack reorder) cannot drift.
+  // An undefined string skips that announcement without skipping the write -
+  // the guards differ on purpose: starting and landing name the destination,
+  // so they need one; the failure names only the row.
+  function narrated(opts: {
+    doing?: string
+    done?: string
+    failed?: string
+    run: (callbacks: { onSuccess: () => void; onError: () => void }) => void
+  }) {
+    if (opts.doing) setAnnouncement(opts.doing)
+    opts.run({
+      onSuccess: () => {
+        if (opts.done) setAnnouncement(opts.done)
+      },
+      onError: () => {
+        if (opts.failed) setAnnouncement(opts.failed)
+      },
+    })
+  }
+
   // Click-to-place. The plan is computed against the array the SECTION
   // rendered, handed back by the slot that was activated - never rebuilt from
   // a location id here, because the displayed cohort and a raw
@@ -684,17 +707,14 @@ function ListDetailInner({ listId }: { listId: string }) {
         (row) => (row.kind === 'gear' ? row.gear.id : row.food.id) === rowId,
       )
       const movedName = movedRow ? packRowName(movedRow) : undefined
-      if (movedName) setAnnouncement(`Moving ${movedName}.`)
       // Pack rank: click-to-place is offered only inside a bag (the menu
       // withholds it outside location grouping), so it is always a pack
       // reorder - a union one since 0022.
-      reorderPackItemsMut.mutate(updates, {
-        onSuccess: () => {
-          if (movedName) setAnnouncement(`Moved ${movedName}.`)
-        },
-        onError: () => {
-          if (movedName) setAnnouncement(`Could not move ${movedName}.`)
-        },
+      narrated({
+        doing: movedName ? `Moving ${movedName}.` : undefined,
+        done: movedName ? `Moved ${movedName}.` : undefined,
+        failed: movedName ? `Could not move ${movedName}.` : undefined,
+        run: (callbacks) => reorderPackItemsMut.mutate(updates, callbacks),
       })
     },
   )
@@ -734,23 +754,21 @@ function ListDetailInner({ listId }: { listId: string }) {
     const destination = locationId === null
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
-    if (item && destination) setAnnouncement(`Moving ${item.gearItem.name} to ${destination}.`)
-    moveItem.mutate({
-      itemId,
-      locationId,
-      // The DESTINATION cohort's next UNION rank (gear and food - 0022),
-      // mirroring the server. A gear-only maximum here would park the row
-      // visually above food already in the bag until the refetch corrected
-      // it (GATE 2 finding). A move never touches sortOrder, so the row
-      // keeps its place in List view and on the share link.
-      nextPackSortOrder: nextUnionPackRankFor(listItems, listFood.items, locationId),
-    }, {
-      onSuccess: () => {
-        if (item && destination) setAnnouncement(`Moved ${item.gearItem.name} to ${destination}.`)
-      },
-      onError: () => {
-        if (item) setAnnouncement(`Could not move ${item.gearItem.name}.`)
-      },
+    narrated({
+      doing: item && destination ? `Moving ${item.gearItem.name} to ${destination}.` : undefined,
+      done: item && destination ? `Moved ${item.gearItem.name} to ${destination}.` : undefined,
+      failed: item ? `Could not move ${item.gearItem.name}.` : undefined,
+      run: (callbacks) =>
+        moveItem.mutate({
+          itemId,
+          locationId,
+          // The DESTINATION cohort's next UNION rank (gear and food - 0022),
+          // mirroring the server. A gear-only maximum here would park the row
+          // visually above food already in the bag until the refetch corrected
+          // it (GATE 2 finding). A move never touches sortOrder, so the row
+          // keeps its place in List view and on the share link.
+          nextPackSortOrder: nextUnionPackRankFor(listItems, listFood.items, locationId),
+        }, callbacks),
     })
   }
 
@@ -759,19 +777,17 @@ function ListDetailInner({ listId }: { listId: string }) {
     const destination = locationId === null
       ? 'Unassigned'
       : realLocations.find((location) => location.id === locationId)?.name
-    if (food && destination) setAnnouncement(`Moving ${food.name} to ${destination}.`)
-    moveFoodMut.mutate({
-      foodId,
-      locationId,
-      // The destination cohort's next UNION rank, mirroring the server.
-      nextPackSortOrder: nextUnionPackRankFor(listItems, packFoodItems, locationId),
-    }, {
-      onSuccess: () => {
-        if (food && destination) setAnnouncement(`Moved ${food.name} to ${destination}.`)
-      },
-      onError: () => {
-        if (food) setAnnouncement(`Could not move ${food.name}.`)
-      },
+    narrated({
+      doing: food && destination ? `Moving ${food.name} to ${destination}.` : undefined,
+      done: food && destination ? `Moved ${food.name} to ${destination}.` : undefined,
+      failed: food ? `Could not move ${food.name}.` : undefined,
+      run: (callbacks) =>
+        moveFoodMut.mutate({
+          foodId,
+          locationId,
+          // The destination cohort's next UNION rank, mirroring the server.
+          nextPackSortOrder: nextUnionPackRankFor(listItems, packFoodItems, locationId),
+        }, callbacks),
     })
   }
 
@@ -844,14 +860,11 @@ function ListDetailInner({ listId }: { listId: string }) {
         renderedLocationIds,
       )
       if (plan?.kind === 'reorder') {
-        if (draggedName) setAnnouncement(`Reordering ${draggedName}.`)
-        reorderPackItemsMut.mutate(plan.updates, {
-          onSuccess: () => {
-            if (draggedName) setAnnouncement(`Reordered ${draggedName}.`)
-          },
-          onError: () => {
-            if (draggedName) setAnnouncement(`Could not reorder ${draggedName}.`)
-          },
+        narrated({
+          doing: draggedName ? `Reordering ${draggedName}.` : undefined,
+          done: draggedName ? `Reordered ${draggedName}.` : undefined,
+          failed: draggedName ? `Could not reorder ${draggedName}.` : undefined,
+          run: (callbacks) => reorderPackItemsMut.mutate(plan.updates, callbacks),
         })
         return
       }
