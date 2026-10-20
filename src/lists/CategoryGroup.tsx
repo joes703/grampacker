@@ -70,6 +70,48 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 //                          Default true (authed); share view passes false.
 //   - packMode           ⇒ pack-mode header (qty-only, no weight column) +
 //                          pack-mode row layout. Authed-only.
+//
+// THE FLAVOR MAP. One component serves six section flavors, selected by prop
+// combination, because they all share the contracts that must never fork:
+// the column-alignment geometry (headers, rows and footers line up because
+// their width stubs are defined once, above), the React.memo prop-stability
+// contract (below), the collapse region wiring, and the share-path
+// no-@dnd-kit rule. A per-flavor split would re-spell those four contracts
+// per file; do not split this component without an answer for each.
+//
+//   1. Share category    — no renderRows, no categoryId, collapsible false.
+//   2. Edit category     — categoryId (null = Uncategorized), sortable rows,
+//                          onAddItem footer, per-category subtotals.
+//   3. Edit/share Food   — items=[] + foodRows (the read-only food channel),
+//                          regionKey 'food'.
+//   4. Pack location     — regionKey = the location id (via
+//                          PackLocationSection), packMode, packFoodRows (the
+//                          union channel), optional containerItem, and
+//                          children + packProgressItems for nested bags.
+//   5. Pack fallback     — packMode with categoryId while the list has no
+//                          locations yet, plus a food section under
+//                          regionKey 'packing-food-fallback'.
+//   6. Worn              — wornSection + regionKey 'worn', no renderRows
+//                          (structure actions do not apply), subtotalGrams.
+//
+// The sentinel rules those flavors lean on:
+//   - The section's identity is `regionKey ?? categoryId ?? 'uncategorized'`.
+//     Every categoryId-less section MUST pass a regionKey, or two sections
+//     derive the same region id and aria-controls points two chevrons at one
+//     target.
+//   - categoryId has three states: a string is a real category, null is
+//     Uncategorized, undefined means "not a category section at all"
+//     (location, share, food, worn) - empty-section copy branches on it.
+//   - containerItem swaps the whole section header for the backing item's
+//     checklist row and joins the header's packed count.
+//   - children (nested bags) REQUIRES packProgressItems - the discriminated
+//     pair below - so a parent's count covers everything inside its region.
+//   - foodRows and packFoodRows are deliberately separate channels: the
+//     share DTO cannot satisfy the pack shape, and one prop switched on
+//     packMode would let the wrong one through silently.
+//
+// Adding a flavor: give its discriminating prop ONE meaning, pass a
+// regionKey, and extend this map.
 // The props a row needs, minus the three the sortable wrapper supplies itself.
 // Exported so SortableCategoryRows can spread rowPropsFor's output into
 // SortableItemRow without either side re-deriving the shape.
