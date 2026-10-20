@@ -62,12 +62,20 @@ export function useListImportFlow({ onBeforeOpen }: { onBeforeOpen?: () => void 
               { name: nameFromCsvFilename(state.filename), rows: state.rows },
               {
                 onSuccess: () => setState(null),
-                onError: (err) =>
+                onError: (err) => {
+                  // A rejection can land AFTER the user dismissed the preview
+                  // and opened another dialog on the page, so this route
+                  // opens a dialog too and must clear the page's own union
+                  // first - otherwise the error modal stacks over (say) a
+                  // delete confirmation, and closing it reveals the stale
+                  // destructive dialog.
+                  onBeforeOpen?.()
                   setState({
                     type: 'error',
                     message:
                       err instanceof Error ? err.message : 'Could not import CSV. Try again.',
-                  }),
+                  })
+                },
               },
             )
           }
