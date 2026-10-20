@@ -112,6 +112,23 @@ vi.mock('../lib/use-reorderable', () => ({
   }),
 }))
 
+// Captured so a test can fire the CSV callbacks directly: they run in a
+// non-event context (a file read settling), which is the only way this page
+// QUEUES a dialog replacement without React committing it in the same call -
+// the window the same-tick regression test below needs.
+const csv = vi.hoisted(() => ({
+  onError: undefined as ((message: string) => void) | undefined,
+}))
+vi.mock('../lib/use-csv-file-input', () => ({
+  useCsvFileInput: (
+    _parse: unknown,
+    handlers: { onError: (message: string) => void },
+  ) => {
+    csv.onError = handlers.onError
+    return { inputRef: { current: null }, onChange: vi.fn(), openPicker: vi.fn() }
+  },
+}))
+
 vi.mock('../lib/use-breakpoint', () => ({ useIsBelowLg: () => false }))
 vi.mock('../lib/use-weight-unit', () => ({ useWeightUnit: () => ({ weightUnit: 'g' }) }))
 
@@ -696,6 +713,50 @@ describe('sessions ended by something other than their own close button', () => 
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled()
+  })
+
+  it('a create settling in the same tick as a QUEUED replacement keeps the replacement', async () => {
+    // The replacement here is only queued, not committed: the CSV callbacks
+    // run in a non-event context, so React schedules the import-error dialog
+    // without flushing it, and the category create settles before the editor's
+    // unmount commits. An unconditional close on success queues setDialog(null)
+    // BEHIND the replacement and wipes it; the page's closeCategorySession
+    // decides functionally against whatever is open now, queued included. The
+    // tests above miss this window because they commit the replacement (or
+    // unmount) before settling the create.
+    const d = deferred()
+    h.createCategory.mockReturnValue(d.promise)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New category' }))
+    fireEvent.change(screen.getByPlaceholderText('Category name'), { target: { value: 'A' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(h.createCategory).toHaveBeenCalled())
+
+    // Step OUTSIDE the act environment for the interleave: under act, a
+    // non-event update commits synchronously, which unmounts the editor
+    // before the create's continuation runs and closes the window this test
+    // exists to hold open. With the real scheduler, the replacement is only
+    // QUEUED (its commit is a later macrotask) while the continuation runs on
+    // the microtask queue, exactly as in the browser.
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    const prevActEnv = g.IS_REACT_ACT_ENVIRONMENT
+    g.IS_REACT_ACT_ENVIRONMENT = false
+    try {
+      csv.onError!('That file is not a gear CSV.')
+      d.resolve({ id: 'c-new', name: 'A', sortOrder: 0, createdAt: '' })
+      // Run the component's continuation (microtasks) before any commit.
+      await d.promise
+      await Promise.resolve()
+      // Let the scheduler's deferred flush land.
+      await new Promise((res) => setTimeout(res, 0))
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = prevActEnv
+    }
+    await act(async () => {})
+
+    expect(screen.getByRole('dialog', { name: 'Import error' })).toBeInTheDocument()
+    expect(screen.getByText('That file is not a gear CSV.')).toBeInTheDocument()
   })
 
   it('a create-list failure arriving after its dialog closed does not re-open it', async () => {

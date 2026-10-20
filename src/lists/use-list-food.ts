@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { queryKeys, fetchListFood } from '../lib/queries'
-import { updateFoodItem } from '../lib/queries/food'
+import { foodItemsShape, updateFoodItem } from '../lib/queries/food'
+import { fieldScopedCache } from '../lib/queries/field-scoped'
 import { mutationKeys } from '../lib/queries/keys'
 import { showToast } from '../lib/toast'
 import { foodGramsFor } from '../lib/weight-breakdown'
@@ -46,6 +47,11 @@ const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 export function useListFood(listId: string) {
   const qc = useQueryClient()
 
+  // Field-scoped access to the food cache. The shape is the part that makes
+  // this cache different from list items: a document whose dayCount/slots
+  // metadata every optimistic write passes through untouched.
+  const foodCache = fieldScopedCache(qc, queryKeys.listFood(listId), foodItemsShape)
+
   const query = useQuery({
     queryKey: queryKeys.listFood(listId),
     queryFn: () => fetchListFood(listId),
@@ -56,62 +62,23 @@ export function useListFood(listId: string) {
   // which would multiply a shared bag by the meals it covers.
   const grams = useMemo(() => foodGramsFor(food.items), [food.items])
 
-  // Pack state on a food row: the Packed/Ready checkboxes. Optimistic on the
-  // food cache; hand-rolled rather than makeOptimisticUpdate because the food
-  // cache is one object holding an items array, not a bare collection.
+  // Pack state on a food row: the Packed/Ready checkboxes.
   type FoodPatchVars = {
     foodId: string
     patch: { isPacked?: boolean; isReady?: boolean }
   }
-  // FIELD-SCOPED snapshot + rollback, the same composition rule as
-  // use-list-item-actions' gear patches and the union reorder: only the
-  // fields THIS patch touched are snapshotted, and on failure only those
-  // fields rewind onto the CURRENT row - so a reorder or the sibling
-  // checkbox that succeeded while this was in flight survives the rollback.
+  // FIELD-SCOPED snapshot + rollback through foodCache, the same composition
+  // rule as use-list-item-actions' gear patches and the union reorder: only
+  // the fields THIS patch touched rewind, onto the CURRENT row, so a reorder
+  // or the sibling checkbox that succeeded while this was in flight survives
+  // the rollback.
   const patchPackState = useMutation({
     mutationKey: mutationKeys.updateFoodPackState(listId),
     mutationFn: ({ foodId, patch }: FoodPatchVars) =>
       updateFoodItem(listId, foodId, patch),
-    onMutate: async ({ foodId, patch }: FoodPatchVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const row = qc
-        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-        ?.items.find((item) => item.id === foodId)
-      const previousFields = row
-        ? {
-            ...(patch.isPacked !== undefined ? { isPacked: row.isPacked } : {}),
-            ...(patch.isReady !== undefined ? { isReady: row.isReady } : {}),
-          }
-        : undefined
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId ? { ...item, ...patch } : item,
-              ),
-            }
-          : curr,
-      )
-      return { previousFields }
-    },
-    onError: (
-      _err: unknown,
-      { foodId }: FoodPatchVars,
-      ctx: { previousFields: { isPacked?: boolean; isReady?: boolean } | undefined } | undefined,
-    ) => {
-      const previousFields = ctx?.previousFields
-      if (!previousFields) return
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId ? { ...item, ...previousFields } : item,
-              ),
-            }
-          : curr,
-      )
+    onMutate: ({ foodId, patch }: FoodPatchVars) => foodCache.patchRow(foodId, patch),
+    onError: (_err, { foodId }, previousFields) => {
+      if (previousFields) foodCache.restoreRow(foodId, previousFields)
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
@@ -134,54 +101,13 @@ export function useListFood(listId: string) {
     mutationKey: mutationKeys.moveFoodItem(listId),
     mutationFn: ({ foodId, locationId }: MoveFoodVars) =>
       updateFoodItem(listId, foodId, { packingLocationId: locationId }),
-    onMutate: async ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) => {
-      await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-      const row = qc
-        .getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-        ?.items.find((item) => item.id === foodId)
-      const previousPlacement = row
-        ? { packingLocationId: row.packingLocationId, packSortOrder: row.packSortOrder }
-        : undefined
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((item) =>
-                item.id === foodId
-                  ? {
-                      ...item,
-                      packingLocationId: locationId,
-                      packSortOrder: nextPackSortOrder,
-                    }
-                  : item,
-              ),
-            }
-          : curr,
-      )
-      return { previousPlacement }
-    },
-    onError: (
-      _err: unknown,
-      { foodId }: MoveFoodVars,
-      ctx: {
-        previousPlacement:
-          | { packingLocationId: string | null; packSortOrder: number }
-          | undefined
-      } | undefined,
-    ) => {
-      const previousPlacement = ctx?.previousPlacement
-      if (previousPlacement) {
-        qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-          curr
-            ? {
-                ...curr,
-                items: curr.items.map((item) =>
-                  item.id === foodId ? { ...item, ...previousPlacement } : item,
-                ),
-              }
-            : curr,
-        )
-      }
+    onMutate: ({ foodId, locationId, nextPackSortOrder }: MoveFoodVars) =>
+      foodCache.patchRow(foodId, {
+        packingLocationId: locationId,
+        packSortOrder: nextPackSortOrder,
+      }),
+    onError: (_err, { foodId }, previousPlacement) => {
+      if (previousPlacement) foodCache.restoreRow(foodId, previousPlacement)
       // Same toast rule as moveItem (use-list-item-actions.ts): this is the
       // write behind a drag, and a silent rollback is indistinguishable from
       // the user dragging back.

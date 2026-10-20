@@ -28,7 +28,7 @@ import {
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
-import { isOrdinarySectionRow } from './section-rows'
+import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
 import FoodRow from './FoodRow'
 import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
@@ -447,15 +447,11 @@ function CategoryGroup({
       : 'No items in this category.'
   const filtering = packMode && (showUnpackedOnly || showUnreadyOnly)
   const visibleItems = filtering
-    ? sectionItems.filter(
-        (i) => (!showUnpackedOnly || !i.isPacked) && (!showUnreadyOnly || !i.isReady),
-      )
+    ? sectionItems.filter((i) => passesPackFilters(i, { showUnpackedOnly, showUnreadyOnly }))
     : sectionItems
-  // Same filter rules, same ANDing, applied to the food half of the union.
+  // Same shared predicate, applied to the food half of the union.
   const visibleFood = filtering
-    ? sectionFood.filter(
-        (f) => (!showUnpackedOnly || !f.isPacked) && (!showUnreadyOnly || !f.isReady),
-      )
+    ? sectionFood.filter((f) => passesPackFilters(f, { showUnpackedOnly, showUnreadyOnly }))
     : sectionFood
   const unionRowCount = visibleItems.length + visibleFood.length
 

@@ -114,6 +114,7 @@ import {
 import { usePackingLocationActions } from './use-packing-location-actions'
 import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
 import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
+import { passesPackFilters } from './section-rows'
 import {
   nextUnionPackRankFor,
   packRowName,
@@ -127,6 +128,7 @@ import { planPlacementWithinLocation } from './placement-plan'
 import { DroppableUnassignedSection } from './SortablePackSection'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
 import { useIsPrinting } from '../lib/use-is-printing'
+import { runGuardedSave } from '../lib/guarded-save'
 
 // PrintListHeader (the print-only document header this note used to promise
 // "returns with the CSV/print slice") is back, above the toolbar in pack
@@ -1028,14 +1030,11 @@ function ListDetailInner({
   const packFoodItems = mode === 'pack' ? listFood.items : EMPTY_FOOD_ITEMS
   const foodById = new Map(packFoodItems.map((food) => [food.id, food]))
   // Filtered food rows, mirroring packFilteredItemIds for gear: hidden rows
-  // must not participate in reorder planning.
+  // must not participate in reorder planning. Same shared predicate as the
+  // renderer and the gear planner (section-rows.ts).
   const packFilteredFoodIds = new Set(
     packFoodItems
-      .filter(
-        (food) =>
-          (showUnpackedOnly && food.isPacked) ||
-          (showUnreadyOnly && food.isReady),
-      )
+      .filter((food) => !passesPackFilters(food, { showUnpackedOnly, showUnreadyOnly }))
       .map((food) => food.id),
   )
   // Food rows grouped by the location the page will actually RENDER. An
@@ -2307,22 +2306,19 @@ function ListDetailInner({
           onClose={() => setDialog(null)}
           onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
           onSave={(gearPatch, listPatch) => {
-            // `attempt` is the exact DialogState this save was submitted from, and
-            // every completion below is applied only if it is STILL the open dialog.
-            // The dialog stays dismissable while saving (deliberately - abandoning a
-            // slow save is legitimate), and without the guard a late failure would
-            // re-open a dismissed dialog, remounted and therefore blank, while a late
-            // success would close whichever dialog the user opened in the meantime.
+            // The dialog stays dismissable while saving (deliberately -
+            // abandoning a slow save is legitimate), so the two-stage
+            // completion goes through runGuardedSave's identity guard (see
+            // src/lib/guarded-save.ts). Installing `attempt` also clears the
+            // previous try's error.
             const attempt: DialogState = { ...dialog, saveError: null }
             const gearTarget = dialog.gear
             const listTarget = dialog.listItem
-            // Installing `attempt` also clears the previous try's error.
-            setDialog(attempt)
-            setSavingGearAttempt(attempt)
-            const settle = (next: (prev: DialogState) => DialogState | null) =>
-              setDialog((prev) => (prev === attempt ? next(prev) : prev))
-            void (async () => {
-              try {
+            runGuardedSave<DialogState>({
+              attempt,
+              setState: setDialog,
+              setSaving: setSavingGearAttempt,
+              run: async (settle) => {
                 try {
                   await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
                 } catch {
@@ -2346,10 +2342,8 @@ function ListDetailInner({
                   }
                 }
                 settle(() => null)
-              } finally {
-                setSavingGearAttempt((prev) => (prev === attempt ? null : prev))
-              }
-            })()
+              },
+            })
           }}
           onRemoveFromList={
             editDialogListItem

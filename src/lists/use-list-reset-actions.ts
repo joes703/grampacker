@@ -5,7 +5,8 @@ import {
   resetReadyForList,
 } from '../lib/queries'
 import { showToast } from '../lib/toast'
-import type { ListFoodResponse } from '../../shared/food'
+import { arrayShape, fieldScopedCache } from '../lib/queries/field-scoped'
+import { foodItemsShape } from '../lib/queries/food'
 import type { ListItemWithGear } from '../lib/types'
 
 // Pack/Ready reset actions for ListDetailPage. These are hand-rolled async
@@ -31,53 +32,41 @@ import type { ListItemWithGear } from '../lib/types'
 export function useListResetActions(listId: string) {
   const qc = useQueryClient()
 
+  // The same field-scoped cache access as the per-row mutations, composed at
+  // its lower level (cancel/getRows/mapRows) because a reset is a BULK clear:
+  // the snapshot is the set of ids whose flag was set, not one row's fields.
+  const gearCache = fieldScopedCache(
+    qc,
+    queryKeys.listItems(listId),
+    arrayShape<ListItemWithGear>(),
+  )
+  const foodCache = fieldScopedCache(qc, queryKeys.listFood(listId), foodItemsShape)
+
   async function resetFlag(
     flag: 'isPacked' | 'isReady',
     serverReset: (listId: string) => Promise<void>,
     failureToast: string,
   ) {
-    await qc.cancelQueries({ queryKey: queryKeys.listItems(listId) })
-    await qc.cancelQueries({ queryKey: queryKeys.listFood(listId) })
-    const gearSnapshot = qc.getQueryData<ListItemWithGear[]>(queryKeys.listItems(listId))
-    const foodSnapshot = qc.getQueryData<ListFoodResponse>(queryKeys.listFood(listId))
-    const wasSetGearIds = gearSnapshot
-      ? new Set(gearSnapshot.filter((i) => i[flag]).map((i) => i.id))
-      : new Set<string>()
-    const wasSetFoodIds = foodSnapshot
-      ? new Set(foodSnapshot.items.filter((i) => i[flag]).map((i) => i.id))
-      : new Set<string>()
-    qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-      curr ? curr.map((i) => (i[flag] ? { ...i, [flag]: false } : i)) : curr,
+    // Both caches cancel before either applies, so the two clears land
+    // back-to-back in one synchronous step.
+    await gearCache.cancel()
+    await foodCache.cancel()
+    const wasSetGearIds = new Set(
+      (gearCache.getRows() ?? []).filter((i) => i[flag]).map((i) => i.id),
     )
-    qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-      curr
-        ? {
-            ...curr,
-            items: curr.items.map((i) => (i[flag] ? { ...i, [flag]: false } : i)),
-          }
-        : curr,
+    const wasSetFoodIds = new Set(
+      (foodCache.getRows() ?? []).filter((i) => i[flag]).map((i) => i.id),
     )
+    gearCache.mapRows((i) => (i[flag] ? { ...i, [flag]: false } : i))
+    foodCache.mapRows((i) => (i[flag] ? { ...i, [flag]: false } : i))
 
     try {
       await serverReset(listId)
     } catch {
       // Restore only this flag on the ids we cleared. Any concurrent write to
       // the OTHER flag on those same rows survives untouched.
-      qc.setQueryData<ListItemWithGear[]>(queryKeys.listItems(listId), (curr) =>
-        curr
-          ? curr.map((i) => (wasSetGearIds.has(i.id) ? { ...i, [flag]: true } : i))
-          : curr,
-      )
-      qc.setQueryData<ListFoodResponse>(queryKeys.listFood(listId), (curr) =>
-        curr
-          ? {
-              ...curr,
-              items: curr.items.map((i) =>
-                wasSetFoodIds.has(i.id) ? { ...i, [flag]: true } : i,
-              ),
-            }
-          : curr,
-      )
+      gearCache.mapRows((i) => (wasSetGearIds.has(i.id) ? { ...i, [flag]: true } : i))
+      foodCache.mapRows((i) => (wasSetFoodIds.has(i.id) ? { ...i, [flag]: true } : i))
       // Non-optimistic action: surface the failure and CONSUME it. The reset
       // handlers are called fire-and-forget from PackingProgress (() => void),
       // so rethrowing would be an unhandled rejection.
