@@ -42,6 +42,7 @@ import type { Category, GearItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
 import { useToggleSet } from '../lib/use-toggle-set'
+import { runGuardedSave } from '../lib/guarded-save'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
@@ -753,54 +754,45 @@ export default function GearLibraryPage() {
             // Gear library page never opens the dialog with a list context,
             // so listPatch is always null here and is ignored.
             //
-            // The dialog stays open and stays DISMISSABLE while this runs (Escape,
-            // the X, Cancel), so the result is applied through functional updates
-            // guarded on object identity. `attempt` is the exact state object this
-            // save was submitted from; if the user has since closed the dialog
-            // (prev === null), opened a different item, or hit Save again - each of
-            // which installs a fresh object - the guard makes the late completion a
-            // no-op. Without it a slow rejection would re-open a dialog the user
-            // had already dismissed, remounted, with their draft gone.
+            // The dialog stays dismissable while this runs, so the completion
+            // goes through runGuardedSave's identity guard (see
+            // src/lib/guarded-save.ts). Installing `attempt` also clears any
+            // error from the previous try.
             const attempt: DialogState = { ...dialog, saveError: null }
-            // Installing `attempt` also clears any error from the previous try, so
-            // a retry shows fresh state rather than last time's message.
-            setDialog(attempt)
-            setSavingAttempt(attempt)
-            void (async () => {
-              try {
-                if (attempt.type === 'edit-item') {
-                  await editItem.mutateAsync({ id: attempt.item.id, patch: gearPatch })
-                } else {
-                  await addItem.mutateAsync(gearPatch)
+            runGuardedSave<DialogState>({
+              attempt,
+              setState: setDialog,
+              setSaving: setSavingAttempt,
+              run: async (settle) => {
+                try {
+                  if (attempt.type === 'edit-item') {
+                    await editItem.mutateAsync({ id: attempt.item.id, patch: gearPatch })
+                  } else {
+                    await addItem.mutateAsync(gearPatch)
+                  }
+                  settle(() => null)
+                } catch {
+                  // mutateAsync rejects only after the optimistic helper has rolled
+                  // back, so by here the caches are already consistent and there is
+                  // nothing to undo - just something to say. Catching is also what
+                  // keeps this off the unhandled-rejection path.
+                  settle((prev) => ({
+                    ...prev,
+                    // Create and edit diverge, and the reason is retry safety rather
+                    // than tone. The edit is a PATCH: repeating it converges, so
+                    // "try again" is sound advice. The create is a POST that mints
+                    // an id, so if the server committed and the response was lost, a
+                    // blind retry adds the item twice - and a rejected request is
+                    // never proof the server did not commit (apiFetch also rejects
+                    // when a 200 fails DTO validation).
+                    saveError:
+                      attempt.type === 'edit-item'
+                        ? "Couldn't confirm those changes saved. Try again, or refresh to check."
+                        : "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
+                  }))
                 }
-                setDialog((prev) => (prev === attempt ? null : prev))
-              } catch {
-                // mutateAsync rejects only after the optimistic helper has rolled
-                // back, so by here the caches are already consistent and there is
-                // nothing to undo - just something to say. Catching is also what
-                // keeps this off the unhandled-rejection path.
-                setDialog((prev) =>
-                  prev === attempt
-                    ? {
-                        ...prev,
-                        // Create and edit diverge, and the reason is retry safety rather
-                        // than tone. The edit is a PATCH: repeating it converges, so
-                        // "try again" is sound advice. The create is a POST that mints
-                        // an id, so if the server committed and the response was lost, a
-                        // blind retry adds the item twice - and a rejected request is
-                        // never proof the server did not commit (apiFetch also rejects
-                        // when a 200 fails DTO validation).
-                        saveError:
-                          attempt.type === 'edit-item'
-                            ? "Couldn't confirm those changes saved. Try again, or refresh to check."
-                            : "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
-                      }
-                    : prev,
-                )
-              } finally {
-                setSavingAttempt((prev) => (prev === attempt ? null : prev))
-              }
-            })()
+              },
+            })
           }}
           // Mobile-only Delete from inventory action inside the dialog.
           // Replaces the trash icon that used to sit in the row on desktop
@@ -878,27 +870,31 @@ export default function GearLibraryPage() {
           saving={createListFromSelectionMut.isPending}
           saveError={dialog.saveError}
           onSubmit={(name, description) => {
-            // Same identity guard as the gear dialog above: `attempt` is the exact
-            // state object this submit came from, so an error arriving after the
-            // user closed the dialog cannot re-open it. Success is handled by the
-            // mutation's own onSuccess, which navigates away.
+            // Same identity guard as the gear dialog above, so an error arriving
+            // after the user closed the dialog cannot re-open it. No saving slot:
+            // this mutation serves only this dialog, so its isPending is accurate.
+            // Success is handled by the mutation's own onSuccess, which navigates
+            // away.
             const attempt: DialogState = { ...dialog, saveError: null }
-            setDialog(attempt)
-            createListFromSelectionMut.mutate(
-              { name, description, gearItemIds: Array.from(selectedIds) },
-              {
-                onError: () =>
-                  setDialog((prev) =>
-                    prev === attempt
-                      ? {
-                          ...prev,
-                          saveError:
-                            "Couldn't confirm the list was created. Refresh before retrying, in case it was.",
-                        }
-                      : prev,
-                  ),
+            runGuardedSave<DialogState>({
+              attempt,
+              setState: setDialog,
+              run: async (settle) => {
+                try {
+                  await createListFromSelectionMut.mutateAsync({
+                    name,
+                    description,
+                    gearItemIds: Array.from(selectedIds),
+                  })
+                } catch {
+                  settle((prev) => ({
+                    ...prev,
+                    saveError:
+                      "Couldn't confirm the list was created. Refresh before retrying, in case it was.",
+                  }))
+                }
               },
-            )
+            })
           }}
           onClose={() => setDialog(null)}
         />
