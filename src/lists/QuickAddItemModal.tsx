@@ -3,7 +3,7 @@ import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { FORM_INPUT, ROW_CONTROL_TARGET } from '../components/flat-table-styles'
+import { FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../components/flat-table-styles'
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
@@ -183,7 +183,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              className={SECONDARY_BUTTON}
             >
               Cancel
             </button>

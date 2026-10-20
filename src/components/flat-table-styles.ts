@@ -401,6 +401,11 @@ export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-500'
 export const FORM_INPUT =
   'rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
+// The secondary action beside a PrimaryButton (Cancel and its siblings in
+// dialog footers). Same box as PrimaryButton's md size; quiet gray chrome.
+export const SECONDARY_BUTTON =
+  'rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100'
+
 // ---------------------------------------------------------------------------
 // Toggle chip tokens
 // ---------------------------------------------------------------------------

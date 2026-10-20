@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Category } from '../lib/types'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
-import { FORM_INPUT } from '../components/flat-table-styles'
+import { FORM_INPUT, SECONDARY_BUTTON } from '../components/flat-table-styles'
 
 type Props = {
   categories: Category[]
@@ -35,7 +35,7 @@ export default function BulkMoveCategoryDialog({ categories, count, onMove, onCl
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            className={SECONDARY_BUTTON}
           >
             Cancel
           </button>
