@@ -3,6 +3,7 @@ import { authClient, passkeysSupported } from '../lib/auth-client'
 import InlineRenameInput from '../components/InlineRenameInput'
 import { authErrorMessage } from '../auth/auth-errors'
 import { ErrorText } from '../auth/auth-ui'
+import { ReauthPrompt, useReauth, type ReauthOutcome } from '../auth/use-reauth'
 import { authenticatorName } from '../lib/passkey-authenticator-names'
 
 type PasskeyRow = {
@@ -62,14 +63,17 @@ export default function PasskeySection() {
   const submittingRename = useRef(false)
   // Bump to refetch the list (after add/remove/rename).
   const [reloadKey, setReloadKey] = useState(0)
-  // The mutation parked behind re-authentication. Non-null == the prompt is up.
-  const [pending, setPending] = useState<PasskeyAction | null>(null)
-  const submittingReauth = useRef(false)
-  // Set once a recovery link has been sent, so the prompt stops offering to
-  // send another and tells the user where to look instead.
-  const [linkSent, setLinkSent] = useState(false)
 
   const { data: session } = authClient.useSession()
+
+  // Parks a refused gated mutation and replays it after the user
+  // re-authenticates (src/auth/use-reauth.tsx owns the machine).
+  const reauth = useReauth<PasskeyAction>({
+    run: runAction,
+    email: session?.user.email,
+    setBusy,
+    setError,
+  })
 
   useEffect(() => {
     let canceled = false
@@ -94,7 +98,7 @@ export default function PasskeySection() {
   // Runs a mutation against better-auth. Returns 'reauth' when the server
   // refuses for want of a fresh-auth proof, so the caller can prompt and
   // replay - every other outcome is terminal and already reported.
-  async function runAction(action: PasskeyAction): Promise<'done' | 'reauth'> {
+  async function runAction(action: PasskeyAction): Promise<ReauthOutcome> {
     const failure =
       action.kind === 'add'
         ? "Couldn't add the passkey."
@@ -134,78 +138,8 @@ export default function PasskeySection() {
   // server BEFORE it opens the browser's passkey dialog - so a stale session is
   // refused without the user ever seeing a biometric prompt that was doomed.
   async function requestAction(action: PasskeyAction) {
-    if (busy || pending) return
-    setError(null)
-    setBusy(true)
-    try {
-      if ((await runAction(action)) === 'reauth') setPending(action)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  // Re-authenticate with a passkey, then replay the parked action.
-  //
-  // Signing in again mints a NEW session, and a new session is a fresh one -
-  // that is the whole mechanism. It replaces the old "type your password"
-  // prompt with a strictly stronger proof: a WebAuthn assertion with user
-  // verification, which proves the human, not just possession of a secret.
-  async function reauthWithPasskey() {
-    const action = pending
-    if (!action || submittingReauth.current) return
-
-    submittingReauth.current = true
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await authClient.signIn.passkey()
-      if (result?.error) {
-        setError(authErrorMessage(result.error, "Couldn't confirm it was you."))
-        return
-      }
-      setPending(null)
-      // If the server still refuses, something changed underneath us (signed
-      // out elsewhere). Re-park rather than swallow it.
-      if ((await runAction(action)) === 'reauth') setPending(action)
-    } catch {
-      setError('Passkey confirmation was canceled or failed.')
-    } finally {
-      submittingReauth.current = false
-      setBusy(false)
-    }
-  }
-
-  // The fallback, and the reason a user with NO passkey is never stuck: you
-  // cannot re-assert a credential you do not have. Someone who signed in by
-  // email days ago, never enrolled a passkey, and now wants to - their session
-  // is stale, and a passkey prompt would be a door with no key. So offer the
-  // same email link that got them here.
-  async function reauthWithEmail() {
-    const email = session?.user.email
-    if (!email || submittingReauth.current) return
-
-    submittingReauth.current = true
-    setBusy(true)
-    setError(null)
-    try {
-      const { error: sendError } = await authClient.signIn.magicLink({ email })
-      if (sendError) {
-        setError(authErrorMessage(sendError, "Couldn't send the link."))
-        return
-      }
-      setLinkSent(true)
-    } catch {
-      setError("Couldn't send the link.")
-    } finally {
-      submittingReauth.current = false
-      setBusy(false)
-    }
-  }
-
-  function cancelReauth() {
-    setPending(null)
-    setLinkSent(false)
-    setError(null)
+    if (busy || reauth.pending) return
+    await reauth.request(action)
   }
 
   async function submitRename() {
@@ -343,56 +277,30 @@ export default function PasskeySection() {
           )
         })}
         <ErrorText message={error} />
-        {pending ? (
+        {reauth.pending ? (
           // The session is too old to change which credentials can sign in.
           // Re-authenticating mints a new session, which IS a fresh one, and the
           // parked mutation replays the moment it lands.
           //
-          // Two ways out, because one of them is not always available: a user
-          // with no passkey cannot re-assert one, and that is exactly the user
-          // who most needs to add their first. The email link is what keeps that
-          // case from being a dead end.
-          <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-            <p className="text-sm text-gray-700">
-              {pending.kind === 'add'
+          // A user with no passkey cannot re-assert one, and that is exactly
+          // the user who most needs to add their first - so the passkey button
+          // appears only when there is a passkey to use, and the email link
+          // keeps the zero-passkey case from being a dead end.
+          <ReauthPrompt
+            tone="neutral"
+            message={
+              reauth.pending.kind === 'add'
                 ? 'Confirm it is you to add a passkey.'
-                : 'Confirm it is you to remove this passkey.'}
-            </p>
-            {linkSent ? (
-              <p className="text-sm text-gray-600">
-                Sign-in link sent to {session?.user.email}. Open it, then try
-                again.
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                {rows && rows.length > 0 && (
-                  <button
-                    type="button"
-                    className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                    onClick={() => void reauthWithPasskey()}
-                    disabled={busy}
-                  >
-                    {busy ? 'Confirming...' : 'Use a passkey'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  onClick={() => void reauthWithEmail()}
-                  disabled={busy}
-                >
-                  Email me a link
-                </button>
-                <button
-                  type="button"
-                  className="text-sm font-medium text-gray-600 hover:underline"
-                  onClick={cancelReauth}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
+                : 'Confirm it is you to remove this passkey.'
+            }
+            linkSent={reauth.linkSent}
+            email={session?.user.email}
+            showPasskey={!!rows && rows.length > 0}
+            busy={busy}
+            onPasskey={() => void reauth.reauthWithPasskey()}
+            onEmail={() => void reauth.reauthWithEmail()}
+            onCancel={reauth.cancel}
+          />
         ) : (
           <button
             type="button"

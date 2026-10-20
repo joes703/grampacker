@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from '../auth/auth-errors'
+import { ReauthPrompt, useReauth, type ReauthOutcome } from '../auth/use-reauth'
 import { clearLastListPath } from '../lib/last-list-path'
 import FormLabel from '../components/FormLabel'
 import { DELETE_ACCOUNT_USER_HEADER } from '../../shared/auth'
@@ -32,27 +33,34 @@ export default function DeleteAccountSection() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // The delete is parked waiting for the user to prove it is them.
-  const [needsReauth, setNeedsReauth] = useState(false)
-  const [linkSent, setLinkSent] = useState(false)
   // Whether to offer "Use a passkey". Only an account with a passkey can use
   // one; for any other account the browser may offer a passkey that belongs to
   // someone else.
   const [canUsePasskey, setCanUsePasskey] = useState(false)
+
   // Synchronous in-flight guard: the button is disabled while busy, but a form
   // is still submittable via Enter, and busy is render-derived (lags a
   // synchronous double-submit). This blocks the second submit in the same tick
-  // so deleteUser can't fire twice.
+  // so deleteUser can't fire twice. Shared with the hook so the reauth flows
+  // and this form's submit also block each other.
   const submitting = useRef(false)
-  // The account the user confirmed on submit. A replay after re-authentication
-  // sends this id, never the current session's, which may be another account.
-  const confirmedUserId = useRef<string | null>(null)
 
   const { data: session } = authClient.useSession()
   const confirmed = confirm.trim().toLowerCase() === CONFIRM_WORD
 
+  // The parked action is the user id the user CONFIRMED on submit. A replay
+  // after re-authentication sends this id, never the current session's, which
+  // may be another account by then.
+  const reauth = useReauth<string>({
+    run: runDelete,
+    email: session?.user.email,
+    setBusy,
+    setError,
+    submitting,
+  })
+
   useEffect(() => {
-    if (!needsReauth || !passkeysSupported()) return
+    if (reauth.pending === null || !passkeysSupported()) return
     let canceled = false
     authClient.passkey
       .listUserPasskeys()
@@ -65,7 +73,7 @@ export default function DeleteAccountSection() {
     return () => {
       canceled = true
     }
-  }, [needsReauth])
+  }, [reauth.pending])
 
   // Teardown for a deleted account. The hard reload discards in-memory
   // React Query cache and the session atom, but NOT localStorage, so clear
@@ -80,7 +88,7 @@ export default function DeleteAccountSection() {
 
   // Runs the delete. Returns 'reauth' when the server refuses for a stale
   // session, so the caller can prompt and replay.
-  async function runDelete(userId: string): Promise<'done' | 'reauth'> {
+  async function runDelete(userId: string): Promise<ReauthOutcome> {
     try {
       // No password in the body - that omission is what selects better-auth's
       // freshness path over its (now impossible) credential check.
@@ -133,66 +141,17 @@ export default function DeleteAccountSection() {
       return
     }
 
-    confirmedUserId.current = userId
     submitting.current = true
-    setBusy(true)
     try {
-      if ((await runDelete(userId)) === 'reauth') setNeedsReauth(true)
+      // If the passkey chosen during a later re-authentication belonged to
+      // another account, the replay still names this userId: the server
+      // refuses and the error says nothing was deleted. SessionCacheGuard
+      // then reloads the app for the account that is now signed in.
+      await reauth.request(userId)
     } finally {
       // Reached only when we did not navigate; a successful delete tears this
       // component down before this runs.
-      setBusy(false)
       submitting.current = false
-    }
-  }
-
-  // Re-authenticate with a passkey, then replay the delete.
-  async function reauthWithPasskey() {
-    const userId = confirmedUserId.current
-    if (!userId || submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await authClient.signIn.passkey()
-      if (result?.error) {
-        setError(authErrorMessage(result.error, "Couldn't confirm it was you."))
-        return
-      }
-      setNeedsReauth(false)
-      // If the passkey belonged to another account, the server refuses and
-      // the error says nothing was deleted. SessionCacheGuard then reloads
-      // the app for the account that is now signed in.
-      if ((await runDelete(userId)) === 'reauth') setNeedsReauth(true)
-    } catch {
-      setError('Passkey confirmation was canceled or failed.')
-    } finally {
-      submitting.current = false
-      setBusy(false)
-    }
-  }
-
-  // Fallback for an account with no passkey (or a device without one): the same
-  // email link that signs you in. Deleting is not urgent, so an inbox round-trip
-  // is an acceptable price for not stranding the user.
-  async function reauthWithEmail() {
-    const email = session?.user.email
-    if (!email || submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    setError(null)
-    try {
-      const { error: sendError } = await authClient.signIn.magicLink({ email })
-      if (sendError) {
-        setError(authErrorMessage(sendError, "Couldn't send the link."))
-        return
-      }
-      setLinkSent(true)
-    } catch {
-      setError("Couldn't send the link.")
-    } finally {
-      submitting.current = false
-      setBusy(false)
     }
   }
 
@@ -217,39 +176,17 @@ export default function DeleteAccountSection() {
       </div>
       {error && <p className="text-sm text-rose-700">{error}</p>}
 
-      {needsReauth ? (
-        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-sm text-red-800">
-            You've been signed in a while. Confirm it is you before deleting your
-            account.
-          </p>
-          {linkSent ? (
-            <p className="text-sm text-gray-700">
-              Sign-in link sent to {session?.user.email}. Open it, then try again.
-            </p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              {canUsePasskey && (
-                <button
-                  type="button"
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                  onClick={() => void reauthWithPasskey()}
-                  disabled={busy}
-                >
-                  {busy ? 'Confirming...' : 'Use a passkey'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => void reauthWithEmail()}
-                disabled={busy}
-              >
-                Email me a link
-              </button>
-            </div>
-          )}
-        </div>
+      {reauth.pending !== null ? (
+        <ReauthPrompt
+          tone="danger"
+          message="You've been signed in a while. Confirm it is you before deleting your account."
+          linkSent={reauth.linkSent}
+          email={session?.user.email}
+          showPasskey={canUsePasskey}
+          busy={busy}
+          onPasskey={() => void reauth.reauthWithPasskey()}
+          onEmail={() => void reauth.reauthWithEmail()}
+        />
       ) : (
         <button
           type="submit"
