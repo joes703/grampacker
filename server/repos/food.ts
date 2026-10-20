@@ -1,10 +1,11 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { appendSortOrder } from './append-sort-order'
+import { ownsList } from './owns-list'
 import type { Db, Tx } from '../db'
 import {
   listFoodItemSlots,
   listFoodItems,
   listFoodSlots,
-  lists,
   packingLocations,
 } from '../db/schema'
 import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
@@ -67,7 +68,7 @@ export type FoodWriteResult<T> =
         | 'conflict'
     }
 
-export function isFoodItemCapError(err: unknown): boolean {
+function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
 }
 
@@ -120,19 +121,6 @@ function classifyWriteError(
 // built into better-sqlite3 allows 32766 (server/db/sqlite.test.ts pins it).
 // Raising either cap far enough to approach that needs chunking again.
 export function createFoodRepo(db: Db, userId: string) {
-  // Every method takes listId and filters on it. The route's list is the only
-  // authority on which list a nested resource belongs to - trusting the child
-  // id alone would let one of this user's own lists reach into another's rows.
-  function ownsList(tx: Tx, listId: string): boolean {
-    const row = tx
-      .select({ id: lists.id })
-      .from(lists)
-      .where(and(eq(lists.id, listId), eq(lists.userId, userId)))
-      .limit(1)
-      .get()
-    return row !== undefined
-  }
-
   // The whole estimate for one owned list. Reads inside the caller's
   // transaction, so an item cannot appear with associations to slots that a
   // day-trim already removed.
@@ -257,7 +245,7 @@ export function createFoodRepo(db: Db, userId: string) {
 
   return {
     async forList(listId: string): Promise<ListFood | null> {
-      return db.transaction((tx) => (ownsList(tx, listId) ? readFood(tx, listId) : null))
+      return db.transaction((tx) => (ownsList(tx, userId, listId) ? readFood(tx, listId) : null))
     },
 
     /**
@@ -276,7 +264,7 @@ export function createFoodRepo(db: Db, userId: string) {
     async setDayCount(listId: string, days: number): Promise<ListFood | null> {
       return db.transaction(
         (tx) => {
-          if (!ownsList(tx, listId)) return null
+          if (!ownsList(tx, userId, listId)) return null
 
           const existing = tx
             .select({ dayNumber: listFoodSlots.dayNumber, meal: listFoodSlots.meal })
@@ -330,18 +318,13 @@ export function createFoodRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): FoodWriteResult<FoodItemRow> => {
-            if (!ownsList(tx, listId)) return { ok: false, reason: 'not_found' }
+            if (!ownsList(tx, userId, listId)) return { ok: false, reason: 'not_found' }
             if (!ownsAllSlots(tx, listId, input.slotIds)) {
               return { ok: false, reason: 'invalid_slots' }
             }
 
             const id = crypto.randomUUID()
             const now = Date.now()
-            const maxRow = tx
-              .select({ max: sql<number>`coalesce(max(${listFoodItems.sortOrder}), -1)` })
-              .from(listFoodItems)
-              .where(and(eq(listFoodItems.listId, listId), eq(listFoodItems.userId, userId)))
-              .get()
             tx.insert(listFoodItems)
               .values({
                 id,
@@ -355,7 +338,12 @@ export function createFoodRepo(db: Db, userId: string) {
                 // stored.
                 quantity: input.quantity,
                 isPerMeal: input.isPerMeal ?? true,
-                sortOrder: (maxRow?.max ?? -1) + 1,
+                sortOrder: appendSortOrder(
+                  listFoodItems,
+                  listFoodItems.sortOrder,
+                  eq(listFoodItems.listId, listId),
+                  eq(listFoodItems.userId, userId),
+                ),
                 // A new food item arrives Unassigned, one past that cohort's
                 // UNION maximum (gear and food - see pack-reorder.ts). DEFAULT
                 // 0 would collide with whatever already holds rank 0 there.
@@ -398,7 +386,7 @@ export function createFoodRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): FoodWriteResult<FoodItemRow> => {
-            if (!ownsList(tx, listId)) return { ok: false, reason: 'not_found' }
+            if (!ownsList(tx, userId, listId)) return { ok: false, reason: 'not_found' }
             if (!readItem(tx, listId, itemId)) return { ok: false, reason: 'not_found' }
 
             // Omitted slotIds means "leave the associations alone"; [] means
@@ -493,7 +481,7 @@ export function createFoodRepo(db: Db, userId: string) {
     async deleteItem(listId: string, itemId: string): Promise<boolean> {
       return db.transaction(
         (tx) => {
-          if (!ownsList(tx, listId)) return false
+          if (!ownsList(tx, userId, listId)) return false
           // The item's associations go with it (ON DELETE CASCADE).
           const result = tx
             .delete(listFoodItems)

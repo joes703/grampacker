@@ -1,4 +1,6 @@
-import { and, asc, eq, sql, type Table } from 'drizzle-orm'
+import { and, asc, eq, type Table } from 'drizzle-orm'
+import { reorderOwnedSet } from './reorder'
+import { appendSortOrder } from './append-sort-order'
 import type { Db, Tx } from '../db'
 import {
   categories,
@@ -104,7 +106,7 @@ export type ImportListResult =
         | 'invalid_gear'
     }
 
-export function isListCapError(err: unknown): boolean {
+function isListCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list cap exceeded')
 }
 
@@ -150,14 +152,34 @@ export function withFreshSlug<T>(attempt: (slug: string) => T): T {
   throw new Error('slug generation exhausted retries')
 }
 
+// Every slug-minting write fails the same way: the list-cap trigger becomes
+// a result instead of a 500, and anything else stays thrown. The catch sits
+// OUTSIDE withFreshSlug, which is equivalent to the per-site try/catch it
+// replaces: withFreshSlug swallows only the slug-unique collision (and
+// retries) and rethrows everything else. `classify` lets the import convert
+// its other cap triggers too; it returns null for an error it does not know.
+function withFreshSlugCapped<R>(
+  attempt: (slug: string) => R,
+  classify?: (err: unknown) => R | null,
+): R | { ok: false; reason: 'cap_exceeded' } {
+  try {
+    return withFreshSlug(attempt)
+  } catch (err) {
+    if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
+    const classified = classify?.(err) ?? null
+    if (classified !== null) return classified
+    throw err
+  }
+}
+
 // Suffix used when duplicating a list. Truncates so the " (copy)" suffix
 // cannot push the name past the column's 256 CHECK (the old Postgres RPC had
 // that latent overflow).
-export function copyName(name: string): string {
+function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
 }
 
-export function remapPackingLocationId(
+function remapPackingLocationId(
   sourceId: string | null,
   idMap: ReadonlyMap<string, string>,
 ): string | null {
@@ -173,22 +195,8 @@ export function remapPackingLocationId(
 // rotateShareLink) need no explicit transaction: SQLite applies one
 // statement whole or not at all.
 export function createListsRepo(db: Db, userId: string) {
-  // Owned-set membership in JS rather than inArray over the input: one query
-  // whatever the input size, and the list cap bounds the scan at 100 rows.
-  function ownsAllListIds(tx: Tx, ids: string[]): boolean {
-    const owned = new Set(
-      tx
-        .select({ id: lists.id })
-        .from(lists)
-        .where(eq(lists.userId, userId))
-        .all()
-        .map((r) => r.id),
-    )
-    return ids.every((id) => owned.has(id))
-  }
-
   function nextSortOrder() {
-    return sql`coalesce((select max(${lists.sortOrder}) + 1 from ${lists} where ${lists.userId} = ${userId}), 0)`
+    return appendSortOrder(lists, lists.sortOrder, eq(lists.userId, userId))
   }
 
   // The caller's category and gear ids, for the import and from-selection
@@ -225,27 +233,22 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     async create(name: string): Promise<ListWriteResult> {
-      return withFreshSlug((slug): ListWriteResult => {
+      return withFreshSlugCapped((slug): ListWriteResult => {
         const now = Date.now()
-        try {
-          const row = db
-            .insert(lists)
-            .values({
-              id: crypto.randomUUID(),
-              userId,
-              name,
-              slug,
-              sortOrder: nextSortOrder(),
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning(cols)
-            .get()
-          return { ok: true, row }
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
+        const row = db
+          .insert(lists)
+          .values({
+            id: crypto.randomUUID(),
+            userId,
+            name,
+            slug,
+            sortOrder: nextSortOrder(),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(cols)
+          .get()
+        return { ok: true, row }
       })
     },
 
@@ -277,16 +280,14 @@ export function createListsRepo(db: Db, userId: string) {
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
       return db.transaction(
-        (tx) => {
-          if (!ownsAllListIds(tx, updates.map((u) => u.id))) return false
-          for (const u of updates) {
-            tx.update(lists)
-              .set({ sortOrder: u.sortOrder })
-              .where(and(eq(lists.id, u.id), eq(lists.userId, userId)))
-              .run()
-          }
-          return true
-        },
+        (tx) =>
+          reorderOwnedSet(
+            tx,
+            lists,
+            { id: lists.id, sortOrder: lists.sortOrder },
+            [eq(lists.userId, userId)],
+            updates,
+          ),
         { behavior: 'immediate' },
       )
     },
@@ -301,17 +302,12 @@ export function createListsRepo(db: Db, userId: string) {
     // the copy is one consistent snapshot and a late failure - the list cap
     // trigger included - leaves no half-copied list behind.
     async duplicate(id: string): Promise<DuplicateListResult> {
-      return withFreshSlug((slug): DuplicateListResult => {
-        try {
-          return db.transaction(
-            (tx) => duplicateInTransaction(tx, id, slug),
-            { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
-      })
+      return withFreshSlugCapped((slug): DuplicateListResult =>
+        db.transaction(
+          (tx) => duplicateInTransaction(tx, id, slug),
+          { behavior: 'immediate' },
+        ),
+      )
     },
 
     // Atomic CSV list import: the ownership checks, new categories, new
@@ -388,9 +384,9 @@ export function createListsRepo(db: Db, userId: string) {
           .map(({ index }, rank) => [index, rank]),
       )
 
-      return withFreshSlug((slug): ImportListResult => {
-        try {
-          return db.transaction(
+      return withFreshSlugCapped(
+        (slug): ImportListResult =>
+          db.transaction(
             (tx): ImportListResult => {
               if (existingCategoryIds.size > 0) {
                 const owned = ownedCategoryIds(tx)
@@ -429,7 +425,7 @@ export function createListsRepo(db: Db, userId: string) {
                     id: c.id,
                     userId,
                     name: c.name,
-                    sortOrder: sql`coalesce((select max(${categories.sortOrder}) + 1 from ${categories} where ${categories.userId} = ${userId}), 0)`,
+                    sortOrder: appendSortOrder(categories, categories.sortOrder, eq(categories.userId, userId)),
                     createdAt: now,
                   })
                   .run()
@@ -448,7 +444,7 @@ export function createListsRepo(db: Db, userId: string) {
                     // for it); status is app-internal only (same contract as
                     // the gear import).
                     status: 'active',
-                    sortOrder: sql`coalesce((select max(${gearItems.sortOrder}) + 1 from ${gearItems} where ${gearItems.userId} = ${userId}), 0)`,
+                    sortOrder: appendSortOrder(gearItems, gearItems.sortOrder, eq(gearItems.userId, userId)),
                     createdAt: now,
                     updatedAt: now,
                   })
@@ -478,21 +474,16 @@ export function createListsRepo(db: Db, userId: string) {
               return { ok: true, row }
             },
             { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          if (isGearCapError(err)) {
-            return { ok: false, reason: 'gear_cap_exceeded' }
-          }
-          if (isListItemCapError(err)) {
-            return { ok: false, reason: 'item_cap_exceeded' }
-          }
+          ),
+        (err) => {
+          if (isGearCapError(err)) return { ok: false, reason: 'gear_cap_exceeded' }
+          if (isListItemCapError(err)) return { ok: false, reason: 'item_cap_exceeded' }
           if (isCategoryCapError(err)) {
             return { ok: false, reason: 'category_cap_exceeded' }
           }
-          throw err
-        }
-      })
+          return null
+        },
+      )
     },
 
     // Gear-page "Create list from selection". All-or-nothing: one
@@ -503,55 +494,50 @@ export function createListsRepo(db: Db, userId: string) {
       description: string | null,
       gearItemIds: string[],
     ): Promise<FromSelectionResult> {
-      return withFreshSlug((slug): FromSelectionResult => {
-        try {
-          return db.transaction(
-            (tx): FromSelectionResult => {
-              const owned = ownedGearIds(tx)
-              if (!gearItemIds.every((id) => owned.has(id))) {
-                return { ok: false, reason: 'invalid_gear' }
-              }
-              const newId = crypto.randomUUID()
-              const now = Date.now()
-              const row = tx
-                .insert(lists)
+      return withFreshSlugCapped((slug): FromSelectionResult =>
+        db.transaction(
+          (tx): FromSelectionResult => {
+            const owned = ownedGearIds(tx)
+            if (!gearItemIds.every((id) => owned.has(id))) {
+              return { ok: false, reason: 'invalid_gear' }
+            }
+            const newId = crypto.randomUUID()
+            const now = Date.now()
+            const row = tx
+              .insert(lists)
+              .values({
+                id: newId,
+                userId,
+                name,
+                description,
+                slug,
+                sortOrder: nextSortOrder(),
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning(cols)
+              .get()
+            gearItemIds.forEach((gearItemId, i) => {
+              tx.insert(listItems)
                 .values({
-                  id: newId,
+                  id: crypto.randomUUID(),
                   userId,
-                  name,
-                  description,
-                  slug,
-                  sortOrder: nextSortOrder(),
+                  listId: newId,
+                  gearItemId,
+                  sortOrder: i,
+                  // One fresh list, everything Unassigned: one cohort, so
+                  // the selection index serves as both ranks.
+                  packSortOrder: i,
                   createdAt: now,
                   updatedAt: now,
                 })
-                .returning(cols)
-                .get()
-              gearItemIds.forEach((gearItemId, i) => {
-                tx.insert(listItems)
-                  .values({
-                    id: crypto.randomUUID(),
-                    userId,
-                    listId: newId,
-                    gearItemId,
-                    sortOrder: i,
-                    // One fresh list, everything Unassigned: one cohort, so
-                    // the selection index serves as both ranks.
-                    packSortOrder: i,
-                    createdAt: now,
-                    updatedAt: now,
-                  })
-                  .run()
-              })
-              return { ok: true, row }
-            },
-            { behavior: 'immediate' },
-          )
-        } catch (err) {
-          if (isListCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-          throw err
-        }
-      })
+                .run()
+            })
+            return { ok: true, row }
+          },
+          { behavior: 'immediate' },
+        ),
+      )
     },
 
     // Mint a new share link for a list the caller owns. The old slug stops
