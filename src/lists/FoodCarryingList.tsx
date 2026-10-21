@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   DESKTOP_ROW_HEIGHT,
@@ -24,6 +25,8 @@ export default function FoodCarryingList({
   items,
   weightUnit,
   busy,
+  editingItemId,
+  rescheduleEditor,
   onReschedule,
   onSetQuantity,
   onTogglePerMeal,
@@ -32,6 +35,12 @@ export default function FoodCarryingList({
   items: readonly FoodItemResponse[]
   weightUnit: WeightUnit
   busy: boolean
+  /** The item whose slot picker is open, rendered as `rescheduleEditor`
+   *  DIRECTLY under that item's row. Rendered at the list end instead, a
+   *  long list put the editor below the fold of the rail's internal scroll
+   *  area - invisible from the row that opened it. */
+  editingItemId?: string | null
+  rescheduleEditor?: ReactNode
   onReschedule: (itemId: string) => void
   onSetQuantity: (itemId: string, quantity: number) => void
   onTogglePerMeal: (itemId: string, isPerMeal: boolean) => void
@@ -40,16 +49,18 @@ export default function FoodCarryingList({
   return (
     <>
       {items.map((item) => (
-        <FoodItemRow
-          key={item.id}
-          item={item}
-          weightUnit={weightUnit}
-          busy={busy}
-          onReschedule={() => onReschedule(item.id)}
-          onSetQuantity={(quantity) => onSetQuantity(item.id, quantity)}
-          onTogglePerMeal={() => onTogglePerMeal(item.id, !item.isPerMeal)}
-          onDelete={() => onDelete(item.id)}
-        />
+        <Fragment key={item.id}>
+          <FoodItemRow
+            item={item}
+            weightUnit={weightUnit}
+            busy={busy}
+            onReschedule={() => onReschedule(item.id)}
+            onSetQuantity={(quantity) => onSetQuantity(item.id, quantity)}
+            onTogglePerMeal={() => onTogglePerMeal(item.id, !item.isPerMeal)}
+            onDelete={() => onDelete(item.id)}
+          />
+          {item.id === editingItemId && rescheduleEditor}
+        </Fragment>
       ))}
       <div
         className={`flex items-baseline justify-end gap-2 border-t border-gray-100 px-3 py-2 ${FLAT_TABLE_META_TEXT}`}

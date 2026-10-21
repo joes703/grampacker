@@ -537,6 +537,28 @@ describe('FoodView reschedule', () => {
     expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: [] })
   })
 
+  it('opens the slot picker directly under the clicked row, not at the list end', async () => {
+    // The editor used to render after the whole Carrying list, which on a
+    // long list put it below the fold of the rail's internal scroll area -
+    // invisible from the row that opened it.
+    const twoItems: ListFoodResponse = {
+      ...rescheduleFood,
+      items: [
+        rescheduleFood.items[0]!,
+        { ...rescheduleFood.items[0]!, id: 'i2', name: 'Oats', slotIds: [] },
+      ],
+    }
+    h.fetchListFood.mockResolvedValue(twoItems)
+    await renderFoodView()
+    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
+
+    const editor = screen.getByText('When are you eating Ramen?')
+    const oatsRow = screen.getByText('Oats').closest('div')!
+    expect(
+      editor.compareDocumentPosition(oatsRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('closes the reschedule form on cancel without saving', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()

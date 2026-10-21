@@ -498,29 +498,34 @@ function FoodDocument({
                   items={food.items}
                   weightUnit={weightUnit}
                   busy={busy}
+                  editingItemId={editingItemId}
+                  rescheduleEditor={
+                    editingItem && (
+                      // border-b rather than border-t: the row above already
+                      // draws its own bottom border.
+                      <div className={`border-b ${TABLE_DIVIDER} bg-blue-50/40 px-3 py-2`}>
+                        <p className="mb-1.5 text-xs font-medium text-gray-700">
+                          When are you eating {editingItem.name}?
+                        </p>
+                        <RescheduleForm
+                          key={editingItem.id}
+                          slots={food.slots}
+                          initialSlotIds={editingItem.slotIds}
+                          busy={busy}
+                          onCancel={() => setEditingItemId(null)}
+                          onSave={(slotIds) => {
+                            onSetItemSlots(editingItem.id, slotIds)
+                            setEditingItemId(null)
+                          }}
+                        />
+                      </div>
+                    )
+                  }
                   onReschedule={setEditingItemId}
                   onSetQuantity={onSetItemQuantity}
                   onTogglePerMeal={onSetItemPerMeal}
                   onDelete={onDeleteItem}
                 />
-                {editingItem && (
-                  <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
-                    <p className="mb-1.5 text-xs font-medium text-gray-700">
-                      When are you eating {editingItem.name}?
-                    </p>
-                    <RescheduleForm
-                      key={editingItem.id}
-                      slots={food.slots}
-                      initialSlotIds={editingItem.slotIds}
-                      busy={busy}
-                      onCancel={() => setEditingItemId(null)}
-                      onSave={(slotIds) => {
-                        onSetItemSlots(editingItem.id, slotIds)
-                        setEditingItemId(null)
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             )}
           </section>
