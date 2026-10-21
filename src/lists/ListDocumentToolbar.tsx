@@ -18,11 +18,12 @@ type Props = {
 // Layout rule: persistent chrome sits at the right edge, contextual tools
 // next to the slack. The title owns all free space (flex-1), so everything
 // after it packs against the right edge, and a control that appears or
-// disappears displaces only what is to its RIGHT. The unit control, view nav
-// and List options therefore render in EVERY mode, and the one contextual
-// tool (Print, pack-only) sits at the LEFT end of the control group, where
-// its churn is absorbed by the title's slack. Hiding chrome per mode is what
-// used to make the view nav slide sideways on every view switch.
+// disappears displaces only what is to its LEFT - the right edge is the
+// anchor. The unit control, view nav and List options therefore render in
+// EVERY mode, and the one contextual tool (Print, pack-only) sits at the
+// LEFT end of the control group, where its churn is absorbed by the title's
+// slack. Hiding chrome per mode is what used to make the view nav slide
+// sideways on every view switch.
 //
 // The unit control is not dead weight in any mode: edit and food are weights
 // everywhere, and the pack row edits a weight at lg+ (ItemRow's pack
