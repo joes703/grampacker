@@ -1930,9 +1930,9 @@ function ListDetailInner({ listId }: { listId: string }) {
       )}
 
       {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
-          in normal mode; Options is dropped in pack mode (pack-mode
-          controls live inline in PackingProgress, and List options is
-          list-admin not needed mid-pack). The view navigation above stays
+          in normal mode; the Options slot is an edit-mode shortcut only,
+          since the document toolbar's List options button renders in every
+          mode (see MobileListActionBar). The view navigation above stays
           available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
       <MobileListActionBar list={list} mode={mode} />

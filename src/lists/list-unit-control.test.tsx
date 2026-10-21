@@ -83,25 +83,34 @@ describe('list unit control placement', () => {
     }
   })
 
-  it('hides the unit control and list options in Pack', () => {
-    render(
-      <ListDocumentToolbar list={list} mode="pack" />,
-      { wrapper: MemoryRouter },
-    )
-    expect(screen.queryByRole('radiogroup', { name: 'Weight units' })).toBeNull()
-    expect(screen.queryByText('list-settings-button')).toBeNull()
-  })
+  // Persistent chrome renders in EVERY mode. The old per-mode hiding (no
+  // unit control or options in Pack, no options in Food) made the view nav
+  // slide sideways on every view switch, because the nav sits against the
+  // controls to its right. Unit and options are also genuinely useful
+  // everywhere: pack rows edit a weight at lg+, and list admin being
+  // reachable mid-pack costs nothing.
+  it.each(['edit', 'pack', 'food'] as const)(
+    'keeps the unit control and List options in %s',
+    (mode) => {
+      render(
+        <ListDocumentToolbar list={list} mode={mode} />,
+        { wrapper: MemoryRouter },
+      )
+      expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
+      expect(screen.getByText('list-settings-button')).toBeInTheDocument()
+    },
+  )
 
-  // Food is weights everywhere - hiding the page-level unit control there
-  // would be a regression - but list admin (Options) is not a food-view
-  // concern, same as Pack.
-  it('keeps the unit control but hides list options in Food', () => {
+  // Print is the one contextual tool: pack-only, and placed at the LEFT end
+  // of the control group so its appearance is absorbed by the title's slack
+  // instead of displacing the nav. ListDetailPage.print.test.tsx pins the
+  // pack-mode presence; this pins the absence elsewhere.
+  it.each(['edit', 'food'] as const)('offers no Print in %s', (mode) => {
     render(
-      <ListDocumentToolbar list={list} mode="food" />,
+      <ListDocumentToolbar list={list} mode={mode} />,
       { wrapper: MemoryRouter },
     )
-    expect(screen.getAllByRole('radiogroup', { name: 'Weight units' })).toHaveLength(1)
-    expect(screen.queryByText('list-settings-button')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Print' })).toBeNull()
   })
 
   // The toolbar passes its mode on to the view nav, which marks that view as
