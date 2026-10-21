@@ -101,12 +101,13 @@ function renderFoodView() {
   }))
 }
 
-// Scoped to the day-grid's own "Day 1" region: once the add form is open its
-// FoodSlotPicker renders its own "Dinner" toggle too, and a bare
-// screen.findByText('Dinner') would then match both.
-async function findDinnerRow() {
-  const daySection = await screen.findByRole('region', { name: 'Day 1' })
-  return within(daySection).getByText('Dinner').closest('div') as HTMLElement
+// oneDayFood plans nothing, so its day renders COLLAPSED and the day's
+// single "+ add" (which preselects every meal of the day) is the add
+// affordance. Scoped to the day region: the open add form renders its own
+// buttons too.
+async function findDayAddButton(dayName: string) {
+  const daySection = await screen.findByRole('region', { name: dayName })
+  return within(daySection).getByRole('button', { name: /add food for day/i })
 }
 
 beforeEach(() => {
@@ -167,7 +168,7 @@ describe('FoodView per-meal toggle', () => {
   // so the row's switch must save the opposite of the current mode, and only
   // that field: carrying slotIds or quantity too would rewrite the plan.
   it.each([
-    { from: 'shared', isPerMeal: false, to: true },
+    { from: 'shared stash', isPerMeal: false, to: true },
     { from: 'per meal', isPerMeal: true, to: false },
   ])('a $from item switched from its row PATCHes isPerMeal: $to', async ({ from, isPerMeal, to }) => {
     const ramen = guardFood.items[0]
@@ -234,16 +235,16 @@ describe('FoodView query gate', () => {
 })
 
 describe('FoodView header', () => {
-  it('renders the trip-length control inside the rail, beside the add card', async () => {
+  it('renders the trip-length control and the add affordance in ONE rail card', async () => {
     await renderFoodView()
-    // The header card lives IN the rail panel (shared container with the
-    // add-food card), and the day grid lives outside it. .space-y-3 is the
-    // rail's own class - a structural coupling, accepted so the test pins
-    // the composition rather than just global presence.
+    // The rail is a single surface: header strip, add affordance and the
+    // Carrying list share one card instead of stacking three fragments. The
+    // closest('section') is that card, so this pins the composition rather
+    // than just global presence; the day grid lives outside it.
     const daysInput = await screen.findByLabelText('Trip length in days')
-    const rail = daysInput.closest('.space-y-3') as HTMLElement
+    const rail = daysInput.closest('section') as HTMLElement
     expect(rail).not.toBeNull()
-    expect(within(rail).getByRole('button', { name: 'Add food' })).toBeInTheDocument()
+    expect(within(rail).getByRole('button', { name: '+ Add food' })).toBeInTheDocument()
     expect(within(rail).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
     // No explainer line: the header card is compact rail chrome, not a place
     // for onboarding copy.
@@ -517,7 +518,7 @@ describe('FoodView reschedule', () => {
   it('saves a reschedule with the new slot selection', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     // Ramen starts scheduled at breakfast day 1; add dinner day 2 too.
     await user.click(screen.getByRole('button', { name: 'Dinner day 2' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -530,17 +531,39 @@ describe('FoodView reschedule', () => {
     // alone) - deselecting every slot must send the explicit empty array.
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Breakfast day 1' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: [] })
   })
 
+  it('opens the slot picker directly under the clicked row, not at the list end', async () => {
+    // The editor used to render after the whole Carrying list, which on a
+    // long list put it below the fold of the rail's internal scroll area -
+    // invisible from the row that opened it.
+    const twoItems: ListFoodResponse = {
+      ...rescheduleFood,
+      items: [
+        rescheduleFood.items[0]!,
+        { ...rescheduleFood.items[0]!, id: 'i2', name: 'Oats', slotIds: [] },
+      ],
+    }
+    h.fetchListFood.mockResolvedValue(twoItems)
+    await renderFoodView()
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
+
+    const editor = screen.getByText('When are you eating Ramen?')
+    const oatsRow = screen.getByText('Oats').closest('div')!
+    expect(
+      editor.compareDocumentPosition(oatsRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('closes the reschedule form on cancel without saving', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(h.updateFoodItem).not.toHaveBeenCalled()
@@ -552,7 +575,7 @@ describe('FoodView add food', () => {
   it('closes the form only after the add succeeds', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
@@ -566,8 +589,8 @@ describe('FoodView add food', () => {
       quantity: 1,
       slotIds: [],
     })
-    // Form gone; the collapsed "Add food" toggle is back.
-    expect(await screen.findByRole('button', { name: 'Add food' })).toBeInTheDocument()
+    // Form gone; the collapsed "+ Add food" toggle is back.
+    expect(await screen.findByRole('button', { name: '+ Add food' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
   })
 
@@ -575,7 +598,7 @@ describe('FoodView add food', () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     h.createFoodItem.mockRejectedValue(new ApiError(422, 'cap'))
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.type(screen.getByLabelText('Weight'), '80')
     await user.clear(screen.getByLabelText('Qty'))
@@ -596,7 +619,7 @@ describe('FoodView add food', () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     h.createFoodItem.mockRejectedValue(new ApiError(400, 'bad request'))
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
@@ -615,9 +638,9 @@ describe('FoodView add food', () => {
   it('cancel clears the slot selection along with the form', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    await user.click(screen.getByRole('button', { name: 'Add food' }))
+    await user.click(screen.getByRole('button', { name: '+ Add food' }))
 
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
       'aria-pressed',
@@ -711,19 +734,19 @@ describe('FoodView busy', () => {
     await renderFoodView()
     await user.click(await screen.findByRole('button', { name: 'Remove Ramen' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Add food' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Reschedule' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Add food' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: '1 meal, reschedule Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
 
     release()
   })
 })
 
-describe('FoodView + Add on a slot', () => {
-  it('opens the form with that slot preselected and moves focus to Name', async () => {
+describe('FoodView + Add on a day', () => {
+  it('opens the form with the day preselected and moves focus to Name', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -737,12 +760,12 @@ describe('FoodView + Add on a slot', () => {
   it('unions into an already-open form without eating typed input', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Add food' }))
+    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
     // The open button unmounts in favor of the form; focus must not be
     // dropped on body.
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
 
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
       'aria-pressed',
