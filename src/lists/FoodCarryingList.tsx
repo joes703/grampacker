@@ -165,7 +165,10 @@ function FoodItemRow({
               ? 'Counted for each meal. Switch to one shared stash.'
               : 'One shared stash. Switch to one for each meal.'
           }
-          aria-label={`${item.name} is ${item.isPerMeal ? 'per meal' : 'shared'}. Switch.`}
+          // The visible label ("per meal" / "shared stash") must appear in
+          // the accessible name (SC 2.5.3), so a speech user can say the
+          // words they see.
+          aria-label={`${item.name} is ${item.isPerMeal ? 'per meal' : 'shared stash'}. Switch.`}
           className="shrink-0 rounded px-1 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
         >
           {item.isPerMeal ? 'per meal' : 'shared stash'}
@@ -180,7 +183,13 @@ function FoodItemRow({
           type="button"
           disabled={busy}
           onClick={onReschedule}
-          aria-label={`${item.slotIds.length > 0 ? 'Reschedule' : 'Schedule'} ${item.name}`}
+          // Leads with the chip's visible text ("5 meals") for the same
+          // SC 2.5.3 reason; the unscheduled chip already shows "Schedule".
+          aria-label={
+            item.slotIds.length > 0
+              ? `${mealsLabel}, reschedule ${item.name}`
+              : `Schedule ${item.name}`
+          }
           className="shrink-0 rounded border border-gray-200 px-1.5 py-0.5 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
         >
           {item.slotIds.length > 0 ? mealsLabel : 'Schedule'}

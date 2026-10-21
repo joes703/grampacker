@@ -72,13 +72,16 @@ export default function FoodDaySection({
       <section aria-label={`Day ${day}`} className="border-t border-gray-100 first:border-t-0">
         <div className="flex items-baseline gap-2.5 px-3 py-2">
           <span className={FLAT_TABLE_EYEBROW}>Day {day}</span>
-          <span className={`${FLAT_TABLE_META_TEXT} text-gray-400`}>Nothing planned</span>
+          {/* gray-500, not gray-400: 400 on white is ~2.5:1, under the
+              4.5:1 floor for text this small. 500 passes and still reads
+              as muted beside the filled days. Same below. */}
+          <span className={`${FLAT_TABLE_META_TEXT} text-gray-500`}>Nothing planned</span>
           <button
             type="button"
             disabled={busy}
             aria-label={`Add food for day ${day}`}
             onClick={() => onAddToSlots(slots.map((slot) => slot.id))}
-            className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-400 hover:text-blue-600 disabled:opacity-50`}
+            className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-500 hover:text-blue-600 disabled:opacity-50`}
           >
             + add
           </button>
@@ -104,7 +107,7 @@ export default function FoodDaySection({
           >
             <span
               className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT} ${
-                slotItems.length === 0 ? 'text-gray-400' : ''
+                slotItems.length === 0 ? 'text-gray-500' : ''
               }`}
             >
               {MEAL_LABELS[slot.meal]}
@@ -118,7 +121,7 @@ export default function FoodDaySection({
                   type="button"
                   disabled={busy}
                   onClick={() => onAddToSlots([slot.id])}
-                  className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-400 hover:text-blue-600 disabled:opacity-50`}
+                  className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-500 hover:text-blue-600 disabled:opacity-50`}
                 >
                   + add
                 </button>

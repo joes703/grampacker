@@ -168,7 +168,7 @@ describe('FoodView per-meal toggle', () => {
   // so the row's switch must save the opposite of the current mode, and only
   // that field: carrying slotIds or quantity too would rewrite the plan.
   it.each([
-    { from: 'shared', isPerMeal: false, to: true },
+    { from: 'shared stash', isPerMeal: false, to: true },
     { from: 'per meal', isPerMeal: true, to: false },
   ])('a $from item switched from its row PATCHes isPerMeal: $to', async ({ from, isPerMeal, to }) => {
     const ramen = guardFood.items[0]
@@ -518,7 +518,7 @@ describe('FoodView reschedule', () => {
   it('saves a reschedule with the new slot selection', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     // Ramen starts scheduled at breakfast day 1; add dinner day 2 too.
     await user.click(screen.getByRole('button', { name: 'Dinner day 2' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -531,7 +531,7 @@ describe('FoodView reschedule', () => {
     // alone) - deselecting every slot must send the explicit empty array.
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Breakfast day 1' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -551,7 +551,7 @@ describe('FoodView reschedule', () => {
     }
     h.fetchListFood.mockResolvedValue(twoItems)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
 
     const editor = screen.getByText('When are you eating Ramen?')
     const oatsRow = screen.getByText('Oats').closest('div')!
@@ -563,7 +563,7 @@ describe('FoodView reschedule', () => {
   it('closes the reschedule form on cancel without saving', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
+    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(h.updateFoodItem).not.toHaveBeenCalled()
@@ -735,7 +735,7 @@ describe('FoodView busy', () => {
     await user.click(await screen.findByRole('button', { name: 'Remove Ramen' }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: '+ Add food' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Reschedule Ramen' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '1 meal, reschedule Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
 
     release()

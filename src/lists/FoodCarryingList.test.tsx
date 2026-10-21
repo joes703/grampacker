@@ -61,8 +61,10 @@ describe('FoodCarryingList schedule affordance', () => {
     renderList()
     const ramenRow = screen.getByText('Ramen').closest('div')!
     const trailMixRow = screen.getByText('Trail mix').closest('div')!
+    // The accessible name leads with the visible label (SC 2.5.3 Label in
+    // Name), so a speech user can target the chip by the text they see.
     expect(
-      within(ramenRow).getByRole('button', { name: 'Reschedule Ramen' }),
+      within(ramenRow).getByRole('button', { name: '1 meal, reschedule Ramen' }),
     ).toHaveTextContent('1 meal')
     expect(
       within(trailMixRow).getByRole('button', { name: 'Schedule Trail mix' }),
@@ -207,7 +209,7 @@ describe('FoodCarryingList totals row', () => {
 describe('FoodCarryingList busy', () => {
   it('disables reschedule and delete controls while busy', () => {
     renderList({ busy: true })
-    expect(screen.getByRole('button', { name: 'Reschedule Ramen' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '1 meal, reschedule Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Schedule Trail mix' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Trail mix' })).toBeDisabled()
