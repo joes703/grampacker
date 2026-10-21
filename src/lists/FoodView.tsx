@@ -6,11 +6,13 @@ import AddFoodForm from './AddFoodForm'
 import FoodCarryingList from './FoodCarryingList'
 import FoodSlotPicker from './FoodSlotPicker'
 import {
+  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_SURFACE,
+  TABLE_DIVIDER,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
 import {
@@ -296,9 +298,9 @@ type FoodDocumentProps = {
   onSetItemPerMeal: (itemId: string, isPerMeal: boolean) => void
 }
 
-// The resolved food document: a rail of cards (header with title and days
-// input; the add-food card; the carrying list with its inline reschedule)
-// beside the day grid. Everything here only ever runs
+// The resolved food document: one rail card (header with title and days
+// input, the add affordance, and the carrying list with its inline
+// reschedule) beside the day grid. Everything here only ever runs
 // once FoodView's query gate above has confirmed real data - see the
 // comment on that gate.
 function FoodDocument({
@@ -394,9 +396,15 @@ function FoodDocument({
             trip's slot picker alone exceeds any viewport - without an
             internal scroll the form's Submit/Cancel could not be reached
             (GATE 2 finding). */}
-        <div className="space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          {/* ONE rail card. The header strip, the add affordance and the
+              Carrying list used to be three separate surfaces, which read as
+              fragments: a card holding only a header, a card holding only a
+              button. FoodView.test.tsx pins the shared section. */}
           <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
-            <div className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap gap-2`}>
+            <div
+              className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap justify-between gap-2`}
+            >
               <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
                 Food
               </h3>
@@ -439,80 +447,83 @@ function FoodDocument({
                 <span>days</span>
               </label>
             </div>
-          </section>
-          <section ref={addFormRef} className={`${FLAT_TABLE_SURFACE} px-3 py-2.5`}>
-            {adding ? (
-              <AddFoodForm
-                slots={food.slots}
-                busy={busy}
-                weightUnit={weightUnit}
-                nameInputRef={nameInputRef}
-                selectedSlotIds={activeSelectedSlotIds}
-                onSelectedSlotIdsChange={setSelectedSlotIds}
-                onCancel={() => {
-                  setAdding(false)
-                  setSelectedSlotIds([])
-                }}
-                // The form closes only once the add SUCCEEDS. Closing on submit
-                // threw the typed name, weight and slot selection away whenever
-                // the write failed - including at the item cap, where the user
-                // is most likely to be told no.
-                onSubmit={(input, onSuccess) =>
-                  onAddItem(input, () => {
-                    onSuccess()
+            <div ref={addFormRef} className="px-3 py-2.5">
+              {adding ? (
+                <AddFoodForm
+                  slots={food.slots}
+                  busy={busy}
+                  weightUnit={weightUnit}
+                  nameInputRef={nameInputRef}
+                  selectedSlotIds={activeSelectedSlotIds}
+                  onSelectedSlotIdsChange={setSelectedSlotIds}
+                  onCancel={() => {
                     setAdding(false)
                     setSelectedSlotIds([])
-                  })
-                }
-              />
-            ) : (
-              <PrimaryButton
-                size="sm"
-                disabled={busy}
-                // The form mounts in this button's place, so the button's
-                // focus dies with it - hand it to the Name field.
-                onClick={() => {
-                  setAdding(true)
-                  focusNameSoon()
-                }}
-              >
-                Add food
-              </PrimaryButton>
+                  }}
+                  // The form closes only once the add SUCCEEDS. Closing on
+                  // submit threw the typed name, weight and slot selection
+                  // away whenever the write failed - including at the item
+                  // cap, where the user is most likely to be told no.
+                  onSubmit={(input, onSuccess) =>
+                    onAddItem(input, () => {
+                      onSuccess()
+                      setAdding(false)
+                      setSelectedSlotIds([])
+                    })
+                  }
+                />
+              ) : (
+                // Same quiet treatment as the day grid's per-slot "+ Add": a
+                // filled button inside the card read as a card holding only a
+                // button. The form mounts in this button's place, so the
+                // button's focus dies with it - hand it to the Name field.
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setAdding(true)
+                    focusNameSoon()
+                  }}
+                  className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
+                >
+                  + Add food
+                </button>
+              )}
+            </div>
+
+            {food.items.length > 0 && (
+              <div className={`border-t ${TABLE_DIVIDER}`}>
+                <div className={`px-3 pt-2 ${FLAT_TABLE_EYEBROW}`}>Carrying</div>
+                <FoodCarryingList
+                  items={food.items}
+                  weightUnit={weightUnit}
+                  busy={busy}
+                  onReschedule={setEditingItemId}
+                  onSetQuantity={onSetItemQuantity}
+                  onTogglePerMeal={onSetItemPerMeal}
+                  onDelete={onDeleteItem}
+                />
+                {editingItem && (
+                  <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
+                    <p className="mb-1.5 text-xs font-medium text-gray-700">
+                      When are you eating {editingItem.name}?
+                    </p>
+                    <RescheduleForm
+                      key={editingItem.id}
+                      slots={food.slots}
+                      initialSlotIds={editingItem.slotIds}
+                      busy={busy}
+                      onCancel={() => setEditingItemId(null)}
+                      onSave={(slotIds) => {
+                        onSetItemSlots(editingItem.id, slotIds)
+                        setEditingItemId(null)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </section>
-
-          {food.items.length > 0 && (
-            <section className={FLAT_TABLE_SURFACE}>
-              <div className={`px-3 pt-2 ${FLAT_TABLE_EYEBROW}`}>Carrying</div>
-              <FoodCarryingList
-                items={food.items}
-                weightUnit={weightUnit}
-                busy={busy}
-                onReschedule={setEditingItemId}
-                onSetQuantity={onSetItemQuantity}
-                onTogglePerMeal={onSetItemPerMeal}
-                onDelete={onDeleteItem}
-              />
-              {editingItem && (
-                <div className="border-t border-gray-100 bg-blue-50/40 px-3 py-2">
-                  <p className="mb-1.5 text-xs font-medium text-gray-700">
-                    When are you eating {editingItem.name}?
-                  </p>
-                  <RescheduleForm
-                    key={editingItem.id}
-                    slots={food.slots}
-                    initialSlotIds={editingItem.slotIds}
-                    busy={busy}
-                    onCancel={() => setEditingItemId(null)}
-                    onSave={(slotIds) => {
-                      onSetItemSlots(editingItem.id, slotIds)
-                      setEditingItemId(null)
-                    }}
-                  />
-                </div>
-              )}
-            </section>
-          )}
         </div>
 
         <div className="min-w-0">
