@@ -101,12 +101,13 @@ function renderFoodView() {
   }))
 }
 
-// Scoped to the day-grid's own "Day 1" region: once the add form is open its
-// FoodSlotPicker renders its own "Dinner" toggle too, and a bare
-// screen.findByText('Dinner') would then match both.
-async function findDinnerRow() {
-  const daySection = await screen.findByRole('region', { name: 'Day 1' })
-  return within(daySection).getByText('Dinner').closest('div') as HTMLElement
+// oneDayFood plans nothing, so its day renders COLLAPSED and the day's
+// single "+ add" (which preselects every meal of the day) is the add
+// affordance. Scoped to the day region: the open add form renders its own
+// buttons too.
+async function findDayAddButton(dayName: string) {
+  const daySection = await screen.findByRole('region', { name: dayName })
+  return within(daySection).getByRole('button', { name: /add food for day/i })
 }
 
 beforeEach(() => {
@@ -637,7 +638,7 @@ describe('FoodView add food', () => {
   it('cancel clears the slot selection along with the form', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     await user.click(screen.getByRole('button', { name: '+ Add food' }))
 
@@ -741,11 +742,11 @@ describe('FoodView busy', () => {
   })
 })
 
-describe('FoodView + Add on a slot', () => {
-  it('opens the form with that slot preselected and moves focus to Name', async () => {
+describe('FoodView + Add on a day', () => {
+  it('opens the form with the day preselected and moves focus to Name', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -764,7 +765,7 @@ describe('FoodView + Add on a slot', () => {
     // dropped on body.
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.click(within(await findDinnerRow()).getByRole('button', { name: /add/i }))
+    await user.click(await findDayAddButton('Day 1'))
 
     expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
       'aria-pressed',

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import FoodDaySection from './FoodDaySection'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 
@@ -40,7 +41,7 @@ const baseProps = {
   day: 1,
   weightUnit: 'g' as const,
   busy: false,
-  onAddToSlot: vi.fn(),
+  onAddToSlots: vi.fn(),
 }
 
 function renderDay(overrides: {
@@ -51,10 +52,37 @@ function renderDay(overrides: {
   const itemsBySlot =
     overrides.itemsBySlot ??
     new Map([['l1', [item({ id: 'i1', name: 'Trail mix', weightGrams: 120, quantity: 2 })]]])
-  const props = { ...baseProps, slots, itemsBySlot }
+  const props = { ...baseProps, onAddToSlots: vi.fn(), slots, itemsBySlot }
   render(<FoodDaySection {...props} />)
   return props
 }
+
+describe('FoodDaySection empty treatment', () => {
+  // An unplanned trip used to render three full-height "+ Add" rows and a
+  // "Day total 0 g" for every day - a wall of identical rows that drowned
+  // out the days that ARE planned.
+  it('collapses a day with nothing planned to one line, with no day total', async () => {
+    const user = userEvent.setup()
+    const props = renderDay({ itemsBySlot: new Map() })
+    expect(screen.getByText('Nothing planned')).toBeInTheDocument()
+    expect(screen.queryByText('Day total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Breakfast')).not.toBeInTheDocument()
+
+    // The collapsed add preselects every meal of the day; the form's picker
+    // is where the user narrows it.
+    await user.click(screen.getByRole('button', { name: 'Add food for day 1' }))
+    expect(props.onAddToSlots).toHaveBeenCalledWith(['b1', 'l1', 'd1'])
+  })
+
+  it('keeps the meal rows of a partly planned day; an empty slot adds to itself', async () => {
+    const user = userEvent.setup()
+    const props = renderDay() // lunch holds Trail mix; breakfast and dinner are empty
+    expect(screen.getByText('Day total')).toBeInTheDocument()
+    const breakfast = screen.getByText('Breakfast').closest('div')!
+    await user.click(within(breakfast).getByRole('button', { name: /add/i }))
+    expect(props.onAddToSlots).toHaveBeenCalledWith(['b1'])
+  })
+})
 
 describe('FoodDaySection food lines', () => {
   it('shows each food with quantity and weight inline', () => {

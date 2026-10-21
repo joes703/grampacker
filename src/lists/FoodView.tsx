@@ -339,8 +339,8 @@ function FoodDocument({
     requestAnimationFrame(() => nameInputRef.current?.focus({ preventScroll: true }))
   }
 
-  function openAddForSlot(slotId: string) {
-    setSelectedSlotIds((prev) => (prev.includes(slotId) ? prev : [...prev, slotId]))
+  function openAddForSlots(slotIds: string[]) {
+    setSelectedSlotIds((prev) => [...new Set([...prev, ...slotIds])])
     setAdding(true)
     focusNameSoon()
     // Scroll after the form mounts; rAF beats the render race without a
@@ -547,7 +547,7 @@ function FoodDocument({
                   itemsBySlot={itemsBySlot}
                   weightUnit={weightUnit}
                   busy={busy}
-                  onAddToSlot={openAddForSlot}
+                  onAddToSlots={openAddForSlots}
                 />
               ))}
             </section>

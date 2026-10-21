@@ -26,8 +26,9 @@ type Props = {
   itemsBySlot: ReadonlyMap<string, FoodItemResponse[]>
   weightUnit: WeightUnit
   busy: boolean
-  /** Opens the add form preselected to this slot. */
-  onAddToSlot: (slotId: string) => void
+  /** Opens the add form with these slots preselected: one slot from a meal
+   *  row's "+ add", the whole day from a collapsed day's. */
+  onAddToSlots: (slotIds: string[]) => void
 }
 
 export default function FoodDaySection({
@@ -36,7 +37,7 @@ export default function FoodDaySection({
   itemsBySlot,
   weightUnit,
   busy,
-  onAddToSlot,
+  onAddToSlots,
 }: Props) {
   // The day total, and the dedupe is now conditional - 0024 split the two
   // cases that used to be one.
@@ -61,6 +62,31 @@ export default function FoodDaySection({
     }
   }
 
+  // A day with nothing planned collapses to one quiet line, with no meal
+  // rows and no "Day total 0 g": an unplanned trip used to be a wall of
+  // identical "+ Add" rows that drowned out the planned days. Its add
+  // preselects the whole day; the form's picker is where the user narrows
+  // that down.
+  if (slots.every((slot) => (itemsBySlot.get(slot.id) ?? []).length === 0)) {
+    return (
+      <section aria-label={`Day ${day}`} className="border-t border-gray-100 first:border-t-0">
+        <div className="flex items-baseline gap-2.5 px-3 py-2">
+          <span className={FLAT_TABLE_EYEBROW}>Day {day}</span>
+          <span className={`${FLAT_TABLE_META_TEXT} text-gray-400`}>Nothing planned</span>
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={`Add food for day ${day}`}
+            onClick={() => onAddToSlots(slots.map((slot) => slot.id))}
+            className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-400 hover:text-blue-600 disabled:opacity-50`}
+          >
+            + add
+          </button>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section aria-label={`Day ${day}`} className="border-t border-gray-100 first:border-t-0">
       <div className={`px-3 pt-2.5 pb-1 ${FLAT_TABLE_EYEBROW}`}>Day {day}</div>
@@ -76,18 +102,25 @@ export default function FoodDaySection({
             // content would sit flush against the row border without it.
             className={`${FLAT_TABLE_ROW} flex items-start gap-2 px-2 lg:px-3 py-2 lg:py-1`}
           >
-            <span className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT}`}>
+            <span
+              className={`w-20 shrink-0 pt-0.5 ${FLAT_TABLE_META_TEXT} ${
+                slotItems.length === 0 ? 'text-gray-400' : ''
+              }`}
+            >
               {MEAL_LABELS[slot.meal]}
             </span>
             <span className="min-w-0 flex-1">
               {slotItems.length === 0 ? (
+                // Muted, not blue: on a partly planned day the empty meals
+                // are the background, and the planned ones the content.
+                // Hover restores the color that says "this is an action".
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onAddToSlot(slot.id)}
-                  className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
+                  onClick={() => onAddToSlots([slot.id])}
+                  className={`${FLAT_TABLE_META_TEXT} font-medium text-gray-400 hover:text-blue-600 disabled:opacity-50`}
                 >
-                  + Add
+                  + add
                 </button>
               ) : (
                 <span className="flex flex-col gap-0.5">
