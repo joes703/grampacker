@@ -20,6 +20,14 @@ services:
       - ./secrets/app.env
     # The image's fixed non-root user. data/ is owned by 10001:10001.
     user: "10001:10001"
+    # The app needs no Linux capability (Node on an unprivileged port, no
+    # chown or setuid) and never escalates, so drop everything. Caddy keeps
+    # its defaults: it runs as root and binds 80/443.
+    # scripts/check-image.sh starts its test server with the same flags.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges=true
     ports:
       # 127.0.0.1 only. Docker's own firewall rules run before UFW, so a
       # bare "3000:3000" would be reachable from the internet.

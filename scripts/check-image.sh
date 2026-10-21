@@ -40,8 +40,13 @@ ENV_FILE="$WORK/app.env"
   echo "BETTER_AUTH_SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '\n/+=')"
 } >"$ENV_FILE"
 
+# Production's runtime constraints (deploy/compose.yaml). `compose run app
+# migrate` inherits them too, so every app invocation here runs under them;
+# only root test scaffolding (chown, cleanup, file listings) is exempt.
+HARDEN=(--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges=true)
+
 # Runs a one-off container as the image's user with the data directory.
-run_app() { docker run --rm --env-file "$ENV_FILE" -v "$DATA:/data" "$IMAGE" "$@"; }
+run_app() { docker run --rm "${HARDEN[@]}" --env-file "$ENV_FILE" -v "$DATA:/data" "$IMAGE" "$@"; }
 
 # Runs node inside the image with SQLite, for inspecting the database file.
 sql() {
@@ -54,10 +59,10 @@ sql() {
 
 start_server() {
   local name="$1"
-  # As production runs it (deploy/compose.yaml): read-only root filesystem,
-  # a tmpfs /tmp, the data directory mounted, the port on loopback only.
-  docker run -d --name "$name" --env-file "$ENV_FILE" -v "$DATA:/data" \
-    --read-only --tmpfs /tmp -p 127.0.0.1::3000 "$IMAGE" >/dev/null
+  # As production runs it: the constraints above, the data directory
+  # mounted, the port on loopback only.
+  docker run -d --name "$name" "${HARDEN[@]}" --env-file "$ENV_FILE" -v "$DATA:/data" \
+    -p 127.0.0.1::3000 "$IMAGE" >/dev/null
   CONTAINERS+=("$name")
   local status=""
   for _ in $(seq 1 60); do
@@ -94,7 +99,7 @@ docker run --rm --user 0 --entrypoint sh -v "$DATA:/data" "$IMAGE" \
   -c "chown $APP_ID:$APP_ID /data && chmod 0700 /data"
 # Detached with a deadline: an image that wrongly serves an unmigrated
 # database would otherwise keep this check waiting forever.
-docker run -d --name "$NAME-unmigrated" --env-file "$ENV_FILE" -v "$DATA:/data" "$IMAGE" >/dev/null
+docker run -d --name "$NAME-unmigrated" "${HARDEN[@]}" --env-file "$ENV_FILE" -v "$DATA:/data" "$IMAGE" >/dev/null
 CONTAINERS+=("$NAME-unmigrated")
 code="$(timeout 30 docker wait "$NAME-unmigrated" || true)"
 [ -n "$code" ] || fail "serve on an unmigrated database did not exit within 30 s (or docker wait failed)"
@@ -108,7 +113,7 @@ pass "unmigrated database refuses to start (exit 1) and gains no schema"
 # A data directory the app user cannot write fails loudly, not silently.
 mkdir -p "$WORK/locked"
 set +e
-out="$(docker run --rm --env-file "$ENV_FILE" -v "$WORK/locked:/data" "$IMAGE" migrate 2>&1)"
+out="$(docker run --rm "${HARDEN[@]}" --env-file "$ENV_FILE" -v "$WORK/locked:/data" "$IMAGE" migrate 2>&1)"
 code=$?
 set -e
 [ "$code" != 0 ] || fail "migrate into an unwritable directory succeeded"
