@@ -22,12 +22,12 @@ type Props = {
 }
 
 // Mobile-only bottom action bar for List Detail. Edit uses destinations plus
-// Add and Options. Pack keeps Add but drops list-admin Options: rename,
-// share, export and delete are not things you do mid-pack, and pack's own
-// controls live inline in PackingProgress and on each section. Food is
-// destinations only - it has no drawer registration (see ListDetailPage's
-// useRegisterSidebarDrawer gate), so an Add here would sit permanently
-// disabled, and list admin is not a food-view concern either.
+// Add and Options. The Options slot is an edit-mode shortcut, not the only
+// entry point: the document toolbar's List options button renders in every
+// mode and viewport, so pack and food lose nothing by not repeating it
+// here. Food also drops Add - it has no drawer registration (see
+// ListDetailPage's useRegisterSidebarDrawer gate), so an Add here would sit
+// permanently disabled.
 //
 // Pack mode used to live as a fifth slot here, but pack is URL state on
 // a list (/lists/:id/pack), not a global destination — it would have

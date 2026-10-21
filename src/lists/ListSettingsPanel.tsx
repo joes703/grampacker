@@ -37,10 +37,10 @@ type Props = {
 // "Add ready checks" used to live here as a third toggle. It moved to
 // PackingProgress and was then retired entirely: ready checks are
 // unconditional, so there is nothing left to toggle. What survives of the
-// original reasoning is why it did not belong here - it is a pack-mode-only
-// concern and this panel is hidden in pack mode (see ListDocumentToolbar /
-// MobileListActionBar), which is the same test to apply to the next
-// pack-only control someone wants to put here.
+// original reasoning is why it did not belong here - this panel is
+// list-admin, so a control that only matters in one view belongs inline in
+// that view's document (as pack's filters do in PackingProgress). Apply the
+// same test to the next mode-specific control someone wants to put here.
 //
 // Actions reuse the shared useCurrentListActions hook so the /lists
 // card kebab and this panel call the same renameMut/duplicateMut/
@@ -52,9 +52,9 @@ type Props = {
 // keyboard semantics as InlineTitle, the desktop pencil affordance).
 // Same renameMut runs in either path.
 //
-// Mounted inside ListSettingsButton's popover at md+ and inside a
-// Modal on mobile via MobileListActionBar's Options slot. Both mount
-// points are themselves suppressed in pack mode.
+// Mounted inside ListSettingsButton's popover (the toolbar button, every
+// mode and viewport) and inside a Modal via MobileListActionBar's Options
+// slot (edit mode only - there it is a shortcut, not the only entry point).
 //
 // FAILURES. Each action either gets out of the way before it can fail, or
 // reports in place (the modal rule in src/lib/mutation-error-handler.ts):
