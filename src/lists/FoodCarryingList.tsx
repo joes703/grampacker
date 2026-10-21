@@ -1,9 +1,11 @@
 import { Trash2 } from 'lucide-react'
 import {
+  DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_META_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
-  FLAT_TABLE_ROW,
+  MOBILE_ROW_HEIGHT,
+  TABLE_DIVIDER,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineQuantity from '../components/InlineQuantity'
@@ -93,84 +95,93 @@ function FoodItemRow({
   onTogglePerMeal: () => void
   onDelete: () => void
 }) {
+  const mealsLabel = `${item.slotIds.length} ${item.slotIds.length === 1 ? 'meal' : 'meals'}`
   return (
-    // Vertical padding is a documented variant (py-2 lg:py-1, not the row
-    // token's lg:py-0): the row stacks a name line over a meta line, so
-    // desktop needs real breathing room above min-h.
-    <div className={`${FLAT_TABLE_ROW} flex items-center gap-2 px-2 lg:px-3 py-2 lg:py-1`}>
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate ${FLAT_TABLE_BODY_TEXT}`}>{item.name}</span>
-        {/* The whole sentence: how many per meal, over how many meals, is how
-            many you carry. It reads as the arithmetic it is, because the bug
-            this replaces was the app doing NO arithmetic and leaving the user
-            to notice. The mode word is the control that switches it. */}
-        <span className={`flex min-w-0 flex-wrap items-center gap-x-1 ${FLAT_TABLE_META_TEXT}`}>
-          <InlineQuantity
-            quantity={item.quantity}
-            max={FOOD_QUANTITY_MAX}
-            onSave={busy ? undefined : onSetQuantity}
-            itemName={item.name}
-            // ONE width for every state, sized for the WIDEST of them: the
-            // number input, which has to hold four digits plus its padding,
-            // border and the browser's native steppers. Sizing to the resting
-            // label instead fits the label fine and clips the input, and any
-            // difference between the two reflows the line on every commit.
-            className="w-16 lg:w-12"
-            align="center"
-          />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onTogglePerMeal}
-            title={
-              item.isPerMeal
-                ? 'Counted for each meal. Switch to one shared stash.'
-                : 'One shared stash. Switch to one for each meal.'
-            }
-            aria-label={`${item.name} is ${item.isPerMeal ? 'per meal' : 'shared'}. Switch.`}
-            className="shrink-0 rounded px-1 underline decoration-dotted underline-offset-2 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
-          >
-            {item.isPerMeal ? 'per meal' : 'shared'}
-          </button>
-          <span aria-hidden="true" className="shrink-0">·</span>
-          {item.slotIds.length > 0 ? (
-            `${item.slotIds.length} ${item.slotIds.length === 1 ? 'meal' : 'meals'}`
-          ) : (
-            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-              Unscheduled
-            </span>
-          )}
-          {/* Only when the two differ - repeating "= 1" on every shared row is
-              noise, and the arithmetic is the point only where it happened. */}
-          {item.unitCount !== item.quantity && (
-            <span className="shrink-0 font-medium text-gray-700">
-              = {item.unitCount}
-            </span>
-          )}
+    // Not FLAT_TABLE_ROW: this row is two stacked lines, so items-center
+    // would fight the column layout. It keeps the height tokens so density
+    // changes still reach it, and the taller content wins over both minima.
+    <div
+      className={`flex flex-col justify-center ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} border-b ${TABLE_DIVIDER} px-2 lg:px-3 py-2 lg:py-1`}
+    >
+      <span className="flex items-center gap-2">
+        <span className={`min-w-0 flex-1 truncate ${FLAT_TABLE_BODY_TEXT}`}>{item.name}</span>
+        {/* Numeric token, never bare - see FoodDaySection's weight comment.
+            unitCount, not quantity: this column is what the item adds to the
+            pack, which for a per-meal item is every meal it is in. */}
+        <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
+          <ItemWeightValue grams={item.weightGrams * item.unitCount} unit={weightUnit} />
         </span>
+        <RowIconButton
+          touchSafe
+          onClick={onDelete}
+          disabled={busy}
+          ariaLabel={`Remove ${item.name}`}
+          title="Remove"
+          icon={<Trash2 size={14} />}
+        />
       </span>
-      {/* Numeric token, never bare - see FoodDaySection's weight comment.
-          unitCount, not quantity: this column is what the item adds to the
-          pack, which for a per-meal item is every meal it is in. */}
-      <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-        <ItemWeightValue grams={item.weightGrams * item.unitCount} unit={weightUnit} />
-      </span>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onReschedule}
-        className={`shrink-0 rounded px-2 py-1 ${FLAT_TABLE_META_TEXT} font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50`}
+      {/* The whole sentence: how many per meal, over how many meals, is how
+          many you carry. It reads as the arithmetic it is, because the bug
+          this replaces was the app doing NO arithmetic and leaving the user
+          to notice. The mode word is the control that switches it, and the
+          meals count is the control that opens the slot picker - the one
+          bordered chip on the line, so the schedule affordance is visible
+          without a separate wide "Reschedule" button crowding the row. */}
+      <span
+        className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 ${FLAT_TABLE_META_TEXT} text-gray-600`}
       >
-        {item.slotIds.length > 0 ? 'Reschedule' : 'Schedule'}
-      </button>
-      <RowIconButton
-        touchSafe
-        onClick={onDelete}
-        disabled={busy}
-        ariaLabel={`Remove ${item.name}`}
-        title="Remove"
-        icon={<Trash2 size={14} />}
-      />
+        <InlineQuantity
+          quantity={item.quantity}
+          max={FOOD_QUANTITY_MAX}
+          onSave={busy ? undefined : onSetQuantity}
+          itemName={item.name}
+          // Resting state sizes to its content so the number sits flush in
+          // the sentence; the editing input takes its own wider box (four
+          // digits plus steppers). The commit does reflow the line for a
+          // moment, which the old ONE-width rule avoided - but that rule
+          // bought its stability with a permanently centered number
+          // floating in input-sized whitespace, which read as a broken
+          // layout on every row, every day.
+          editingClassName="w-16 lg:w-12"
+          align="start"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onTogglePerMeal}
+          title={
+            item.isPerMeal
+              ? 'Counted for each meal. Switch to one shared stash.'
+              : 'One shared stash. Switch to one for each meal.'
+          }
+          aria-label={`${item.name} is ${item.isPerMeal ? 'per meal' : 'shared'}. Switch.`}
+          className="shrink-0 rounded px-1 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+        >
+          {item.isPerMeal ? 'per meal' : 'shared stash'}
+        </button>
+        <span aria-hidden="true" className="shrink-0">·</span>
+        {item.slotIds.length === 0 && (
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+            Unscheduled
+          </span>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onReschedule}
+          aria-label={`${item.slotIds.length > 0 ? 'Reschedule' : 'Schedule'} ${item.name}`}
+          className="shrink-0 rounded border border-gray-200 px-1.5 py-0.5 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+        >
+          {item.slotIds.length > 0 ? mealsLabel : 'Schedule'}
+        </button>
+        {/* Only when the two differ - repeating "= 1" on every shared row is
+            noise, and the arithmetic is the point only where it happened. */}
+        {item.unitCount !== item.quantity && (
+          <span className="shrink-0 font-medium text-gray-700">
+            = {item.unitCount} carried
+          </span>
+        )}
+      </span>
     </div>
   )
 }

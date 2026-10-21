@@ -35,12 +35,13 @@ type Props = {
    *  running text, they must not, or committing visibly shrinks it and reflows
    *  the line. In a numeric COLUMN the width is fixed by the column anyway. */
   editingClassName?: string
-  /** 'end' for a numeric column, where digits line up on the right. 'center'
-   *  for a control sitting in a line of text, where a right-aligned 1 in a
-   *  fixed-width box reads as a gap. A prop rather than a className override:
-   *  two justify- classes on one element leave the outcome to Tailwind's
-   *  ordering, which is not something to leave to chance. */
-  align?: 'end' | 'center'
+  /** 'end' for a numeric column, where digits line up on the right. 'start'
+   *  for a control sitting at the head of a line of text, where the number
+   *  must sit flush against the words that follow it. 'center' for a
+   *  control floating between words. A prop rather than a className
+   *  override: two justify- classes on one element leave the outcome to
+   *  Tailwind's ordering, which is not something to leave to chance. */
+  align?: 'end' | 'center' | 'start'
 }
 
 export default function InlineQuantity({
@@ -85,8 +86,10 @@ export default function InlineQuantity({
   // the ONLY way to correct a food count, and a text-height 24px tap target on
   // a phone is how someone gives up and packs the wrong weight.
   const target = `${MOBILE_ROW_CONTROL_MIN_TARGET} ${DESKTOP_ROW_CONTROL_MIN_TARGET}`
-  const justify = align === 'center' ? 'justify-center' : 'justify-end'
-  const textAlign = align === 'center' ? 'text-center' : 'text-right'
+  const justify =
+    align === 'center' ? 'justify-center' : align === 'start' ? 'justify-start' : 'justify-end'
+  const textAlign =
+    align === 'center' ? 'text-center' : align === 'start' ? 'text-left' : 'text-right'
 
   if (onSave && editing) {
     return (

@@ -54,19 +54,26 @@ function renderList(overrides: {
 }
 
 describe('FoodCarryingList schedule affordance', () => {
-  it('labels Reschedule for a scheduled item and Schedule for an unscheduled one', () => {
+  it('makes the meals count itself the schedule button; unscheduled rows say Schedule', () => {
+    // One affordance where there used to be two: the meals count was plain
+    // text NEXT TO a wide "Reschedule" text button, which crowded the row
+    // off the right edge at phone width.
     renderList()
     const ramenRow = screen.getByText('Ramen').closest('div')!
     const trailMixRow = screen.getByText('Trail mix').closest('div')!
-    expect(within(ramenRow).getByRole('button', { name: 'Reschedule' })).toBeInTheDocument()
-    expect(within(trailMixRow).getByRole('button', { name: 'Schedule' })).toBeInTheDocument()
+    expect(
+      within(ramenRow).getByRole('button', { name: 'Reschedule Ramen' }),
+    ).toHaveTextContent('1 meal')
+    expect(
+      within(trailMixRow).getByRole('button', { name: 'Schedule Trail mix' }),
+    ).toBeInTheDocument()
   })
 
   it('calls onReschedule with the item id', async () => {
     const user = userEvent.setup()
     const props = renderList()
     const trailMixRow = screen.getByText('Trail mix').closest('div')!
-    await user.click(within(trailMixRow).getByRole('button', { name: 'Schedule' }))
+    await user.click(within(trailMixRow).getByRole('button', { name: 'Schedule Trail mix' }))
     expect(props.onReschedule).toHaveBeenCalledWith('t1')
   })
 })
@@ -91,7 +98,7 @@ describe('FoodCarryingList per-meal', () => {
     const row = screen.getByText("Justin's PB").closest('div')!
     expect(within(row).getByText('per meal')).toBeInTheDocument()
     expect(within(row).getByText('5 meals')).toBeInTheDocument()
-    expect(within(row).getByText('= 5')).toBeInTheDocument()
+    expect(within(row).getByText('= 5 carried')).toBeInTheDocument()
     // The weight column is what it adds to the PACK: 33.5 x 5.
     expect(within(row).getByLabelText('167.5 g')).toBeInTheDocument()
   })
@@ -111,8 +118,8 @@ describe('FoodCarryingList per-meal', () => {
       ],
     })
     const row = screen.getByText('Trail mix').closest('div')!
-    expect(within(row).getByText('shared')).toBeInTheDocument()
-    expect(within(row).queryByText('= 1')).not.toBeInTheDocument()
+    expect(within(row).getByText('shared stash')).toBeInTheDocument()
+    expect(within(row).queryByText(/= 1/)).not.toBeInTheDocument()
     // One bag, whatever the schedule says.
     expect(within(row).getByLabelText('500 g')).toBeInTheDocument()
   })
@@ -200,8 +207,8 @@ describe('FoodCarryingList totals row', () => {
 describe('FoodCarryingList busy', () => {
   it('disables reschedule and delete controls while busy', () => {
     renderList({ busy: true })
-    expect(screen.getByRole('button', { name: 'Reschedule' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Schedule' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reschedule Ramen' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Schedule Trail mix' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Trail mix' })).toBeDisabled()
   })

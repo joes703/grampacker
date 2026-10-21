@@ -517,7 +517,7 @@ describe('FoodView reschedule', () => {
   it('saves a reschedule with the new slot selection', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
     // Ramen starts scheduled at breakfast day 1; add dinner day 2 too.
     await user.click(screen.getByRole('button', { name: 'Dinner day 2' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -530,7 +530,7 @@ describe('FoodView reschedule', () => {
     // alone) - deselecting every slot must send the explicit empty array.
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Breakfast day 1' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -540,7 +540,7 @@ describe('FoodView reschedule', () => {
   it('closes the reschedule form on cancel without saving', async () => {
     h.fetchListFood.mockResolvedValue(rescheduleFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await user.click(await screen.findByRole('button', { name: 'Reschedule Ramen' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(h.updateFoodItem).not.toHaveBeenCalled()
@@ -712,7 +712,7 @@ describe('FoodView busy', () => {
     await user.click(await screen.findByRole('button', { name: 'Remove Ramen' }))
 
     await waitFor(() => expect(screen.getByRole('button', { name: '+ Add food' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Reschedule' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reschedule Ramen' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
 
     release()
