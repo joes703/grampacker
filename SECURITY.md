@@ -481,8 +481,11 @@ WebAuthn cryptography or the plugin's callback transaction timing.
     announcement channel, and hono has none. The better-auth 1.7.7 and hono 4.13.11 release notes both
     named their advisories.
 - GitHub Actions are pinned to full commit SHAs; triggers are `pull_request`,
-  `push` to main and `workflow_dispatch`. Only `image.yml`'s deploy job reads a
-  secret on manual dispatch, under the restrictions below. There is no
+  `push` to main and `workflow_dispatch`. Only `image.yml`'s deploy job reads
+  secrets on manual dispatch, under the restrictions below. That job runs the
+  one third-party action in the repository, `tailscale/github-action`, pinned
+  by commit SHA; its code runs on the deploy runner, so updating that pin
+  deserves the same review as a dependency. There is no
   `pull_request_target` trigger, which would run workflows with secrets against
   fork code. The repository is public; its complete history was reviewed for
   secrets and data before publication. Fork pull requests run with a read-only
@@ -501,7 +504,18 @@ WebAuthn cryptography or the plugin's callback transaction timing.
   either by hand (the owner, over SSH, through `sudo`; also the recovery
   path) or from `image.yml`'s deploy job. That job runs only when a dispatch
   on main sets `deploy`, and sends only the digest its own publish job
-  pushed. It logs in as `deploy`, checking a host key pinned in GitHub. The
+  pushed. The provider firewall blocks public port 22: the job first joins
+  the tailnet as an ephemeral node tagged `tag:ci` (a Tailscale OAuth client
+  with only the `auth_keys` write scope, held in the `production`
+  environment), which the tailnet ACL allows to reach only the VPS on port
+  22. Tailscale SSH stays off on the VPS so OpenSSH, and with it the forced
+  command below, handles tailnet port 22. Accepted risk: whoever holds the
+  OAuth secret can mint `tag:ci` nodes — persistent ones included, since
+  ephemerality is the client's choice — bounded by that ACL; recovery is
+  revoking the client and deleting the nodes
+  (`docs/vps-runbook.md`, section 6.4). Deploying still also needs the
+  separate SSH key. The job logs in as `deploy`, checking a host key pinned
+  in GitHub. The
   key's `authorized_keys` line is `restrict` (no PTY, no forwarding, no
   `~/.ssh/rc`) with a forced command, `deploy/grampacker-deploy-ssh`, which
   accepts only `deploy sha256:<64 hex>` and runs itself through `sudo`; the

@@ -233,8 +233,17 @@ Repository files install as follows:
 | `deploy/grampacker-deploy` | `/usr/local/sbin/grampacker-deploy` |
 | `deploy/grampacker-deploy-ssh` | `/usr/local/sbin/grampacker-deploy-ssh` |
 
-The normal administrator account is `joe`, using SSH and sudo. The `deploy`
-account has no password or Docker-group membership. Its only sudo command is:
+SSH reaches the VPS only over the tailnet: the provider (RackNerd) edge
+firewall blocks public port 22, and `DEPLOY_HOST` is the VPS's tailnet IPv4
+address. sshd itself still runs; Tailscale SSH stays off, because it would
+intercept tailnet port 22 before OpenSSH and the forced command below would
+no longer apply. GitHub Actions joins the tailnet for the deploy job as an
+ephemeral node tagged `tag:ci`, which the tailnet policy allows to reach
+only the VPS on port 22 (section 6.4).
+
+The normal administrator account is `joe`, using SSH over the tailnet and
+sudo. The `deploy` account has no password or Docker-group membership. Its
+only sudo command is:
 
 ```text
 (root) NOPASSWD: /usr/local/sbin/grampacker-deploy-ssh
@@ -254,7 +263,10 @@ the deployment.
 The GitHub `production` environment allows only `main` and holds:
 
 - secret `DEPLOY_SSH_KEY`;
-- variable `DEPLOY_HOST`;
+- secret `TS_OAUTH_CLIENT_ID` and secret `TS_OAUTH_SECRET` — a Tailscale
+  OAuth client with only the `auth_keys` write scope, restricted to
+  `tag:ci`;
+- variable `DEPLOY_HOST` — the VPS's tailnet IPv4 address;
 - variable `DEPLOY_KNOWN_HOSTS`.
 
 The GHCR package is linked to `joes703/grampacker`; the repository has Actions
@@ -273,12 +285,28 @@ database copy exists, the rebuilt service starts empty.
 
 Create an Ubuntu LTS host with a sudo administrator account. Install the
 current Docker Engine and Compose plugin from Docker's official Ubuntu
-repository. Also install `curl`, `openssh-server`, `sqlite3`, `ufw` and
-`unattended-upgrades`.
+repository. Also install `curl`, `openssh-server`, `sqlite3`, `ufw`,
+`unattended-upgrades`, and Tailscale from its official repository.
 
-Before opening SSH to the internet, keep the current session open, prove a
-second key-authenticated administrator session works, and disable root,
-password and keyboard-interactive login:
+Join the tailnet and confirm Tailscale SSH is off; if it were on, it would
+intercept tailnet port 22 before OpenSSH, and the deploy account's forced
+command (section 6.4) would no longer apply:
+
+```bash
+# [VPS root]
+tailscale up
+tailscale ip -4
+tailscale debug prefs | grep RunSSH
+```
+
+Expected: `"RunSSH": false`. The IPv4 address (`100.x.y.z`) is the host
+string every later step and GitHub Actions use; it is stable for the life of
+the tailnet node.
+
+SSH is never opened to the internet. While the provider-console session is
+still available, prove a key-authenticated administrator session works over
+the tailnet address, then block port 22 in the provider's edge firewall.
+Also disable root, password and keyboard-interactive login:
 
 ```bash
 # [VPS root]
@@ -293,8 +321,10 @@ sshd -T | grep -E '^(permitrootlogin|passwordauthentication|kbdinteractiveauthen
 ```
 
 Expected: all three settings are `no`. Fix any other result before enabling
-the firewall. Then enable Docker and allow only SSH, HTTP and HTTPS from the
-internet:
+the firewall. Then enable Docker and allow only HTTP and HTTPS from the
+internet. The OpenSSH rule stays as a second layer in case the provider
+firewall rule is ever removed; tailnet traffic arrives on `tailscale0`,
+which Tailscale's own netfilter rules accept ahead of UFW:
 
 ```bash
 # [VPS root]
@@ -395,9 +425,10 @@ chown -R root:root /home/deploy
 The home directory and its existing startup files are root-owned so the
 restricted account cannot alter what its forced command runs.
 
-On the admin workstation, set `VPS_HOST` to the exact hostname or address that
-GitHub Actions will use. Create a new Ed25519 deployment key without a
-passphrase and copy its public half through the administrator account:
+On the admin workstation, set `VPS_HOST` to the VPS's tailnet IPv4 address
+(`tailscale ip -4` on the VPS) — the exact host string GitHub Actions will
+use. Create a new Ed25519 deployment key without a passphrase and copy its
+public half through the administrator account:
 
 ```bash
 # [admin]
@@ -421,9 +452,11 @@ ssh-keygen -lf /home/deploy/.ssh/authorized_keys
 ```
 
 Verify that a shell, maintenance command, image tag, PTY, port forward and
-file copy are refused. Space the tests by ten seconds so UFW's SSH rate limit
-does not hide the result. The all-zero digest reaches the wrapper but cannot
-pull an image, so it stops before maintenance or data are changed:
+file copy are refused. These tests run over the tailnet, where UFW's SSH
+rate limit does not apply (tailnet traffic bypasses UFW), so the ten-second
+spacing matters only if testing a public address. The all-zero digest
+reaches the wrapper but cannot pull an image, so it stops before maintenance
+or data are changed:
 
 ```bash
 # [admin]
@@ -443,8 +476,46 @@ ssh "${K[@]}" deploy@"$VPS_HOST" \
 Expected: the first three are refused with exit 2; PTY, forwarding and file
 copy fail with exit 255; `/tmp/deploy-wrote-this` does not exist; and the
 all-zero digest reaches `grampacker-deploy-ssh` but fails its image pull with
-exit 1. A timeout means UFW handled the request instead of sshd; wait a minute
-and repeat the remaining checks.
+exit 1. A timeout means the request never reached sshd; check the tailnet
+path (`tailscale status` on both ends) before repeating the checks.
+
+Next, grant GitHub Actions a path onto the tailnet. The tailnet policy uses
+grants syntax, and the VPS is the tagged device `tag:grampacker-vps`, so the
+CI grant names the tag and keeps working if the VPS's tailnet IP ever
+changes. In the Tailscale admin console, add `tag:ci` to `tagOwners` and
+grant it TCP port 22 to the VPS tag only. Grants are additive — any other
+grant whose `src` also matches `tag:ci` (or `*`) would widen CI's reach — so
+check the rest of the policy before saving. Keep a `tests` block so the
+policy editor itself refuses a regression (these tests use literal IPs, so
+update them if the VPS's IP changes):
+
+```jsonc
+"tagOwners": {
+  "tag:grampacker-vps": [], // the VPS; empty list: only admins manage it
+  "tag:ci": [],             // GitHub Actions deploy runners
+},
+"grants": [
+  // ...the tailnet's own grants stay as they are...
+  // CI reaches only the VPS's sshd.
+  {"src": ["tag:ci"], "dst": ["tag:grampacker-vps"], "ip": ["tcp:22"]},
+],
+"tests": [
+  {
+    "src": "tag:ci",
+    "accept": ["<VPS tailnet IP>:22"],
+    "deny": ["<VPS tailnet IP>:443", "<another device's tailnet IP>:22"],
+  },
+],
+```
+
+Then, under Settings → OAuth clients, generate a client with only the
+`auth_keys` write scope, restricted to tag `tag:ci`, and record its ID and
+secret. The deploy job uses it to mint an ephemeral, preauthorized node per
+run; the action logs the node out when the job ends. Anyone holding the
+secret can mint `tag:ci` nodes — persistent ones too, since ephemerality is
+the client's choice — bounded by the ACL above. If it leaks: revoke the
+OAuth client in the admin console and delete any unexpected `tag:ci` nodes
+from the Machines page.
 
 Read the host's full Ed25519 public key through the already verified
 administrator connection. The displayed fingerprint must match the value
@@ -458,6 +529,9 @@ HOSTKEY="$(ssh joe@"$VPS_HOST" cat /etc/ssh/ssh_host_ed25519_key.pub | cut -d' '
 printf '%s %s\n' "$VPS_HOST" "$HOSTKEY" | ssh-keygen -lf -
 gh secret set DEPLOY_SSH_KEY --repo "$GH_REPO" --env production \
   <~/grampacker-deploy-key
+# Each prompts for its value: paste it, press Enter, then Ctrl-D.
+gh secret set TS_OAUTH_CLIENT_ID --repo "$GH_REPO" --env production
+gh secret set TS_OAUTH_SECRET --repo "$GH_REPO" --env production
 gh variable set DEPLOY_HOST --repo "$GH_REPO" --env production \
   --body "$VPS_HOST"
 gh variable set DEPLOY_KNOWN_HOSTS --repo "$GH_REPO" --env production \
@@ -488,9 +562,9 @@ curl -fsS https://grampacker.app/api/health && echo
 ```
 
 Confirm that the app is healthy, magic-link and passkey sign-in work, public
-shares load, port 3000 listens only on `127.0.0.1`, and only SSH, HTTP and
-HTTPS are publicly allowed. Finally run a GitHub deployment to prove the
-restricted path works end to end.
+shares load, port 3000 listens only on `127.0.0.1`, and only HTTP and HTTPS
+are publicly reachable (port 22 answers only on the tailnet). Finally run a
+GitHub deployment to prove the restricted path works end to end.
 
 ## 7. Change or test deployment files
 
@@ -590,6 +664,12 @@ changed deployment files using the mapping in section 5.
   logs app`; do not bypass the health check.
 - Certificate failure: confirm DNS points to the VPS and TCP ports 80 and 443
   are open.
+- Deploy job fails with ssh exit 255 after about 30 seconds, or the "Join
+  the tailnet" step times out: the runner never reached sshd over the
+  tailnet. Check that step's log first, then the ACL (`tag:ci` must reach
+  the VPS on 22), the OAuth client (not revoked, `auth_keys` write scope,
+  tag `tag:ci`), that `DEPLOY_HOST` is still the VPS's tailnet IP, and that
+  `tailscaled` is running on the VPS.
 - GitHub says `Host key verification failed`: replace
   `DEPLOY_KNOWN_HOSTS` only after verifying the host key through a trusted
   path.
@@ -601,6 +681,7 @@ changed deployment files using the mapping in section 5.
 Keep these records outside Git, in the password manager or operations notes:
 
 - VPS SSH host-key fingerprint;
+- the Tailscale OAuth client's ID and where its secret is stored;
 - GHCR read-only token expiry;
 - current deployed image digest and source commit;
 - current Caddy version;
