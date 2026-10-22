@@ -38,8 +38,10 @@ Format: `- YYYY-MM-DD <idea> - <why it waits>`
   user-visible for the trip-length write, and per-operation state was not
   worth its contract work in that diff. New trigger: the first user-visible
   complaint about the freeze, or food writes issued outside the dialog again.
-- 2026-10-22 All consumables (fuel, water treatment, ...) rolling into the
-  Food view's shopping tally, so one list says everything to acquire before a
-  trip - Joe's observation during the 2026-10 Food redesign ("really all
-  consumables do" need acquiring). Trigger: the first time a non-food
-  consumable is forgotten on a trip, or a request to see fuel on the tally.
+- 2026-10-22 One list of everything to acquire before a trip - all
+  consumables (fuel, water treatment, ...), not just food - Joe's
+  observation during the 2026-10 Food redesign ("really all consumables do"
+  need acquiring). The Food view's shopping tally, the obvious host, was
+  removed later that month as a duplicate of the Category/Pack buy counts,
+  so this would be a new surface. Trigger: the first time a non-food
+  consumable is forgotten on a trip, or a request for a buy list.

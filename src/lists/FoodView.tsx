@@ -425,10 +425,10 @@ function FoodDocument({
   }
 
   const days = Array.from({ length: food.dayCount }, (_, i) => i + 1)
-  // Items whose meals were all trimmed away (or never picked). They appear in
-  // no day section, and the tally is read-only - without this group they
-  // would be unreachable, and an item that lost its meals has to be
-  // repairable without deleting and retyping it. Rendered even at zero days.
+  // Items whose meals were all trimmed away (or never picked). They appear
+  // in no day section, so without this group they would be unreachable, and
+  // an item that lost its meals has to be repairable without deleting and
+  // retyping it. Rendered even at zero days.
   const unscheduled = food.items.filter((item) => item.slotIds.length === 0)
 
   return (

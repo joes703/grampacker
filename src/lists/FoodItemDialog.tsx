@@ -44,9 +44,8 @@ type Props = {
 }
 
 // The one food editor: adding from the header or a meal's "+ add", and
-// editing anything about an existing item (tap its row in the plan). The
-// shopping list deliberately has no controls - this dialog and the plan ARE
-// the editing surface.
+// editing anything about an existing item (tap its row in the plan). This
+// dialog and the plan ARE the one editing surface for food.
 //
 // Call sites must key this component per open (and per item), like
 // GearItemDialog: the draft and the diff baseline are captured by useState
