@@ -42,6 +42,7 @@ const baseProps = {
   weightUnit: 'g' as const,
   busy: false,
   onAddToSlots: vi.fn(),
+  onEditItem: vi.fn(),
 }
 
 function renderDay(overrides: {
@@ -52,34 +53,37 @@ function renderDay(overrides: {
   const itemsBySlot =
     overrides.itemsBySlot ??
     new Map([['l1', [item({ id: 'i1', name: 'Trail mix', weightGrams: 120, quantity: 2 })]]])
-  const props = { ...baseProps, onAddToSlots: vi.fn(), slots, itemsBySlot }
+  const props = { ...baseProps, onAddToSlots: vi.fn(), onEditItem: vi.fn(), slots, itemsBySlot }
   render(<FoodDaySection {...props} />)
   return props
 }
 
+const mealGroup = (name: string) => screen.getByRole('group', { name })
+
 describe('FoodDaySection empty treatment', () => {
   // An unplanned trip used to render three full-height "+ Add" rows and a
-  // "Day total 0 g" for every day - a wall of identical rows that drowned
+  // "total 0 g" for every day - a wall of identical rows that drowned
   // out the days that ARE planned.
   it('collapses a day with nothing planned to one line, with no day total', async () => {
     const user = userEvent.setup()
     const props = renderDay({ itemsBySlot: new Map() })
     expect(screen.getByText('Nothing planned')).toBeInTheDocument()
-    expect(screen.queryByText('Day total')).not.toBeInTheDocument()
+    expect(screen.queryByText('total')).not.toBeInTheDocument()
     expect(screen.queryByText('Breakfast')).not.toBeInTheDocument()
 
-    // The collapsed add preselects every meal of the day; the form's picker
+    // The collapsed add preselects every meal of the day; the dialog's grid
     // is where the user narrows it.
     await user.click(screen.getByRole('button', { name: 'Add food for day 1' }))
     expect(props.onAddToSlots).toHaveBeenCalledWith(['b1', 'l1', 'd1'])
   })
 
-  it('keeps the meal rows of a partly planned day; an empty slot adds to itself', async () => {
+  it('keeps the meal lines of a partly planned day; an empty slot adds to itself', async () => {
     const user = userEvent.setup()
     const props = renderDay() // lunch holds Trail mix; breakfast and dinner are empty
-    expect(screen.getByText('Day total')).toBeInTheDocument()
-    const breakfast = screen.getByText('Breakfast').closest('div')!
-    await user.click(within(breakfast).getByRole('button', { name: /add/i }))
+    expect(screen.getByText('total')).toBeInTheDocument()
+    await user.click(
+      within(mealGroup('Breakfast day 1')).getByRole('button', { name: /add/i }),
+    )
     expect(props.onAddToSlots).toHaveBeenCalledWith(['b1'])
   })
 })
@@ -87,10 +91,35 @@ describe('FoodDaySection empty treatment', () => {
 describe('FoodDaySection food lines', () => {
   it('shows each food with quantity and weight inline', () => {
     renderDay() // lunch holds Trail mix, 120 g x 2
-    const lunch = screen.getByText('Lunch').closest('div')!
+    const lunch = mealGroup('Lunch day 1')
     expect(within(lunch).getByText('Trail mix')).toBeInTheDocument()
     expect(within(lunch).getByText('× 2')).toBeInTheDocument()
     expect(within(lunch).getByLabelText('240 g')).toBeInTheDocument()
+  })
+
+  it('every food line is a button that opens the editor for that item', async () => {
+    const user = userEvent.setup()
+    const props = renderDay()
+    await user.click(screen.getByRole('button', { name: 'Edit Trail mix' }))
+    expect(props.onEditItem).toHaveBeenCalledWith('i1')
+  })
+
+  it('tags a shared stash "one container"; a per-meal item carries no tag', () => {
+    renderDay({
+      itemsBySlot: new Map([
+        [
+          'l1',
+          [
+            item({ id: 'i1', name: 'Peanut butter', weightGrams: 350, isPerMeal: false }),
+            item({ id: 'i2', name: 'Jerky', weightGrams: 90 }),
+          ],
+        ],
+      ]),
+    })
+    const pb = screen.getByRole('button', { name: 'Edit Peanut butter' })
+    expect(within(pb).getByText('one container')).toBeInTheDocument()
+    const jerky = screen.getByRole('button', { name: 'Edit Jerky' })
+    expect(within(jerky).queryByText('one container')).not.toBeInTheDocument()
   })
 
   it('omits the × qty tag for a single carried unit', () => {
@@ -99,8 +128,7 @@ describe('FoodDaySection food lines', () => {
         ['l1', [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1 })]],
       ]),
     })
-    const lunch = screen.getByText('Lunch').closest('div')!
-    expect(within(lunch).queryByText('× 1')).not.toBeInTheDocument()
+    expect(within(mealGroup('Lunch day 1')).queryByText('× 1')).not.toBeInTheDocument()
   })
 
   it('shows a meal subtotal only when the slot holds two or more foods', () => {
@@ -115,16 +143,16 @@ describe('FoodDaySection food lines', () => {
         ],
       ]),
     })
-    const lunch = screen.getByText('Lunch').closest('div')!
-    // 240 g (trail mix) + 100 g (jerky) = 340 g subtotal, via foodGramsFor.
-    expect(within(lunch).getByLabelText('340 g')).toBeInTheDocument()
+    // 240 g (trail mix) + 100 g (jerky) = 340 g subtotal, via foodGramsAtOneMeal.
+    expect(within(mealGroup('Lunch day 1')).getByLabelText('340 g')).toBeInTheDocument()
   })
 
-  it('omits the subtotal line for a single food', () => {
+  it('omits the subtotal for a single food - it would repeat the line below', () => {
+    // The mock drew a subtotal on every non-empty meal; this is the one
+    // deliberate deviation, per the owner's "no copied-over data" rule for
+    // derived numbers.
     renderDay() // lunch holds only Trail mix, at 240 g
-    const lunch = screen.getByText('Lunch').closest('div')!
-    // Only one weight value should appear: the food's own line, no subtotal.
-    expect(within(lunch).getAllByLabelText(/ g$/)).toHaveLength(1)
+    expect(within(mealGroup('Lunch day 1')).getAllByLabelText(/ g$/)).toHaveLength(1)
   })
 })
 
@@ -147,7 +175,7 @@ describe('FoodDaySection day total', () => {
         ['l1', [shared]],
       ]),
     })
-    const totalRow = screen.getByText('Day total').closest('div')!
+    const totalRow = screen.getByText('total').closest('div')!
     expect(within(totalRow).getByLabelText('500 g')).toBeInTheDocument()
     expect(screen.queryByLabelText('1000 g')).not.toBeInTheDocument()
   })
@@ -168,7 +196,7 @@ describe('FoodDaySection day total', () => {
         ['l1', [perMeal]],
       ]),
     })
-    const totalRow = screen.getByText('Day total').closest('div')!
+    const totalRow = screen.getByText('total').closest('div')!
     expect(within(totalRow).getByLabelText('1000 g')).toBeInTheDocument()
   })
 })
