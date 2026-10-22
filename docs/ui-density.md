@@ -443,8 +443,11 @@ server is the real gate.
 
 ### Food view variants
 
-The Food view (2026-10 redesign) carries three documented inline variants,
-all single-site, none hoisted into tokens:
+The Food view renders each day of the meal plan as its own flat table in the
+category grammar: a `FLAT_TABLE_SURFACE` card per day with airspace composed
+by the page, a `FLAT_TABLE_HEADER` strip that doubles as the Qty / Weight
+column header, and a footer total under the Weight column. Its documented
+inline variants, all single-site, none hoisted into tokens:
 
 - The editor dialog's meal grid (`FoodMealGrid`) uses native checkboxes in
   fixed-width grid cells. The CELL, not the 16px checkbox, is the target:
@@ -452,14 +455,17 @@ all single-site, none hoisted into tokens:
   standing two-tier rule, applied to a label wrapping the input. This
   replaced the retired `TOGGLE_CHIP` pill tokens, which died with the food
   slot picker (their only consumer).
-- Plan food lines and the Not-scheduled rows are full-width buttons at the
-  row density tokens' heights (`min-h-11` / `lg:min-h-7`) but with their own
-  indent (`pl-7`) under a meal header instead of `FLAT_TABLE_ROW`'s border
-  separation; the day band (`bg-gray-100`) and meal eyebrows separate rows
-  instead.
-- The day band is `bg-gray-100`, one step past the `TABLE_HEADER_BG` gray-50,
-  because the meal eyebrows inside it provide the second tier and two gray-50
-  strips four lines apart read as one.
+- Plan food lines are full-width buttons at the row density tokens' heights
+  (`min-h-11` / `lg:min-h-7`), indented (`pl-7`) under their meal eyebrow
+  instead of carrying `FLAT_TABLE_ROW`'s border separation - the meal
+  grouping is a second heading level the category tables do not have. Their
+  Qty / Weight cells are `FoodDaySection`'s own column stubs
+  (`FOOD_PLAN_COL_*`), width-matched to the category rails but free to
+  diverge; the Not-scheduled table composes the same stubs.
+- A plan row's Qty is how many at THAT meal (`quantity`), while the Category
+  and Pack food rows show `unitCount`, the trip-wide buy count. Same label,
+  deliberately different number: each table answers the question its page
+  asks.
 
 ### Popover surface
 

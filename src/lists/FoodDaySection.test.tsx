@@ -89,12 +89,15 @@ describe('FoodDaySection empty treatment', () => {
 })
 
 describe('FoodDaySection food lines', () => {
-  it('shows each food with quantity and weight inline', () => {
+  it('shows each food with quantity and weight in the Qty and Weight columns', () => {
     renderDay() // lunch holds Trail mix, 120 g x 2
     const lunch = mealGroup('Lunch day 1')
     expect(within(lunch).getByText('Trail mix')).toBeInTheDocument()
-    expect(within(lunch).getByText('× 2')).toBeInTheDocument()
+    expect(within(lunch).getByText('2')).toBeInTheDocument()
     expect(within(lunch).getByLabelText('240 g')).toBeInTheDocument()
+    // The header carries the column labels, like a category table's.
+    expect(screen.getByText('Qty')).toBeInTheDocument()
+    expect(screen.getByText('Weight')).toBeInTheDocument()
   })
 
   it('every food line is a button that opens the editor for that item', async () => {
@@ -122,13 +125,17 @@ describe('FoodDaySection food lines', () => {
     expect(within(jerky).queryByText('one container')).not.toBeInTheDocument()
   })
 
-  it('omits the × qty tag for a single carried unit', () => {
+  it('shows the Qty cell even for a single unit - a column is all or nothing', () => {
+    // The old layout hid a "× 1" chip as noise. In a labeled Qty column an
+    // empty cell reads as missing data, so the count always renders, as it
+    // does on every other table.
     renderDay({
       itemsBySlot: new Map([
         ['l1', [item({ id: 'i1', name: 'Jerky', weightGrams: 90, quantity: 1 })]],
       ]),
     })
-    expect(within(mealGroup('Lunch day 1')).queryByText('× 1')).not.toBeInTheDocument()
+    const jerky = within(mealGroup('Lunch day 1')).getByRole('button', { name: 'Edit Jerky' })
+    expect(within(jerky).getByText('1')).toBeInTheDocument()
   })
 
   it('shows a meal subtotal only when the slot holds two or more foods', () => {

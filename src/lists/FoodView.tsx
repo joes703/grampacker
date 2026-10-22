@@ -2,16 +2,17 @@ import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import PrimaryButton from '../components/PrimaryButton'
 import ItemWeightValue from '../components/ItemWeightValue'
-import FoodDaySection from './FoodDaySection'
+import FoodDaySection, { FoodPlanColumnLabels, FoodPlanRow } from './FoodDaySection'
 import FoodItemDialog, { type FoodItemDialogMode } from './FoodItemDialog'
-import FoodShoppingList from './FoodShoppingList'
 import {
-  FLAT_TABLE_BODY_TEXT,
+  COMPACT_PANEL_META_TEXT,
   FLAT_TABLE_EYEBROW,
+  FLAT_TABLE_HEADER,
+  FLAT_TABLE_HEADER_PADDING,
+  FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
-  FLAT_TABLE_NUMERIC_TEXT,
-  FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_SURFACE,
+  FORM_INPUT,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
 import {
@@ -43,9 +44,12 @@ import type { WeightUnit } from '../lib/weight'
 // Pack arrangements (React Query dedupes the fetch).
 //
 // The layout is the 2026-10 redesign: a planning header (trip length, carried
-// total, add), the meal plan as the ONE editing surface (every "+ add" and
-// every food line opens FoodItemDialog), and a read-only shopping tally
-// beside it. Below lg the plan and the tally become two tabs.
+// total, add) over a single column of day tables, with the meal plan as the
+// ONE editing surface (every "+ add" and every food line opens
+// FoodItemDialog). The shopping tally that used to sit beside the plan was
+// removed deliberately: it repeated the unitCount the Category and Pack food
+// rows already show, and a buy-count is read at the store, where those views
+// are the ones open.
 export default function FoodView({ listId }: { listId: string }) {
   const qc = useQueryClient()
   const { weightUnit } = useWeightUnit()
@@ -394,9 +398,9 @@ type FoodDocumentProps = {
 }
 
 // The resolved food document: the planning header (trip length, carried
-// total, add), then the meal plan beside the read-only shopping tally. Only
-// ever runs once FoodView's query gate above has confirmed real data - see
-// the comment on that gate.
+// total, add), then one column of day tables and, when needed, the
+// Not-scheduled table. Only ever runs once FoodView's query gate above has
+// confirmed real data - see the comment on that gate.
 function FoodDocument({
   food,
   weightUnit,
@@ -410,11 +414,6 @@ function FoodDocument({
   // request: it is dropped once the write settles, and on every revert, so
   // the box never keeps showing a length the list does not have.
   const [daysDraft, setDaysDraft] = useState<string | null>(null)
-  // Which panel a narrow viewport shows. CSS-only visibility (hidden
-  // lg:block), not a breakpoint hook: widening the window must always show
-  // both panels, whatever tab was active. Resets to the plan on remount,
-  // deliberately.
-  const [mobilePanel, setMobilePanel] = useState<'plan' | 'shop'>('plan')
 
   const itemsBySlot = new Map<string, ListFoodResponse['items']>()
   for (const item of food.items) {
@@ -432,21 +431,8 @@ function FoodDocument({
   // repairable without deleting and retyping it. Rendered even at zero days.
   const unscheduled = food.items.filter((item) => item.slotIds.length === 0)
 
-  const switchButton = (panel: 'plan' | 'shop', label: string) => (
-    <button
-      type="button"
-      aria-pressed={mobilePanel === panel}
-      onClick={() => setMobilePanel(panel)}
-      className={`min-h-10 rounded-md text-sm font-medium ${
-        mobilePanel === panel ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'
-      }`}
-    >
-      {label}
-    </button>
-  )
-
   return (
-    <div className="mt-3 max-w-6xl space-y-3">
+    <div className="mt-3 max-w-3xl space-y-3">
       <section
         aria-label="Food plan"
         className={`${FLAT_TABLE_SURFACE} flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2.5 lg:px-4`}
@@ -484,7 +470,10 @@ function FoodDocument({
               // meals, using a fresh read of the plan.
               onSetDays(next, () => setDaysDraft(null))
             }}
-            className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
+            // FORM_INPUT, not a private smaller box: the density doc records
+            // how the food view's one-off field variant made it read like a
+            // different app. w-16 fits the two digits FOOD_DAY_CAP allows.
+            className={`w-16 ${FORM_INPUT} text-right tabular-nums`}
             aria-label="Trip length in days"
           />
           <span>days</span>
@@ -492,8 +481,11 @@ function FoodDocument({
         <div>
           <div className={FLAT_TABLE_EYEBROW}>Carried food</div>
           {/* foodGramsFor sums items alone - never joined through slots, or a
-              food eaten at several meals would count its weight once per meal. */}
-          <div className="font-mono text-base font-semibold tabular-nums text-gray-900">
+              food eaten at several meals would count its weight once per meal.
+              COMPACT_PANEL_META_TEXT: the same stat treatment as the weight
+              summary's Base / Consumable values, so the one number in this
+              bar reads as kin to the app's other stats. */}
+          <div className={`mt-0.5 ${COMPACT_PANEL_META_TEXT} text-gray-900`}>
             <ItemWeightValue grams={foodGramsFor(food.items)} unit={weightUnit} />
           </div>
         </div>
@@ -503,95 +495,48 @@ function FoodDocument({
         </PrimaryButton>
       </section>
 
-      <div
-        role="group"
-        aria-label="Food view section"
-        className="grid grid-cols-2 gap-0.5 rounded-lg border border-gray-300 bg-gray-50 p-0.5 lg:hidden"
-      >
-        {switchButton('plan', 'Meal plan')}
-        {switchButton('shop', 'Shopping list')}
-      </div>
-
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
-        <div className={`min-w-0 space-y-3 ${mobilePanel === 'shop' ? 'hidden lg:block' : ''}`}>
-          {food.dayCount === 0 ? (
-            <p className="px-3 py-3 text-sm text-gray-500">
-              Set a trip length and every meal appears. Add what you are eating
-              and when; that is what you need to pack.
-            </p>
-          ) : (
-            <section className={FLAT_TABLE_SURFACE}>
-              {days.map((day) => (
-                <FoodDaySection
-                  key={day}
-                  day={day}
-                  slots={slotsForDay(food, day)}
-                  itemsBySlot={itemsBySlot}
-                  weightUnit={weightUnit}
-                  busy={busy}
-                  onAddToSlots={onOpenAdd}
-                  onEditItem={onOpenEdit}
-                />
-              ))}
-            </section>
-          )}
-          {unscheduled.length > 0 && (
-            <section aria-label="Not scheduled" className={FLAT_TABLE_SURFACE}>
-              <div className="flex items-baseline gap-2.5 bg-gray-100 px-3 py-1.5">
-                <h3 className="text-sm font-semibold text-gray-900">Not scheduled</h3>
-                <span className={`${FLAT_TABLE_META_TEXT} text-gray-500`}>
-                  carried, but no meal picked yet
-                </span>
-              </div>
-              <div className="pb-1 pt-0.5">
-                {unscheduled.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onOpenEdit(item.id)}
-                    aria-label={`Edit ${item.name}`}
-                    className="flex w-full min-h-11 lg:min-h-7 items-center gap-2 px-3 py-1 lg:py-0.5 text-left hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <span
-                      className={`min-w-0 flex-1 ${FLAT_TABLE_BODY_TEXT} [overflow-wrap:anywhere] text-gray-900`}
-                    >
-                      {item.name}
-                    </span>
-                    {!item.isPerMeal && (
-                      <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                        one container
-                      </span>
-                    )}
-                    {item.quantity > 1 && (
-                      <span className={`shrink-0 ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
-                        × {item.quantity}
-                      </span>
-                    )}
-                    <span className={`${FLAT_TABLE_NUMERIC_TEXT} w-16 shrink-0 text-right text-gray-600`}>
-                      <ItemWeightValue
-                        grams={item.weightGrams * item.quantity}
-                        unit={weightUnit}
-                      />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-
-        {/* Sticky so the tally rides along on a long plan; the internal
-            scroll cap keeps its own overflow reachable (a top-only sticky
-            element taller than the viewport pins with its tail unreachable). */}
-        <div
-          className={`min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto ${
-            mobilePanel === 'plan' ? 'hidden lg:block' : ''
-          }`}
-        >
-          <FoodShoppingList items={food.items} />
-        </div>
-      </div>
+      {food.dayCount === 0 ? (
+        <p className="px-3 py-3 text-sm text-gray-500">
+          Set a trip length and every meal appears. Add what you are eating
+          and when; that is what you need to pack.
+        </p>
+      ) : (
+        days.map((day) => (
+          <FoodDaySection
+            key={day}
+            day={day}
+            slots={slotsForDay(food, day)}
+            itemsBySlot={itemsBySlot}
+            weightUnit={weightUnit}
+            busy={busy}
+            onAddToSlots={onOpenAdd}
+            onEditItem={onOpenEdit}
+          />
+        ))
+      )}
+      {unscheduled.length > 0 && (
+        <section aria-label="Not scheduled" className={FLAT_TABLE_SURFACE}>
+          <div className={`${FLAT_TABLE_HEADER} gap-2 ${FLAT_TABLE_HEADER_PADDING}`}>
+            <h3 className={`shrink-0 ${FLAT_TABLE_HEADER_TITLE}`}>Not scheduled</h3>
+            <span className={`min-w-0 flex-1 truncate ${FLAT_TABLE_META_TEXT} text-gray-500`}>
+              carried, but no meal picked yet
+            </span>
+            <FoodPlanColumnLabels />
+          </div>
+          <div className="py-1">
+            {unscheduled.map((item) => (
+              <FoodPlanRow
+                key={item.id}
+                item={item}
+                weightUnit={weightUnit}
+                busy={busy}
+                onEdit={onOpenEdit}
+                indent={false}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
