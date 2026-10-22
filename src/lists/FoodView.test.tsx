@@ -16,9 +16,8 @@ import { shimDialog } from './test/list-detail-harness'
 //
 // It also owns every food mutation and the editor dialog. Rendering detail
 // already covered at the component level - day sections and weight totals
-// (FoodDaySection.test.tsx), the tally (FoodShoppingList.test.tsx), and the
-// dialog's own form behavior (FoodItemDialog.test.tsx) - is NOT re-asserted
-// here. This file proves the composition: which data reaches which component,
+// (FoodDaySection.test.tsx), and the dialog's own form behavior
+// (FoodItemDialog.test.tsx) - is NOT re-asserted here. This file proves the composition: which data reaches which component,
 // the days-input destructive guards (unique to this view), and the exact
 // mutation contract (error routing, argument shapes, success-only close,
 // busy propagation).
@@ -752,27 +751,16 @@ describe('FoodView unscheduled items', () => {
   })
 })
 
-describe('FoodView shopping tally', () => {
-  it('renders the tally from the same items the plan shows', async () => {
+describe('FoodView has no shopping tally', () => {
+  it('renders the plan alone - the buy count lives on the Category and Pack food rows', async () => {
+    // A product decision, not an omission: the tally repeated unitCount,
+    // which FoodRow already shows wherever food is read. Pinned so it does
+    // not quietly grow back as a second copy of the same number.
     h.fetchListFood.mockResolvedValue(editFood)
     await renderFoodView()
-    const tally = await screen.findByRole('region', { name: 'Shopping list' })
-    expect(within(tally).getByText('Ramen')).toBeInTheDocument()
-    expect(within(tally).getByText('× 1')).toBeInTheDocument()
-  })
-
-  it('offers the plan/tally switch below lg', async () => {
-    // jsdom cannot evaluate the lg: classes, so this pins only the switch
-    // contract (two pressed-state buttons); which panel is visible at each
-    // width is verified in the browser.
-    h.fetchListFood.mockResolvedValue(editFood)
-    await renderFoodView()
-    const plan = await screen.findByRole('button', { name: 'Meal plan' })
-    const shop = screen.getByRole('button', { name: 'Shopping list' })
-    expect(plan).toHaveAttribute('aria-pressed', 'true')
-    await user.click(shop)
-    expect(shop).toHaveAttribute('aria-pressed', 'true')
-    expect(plan).toHaveAttribute('aria-pressed', 'false')
+    await screen.findByRole('region', { name: 'Day 1' })
+    expect(screen.queryByRole('region', { name: 'Shopping list' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Meal plan' })).not.toBeInTheDocument()
   })
 })
 
