@@ -154,7 +154,7 @@ describe('PrivacyPanel', () => {
 // Replacing the link is a separate, irreversible action from the share toggle.
 // The toggle must stay non-destructive: people paste these URLs into places
 // they cannot edit afterwards, so only this control may retarget them.
-describe('PrivacyPanel - replacing the share link', () => {
+describe('PrivacyPanel - resetting the share link', () => {
   const shared: List = { ...list, isShared: true }
 
   it('offers no way to reset the link while the list is private', () => {

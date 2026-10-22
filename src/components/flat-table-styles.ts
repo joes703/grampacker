@@ -330,8 +330,11 @@ export const FLAT_TABLE_QUANTITY_TEXT = `text-xs lg:text-[13px] tabular-nums ${P
 
 // A flat table's footer total row: the one recipe for how every table
 // closes, whichever view it is on. Callers prepend their own display gate
-// (plain `flex`, or the category footer's `hidden lg:flex print:flex`).
-export const FLAT_TABLE_FOOTER_ROW = `${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-2 border-t ${TABLE_DIVIDER} px-3 py-0`
+// (plain `flex`, or the category footer's `hidden lg:flex print:flex`) and
+// their own gap: the gap is part of the table's COLUMN geometry, so it must
+// match that table's header and rows (gap-1.5 for category, gap-2 for the
+// food plan) or the footer value drifts off the Weight rail.
+export const FLAT_TABLE_FOOTER_ROW = `${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center border-t ${TABLE_DIVIDER} px-3 py-0`
 
 // Footer label and value. The label stays text-xs at EVERY width, not
 // FLAT_TABLE_META_TEXT: the value tier is pinned at text-xs (see

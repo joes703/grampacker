@@ -780,7 +780,7 @@ function CategoryGroup({
           {!packMode && !adding && (
             // The shared footer recipe (FLAT_TABLE_FOOTER_ROW), display-gated:
             // hidden on mobile, where the top-bar summary carries the totals.
-            <div className={`hidden lg:flex print:flex ${FLAT_TABLE_FOOTER_ROW} ${FLAT_TABLE_BODY_TEXT}`}>
+            <div className={`hidden lg:flex print:flex gap-1.5 ${FLAT_TABLE_FOOTER_ROW} ${FLAT_TABLE_BODY_TEXT}`}>
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}

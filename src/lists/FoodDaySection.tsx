@@ -234,7 +234,7 @@ export default function FoodDaySection({
       {/* Footer total under the Weight column, the shared footer recipe.
           Visible on every viewport, unlike a category's: mobile has no other
           surface carrying a per-day total. */}
-      <div className={`flex ${FLAT_TABLE_FOOTER_ROW}`}>
+      <div className={`flex gap-2 ${FLAT_TABLE_FOOTER_ROW}`}>
         <span className="flex-1" aria-hidden="true" />
         <span className={FLAT_TABLE_FOOTER_LABEL}>Total</span>
         <span className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_FOOTER_VALUE}`}>
