@@ -34,6 +34,7 @@ import {
 import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
+import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import type { Category, GearItem } from '../lib/types'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg } from '../lib/use-breakpoint'
@@ -554,6 +555,14 @@ export default function GearLibraryPage() {
               Select
             </button>
           )}
+
+          {/* Every row on this page shows a weight, so the page carries the
+              unit switcher - and for an account with gear but no lists yet
+              it is the ONLY authenticated surface that can (the other lives
+              on the list toolbar; Settings deliberately has none). Visible
+              at every viewport, never gated on libraryReady: the preference
+              is device-local and the zero-data account needs it most. */}
+          <UnitSegmentedControl idPrefix="gear-toolbar" />
 
           {/* Right cluster — New item + Options. Shown only at >=lg; below
               lg the MobileGearActionBar's Add slot and Options modal own

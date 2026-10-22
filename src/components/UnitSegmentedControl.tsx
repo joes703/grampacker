@@ -101,7 +101,7 @@ export function UnitSegmentedControlView({
   )
 }
 
-// Store-bound half, for AUTHENTICATED surfaces only (Settings, list detail).
+// Store-bound half, for AUTHENTICATED surfaces only (list detail, gear).
 // Writes through to the shared useWeightUnit store, so changing the unit here
 // propagates to lists and gear inventory immediately.
 //
