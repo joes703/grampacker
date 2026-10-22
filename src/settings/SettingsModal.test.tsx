@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
+import { cleanup, render, within } from '@testing-library/react'
 
 // PasskeySection, DownloadAllData and DeleteAccountSection each do their own
 // I/O (authClient.passkey.*, a QueryClient fetch, authClient.deleteUser,
@@ -64,31 +63,18 @@ describe('SettingsModal', () => {
   })
 })
 
-// Weight units landed in Settings because the app had NO unit switcher at all:
-// the control existed only on the public /r/:slug share page, so a signed-in
-// user had to open somebody's shared list to change their own units.
 describe('SettingsModal weight units', () => {
-  afterEach(() => localStorage.clear())
-
-  it('offers a units control that writes the app-wide preference', () => {
-    localStorage.setItem(WEIGHT_UNIT_KEY, 'g')
+  it('has no units control - the toggle lives where the weights are', () => {
+    // Weight units landed in Settings when the app had no unit switcher at
+    // all. The list toolbar and the gear page now each carry the switcher
+    // next to the weights it changes, so a second copy here was a duplicate
+    // control for the same device-local preference. Asserted rather than
+    // trusted, like the password section's absence above.
     render(<SettingsModal open onClose={() => {}} />)
     const ui = within(document.querySelector('dialog')!)
-
-    expect(ui.getByRole('heading', { name: 'Weight units', level: 3 })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTitle('Imperial'))
-    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('oz')
-
-    fireEvent.click(screen.getByTitle('Metric'))
-    expect(localStorage.getItem(WEIGHT_UNIT_KEY)).toBe('g')
-  })
-
-  it('does not write the share-scoped key', () => {
-    // The isolation runs both ways: Settings must not reach into the public
-    // page's preference either.
-    render(<SettingsModal open onClose={() => {}} />)
-    fireEvent.click(screen.getByTitle('Imperial'))
-    expect(localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)).toBeNull()
+    expect(
+      ui.queryByRole('heading', { name: 'Weight units', level: 3 }),
+    ).not.toBeInTheDocument()
+    expect(ui.queryByTitle('Imperial')).not.toBeInTheDocument()
   })
 })

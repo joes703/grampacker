@@ -207,8 +207,7 @@ export default function PasskeySection() {
             round-trip, and losing the mailbox loses the account. */}
         {rows?.length === 0 && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            No passkeys yet. Add one and you can sign in with your screen lock
-            instead of waiting for an email each time.
+            No passkeys yet. Without one, every sign-in needs an email link.
           </p>
         )}
         {rows?.map((row) => {

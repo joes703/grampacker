@@ -1,6 +1,5 @@
-import { Download, KeyRound, Scale, TriangleAlert } from 'lucide-react'
+import { Download, KeyRound, TriangleAlert } from 'lucide-react'
 import Modal from '../components/Modal'
-import UnitSegmentedControl from '../components/UnitSegmentedControl'
 import { TABLE_RADIUS, TABLE_SURFACE_BG, TABLE_STRONG_DIVIDER } from '../components/flat-table-styles'
 import { passkeysSupported } from '../lib/auth-client'
 import PasskeySection from './PasskeySection'
@@ -50,22 +49,18 @@ export default function SettingsModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          {/* No Weight units section: the unit switcher sits on the list
+              toolbar and the gear page, next to the weights it changes. A
+              second copy here was a duplicate control for the same
+              device-local preference. */}
           <Section
             title="Passkeys"
             subtitle={passkeysSupported()
-              ? 'Your passkeys are how you sign in. Add one per device you use'
-              : 'Passkey management is unavailable in this browser'}
+              ? 'Sign in without waiting for an email'
+              : 'This browser cannot manage passkeys'}
             icon={<KeyRound size={16} />}
           >
             <PasskeySection />
-          </Section>
-
-          <Section
-            title="Weight units"
-            subtitle="Applies to every list and your gear library. Saved on this device"
-            icon={<Scale size={16} />}
-          >
-            <UnitSegmentedControl idPrefix="settings" />
           </Section>
 
           <Section
@@ -76,9 +71,11 @@ export default function SettingsModal({
             <DownloadAllData />
           </Section>
 
+          {/* No subtitle: the section body opens with the one sentence that
+              says what deleting does. A subtitle saying the same thing in a
+              second size read as a stutter. */}
           <Section
             title="Delete account"
-            subtitle="Permanently remove your account and all of its data"
             icon={<TriangleAlert size={16} />}
             danger
           >
