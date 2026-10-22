@@ -83,7 +83,10 @@ async function renderDetail(path: string) {
   await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack', '/lists/:id/food'])
 }
 
-const foodHeading = () => screen.queryByRole('heading', { name: 'Food' })
+// FoodView's planning header carries no "Food" heading since the 2026-10
+// redesign (the toolbar's Food tab already names the view), so its
+// trip-length control is the marker that the editor rendered.
+const foodEditorControl = () => screen.queryByLabelText('Trip length in days')
 // The Category arrangement's Food section, identified by its COLLAPSE
 // control rather than by a link named "Food": the ListViewNav Food tab (part
 // of ListDocumentToolbar, rendered in every mode and OUTSIDE the detail-data
@@ -112,8 +115,8 @@ afterEach(() => {
 describe('food is reachable at its own route, and traced from List view', () => {
   it('renders the food editor at /lists/<id>/food', async () => {
     await renderDetail(`/lists/${listId}/food`)
-    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
     expect(await screen.findByLabelText('Trip length in days')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: '+ Add food' })).toBeTruthy()
   })
 
   // Food used to appear here as a single summary line - one number and a
@@ -142,8 +145,7 @@ describe('food is reachable at its own route, and traced from List view', () => 
     // Something the list view always shows once loaded, so the wait settles
     // past the detail-data gate before the negative assertion below.
     await screen.findByRole('button', { name: 'Collapse Food' })
-    expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
-    expect(foodHeading()).toBeNull()
+    expect(foodEditorControl()).toBeNull()
   })
 
   // Pack shows food too, but as part of each bag's union cohort - so the
@@ -160,7 +162,7 @@ describe('food is reachable at its own route, and traced from List view', () => 
     // unconditional in Pack mode but sits INSIDE the loaded branch
     // (ListDetailPage.tsx), so waiting on it actually proves the gate opened.
     await screen.findByLabelText('New packing location')
-    expect(foodHeading()).toBeNull()
+    expect(foodEditorControl()).toBeNull()
     expect(foodSection()).toBeNull()
     // Exactly once, not zero: Pack renders the row through the union cohort.
     // Asserting only the section's absence would stay green if the row had
@@ -188,7 +190,7 @@ describe('the Food route owns its own query gates, separate from the detail-data
     expect(screen.queryByLabelText('Trip length in days')).not.toBeInTheDocument()
 
     release(food)
-    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+    expect(await screen.findByLabelText('Trip length in days')).toBeTruthy()
   })
 
   // INVERTED from the pre-Task-5 behavior: a gear/categories/items failure
@@ -200,7 +202,7 @@ describe('the Food route owns its own query gates, separate from the detail-data
     h.fetchListItems.mockRejectedValue(new Error('offline'))
 
     await renderDetail(`/lists/${listId}/food`)
-    expect(await screen.findByRole('heading', { name: 'Food' })).toBeTruthy()
+    expect(await screen.findByLabelText('Trip length in days')).toBeTruthy()
     expect(screen.queryByText("Couldn't load list details")).toBeNull()
   })
 

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query'
@@ -7,22 +7,21 @@ import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
 import { clearToasts, shownToasts } from '../test/mutation-hook-harness'
+import { shimDialog } from './test/list-detail-harness'
 
 // FoodView owns the food query's own three-state gate (AGENTS.md), separate
 // from ListDetailPage's detail-data composite. This file pins that gate in
 // isolation - ListDetailPage.food.test.tsx pins where FoodView is mounted
 // and that a sibling detail-query failure does not reach it.
 //
-// It also owns every food mutation. Its FoodDocument is composed from
-// FoodDaySection, AddFoodForm, FoodCarryingList and FoodSlotPicker.
-// Rendering detail already covered at the component level - slot three-states
-// and weight totals
-// (FoodDaySection.test.tsx), the carrying list and its schedule affordance
-// (FoodCarryingList.test.tsx), and the add form's own validation/preview/busy
-// behavior (AddFoodForm.test.tsx) - is NOT re-asserted here. This file proves
-// the composition: which data reaches which component, the days-input
-// destructive guards (unique to this view), and the exact mutation contract
-// (toast text, argument shapes, success-only close, busy propagation).
+// It also owns every food mutation and the editor dialog. Rendering detail
+// already covered at the component level - day sections and weight totals
+// (FoodDaySection.test.tsx), the tally (FoodShoppingList.test.tsx), and the
+// dialog's own form behavior (FoodItemDialog.test.tsx) - is NOT re-asserted
+// here. This file proves the composition: which data reaches which component,
+// the days-input destructive guards (unique to this view), and the exact
+// mutation contract (error routing, argument shapes, success-only close,
+// busy propagation).
 
 const h = vi.hoisted(() => ({
   fetchListFood: vi.fn(),
@@ -46,8 +45,8 @@ const food: ListFoodResponse = {
   items: [],
 } as unknown as ListFoodResponse
 
-// One day, three empty meals - the fixture the "+ Add"
-// tests need so the dinner slot renders its own "+ Add" affordance.
+// One day, three empty meals - the fixture the "+ add" tests need so the
+// collapsed day's add preselects something renderable.
 const oneDayFood: ListFoodResponse = {
   dayCount: 1,
   slots: [
@@ -70,7 +69,8 @@ const guardFood: ListFoodResponse = {
   items: [{ id: 'i1', name: 'Ramen', weightGrams: 120, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: ['l3'] }],
 }
 
-const rescheduleFood: ListFoodResponse = {
+// Ramen scheduled at day 1 breakfast; day 2 dinner exists and is empty.
+const editFood: ListFoodResponse = {
   dayCount: 2,
   slots: [
     { id: 'b1', dayNumber: 1, meal: 'breakfast' },
@@ -103,12 +103,18 @@ function renderFoodView() {
 
 // oneDayFood plans nothing, so its day renders COLLAPSED and the day's
 // single "+ add" (which preselects every meal of the day) is the add
-// affordance. Scoped to the day region: the open add form renders its own
-// buttons too.
+// affordance.
 async function findDayAddButton(dayName: string) {
   const daySection = await screen.findByRole('region', { name: dayName })
   return within(daySection).getByRole('button', { name: /add food for day/i })
 }
+
+async function openEditDialog(itemName: string) {
+  await user.click(await screen.findByRole('button', { name: `Edit ${itemName}` }))
+  return screen.getByRole('button', { name: 'Save' })
+}
+
+beforeAll(shimDialog)
 
 beforeEach(() => {
   h.fetchListFood.mockResolvedValue(food)
@@ -117,7 +123,7 @@ beforeEach(() => {
     id: 'new-item',
     name: 'Oatmeal',
     weightGrams: 80,
-    quantity: 1, isPerMeal: false, unitCount: 1,
+    quantity: 1, isPerMeal: true, unitCount: 1,
     sortOrder: 0,
     slotIds: [],
   })
@@ -136,55 +142,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   clearToasts()
-})
-
-describe('FoodView quantity', () => {
-  // Through the carrying row's control, at a count of 1 (the row must offer it
-  // even then). quantity ONLY - a PATCH that also carried slotIds would
-  // rewrite the schedule as a side effect of changing a count.
-  it('patches only the quantity', async () => {
-    h.fetchListFood.mockResolvedValue(guardFood)
-    await renderFoodView()
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Edit quantity 1 for Ramen' }),
-    )
-    await user.keyboard('5{Enter}')
-
-    await waitFor(() =>
-      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { quantity: 5 }),
-    )
-  })
-
-  // No failure-toast test here on purpose: this mutation declares
-  // meta.errorToast, and that is raised by the global handler wired onto the
-  // real QueryClient in src/App.tsx, which this harness does not build. The
-  // hand-rolled toasts (the add-item one) are the testable ones. Covered by
-  // mutation-error-handler.test.ts instead.
-})
-
-describe('FoodView per-meal toggle', () => {
-  // Per meal or shared decides how many the user carries (see foodUnitCount),
-  // so the row's switch must save the opposite of the current mode, and only
-  // that field: carrying slotIds or quantity too would rewrite the plan.
-  it.each([
-    { from: 'shared stash', isPerMeal: false, to: true },
-    { from: 'per meal', isPerMeal: true, to: false },
-  ])('a $from item switched from its row PATCHes isPerMeal: $to', async ({ from, isPerMeal, to }) => {
-    const ramen = guardFood.items[0]
-    if (!ramen) throw new Error('guardFood has no item')
-    h.fetchListFood.mockResolvedValue({ ...guardFood, items: [{ ...ramen, isPerMeal }] })
-    await renderFoodView()
-
-    await user.click(
-      await screen.findByRole('button', { name: `Ramen is ${from}. Switch.` }),
-    )
-
-    await waitFor(() =>
-      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { isPerMeal: to }),
-    )
-    expect(h.updateFoodItem).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('FoodView staleness', () => {
@@ -234,23 +191,19 @@ describe('FoodView query gate', () => {
   })
 })
 
-describe('FoodView header', () => {
-  it('renders the trip-length control and the add affordance in ONE rail card', async () => {
+describe('FoodView planning header', () => {
+  it('holds the trip length, the carried total, and the add button in one card', async () => {
+    h.fetchListFood.mockResolvedValue(guardFood)
     await renderFoodView()
-    // The rail is a single surface: header strip, add affordance and the
-    // Carrying list share one card instead of stacking three fragments. The
-    // closest('section') is that card, so this pins the composition rather
-    // than just global presence; the day grid lives outside it.
     const daysInput = await screen.findByLabelText('Trip length in days')
-    const rail = daysInput.closest('section') as HTMLElement
-    expect(rail).not.toBeNull()
-    expect(within(rail).getByRole('button', { name: '+ Add food' })).toBeInTheDocument()
-    expect(within(rail).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
-    // No explainer line: the header card is compact rail chrome, not a place
-    // for onboarding copy.
-    expect(
-      screen.queryByText("Skip meals you'll eat in town or on the road."),
-    ).not.toBeInTheDocument()
+    const header = daysInput.closest('section') as HTMLElement
+    expect(header).not.toBeNull()
+    expect(within(header).getByRole('button', { name: '+ Add food' })).toBeInTheDocument()
+    // One shared stash of Ramen, 120 g: the carried total, from foodGramsFor.
+    expect(within(header).getByText('Carried food')).toBeInTheDocument()
+    expect(within(header).getByLabelText('120 g')).toBeInTheDocument()
+    // The day grid lives outside the header card.
+    expect(within(header).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
   })
 })
 
@@ -514,65 +467,89 @@ describe('FoodView days-input after the write settles', () => {
   })
 })
 
-describe('FoodView reschedule', () => {
-  it('saves a reschedule with the new slot selection', async () => {
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
+describe('FoodView edit dialog', () => {
+  it('opens from a food line in the plan and PATCHes only what changed', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
+    const save = await openEditDialog('Ramen')
     // Ramen starts scheduled at breakfast day 1; add dinner day 2 too.
-    await user.click(screen.getByRole('button', { name: 'Dinner day 2' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Dinner day 2' }))
+    await user.click(save)
 
-    expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: ['b1', 'd2'] })
+    await waitFor(() =>
+      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: ['b1', 'd2'] }),
+    )
+    expect(h.updateFoodItem).toHaveBeenCalledTimes(1)
+    // Success closes the dialog.
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
   })
 
   it('unschedules with an explicit empty array, not an omitted field', async () => {
     // The DTO distinguishes slotIds: [] (unschedule) from omitted (leave
     // alone) - deselecting every slot must send the explicit empty array.
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
+    h.fetchListFood.mockResolvedValue(editFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
-    await user.click(screen.getByRole('button', { name: 'Breakfast day 1' }))
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const save = await openEditDialog('Ramen')
+    await user.click(screen.getByRole('checkbox', { name: 'Breakfast day 1' }))
+    await user.click(save)
 
-    expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: [] })
+    await waitFor(() =>
+      expect(h.updateFoodItem).toHaveBeenCalledWith(listId, 'i1', { slotIds: [] }),
+    )
   })
 
-  it('opens the slot picker directly under the clicked row, not at the list end', async () => {
-    // The editor used to render after the whole Carrying list, which on a
-    // long list put it below the fold of the rail's internal scroll area -
-    // invisible from the row that opened it.
-    const twoItems: ListFoodResponse = {
-      ...rescheduleFood,
-      items: [
-        rescheduleFood.items[0]!,
-        { ...rescheduleFood.items[0]!, id: 'i2', name: 'Oats', slotIds: [] },
-      ],
-    }
-    h.fetchListFood.mockResolvedValue(twoItems)
+  it('keeps the dialog open with an inline alert when the save cannot be confirmed', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
+    h.updateFoodItem.mockRejectedValue(new Error('network'))
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
+    const save = await openEditDialog('Ramen')
+    await user.clear(screen.getByLabelText('Name'))
+    await user.type(screen.getByLabelText('Name'), 'Miso ramen')
+    await user.click(save)
 
-    const editor = screen.getByText('When are you eating Ramen?')
-    const oatsRow = screen.getByText('Oats').closest('div')!
-    expect(
-      editor.compareDocumentPosition(oatsRow) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't confirm that change saved. Check the plan before trying again.",
+    )
+    // Still open, draft intact, no toast duplication.
+    expect(screen.getByLabelText('Name')).toHaveValue('Miso ramen')
+    expect(shownToasts()).toEqual([])
   })
 
-  it('closes the reschedule form on cancel without saving', async () => {
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
+  it('closes the dialog on cancel without saving', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: '1 meal, reschedule Ramen' }))
+    await openEditDialog('Ramen')
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(h.updateFoodItem).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })
+
+  it('Remove from plan deletes the item and closes on success', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
+    await renderFoodView()
+    await openEditDialog('Ramen')
+    await user.click(screen.getByRole('button', { name: 'Remove from plan' }))
+
+    await waitFor(() => expect(h.deleteFoodItem).toHaveBeenCalledWith(listId, 'i1'))
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
+  })
+
+  it('closes when a refetch shows the item was deleted elsewhere', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
+    const { qc } = await renderFoodView()
+    await openEditDialog('Ramen')
+
+    await act(async () => {
+      qc.setQueryData(queryKeys.listFood(listId), { ...editFood, items: [] })
+    })
+
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
+  })
 })
 
-describe('FoodView add food', () => {
-  it('closes the form only after the add succeeds', async () => {
+describe('FoodView add dialog', () => {
+  it('adds from the header with an explicit per-meal default and closes on success', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     await renderFoodView()
     await user.click(await screen.findByRole('button', { name: '+ Add food' }))
@@ -582,40 +559,41 @@ describe('FoodView add food', () => {
     expect(h.createFoodItem).toHaveBeenCalledWith(listId, {
       name: 'Oatmeal',
       weightGrams: 0,
-      // Neither isPerMeal nor unitCount: the create request omits the mode so
-      // the server's per-meal default applies, and unitCount is derived, never
-      // sent. A payload carrying either would be the client deciding something
-      // that is not its to decide.
       quantity: 1,
+      // The dialog owns the mode control now, so it sends the mode it shows
+      // instead of leaning on the server default. unitCount stays derived,
+      // never sent.
+      isPerMeal: true,
       slotIds: [],
     })
-    // Form gone; the collapsed "+ Add food" toggle is back.
-    expect(await screen.findByRole('button', { name: '+ Add food' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
   })
 
-  it('keeps the form open with typed values when the item cap is hit', async () => {
+  it('a day "+ add" preselects that day in the dialog grid', async () => {
+    h.fetchListFood.mockResolvedValue(oneDayFood)
+    await renderFoodView()
+    await user.click(await findDayAddButton('Day 1'))
+    expect(screen.getByRole('checkbox', { name: 'Dinner day 1' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Breakfast day 1' })).toBeChecked()
+  })
+
+  it('keeps the dialog open with the cap message when the item cap is hit', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     h.createFoodItem.mockRejectedValue(new ApiError(422, 'cap'))
     await renderFoodView()
     await user.click(await screen.findByRole('button', { name: '+ Add food' }))
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.type(screen.getByLabelText('Weight'), '80')
-    await user.clear(screen.getByLabelText('Qty'))
-    await user.type(screen.getByLabelText('Qty'), '3')
+    await user.type(screen.getByLabelText('Weight (one item)'), '80')
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
-    await waitFor(() =>
-      expect(shownToasts()).toEqual([
-        { message: `Food item limit reached (${FOOD_ITEM_CAP} per list).`, type: 'error' },
-      ]),
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      `Food item limit reached (${FOOD_ITEM_CAP} per list).`,
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
-    expect(screen.getByLabelText('Weight')).toHaveValue(80)
-    expect(screen.getByLabelText('Qty')).toHaveValue(3)
+    expect(screen.getByLabelText('Weight (one item)')).toHaveValue(80)
   })
 
-  it('raises the check-the-fields toast on a 400, not the generic message', async () => {
+  it('shows the check-the-fields message on a 400, not the generic one', async () => {
     h.fetchListFood.mockResolvedValue(oneDayFood)
     h.createFoodItem.mockRejectedValue(new ApiError(400, 'bad request'))
     await renderFoodView()
@@ -623,39 +601,49 @@ describe('FoodView add food', () => {
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't add that food - check the name, weight and meals and try again.",
+    )
+  })
+
+  it('falls back to a toast when the failure lands after the view is gone', async () => {
+    // Navigation unmounts FoodView while the create is in flight. The
+    // per-call close callback is dropped, but the mutation-level handler
+    // still runs; with the dialog's anchor disconnected, reportFailure must
+    // route the message to a toast instead of writing it into nothing.
+    h.fetchListFood.mockResolvedValue(oneDayFood)
+    let reject: (err: unknown) => void = () => {}
+    h.createFoodItem.mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej
+      }),
+    )
+    const { unmount } = await renderFoodView()
+    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
+    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
+    await user.click(screen.getByRole('button', { name: 'Add food' }))
+    unmount()
+
+    await act(async () => reject(new Error('network')))
+
     await waitFor(() =>
       expect(shownToasts()).toEqual([
         {
-          message:
-            "Couldn't add that food - check the name, weight and meals and try again.",
+          message: "Couldn't confirm the food was added. Check the plan before trying again.",
           type: 'error',
         },
       ]),
-    )
-    expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
-  })
-
-  it('cancel clears the slot selection along with the form', async () => {
-    h.fetchListFood.mockResolvedValue(oneDayFood)
-    await renderFoodView()
-    await user.click(await findDayAddButton('Day 1'))
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    await user.click(screen.getByRole('button', { name: '+ Add food' }))
-
-    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
     )
   })
 })
 
 describe('FoodView stale slot ids', () => {
-  // FoodView owns selectedSlotIds while the picker renders only slots that
-  // currently exist. TRIMMING the trip removes slots out from under an open
-  // add form. The id would survive in state, reach the server and 400 on a
-  // slot that no longer exists. activeSelectedSlotIds must keep it out of both
-  // the picker and the submit, without touching the typed name.
-  it('drops a slot trimmed away after selection from both the picker and the submit', async () => {
+  // TRIMMING the trip removes slots out from under an open add dialog (a
+  // focus refetch can land while it is open). The chosen id would survive in
+  // dialog state, reach the server and 400 on a slot that no longer exists.
+  // The dialog's live-slot filter must keep it out of both the grid and the
+  // submit, without touching the typed name.
+  it('drops a slot trimmed away after selection from both the grid and the submit', async () => {
     const twoDays: ListFoodResponse = {
       dayCount: 2,
       slots: [
@@ -664,67 +652,102 @@ describe('FoodView stale slot ids', () => {
       ],
       items: [],
     }
-    // After the trim, day 2 is gone.
-    h.fetchListFood.mockResolvedValueOnce(twoDays).mockResolvedValue({
-      dayCount: 1,
-      slots: [{ id: 'b1', dayNumber: 1, meal: 'breakfast' }],
-      items: [],
-    })
-    await renderFoodView()
+    h.fetchListFood.mockResolvedValue(twoDays)
+    const { qc } = await renderFoodView()
 
-    // Select day 2 dinner via its own "+ Add", then type a name.
-    const day2 = await screen.findByRole('region', { name: 'Day 2' })
-    await user.click(within(day2).getByRole('button', { name: /add/i }))
-    expect(screen.getByRole('button', { name: 'Dinner day 2' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    // Select day 2 via its collapsed "+ add", then type a name.
+    await user.click(await findDayAddButton('Day 2'))
+    expect(screen.getByRole('checkbox', { name: 'Dinner day 2' })).toBeChecked()
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    expect(screen.getByText(/Adding: Oatmeal/)).toHaveTextContent('dinner')
+    expect(screen.getByText(/1 per meal × 1 meal\b/)).toBeInTheDocument()
 
-    // Shorten the trip to one day. The empty day 2 holds no food, so this asks
-    // no confirmation - it just takes the slot away.
-    const input = screen.getByLabelText('Trip length in days')
-    await user.clear(input)
-    await user.type(input, '1')
-    await user.tab()
+    // The trip was shortened elsewhere; the refetch lands while the dialog
+    // is open. (The background days input is inert behind the modal, so the
+    // trim arrives through the cache, not through this tab's own control.)
+    await act(async () => {
+      qc.setQueryData(queryKeys.listFood(listId), {
+        dayCount: 1,
+        slots: [{ id: 'b1', dayNumber: 1, meal: 'breakfast' }],
+        items: [],
+      })
+    })
 
-    // The picker no longer renders that slot at all, so no stale pressed chip.
+    // The grid no longer renders that slot at all, and the summary stops
+    // counting it. Typed input survives untouched throughout.
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Dinner day 2' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('checkbox', { name: 'Dinner day 2' })).not.toBeInTheDocument(),
     )
-    // The preview derives from the same filtered prop and must stop naming it.
-    expect(screen.getByText(/Adding: Oatmeal/)).not.toHaveTextContent('dinner')
-    // Typed input survives untouched throughout.
+    expect(screen.getByText(/not scheduled yet/)).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
 
     await user.click(screen.getByRole('button', { name: 'Add food' }))
     expect(h.createFoodItem).toHaveBeenCalledWith(listId, {
       name: 'Oatmeal',
       weightGrams: 0,
-      // Neither isPerMeal nor unitCount: the create request omits the mode so
-      // the server's per-meal default applies, and unitCount is derived, never
-      // sent. A payload carrying either would be the client deciding something
-      // that is not its to decide.
       quantity: 1,
+      isPerMeal: true,
       slotIds: [],
     })
   })
 })
 
-describe('FoodView delete', () => {
-  it('calls deleteFoodItem with the list and item id', async () => {
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
-    await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Remove Ramen' }))
+describe('FoodView unscheduled items', () => {
+  const unscheduledFood: ListFoodResponse = {
+    ...editFood,
+    items: [{ ...editFood.items[0]!, slotIds: [] }],
+  }
 
-    expect(h.deleteFoodItem).toHaveBeenCalledWith(listId, 'i1')
+  it('lists an item with no meals in a Not scheduled group that opens the editor', async () => {
+    h.fetchListFood.mockResolvedValue(unscheduledFood)
+    await renderFoodView()
+    const group = await screen.findByRole('region', { name: 'Not scheduled' })
+    await user.click(within(group).getByRole('button', { name: 'Edit Ramen' }))
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+  })
+
+  it('stays reachable even at zero trip days', async () => {
+    // An item can hold no slots BECAUSE the trip was cut to zero; the group
+    // must not live inside the positive-day branch or the item is stranded.
+    h.fetchListFood.mockResolvedValue({ dayCount: 0, slots: [], items: unscheduledFood.items })
+    await renderFoodView()
+    expect(await screen.findByRole('region', { name: 'Not scheduled' })).toBeInTheDocument()
+  })
+
+  it('renders no group while every item has meals', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
+    await renderFoodView()
+    await screen.findByRole('region', { name: 'Day 1' })
+    expect(screen.queryByRole('region', { name: 'Not scheduled' })).not.toBeInTheDocument()
+  })
+})
+
+describe('FoodView shopping tally', () => {
+  it('renders the tally from the same items the plan shows', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
+    await renderFoodView()
+    const tally = await screen.findByRole('region', { name: 'Shopping list' })
+    expect(within(tally).getByText('Ramen')).toBeInTheDocument()
+    expect(within(tally).getByText('× 1')).toBeInTheDocument()
+  })
+
+  it('offers the plan/tally switch below lg', async () => {
+    // jsdom cannot evaluate the lg: classes, so this pins only the switch
+    // contract (two pressed-state buttons); which panel is visible at each
+    // width is verified in the browser.
+    h.fetchListFood.mockResolvedValue(editFood)
+    await renderFoodView()
+    const plan = await screen.findByRole('button', { name: 'Meal plan' })
+    const shop = screen.getByRole('button', { name: 'Shopping list' })
+    expect(plan).toHaveAttribute('aria-pressed', 'true')
+    await user.click(shop)
+    expect(shop).toHaveAttribute('aria-pressed', 'true')
+    expect(plan).toHaveAttribute('aria-pressed', 'false')
   })
 })
 
 describe('FoodView busy', () => {
-  it('disables add, day-grid and carrying-list controls while a mutation is in flight', async () => {
-    h.fetchListFood.mockResolvedValue(rescheduleFood)
+  it('freezes the dialog and the background controls while a write is in flight', async () => {
+    h.fetchListFood.mockResolvedValue(editFood)
     let release: () => void = () => {}
     h.deleteFoodItem.mockReturnValue(
       new Promise<void>((resolve) => {
@@ -732,47 +755,15 @@ describe('FoodView busy', () => {
       }),
     )
     await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: 'Remove Ramen' }))
+    await openEditDialog('Ramen')
+    await user.click(screen.getByRole('button', { name: 'Remove from plan' }))
 
-    await waitFor(() => expect(screen.getByRole('button', { name: '+ Add food' })).toBeDisabled())
-    expect(screen.getByRole('button', { name: '1 meal, reschedule Ramen' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Remove Ramen' })).toBeDisabled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Remove from plan' })).toBeDisabled(),
+    )
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '+ Add food' })).toBeDisabled()
 
     release()
-  })
-})
-
-describe('FoodView + Add on a day', () => {
-  it('opens the form with the day preselected and moves focus to Name', async () => {
-    h.fetchListFood.mockResolvedValue(oneDayFood)
-    await renderFoodView()
-    await user.click(await findDayAddButton('Day 1'))
-    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    // The form precedes the day grid in DOM order, so Tab from the clicked
-    // "+ Add" walks away from it - the focus handoff is what makes the form
-    // reachable for keyboard users at all.
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
-  })
-
-  it('unions into an already-open form without eating typed input', async () => {
-    h.fetchListFood.mockResolvedValue(oneDayFood)
-    await renderFoodView()
-    await user.click(await screen.findByRole('button', { name: '+ Add food' }))
-    // The open button unmounts in favor of the form; focus must not be
-    // dropped on body.
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
-    await user.type(screen.getByLabelText('Name'), 'Oatmeal')
-    await user.click(await findDayAddButton('Day 1'))
-
-    expect(screen.getByRole('button', { name: 'Dinner day 1' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
-    // Focus returns to Name on the union as well, not just first open.
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveFocus())
   })
 })

@@ -100,10 +100,10 @@ export const mutationKeys = {
   // Food
   setFoodDays: (listId: string) => ['set-food-days', listId] as const,
   createFoodItem: (listId: string) => ['create-food-item', listId] as const,
-  setFoodItemSlots: (listId: string) => ['set-food-item-slots', listId] as const,
-  setFoodItemQuantity: (listId: string) =>
-    ['set-food-item-quantity', listId] as const,
-  setFoodItemMode: (listId: string) => ['set-food-item-mode', listId] as const,
+  // The editor dialog's one PATCH, whatever mix of fields changed. The old
+  // per-field keys (slots/quantity/mode) died with the inline carrying-list
+  // controls; keys here never governed cancellation, only devtools identity.
+  updateFoodItem: (listId: string) => ['update-food-item', listId] as const,
   deleteFoodItem: (listId: string) => ['delete-food-item', listId] as const,
 
   // The generic drag-reorder hook, keyed by the dnd kind it was configured for
