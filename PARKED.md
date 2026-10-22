@@ -32,5 +32,14 @@ Format: `- YYYY-MM-DD <idea> - <why it waits>`
   deletes, creates and quantity changes do not all commute), which stay
   mutually exclusive, and how controls track per-item pending. The existing
   global-freeze test in FoodView.test.tsx is then deliberately replaced as a
-  named policy change, not deleted as redundant. Trigger: the next FoodView
-  behavior change, or the first user-visible complaint about the freeze.
+  named policy change, not deleted as redundant. REVISITED during the 2026-10
+  Food redesign (the trigger it named): item writes now run from a modal
+  dialog that already inerts the page, so the global freeze is only
+  user-visible for the trip-length write, and per-operation state was not
+  worth its contract work in that diff. New trigger: the first user-visible
+  complaint about the freeze, or food writes issued outside the dialog again.
+- 2026-10-22 All consumables (fuel, water treatment, ...) rolling into the
+  Food view's shopping tally, so one list says everything to acquire before a
+  trip - Joe's observation during the 2026-10 Food redesign ("really all
+  consumables do" need acquiring). Trigger: the first time a non-food
+  consumable is forgotten on a trip, or a request to see fuel on the tally.

@@ -438,20 +438,6 @@ export const SECONDARY_BUTTON =
   'rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100'
 
 // ---------------------------------------------------------------------------
-// Toggle chip tokens
-// ---------------------------------------------------------------------------
-// Pill-shaped pressed/unpressed multi-select chips (the food slot picker's
-// whole-meal and per-day toggles). Density follows the standing rule: 40px
-// touch floor on mobile, desktop shrinks to the 28px pointer tier and the
-// shared 13px body scale. Selected state is the blue tint pair used by
-// aria-pressed controls elsewhere; compose the ON/OFF variant beside the
-// base at the call site.
-export const TOGGLE_CHIP =
-  'inline-flex min-h-10 lg:min-h-7 items-center rounded-full border px-3 text-sm lg:text-[13px] font-medium'
-export const TOGGLE_CHIP_ON = 'border-blue-500 bg-blue-50 text-blue-700'
-export const TOGGLE_CHIP_OFF = 'border-gray-300 text-gray-600 hover:bg-gray-50'
-
-// ---------------------------------------------------------------------------
 // Popover surface
 // ---------------------------------------------------------------------------
 // Floating popover/menu chrome: rounded card with a hairline border, white

@@ -441,13 +441,25 @@ On a `noValidate` form (sign-in, for one), `minLength`, `required` and
 friends are inert: client-side checks there are manual JS. On any form, the
 server is the real gate.
 
-### Toggle chips
+### Food view variants
 
-`TOGGLE_CHIP` + `TOGGLE_CHIP_ON` / `TOGGLE_CHIP_OFF` are pill-shaped
-pressed/unpressed multi-select chips (the food slot picker). Density follows
-the standing rule: `min-h-10` touch floor on mobile, desktop shrinks to the
-28px pointer tier and the shared 13px body scale. The ON state is the blue
-tint pair used by `aria-pressed` controls.
+The Food view (2026-10 redesign) carries three documented inline variants,
+all single-site, none hoisted into tokens:
+
+- The editor dialog's meal grid (`FoodMealGrid`) uses native checkboxes in
+  fixed-width grid cells. The CELL, not the 16px checkbox, is the target:
+  `min-h-10` touch floor below `lg`, the 28px pointer tier at `lg` - the
+  standing two-tier rule, applied to a label wrapping the input. This
+  replaced the retired `TOGGLE_CHIP` pill tokens, which died with the food
+  slot picker (their only consumer).
+- Plan food lines and the Not-scheduled rows are full-width buttons at the
+  row density tokens' heights (`min-h-11` / `lg:min-h-7`) but with their own
+  indent (`pl-7`) under a meal header instead of `FLAT_TABLE_ROW`'s border
+  separation; the day band (`bg-gray-100`) and meal eyebrows separate rows
+  instead.
+- The day band is `bg-gray-100`, one step past the `TABLE_HEADER_BG` gray-50,
+  because the meal eyebrows inside it provide the second tier and two gray-50
+  strips four lines apart read as one.
 
 ### Popover surface
 

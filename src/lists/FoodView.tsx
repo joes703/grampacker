@@ -1,18 +1,17 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import PrimaryButton from '../components/PrimaryButton'
+import ItemWeightValue from '../components/ItemWeightValue'
 import FoodDaySection from './FoodDaySection'
-import AddFoodForm from './AddFoodForm'
-import FoodCarryingList from './FoodCarryingList'
-import FoodSlotPicker from './FoodSlotPicker'
+import FoodItemDialog, { type FoodItemDialogMode } from './FoodItemDialog'
+import FoodShoppingList from './FoodShoppingList'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
-  FLAT_TABLE_HEADER,
-  FLAT_TABLE_HEADER_PADDING,
-  FLAT_TABLE_HEADER_TITLE,
+  FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
+  FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_SURFACE,
-  TABLE_DIVIDER,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
 import {
@@ -22,14 +21,18 @@ import {
   setFoodDays,
   updateFoodItem,
 } from '../lib/queries/food'
+import { foodGramsFor } from '../lib/weight-breakdown'
 import { ApiError } from '../lib/api'
 import { showToast } from '../lib/toast'
+import { reportFailure } from '../lib/report-failure'
 import {
   FOOD_DAY_CAP,
   FOOD_ITEM_CAP,
   MEALS,
+  type CreateFoodItemRequest,
   type FoodSlotResponse,
   type ListFoodResponse,
+  type UpdateFoodItemRequest,
 } from '../../shared/food'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import type { WeightUnit } from '../lib/weight'
@@ -37,8 +40,12 @@ import type { WeightUnit } from '../lib/weight'
 // The Food view: /lists/:id/food. Owns the food document query and every food
 // mutation; ListDetailPage keeps its OWN subscription to the same query key
 // for the weight breakdown and for the rows it renders in the Category and
-// Pack arrangements (React Query dedupes the fetch). Moved verbatim from
-// ListDetailPage when food got its own view.
+// Pack arrangements (React Query dedupes the fetch).
+//
+// The layout is the 2026-10 redesign: a planning header (trip length, carried
+// total, add), the meal plan as the ONE editing surface (every "+ add" and
+// every food line opens FoodItemDialog), and a read-only shopping tally
+// beside it. Below lg the plan and the tally become two tabs.
 export default function FoodView({ listId }: { listId: string }) {
   const qc = useQueryClient()
   const { weightUnit } = useWeightUnit()
@@ -61,6 +68,67 @@ export default function FoodView({ listId }: { listId: string }) {
     queryFn: () => fetchListFood(listId),
     refetchOnWindowFocus: true,
   })
+
+  // The editor dialog. State lives HERE, not in FoodDocument, because the
+  // mutations' onError handlers below write into it: the dialog shows its own
+  // failure inline while it is on screen, and reportFailure falls back to a
+  // toast when the failure lands after the dialog (or the view) is gone - a
+  // per-call callback alone would be dropped on unmount and the failure would
+  // vanish (src/lib/report-failure.ts).
+  const [dialog, setDialog] = useState<
+    { kind: 'add'; slotIds: string[] } | { kind: 'edit'; itemId: string } | null
+  >(null)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+  const dialogAnchorRef = useRef<HTMLParagraphElement | null>(null)
+  // Bumped on every open AND close. Dismissal stays live during a pending
+  // write ("never gate the way out"), so a request can outlive the dialog
+  // that issued it - its callbacks compare the sequence they captured against
+  // this, and a stale success must not close a dialog opened since, nor a
+  // stale failure write into one.
+  const dialogSeq = useRef(0)
+
+  const foodData = listFoodQuery.data
+  const editingItem =
+    dialog?.kind === 'edit'
+      ? (foodData?.items.find((item) => item.id === dialog.itemId) ?? null)
+      : null
+
+  // Close the editor when its item disappears from a RESOLVED plan (deleted
+  // elsewhere, then refetched). A failed refetch keeps the old data, so a
+  // network blip alone never closes the dialog; an item merely unscheduled
+  // still exists and stays editable. State is adjusted during render (the
+  // guarded same-component setState React documents for derived resets), not
+  // in an effect: clearing it, rather than only deriving a null dialogMode,
+  // stops an OLDER read that still holds the item from reopening the dialog
+  // after the user watched it close.
+  // No seq bump here (a ref must not be written during render, and none is
+  // needed: with no dialog open, a still-matching failure finds its anchor
+  // disconnected and falls through to a toast anyway).
+  if (dialog?.kind === 'edit' && foodData && !editingItem) {
+    setDialog(null)
+  }
+
+  function openDialog(next: { kind: 'add'; slotIds: string[] } | { kind: 'edit'; itemId: string }) {
+    dialogSeq.current += 1
+    setDialogError(null)
+    setDialog(next)
+  }
+
+  function closeDialog() {
+    dialogSeq.current += 1
+    setDialog(null)
+  }
+
+  // Routes a write failure to the dialog that issued it, or to a toast when
+  // that dialog is gone - closed/replaced (stale seq) or unmounted with the
+  // view (reportFailure's disconnected-anchor check).
+  function reportDialogFailure(seq: number, message: string) {
+    if (seq === dialogSeq.current) {
+      reportFailure(dialogAnchorRef.current, message, setDialogError)
+    } else {
+      showToast(message, { type: 'error' })
+    }
+  }
 
   // Plain mutate-and-invalidate, deliberately not optimistic: a day-count
   // change rewrites the whole grid server-side, so there is no local transform
@@ -89,21 +157,21 @@ export default function FoodView({ listId }: { listId: string }) {
     },
     onError: invalidateFood,
   })
+  // The three editor mutations report failures through the dialog (inline
+  // while it is on screen, toast after it is gone). Error copy never claims
+  // the write did not happen: a lost response can follow a commit, so it says
+  // "couldn't confirm" and tells the user to check before retrying
+  // (AGENTS.md's ambiguous-write rule) - except the two create rejections the
+  // server actually decided (the cap 422 and the validation 400), which are
+  // certain and keep their specific messages.
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),
-    mutationFn: (input: {
-      name: string
-      weightGrams: number
-      quantity: number
-      slotIds: string[]
-    }) => createFoodItem(listId, input),
-    // Deliberately no meta.errorToast: the server's 422 at the item cap and
-    // its 400 for a stale slot each say something the generic message cannot,
-    // and the cap is the one refusal a user can act on. onError surfaces the
-    // real reason and consumes the rejection.
-    onError: (err) => {
+    mutationFn: (vars: { input: CreateFoodItemRequest; seq: number }) =>
+      createFoodItem(listId, vars.input),
+    onError: (err, vars) => {
       const status = err instanceof ApiError ? err.status : 0
-      showToast(
+      reportDialogFailure(
+        vars.seq,
         status === 422
           ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
           : status === 400
@@ -111,44 +179,33 @@ export default function FoodView({ listId }: { listId: string }) {
             // client cannot tell which from the status alone - so the message
             // must not assert one of them.
             ? "Couldn't add that food - check the name, weight and meals and try again."
-            : "Couldn't add that food. Please try again.",
-        { type: 'error' },
+            : "Couldn't confirm the food was added. Check the plan before trying again.",
       )
     },
     onSuccess: invalidateFood,
   })
-  // Quantity is how many UNITS of this you carry. It was settable on the add
-  // form and nowhere else, so every item sat at whatever it was created with -
-  // usually 1 - and a plan of five lunches reported one packet in the pack
-  // total. Same mutate-and-invalidate shape as the reschedule beside it.
-  const foodItemQuantityMut = useMutation({
-    mutationKey: mutationKeys.setFoodItemQuantity(listId),
-    mutationFn: (vars: { itemId: string; quantity: number }) =>
-      updateFoodItem(listId, vars.itemId, { quantity: vars.quantity }),
-    meta: { errorToast: "Couldn't change that quantity. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  // Per-meal vs shared. Same shape as the quantity write beside it; a
-  // separate mutation key so a mode flip and a count edit do not cancel each
-  // other's invalidation.
-  const foodItemModeMut = useMutation({
-    mutationKey: mutationKeys.setFoodItemMode(listId),
-    mutationFn: (vars: { itemId: string; isPerMeal: boolean }) =>
-      updateFoodItem(listId, vars.itemId, { isPerMeal: vars.isPerMeal }),
-    meta: { errorToast: "Couldn't change how that food is counted. Please try again." },
-    onSuccess: invalidateFood,
-  })
-  const foodItemSlotsMut = useMutation({
-    mutationKey: mutationKeys.setFoodItemSlots(listId),
-    mutationFn: (vars: { itemId: string; slotIds: string[] }) =>
-      updateFoodItem(listId, vars.itemId, { slotIds: vars.slotIds }),
-    meta: { errorToast: "Couldn't reschedule that food. Please try again." },
+  const foodItemUpdateMut = useMutation({
+    mutationKey: mutationKeys.updateFoodItem(listId),
+    mutationFn: (vars: { itemId: string; patch: UpdateFoodItemRequest; seq: number }) =>
+      updateFoodItem(listId, vars.itemId, vars.patch),
+    onError: (_err, vars) => {
+      reportDialogFailure(
+        vars.seq,
+        "Couldn't confirm that change saved. Check the plan before trying again.",
+      )
+    },
     onSuccess: invalidateFood,
   })
   const foodItemDeleteMut = useMutation({
     mutationKey: mutationKeys.deleteFoodItem(listId),
-    mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
-    meta: { errorToast: "Couldn't remove that food. Please try again." },
+    mutationFn: (vars: { itemId: string; seq: number }) =>
+      deleteFoodItem(listId, vars.itemId),
+    onError: (_err, vars) => {
+      reportDialogFailure(
+        vars.seq,
+        "Couldn't confirm that food was removed. Check the plan before trying again.",
+      )
+    },
     onSuccess: invalidateFood,
   })
 
@@ -197,14 +254,11 @@ export default function FoodView({ listId }: { listId: string }) {
     foodDaysMut.mutate(days, { onSettled })
   }
 
-  const foodBusy =
-    checkingDays ||
-    foodDaysMut.isPending ||
+  const dialogBusy =
     foodItemCreateMut.isPending ||
-    foodItemSlotsMut.isPending ||
-    foodItemQuantityMut.isPending ||
-    foodItemModeMut.isPending ||
+    foodItemUpdateMut.isPending ||
     foodItemDeleteMut.isPending
+  const foodBusy = checkingDays || foodDaysMut.isPending || dialogBusy
 
   // Same three-state gate every reader uses (AGENTS.md): a fabricated empty
   // food object under live controls would let a day change write against
@@ -227,26 +281,74 @@ export default function FoodView({ listId }: { listId: string }) {
     return <p className="mt-3 px-3 py-2 text-sm text-gray-500">Loading food…</p>
   }
 
+  const food = listFoodQuery.data
+  // A dialog opened from a slot that a refetch has since trimmed must not
+  // open the editor with an id the grid cannot render. Same boundary rule as
+  // the dialog's own live filtering; this covers the ids chosen BEFORE open.
+  const slotIds = new Set(food.slots.map((slot) => slot.id))
+  const dialogMode: FoodItemDialogMode | null =
+    dialog === null
+      ? null
+      : dialog.kind === 'add'
+        ? { kind: 'add', initialSlotIds: dialog.slotIds.filter((id) => slotIds.has(id)) }
+        : editingItem
+          ? { kind: 'edit', item: editingItem }
+          : null
+
   return (
-    <FoodDocument
-      food={listFoodQuery.data}
-      weightUnit={weightUnit}
-      busy={foodBusy}
-      onSetDays={(days, onSettled) => void changeDays(days, onSettled)}
-      onAddItem={(input, onSuccess) =>
-        // invalidateFood runs in the mutation's own onSuccess (which TanStack
-        // fires before this per-call one); repeating it here double-fetched.
-        foodItemCreateMut.mutate(input, { onSuccess })
-      }
-      onDeleteItem={(itemId) => foodItemDeleteMut.mutate(itemId)}
-      onSetItemSlots={(itemId, slotIds) => foodItemSlotsMut.mutate({ itemId, slotIds })}
-      onSetItemQuantity={(itemId, quantity) =>
-        foodItemQuantityMut.mutate({ itemId, quantity })
-      }
-      onSetItemPerMeal={(itemId, isPerMeal) =>
-        foodItemModeMut.mutate({ itemId, isPerMeal })
-      }
-    />
+    <>
+      <FoodDocument
+        food={food}
+        weightUnit={weightUnit}
+        busy={foodBusy}
+        onSetDays={(days, onSettled) => void changeDays(days, onSettled)}
+        onOpenAdd={(ids) => openDialog({ kind: 'add', slotIds: ids })}
+        onOpenEdit={(itemId) => openDialog({ kind: 'edit', itemId })}
+      />
+      {dialogMode && (
+        <FoodItemDialog
+          // Remount per open and per item: the dialog captures its draft and
+          // diff baseline in state initializers (see FoodItemDialog).
+          key={dialogMode.kind === 'edit' ? dialogMode.item.id : 'add'}
+          mode={dialogMode}
+          slots={food.slots}
+          weightUnit={weightUnit}
+          busy={dialogBusy}
+          saveError={dialogError}
+          anchorRef={dialogAnchorRef}
+          onClose={closeDialog}
+          onCreate={(input) => {
+            setDialogError(null)
+            // invalidateFood runs in the mutation's own onSuccess (which
+            // TanStack fires before this per-call one). The per-call close is
+            // dropped if the view unmounted mid-flight, which is fine - there
+            // is no dialog left to close - and the seq guard keeps a stale
+            // success from closing a dialog opened after this one.
+            const seq = dialogSeq.current
+            foodItemCreateMut.mutate(
+              { input, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
+            )
+          }}
+          onSave={(itemId, patch) => {
+            setDialogError(null)
+            const seq = dialogSeq.current
+            foodItemUpdateMut.mutate(
+              { itemId, patch, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
+            )
+          }}
+          onDelete={(itemId) => {
+            setDialogError(null)
+            const seq = dialogSeq.current
+            foodItemDeleteMut.mutate(
+              { itemId, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
+            )
+          }}
+        />
+      )}
+    </>
   )
 }
 
@@ -286,74 +388,33 @@ type FoodDocumentProps = {
    *  before a shortening that loses planned meals, then writes. `onSettled`
    *  runs once that is over, whether it wrote, failed, or was declined. */
   onSetDays: (days: number, onSettled: () => void) => void
-  onAddItem: (
-    input: { name: string; weightGrams: number; quantity: number; slotIds: string[] },
-    onSuccess: () => void,
-  ) => void
-  onDeleteItem: (itemId: string) => void
-  /** Reschedule an existing item. Passing [] unschedules it without deleting
-   *  it - the food is still carried, it just has no meal in mind. */
-  onSetItemSlots: (itemId: string, slotIds: string[]) => void
-  onSetItemQuantity: (itemId: string, quantity: number) => void
-  onSetItemPerMeal: (itemId: string, isPerMeal: boolean) => void
+  /** Opens the add dialog with these slots preselected ([] from the header). */
+  onOpenAdd: (slotIds: string[]) => void
+  onOpenEdit: (itemId: string) => void
 }
 
-// The resolved food document: one rail card (header with title and days
-// input, the add affordance, and the carrying list with its inline
-// reschedule) beside the day grid. Everything here only ever runs
-// once FoodView's query gate above has confirmed real data - see the
-// comment on that gate.
+// The resolved food document: the planning header (trip length, carried
+// total, add), then the meal plan beside the read-only shopping tally. Only
+// ever runs once FoodView's query gate above has confirmed real data - see
+// the comment on that gate.
 function FoodDocument({
   food,
   weightUnit,
   busy,
   onSetDays,
-  onAddItem,
-  onDeleteItem,
-  onSetItemSlots,
-  onSetItemQuantity,
-  onSetItemPerMeal,
+  onOpenAdd,
+  onOpenEdit,
 }: FoodDocumentProps) {
   // What the user has typed into the days box, or null to show the server's
   // length. The day write is not optimistic, so a typed number is only a
   // request: it is dropped once the write settles, and on every revert, so
   // the box never keeps showing a length the list does not have.
   const [daysDraft, setDaysDraft] = useState<string | null>(null)
-  const [editingItemId, setEditingItemId] = useState<string | null>(null)
-  const editingItem = food.items.find((item) => item.id === editingItemId) ?? null
-
-  const [adding, setAdding] = useState(false)
-  // Owned HERE, not in AddFoodForm: a per-slot "+ Add" must be able to union
-  // a slot into an ALREADY-OPEN form without remounting it (a remount would
-  // eat the typed name and weight). GATE 1 caught the captured-once version.
-  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([])
-  const addFormRef = useRef<HTMLDivElement | null>(null)
-  const nameInputRef = useRef<HTMLInputElement | null>(null)
-
-  // Focus is not a courtesy here: the form sits BEFORE the day sections in
-  // DOM order, so after clicking "+ Add" (or the button the form replaces)
-  // Tab walks AWAY from the form and a keyboard user can never reach it
-  // forward (GATE 2 finding). preventScroll keeps the focus jump from
-  // fighting the smooth scroll below.
-  function focusNameSoon() {
-    requestAnimationFrame(() => nameInputRef.current?.focus({ preventScroll: true }))
-  }
-
-  function openAddForSlots(slotIds: string[]) {
-    setSelectedSlotIds((prev) => [...new Set([...prev, ...slotIds])])
-    setAdding(true)
-    focusNameSoon()
-    // Scroll after the form mounts; rAF beats the render race without a
-    // layout effect. rAF itself is available everywhere we run (including
-    // jsdom); jsdom just doesn't implement Element.scrollIntoView, so that
-    // call is optional-chained - a no-op under test, real behavior in a
-    // browser. block 'start', not 'center': the card can be taller than the
-    // rail's scrollport (30-day picker), and centering an oversized element
-    // lands the user mid-picker with the Name field scrolled out of view.
-    requestAnimationFrame(() =>
-      addFormRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }),
-    )
-  }
+  // Which panel a narrow viewport shows. CSS-only visibility (hidden
+  // lg:block), not a breakpoint hook: widening the window must always show
+  // both panels, whatever tab was active. Resets to the plan on remount,
+  // deliberately.
+  const [mobilePanel, setMobilePanel] = useState<'plan' | 'shop'>('plan')
 
   const itemsBySlot = new Map<string, ListFoodResponse['items']>()
   for (const item of food.items) {
@@ -365,173 +426,94 @@ function FoodDocument({
   }
 
   const days = Array.from({ length: food.dayCount }, (_, i) => i + 1)
-  const slotIds = new Set(food.slots.map((slot) => slot.id))
-  // Selection can hold ids for slots trimmed after being picked (the picker no
-  // longer shows them, so the user could neither see nor clear them). Filter at
-  // the boundary: state may go stale harmlessly, but a stale id can never
-  // render or submit.
-  const activeSelectedSlotIds = selectedSlotIds.filter((id) => slotIds.has(id))
+  // Items whose meals were all trimmed away (or never picked). They appear in
+  // no day section, and the tally is read-only - without this group they
+  // would be unreachable, and an item that lost its meals has to be
+  // repairable without deleting and retyping it. Rendered even at zero days.
+  const unscheduled = food.items.filter((item) => item.slotIds.length === 0)
+
+  const switchButton = (panel: 'plan' | 'shop', label: string) => (
+    <button
+      type="button"
+      aria-pressed={mobilePanel === panel}
+      onClick={() => setMobilePanel(panel)}
+      className={`min-h-10 rounded-md text-sm font-medium ${
+        mobilePanel === panel ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'
+      }`}
+    >
+      {label}
+    </button>
+  )
 
   return (
-    // Desktop (lg+) is a two-column grid: the header card ("Food for N
-    // days"), add-food card, and Carrying card stack in a sticky left rail
-    // (tools left of the document, matching the edit-mode aside) so the
-    // trip-length control and the per-slot "+ Add" form are always in view,
-    // and the day sections take the full flexible width from the top. Below
-    // lg the grid collapses to a stack with that panel ABOVE the day
-    // sections - the add action stays reachable without scrolling a long
-    // trip. max-w-6xl
-    // keeps ultra-wide monitors from stretching the day rows into a
-    // corridor.
-    <div className="mt-3 max-w-6xl">
-      {/* gap (not space-y) so spacing holds in both the stacked flex layout
-          and the lg grid, where child margins would land inside the cells.
-          DOM order = mobile visual order (panel first, days second); the lg
-          grid reads the same order into rail-left, days-right. */}
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:items-start">
-        {/* top-4 matches the edit-mode aside's 1rem offset. The max-h +
-            overflow pair is load-bearing, not polish: a top-only sticky
-            element taller than the viewport stays pinned with its overflow
-            unreachable until the end of the scroll container, and a 30-day
-            trip's slot picker alone exceeds any viewport - without an
-            internal scroll the form's Submit/Cancel could not be reached
-            (GATE 2 finding). */}
-        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          {/* ONE rail card. The header strip, the add affordance and the
-              Carrying list used to be three separate surfaces, which read as
-              fragments: a card holding only a header, a card holding only a
-              button. FoodView.test.tsx pins the shared section. */}
-          <section aria-labelledby="food-heading" className={FLAT_TABLE_SURFACE}>
-            <div
-              className={`${FLAT_TABLE_HEADER} ${FLAT_TABLE_HEADER_PADDING} flex-wrap justify-between gap-2`}
-            >
-              <h3 id="food-heading" className={FLAT_TABLE_HEADER_TITLE}>
-                Food
-              </h3>
-              <label className="flex items-center gap-1.5 text-sm text-gray-600">
-                <span>for</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={FOOD_DAY_CAP}
-                  value={daysDraft ?? String(food.dayCount)}
-                  disabled={busy}
-                  onChange={(e) => setDaysDraft(e.target.value)}
-                  onBlur={() => {
-                    if (daysDraft === null) return
-                    // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
-                    // every slot and every placement on the list - so clearing the
-                    // box to retype it would silently destroy the trip.
-                    const trimmed = daysDraft.trim()
-                    const next = Number(trimmed)
-                    if (
-                      trimmed === '' ||
-                      !Number.isInteger(next) ||
-                      next < 0 ||
-                      next > FOOD_DAY_CAP
-                    ) {
-                      setDaysDraft(null)
-                      return
-                    }
-                    if (next === food.dayCount) {
-                      setDaysDraft(null)
-                      return
-                    }
-                    // FoodView asks before a shortening that loses planned
-                    // meals, using a fresh read of the plan.
-                    onSetDays(next, () => setDaysDraft(null))
-                  }}
-                  className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
-                  aria-label="Trip length in days"
-                />
-                <span>days</span>
-              </label>
-            </div>
-            <div ref={addFormRef} className="px-3 py-2.5">
-              {adding ? (
-                <AddFoodForm
-                  slots={food.slots}
-                  busy={busy}
-                  weightUnit={weightUnit}
-                  nameInputRef={nameInputRef}
-                  selectedSlotIds={activeSelectedSlotIds}
-                  onSelectedSlotIdsChange={setSelectedSlotIds}
-                  onCancel={() => {
-                    setAdding(false)
-                    setSelectedSlotIds([])
-                  }}
-                  // The form closes only once the add SUCCEEDS. Closing on
-                  // submit threw the typed name, weight and slot selection
-                  // away whenever the write failed - including at the item
-                  // cap, where the user is most likely to be told no.
-                  onSubmit={(input, onSuccess) =>
-                    onAddItem(input, () => {
-                      onSuccess()
-                      setAdding(false)
-                      setSelectedSlotIds([])
-                    })
-                  }
-                />
-              ) : (
-                // Same quiet treatment as the day grid's per-slot "+ Add": a
-                // filled button inside the card read as a card holding only a
-                // button. The form mounts in this button's place, so the
-                // button's focus dies with it - hand it to the Name field.
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setAdding(true)
-                    focusNameSoon()
-                  }}
-                  className={`${FLAT_TABLE_BODY_TEXT} font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50`}
-                >
-                  + Add food
-                </button>
-              )}
-            </div>
-
-            {food.items.length > 0 && (
-              <div className={`border-t ${TABLE_DIVIDER}`}>
-                <div className={`px-3 pt-2 ${FLAT_TABLE_EYEBROW}`}>Carrying</div>
-                <FoodCarryingList
-                  items={food.items}
-                  weightUnit={weightUnit}
-                  busy={busy}
-                  editingItemId={editingItemId}
-                  rescheduleEditor={
-                    editingItem && (
-                      // border-b rather than border-t: the row above already
-                      // draws its own bottom border.
-                      <div className={`border-b ${TABLE_DIVIDER} bg-blue-50/40 px-3 py-2`}>
-                        <p className="mb-1.5 text-xs font-medium text-gray-700">
-                          When are you eating {editingItem.name}?
-                        </p>
-                        <RescheduleForm
-                          key={editingItem.id}
-                          slots={food.slots}
-                          initialSlotIds={editingItem.slotIds}
-                          busy={busy}
-                          onCancel={() => setEditingItemId(null)}
-                          onSave={(slotIds) => {
-                            onSetItemSlots(editingItem.id, slotIds)
-                            setEditingItemId(null)
-                          }}
-                        />
-                      </div>
-                    )
-                  }
-                  onReschedule={setEditingItemId}
-                  onSetQuantity={onSetItemQuantity}
-                  onTogglePerMeal={onSetItemPerMeal}
-                  onDelete={onDeleteItem}
-                />
-              </div>
-            )}
-          </section>
+    <div className="mt-3 max-w-6xl space-y-3">
+      <section
+        aria-label="Food plan"
+        className={`${FLAT_TABLE_SURFACE} flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2.5 lg:px-4`}
+      >
+        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+          <span>Trip length</span>
+          <input
+            type="number"
+            min={0}
+            max={FOOD_DAY_CAP}
+            value={daysDraft ?? String(food.dayCount)}
+            disabled={busy}
+            onChange={(e) => setDaysDraft(e.target.value)}
+            onBlur={() => {
+              if (daysDraft === null) return
+              // An EMPTY field is not zero. Number('') is 0, and 0 days deletes
+              // every slot and every placement on the list - so clearing the
+              // box to retype it would silently destroy the trip.
+              const trimmed = daysDraft.trim()
+              const next = Number(trimmed)
+              if (
+                trimmed === '' ||
+                !Number.isInteger(next) ||
+                next < 0 ||
+                next > FOOD_DAY_CAP
+              ) {
+                setDaysDraft(null)
+                return
+              }
+              if (next === food.dayCount) {
+                setDaysDraft(null)
+                return
+              }
+              // FoodView asks before a shortening that loses planned
+              // meals, using a fresh read of the plan.
+              onSetDays(next, () => setDaysDraft(null))
+            }}
+            className="w-14 rounded border border-gray-300 px-1.5 py-0.5 text-right tabular-nums"
+            aria-label="Trip length in days"
+          />
+          <span>days</span>
+        </label>
+        <div>
+          <div className={FLAT_TABLE_EYEBROW}>Carried food</div>
+          {/* foodGramsFor sums items alone - never joined through slots, or a
+              food eaten at several meals would count its weight once per meal. */}
+          <div className="font-mono text-base font-semibold tabular-nums text-gray-900">
+            <ItemWeightValue grams={foodGramsFor(food.items)} unit={weightUnit} />
+          </div>
         </div>
+        <span className="flex-1" aria-hidden="true" />
+        <PrimaryButton disabled={busy} onClick={() => onOpenAdd([])}>
+          + Add food
+        </PrimaryButton>
+      </section>
 
-        <div className="min-w-0">
+      <div
+        role="group"
+        aria-label="Food view section"
+        className="grid grid-cols-2 gap-0.5 rounded-lg border border-gray-300 bg-gray-50 p-0.5 lg:hidden"
+      >
+        {switchButton('plan', 'Meal plan')}
+        {switchButton('shop', 'Shopping list')}
+      </div>
+
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
+        <div className={`min-w-0 space-y-3 ${mobilePanel === 'shop' ? 'hidden lg:block' : ''}`}>
           {food.dayCount === 0 ? (
             <p className="px-3 py-3 text-sm text-gray-500">
               Set a trip length and every meal appears. Add what you are eating
@@ -547,50 +529,68 @@ function FoodDocument({
                   itemsBySlot={itemsBySlot}
                   weightUnit={weightUnit}
                   busy={busy}
-                  onAddToSlots={openAddForSlots}
+                  onAddToSlots={onOpenAdd}
+                  onEditItem={onOpenEdit}
                 />
               ))}
             </section>
           )}
+          {unscheduled.length > 0 && (
+            <section aria-label="Not scheduled" className={FLAT_TABLE_SURFACE}>
+              <div className="flex items-baseline gap-2.5 bg-gray-100 px-3 py-1.5">
+                <h3 className="text-sm font-semibold text-gray-900">Not scheduled</h3>
+                <span className={`${FLAT_TABLE_META_TEXT} text-gray-500`}>
+                  carried, but no meal picked yet
+                </span>
+              </div>
+              <div className="pb-1 pt-0.5">
+                {unscheduled.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onOpenEdit(item.id)}
+                    aria-label={`Edit ${item.name}`}
+                    className="flex w-full min-h-11 lg:min-h-7 items-center gap-2 px-3 py-1 lg:py-0.5 text-left hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <span
+                      className={`min-w-0 flex-1 ${FLAT_TABLE_BODY_TEXT} [overflow-wrap:anywhere] text-gray-900`}
+                    >
+                      {item.name}
+                    </span>
+                    {!item.isPerMeal && (
+                      <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                        one container
+                      </span>
+                    )}
+                    {item.quantity > 1 && (
+                      <span className={`shrink-0 ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+                        × {item.quantity}
+                      </span>
+                    )}
+                    <span className={`${FLAT_TABLE_NUMERIC_TEXT} w-16 shrink-0 text-right text-gray-600`}>
+                      <ItemWeightValue
+                        grams={item.weightGrams * item.quantity}
+                        unit={weightUnit}
+                      />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-      </div>
-    </div>
-  )
-}
 
-// Draft wrapper around the controlled FoodSlotPicker for rescheduling one
-// item: Save commits, Cancel discards. Keyed by item id at the call site so
-// switching which item you are rescheduling always starts the draft from
-// that item's own current slots, rather than carrying over the previous
-// item's in-progress selection.
-function RescheduleForm({
-  slots,
-  initialSlotIds,
-  busy,
-  onCancel,
-  onSave,
-}: {
-  slots: readonly FoodSlotResponse[]
-  initialSlotIds: readonly string[]
-  busy: boolean
-  onCancel: () => void
-  onSave: (slotIds: string[]) => void
-}) {
-  const [selected, setSelected] = useState<string[]>([...initialSlotIds])
-  return (
-    <div className="space-y-2">
-      <FoodSlotPicker slots={slots} selected={selected} onChange={setSelected} />
-      <div className="flex items-center gap-2">
-        <PrimaryButton size="sm" disabled={busy} onClick={() => onSave(selected)}>
-          Save
-        </PrimaryButton>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+        {/* Sticky so the tally rides along on a long plan; the internal
+            scroll cap keeps its own overflow reachable (a top-only sticky
+            element taller than the viewport pins with its tail unreachable). */}
+        <div
+          className={`min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto ${
+            mobilePanel === 'plan' ? 'hidden lg:block' : ''
+          }`}
         >
-          Cancel
-        </button>
+          <FoodShoppingList items={food.items} />
+        </div>
       </div>
     </div>
   )
