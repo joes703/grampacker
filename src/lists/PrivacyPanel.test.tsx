@@ -157,16 +157,16 @@ describe('PrivacyPanel', () => {
 describe('PrivacyPanel - replacing the share link', () => {
   const shared: List = { ...list, isShared: true }
 
-  it('offers no way to replace the link while the list is private', () => {
+  it('offers no way to reset the link while the list is private', () => {
     renderPanel()
-    expect(screen.queryByRole('button', { name: /replace link/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /reset link/i })).toBeNull()
   })
 
-  it('does not replace on the first click - it asks first', async () => {
+  it('does not reset on the first click - it asks first', async () => {
     renderPanel(shared)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
 
     expect(rotateShareLink).not.toHaveBeenCalled()
     expect(screen.getByText(/current link stops working/i)).toBeInTheDocument()
@@ -176,20 +176,20 @@ describe('PrivacyPanel - replacing the share link', () => {
     renderPanel(shared)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
     await user.click(screen.getByRole('button', { name: /cancel/i }))
 
     expect(rotateShareLink).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /replace link/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reset link/i })).toBeInTheDocument()
   })
 
-  it('confirming replaces the link for this list', async () => {
+  it('confirming resets the link for this list', async () => {
     rotateShareLink.mockResolvedValue({ ...shared, slug: 'xyz789' })
     renderPanel(shared)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
-    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
+    await user.click(screen.getByRole('button', { name: /^reset$/i }))
 
     await waitFor(() => expect(rotateShareLink).toHaveBeenCalledWith('list-1'))
     expect(rotateShareLink).toHaveBeenCalledTimes(1)
@@ -201,16 +201,16 @@ describe('PrivacyPanel - replacing the share link', () => {
     renderPanel(shared)
     const user = userEvent.setup()
 
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
-    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
+    await user.click(screen.getByRole('button', { name: /^reset$/i }))
 
     await waitFor(() => expect(rotateShareLink).toHaveBeenCalled())
     expect(updateList).not.toHaveBeenCalled()
   })
 
-  it('shows the new URL once the replacement lands', async () => {
+  it('shows the new URL once the reset lands', async () => {
     // The panel renders whatever the parent passes, and the parent reads the
-    // lists cache. So the new slug reaches the screen only if the replace
+    // lists cache. So the new slug reaches the screen only if the reset
     // refreshes that cache.
     let serverLists: List[] = [shared]
     rotateShareLink.mockImplementation(async () => {
@@ -234,18 +234,18 @@ describe('PrivacyPanel - replacing the share link', () => {
 
     expect(await screen.findByDisplayValue(/\/r\/abc123$/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
-    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
+    await user.click(screen.getByRole('button', { name: /^reset$/i }))
 
     expect(await screen.findByDisplayValue(/\/r\/xyz789$/)).toBeInTheDocument()
   })
 
-  it('does not fire twice on a double-click of Replace', async () => {
+  it('does not fire twice on a double-click of Reset', async () => {
     rotateShareLink.mockImplementation(() => new Promise(() => {}))
     renderPanel(shared)
 
-    await userEvent.setup().click(screen.getByRole('button', { name: /replace link/i }))
-    const confirm = screen.getByRole('button', { name: /^replace$/i })
+    await userEvent.setup().click(screen.getByRole('button', { name: /reset link/i }))
+    const confirm = screen.getByRole('button', { name: /^reset$/i })
     // Both clicks in one act(), so React does not re-render between them and
     // the button is still enabled for the second. Only the ref can stop it.
     act(() => {
@@ -259,14 +259,14 @@ describe('PrivacyPanel - replacing the share link', () => {
   })
 })
 
-// A failed replace is reported INLINE: this panel lives inside a Modal on the
+// A failed reset is reported INLINE: this panel lives inside a Modal on the
 // Lists page and in mobile List options, and the modal rule puts the error beside
 // the control. The rotate is a non-idempotent POST that may have
 // committed before the failure, so the copy claims only what it can prove and
 // advises a refresh before retrying.
-describe('PrivacyPanel - a failed replace', () => {
+describe('PrivacyPanel - a failed reset', () => {
   const shared: List = { ...list, isShared: true }
-  const failure = /couldn't confirm the link was replaced\. refresh to check before trying again\./i
+  const failure = /couldn't confirm the link was reset\. refresh to check before trying again\./i
 
   function deferred() {
     let reject: (err: unknown) => void = () => {}
@@ -276,30 +276,30 @@ describe('PrivacyPanel - a failed replace', () => {
     return { promise, reject }
   }
 
-  async function confirmReplace() {
+  async function confirmReset() {
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /replace link/i }))
-    await user.click(screen.getByRole('button', { name: /^replace$/i }))
+    await user.click(screen.getByRole('button', { name: /reset link/i }))
+    await user.click(screen.getByRole('button', { name: /^reset$/i }))
   }
 
   it('says so in the panel, closes the confirm, and carries no error toast', async () => {
     rotateShareLink.mockRejectedValue(new Error('network'))
     const qc = renderPanel(shared)
 
-    await confirmReplace()
+    await confirmReset()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
-    expect(screen.getByRole('button', { name: /replace link/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reset link/i })).toBeInTheDocument()
     expect(qc.getMutationCache().getAll()[0]?.options.meta?.errorToast).toBeUndefined()
     expect(showToast).not.toHaveBeenCalled()
   })
 
-  it('refetches the lists anyway, in case the replace committed', async () => {
+  it('refetches the lists anyway, in case the reset committed', async () => {
     rotateShareLink.mockRejectedValue(new Error('network'))
     const qc = renderPanel(shared)
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
 
-    await confirmReplace()
+    await confirmReset()
 
     await screen.findByRole('alert')
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
@@ -310,21 +310,21 @@ describe('PrivacyPanel - a failed replace', () => {
     rotateShareLink.mockReturnValue(d.promise)
     renderPanel(shared)
 
-    await confirmReplace()
+    await confirmReset()
     await userEvent.setup().click(screen.getByRole('button', { name: /cancel/i }))
     d.reject(new Error('network'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
   })
 
-  it('cannot be reopened while the replace is in flight', async () => {
+  it('cannot be reopened while the reset is in flight', async () => {
     rotateShareLink.mockReturnValue(new Promise(() => {}))
     renderPanel(shared)
 
-    await confirmReplace()
+    await confirmReset()
     await userEvent.setup().click(screen.getByRole('button', { name: /cancel/i }))
 
-    expect(screen.getByRole('button', { name: /replace link/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /reset link/i })).toBeDisabled()
   })
 
   it('still reports a failure that lands after sharing was turned off', async () => {
@@ -339,7 +339,7 @@ describe('PrivacyPanel - a failed replace', () => {
       </QueryClientProvider>,
     )
 
-    await confirmReplace()
+    await confirmReset()
     rerender(
       <QueryClientProvider client={qc}>
         <PrivacyPanel list={{ ...shared, isShared: false }} />
@@ -350,7 +350,7 @@ describe('PrivacyPanel - a failed replace', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(failure)
   })
 
-  // The panel can leave the screen before a slow replace fails: mobile List
+  // The panel can leave the screen before a slow reset fails: mobile List
   // options closes its Modal on Duplicate or Export, and the Lists page's Share
   // dialog or the desktop popover can be closed. An inline report is invisible
   // then, so it falls back to a toast.
@@ -369,13 +369,13 @@ describe('PrivacyPanel - a failed replace', () => {
     )
     const { rerender } = render(tree(true))
 
-    await confirmReplace()
+    await confirmReset()
     rerender(tree(false))
     d.reject(new Error('network'))
 
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        "Couldn't confirm the link was replaced. Refresh to check before trying again.",
+        "Couldn't confirm the link was reset. Refresh to check before trying again.",
         { type: 'error' },
       ),
     )
@@ -387,7 +387,7 @@ describe('PrivacyPanel - a failed replace', () => {
     rotateShareLink.mockReturnValue(d.promise)
     const qc = renderPanel(shared)
 
-    await confirmReplace()
+    await confirmReset()
     cleanup()
     d.reject(new Error('network'))
 
@@ -395,14 +395,14 @@ describe('PrivacyPanel - a failed replace', () => {
     expect(qc.isMutating()).toBe(0)
   })
 
-  it('clears the report when the next replace starts', async () => {
+  it('clears the report when the next reset starts', async () => {
     rotateShareLink.mockRejectedValueOnce(new Error('network'))
     rotateShareLink.mockImplementationOnce(() => new Promise(() => {}))
     renderPanel(shared)
 
-    await confirmReplace()
+    await confirmReset()
     await screen.findByRole('alert')
-    await confirmReplace()
+    await confirmReset()
 
     expect(screen.queryByRole('alert')).toBeNull()
   })
