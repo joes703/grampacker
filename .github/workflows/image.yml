@@ -31,19 +31,21 @@
 # is why a deployment uses the digest this workflow prints for a main run,
 # never a tag.
 #
-# The deploy job is the only one that reads a secret, the deploy SSH key. It
-# runs in the `production` environment. The key is a secret of that
-# environment, which allows only main, so GitHub itself refuses the key to
-# any other branch. On the VPS the key can do one thing: deploy one image
-# digest (`deploy/grampacker-deploy-ssh`; see `docs/vps-runbook.md`).
+# The deploy job is the only one that reads secrets: the deploy SSH key and
+# the Tailscale OAuth client. It runs in the `production` environment. They
+# are secrets of that environment, which allows only main, so GitHub itself
+# refuses them to any other branch. On the VPS the key can do one thing:
+# deploy one image digest (`deploy/grampacker-deploy-ssh`; see
+# `docs/vps-runbook.md`).
 #
 # The checkout is `github.sha`, the commit the dispatch started on, in every
 # job. Both jobs therefore test and publish the same commit even if main moves
 # during the run, and the tag names that commit.
 #
-# Only first-party actions are used, pinned by commit SHA as in ci.yml. Docker
-# login, build and push are the runner's own docker CLI, not third-party
-# actions.
+# Every action is pinned to a full commit SHA as in ci.yml. One third-party
+# action runs, tailscale/github-action in the deploy job, because the VPS's
+# sshd answers only over the tailnet. Docker login, build and push are the
+# runner's own docker CLI, not third-party actions.
 name: Image
 
 on:
@@ -209,9 +211,38 @@ jobs:
     concurrency:
       group: production-deploy
       cancel-in-progress: false
-    # No GITHUB_TOKEN permissions, no checkout: this job only runs ssh.
+    # No GITHUB_TOKEN permissions, no checkout: this job joins the tailnet
+    # and runs ssh.
     permissions: {}
     steps:
+      # The Tailscale values feed the action step below, which cannot point
+      # at the runbook when one is missing, so check them first.
+      - name: Check the Tailscale secrets are set
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+        shell: bash
+        run: |
+          if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_SECRET" ]; then
+            echo "::error::TS_OAUTH_CLIENT_ID or TS_OAUTH_SECRET is not set (docs/vps-runbook.md, 'Recreate deployment access')"
+            exit 1
+          fi
+
+      # The provider firewall blocks public port 22; sshd answers only over
+      # the tailnet. This joins the runner as an ephemeral node tagged ci,
+      # which the tailnet policy lets reach only the VPS on port 22; the
+      # action's post step logs the node out. `ping` waits for peer
+      # connectivity, so the ssh step's 30-second timeout starts only once
+      # the tailnet path works. The pinned action installs a fixed Tailscale
+      # version (its action.yml default).
+      - name: Join the tailnet
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: ${{ vars.DEPLOY_HOST }}
+
       - name: Deploy the published digest over SSH
         env:
           DIGEST: ${{ needs.publish.outputs.digest }}
