@@ -100,17 +100,21 @@ export default function FoodItemDialog({
   // first the user hears of them. Weight needs no bound here: WeightInput
   // clamps to MAX_ITEM_WEIGHT_GRAMS, which equals foodWeightSchema's max
   // (pinned by FoodItemDialog.test.tsx).
-  const valid =
-    name.trim().length > 0 &&
-    name.trim().length <= 128 &&
+  //
+  // Quantity validity stands on its own: the summary reads it, and judging
+  // it by whole-form validity made clearing the NAME change the carried
+  // count mid-rename.
+  const quantityValid =
     Number.isInteger(quantityValue) &&
     quantityValue >= 1 &&
     quantityValue <= FOOD_QUANTITY_MAX
+  const valid =
+    name.trim().length > 0 && name.trim().length <= 128 && quantityValid
 
   const draft: FoodItemDraft = {
     name,
     weightGrams,
-    quantity: valid ? quantityValue : 1,
+    quantity: quantityValid ? quantityValue : 1,
     isPerMeal: !oneContainer,
     slotIds: effectiveSelected,
   }
@@ -152,8 +156,11 @@ export default function FoodItemDialog({
       onClose={onClose}
       title={title}
       className="w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden"
+      // No preventDismiss: a hung request must not wall the user in (the
+      // "never gate the way out" rule). Escape, Close and Cancel stay live
+      // during a save; a failure that lands after dismissal still reaches
+      // the user through the caller's reportFailure toast fallback.
       closeOnBackdropClick={false}
-      preventDismiss={busy}
     >
       <form onSubmit={handleSubmit} className="flex max-h-[90vh] min-h-0 flex-col">
         <div className="flex items-start justify-between gap-2 px-6 pt-5 pb-3 shrink-0">
@@ -164,17 +171,18 @@ export default function FoodItemDialog({
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
             aria-label="Close"
-            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600 disabled:opacity-40`}
+            className={`${ROW_CONTROL_TARGET} shrink-0 text-gray-500 hover:text-gray-600`}
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* The fieldset freezes the form during a save so a success cannot
+        {/* The fieldset freezes the FIELDS during a save so a success cannot
             close over input the submitted payload never saw; min-w-0 undoes
-            the UA min-inline-size floor (see GearItemDialog). */}
+            the UA min-inline-size floor (see GearItemDialog). Deliberately
+            scoped to the body: Close and Cancel stay reachable, because
+            abandoning a slow save is a legitimate thing to want. */}
         <fieldset
           disabled={busy}
           className="flex-1 min-h-0 min-w-0 overflow-y-auto px-6 space-y-4 disabled:opacity-60"
@@ -255,17 +263,28 @@ export default function FoodItemDialog({
             )}
           </div>
 
+          {/* Always rendered (reportFailure's anchor), so an out-of-range
+              count swaps the text rather than removing the element. */}
           <p ref={anchorRef} className="text-sm text-gray-700">
-            You'll carry <strong className="font-semibold text-gray-900">{summary.unitCount}</strong>
-            {summary.weightLabel && (
+            {quantityValid ? (
               <>
-                {' · '}
-                <span className="font-mono font-semibold tabular-nums text-gray-900">
-                  {summary.weightLabel}
-                </span>
+                You'll carry{' '}
+                <strong className="font-semibold text-gray-900">{summary.unitCount}</strong>
+                {summary.weightLabel && (
+                  <>
+                    {' · '}
+                    <span className="font-mono font-semibold tabular-nums text-gray-900">
+                      {summary.weightLabel}
+                    </span>
+                  </>
+                )}{' '}
+                <span className="text-gray-500">— {summary.note}</span>
               </>
-            )}{' '}
-            <span className="text-gray-500">— {summary.note}</span>
+            ) : (
+              <span className="text-gray-500">
+                Enter how many (1–{FOOD_QUANTITY_MAX}) to see what you'll carry.
+              </span>
+            )}
           </p>
 
           {saveError && (
@@ -288,7 +307,7 @@ export default function FoodItemDialog({
             <PrimaryButton type="submit" disabled={busy || !valid}>
               {busy ? 'Saving…' : mode.kind === 'add' ? 'Add food' : 'Save'}
             </PrimaryButton>
-            <button type="button" onClick={onClose} disabled={busy} className={SECONDARY_BUTTON}>
+            <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
               Cancel
             </button>
             {mode.kind === 'edit' && (

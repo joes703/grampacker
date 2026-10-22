@@ -515,6 +515,37 @@ describe('FoodView edit dialog', () => {
     expect(shownToasts()).toEqual([])
   })
 
+  it('a failure landing after the dialog was dismissed surfaces as a toast', async () => {
+    // Dismissal stays live during a pending write ("never gate the way
+    // out"), so a request can outlive its dialog - the failure must then
+    // reach the user as a toast, not vanish into an unmounted alert.
+    h.fetchListFood.mockResolvedValue(editFood)
+    let reject: (err: unknown) => void = () => {}
+    h.updateFoodItem.mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej
+      }),
+    )
+    await renderFoodView()
+    const save = await openEditDialog('Ramen')
+    await user.clear(screen.getByLabelText('Name'))
+    await user.type(screen.getByLabelText('Name'), 'Miso ramen')
+    await user.click(save)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+
+    await act(async () => reject(new Error('network')))
+
+    await waitFor(() =>
+      expect(shownToasts()).toEqual([
+        {
+          message: "Couldn't confirm that change saved. Check the plan before trying again.",
+          type: 'error',
+        },
+      ]),
+    )
+  })
+
   it('closes the dialog on cancel without saving', async () => {
     h.fetchListFood.mockResolvedValue(editFood)
     await renderFoodView()

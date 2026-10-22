@@ -80,6 +80,12 @@ export default function FoodView({ listId }: { listId: string }) {
   >(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const dialogAnchorRef = useRef<HTMLParagraphElement | null>(null)
+  // Bumped on every open AND close. Dismissal stays live during a pending
+  // write ("never gate the way out"), so a request can outlive the dialog
+  // that issued it - its callbacks compare the sequence they captured against
+  // this, and a stale success must not close a dialog opened since, nor a
+  // stale failure write into one.
+  const dialogSeq = useRef(0)
 
   const foodData = listFoodQuery.data
   const editingItem =
@@ -95,13 +101,33 @@ export default function FoodView({ listId }: { listId: string }) {
   // in an effect: clearing it, rather than only deriving a null dialogMode,
   // stops an OLDER read that still holds the item from reopening the dialog
   // after the user watched it close.
+  // No seq bump here (a ref must not be written during render, and none is
+  // needed: with no dialog open, a still-matching failure finds its anchor
+  // disconnected and falls through to a toast anyway).
   if (dialog?.kind === 'edit' && foodData && !editingItem) {
     setDialog(null)
   }
 
   function openDialog(next: { kind: 'add'; slotIds: string[] } | { kind: 'edit'; itemId: string }) {
+    dialogSeq.current += 1
     setDialogError(null)
     setDialog(next)
+  }
+
+  function closeDialog() {
+    dialogSeq.current += 1
+    setDialog(null)
+  }
+
+  // Routes a write failure to the dialog that issued it, or to a toast when
+  // that dialog is gone - closed/replaced (stale seq) or unmounted with the
+  // view (reportFailure's disconnected-anchor check).
+  function reportDialogFailure(seq: number, message: string) {
+    if (seq === dialogSeq.current) {
+      reportFailure(dialogAnchorRef.current, message, setDialogError)
+    } else {
+      showToast(message, { type: 'error' })
+    }
   }
 
   // Plain mutate-and-invalidate, deliberately not optimistic: a day-count
@@ -140,11 +166,12 @@ export default function FoodView({ listId }: { listId: string }) {
   // certain and keep their specific messages.
   const foodItemCreateMut = useMutation({
     mutationKey: mutationKeys.createFoodItem(listId),
-    mutationFn: (input: CreateFoodItemRequest) => createFoodItem(listId, input),
-    onError: (err) => {
+    mutationFn: (vars: { input: CreateFoodItemRequest; seq: number }) =>
+      createFoodItem(listId, vars.input),
+    onError: (err, vars) => {
       const status = err instanceof ApiError ? err.status : 0
-      reportFailure(
-        dialogAnchorRef.current,
+      reportDialogFailure(
+        vars.seq,
         status === 422
           ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
           : status === 400
@@ -153,32 +180,30 @@ export default function FoodView({ listId }: { listId: string }) {
             // must not assert one of them.
             ? "Couldn't add that food - check the name, weight and meals and try again."
             : "Couldn't confirm the food was added. Check the plan before trying again.",
-        setDialogError,
       )
     },
     onSuccess: invalidateFood,
   })
   const foodItemUpdateMut = useMutation({
     mutationKey: mutationKeys.updateFoodItem(listId),
-    mutationFn: (vars: { itemId: string; patch: UpdateFoodItemRequest }) =>
+    mutationFn: (vars: { itemId: string; patch: UpdateFoodItemRequest; seq: number }) =>
       updateFoodItem(listId, vars.itemId, vars.patch),
-    onError: () => {
-      reportFailure(
-        dialogAnchorRef.current,
+    onError: (_err, vars) => {
+      reportDialogFailure(
+        vars.seq,
         "Couldn't confirm that change saved. Check the plan before trying again.",
-        setDialogError,
       )
     },
     onSuccess: invalidateFood,
   })
   const foodItemDeleteMut = useMutation({
     mutationKey: mutationKeys.deleteFoodItem(listId),
-    mutationFn: (itemId: string) => deleteFoodItem(listId, itemId),
-    onError: () => {
-      reportFailure(
-        dialogAnchorRef.current,
+    mutationFn: (vars: { itemId: string; seq: number }) =>
+      deleteFoodItem(listId, vars.itemId),
+    onError: (_err, vars) => {
+      reportDialogFailure(
+        vars.seq,
         "Couldn't confirm that food was removed. Check the plan before trying again.",
-        setDialogError,
       )
     },
     onSuccess: invalidateFood,
@@ -291,25 +316,35 @@ export default function FoodView({ listId }: { listId: string }) {
           busy={dialogBusy}
           saveError={dialogError}
           anchorRef={dialogAnchorRef}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           onCreate={(input) => {
             setDialogError(null)
             // invalidateFood runs in the mutation's own onSuccess (which
             // TanStack fires before this per-call one). The per-call close is
             // dropped if the view unmounted mid-flight, which is fine - there
-            // is no dialog left to close.
-            foodItemCreateMut.mutate(input, { onSuccess: () => setDialog(null) })
+            // is no dialog left to close - and the seq guard keeps a stale
+            // success from closing a dialog opened after this one.
+            const seq = dialogSeq.current
+            foodItemCreateMut.mutate(
+              { input, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
+            )
           }}
           onSave={(itemId, patch) => {
             setDialogError(null)
+            const seq = dialogSeq.current
             foodItemUpdateMut.mutate(
-              { itemId, patch },
-              { onSuccess: () => setDialog(null) },
+              { itemId, patch, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
             )
           }}
           onDelete={(itemId) => {
             setDialogError(null)
-            foodItemDeleteMut.mutate(itemId, { onSuccess: () => setDialog(null) })
+            const seq = dialogSeq.current
+            foodItemDeleteMut.mutate(
+              { itemId, seq },
+              { onSuccess: () => { if (seq === dialogSeq.current) closeDialog() } },
+            )
           }}
         />
       )}

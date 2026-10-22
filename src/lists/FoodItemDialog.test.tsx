@@ -178,11 +178,32 @@ describe('validation and busy', () => {
     expect(submit()).toBeDisabled()
   })
 
-  it('freezes the fields and submit while busy', () => {
+  it('freezes the fields and submit while busy, but never the way out', () => {
     renderEdit(makeItem(), { busy: true })
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove from plan' })).toBeDisabled()
     expect(screen.getByLabelText('Name')).toBeDisabled()
+    // A hung request must not wall the user in: Cancel and Close stay live
+    // (the "never gate the way out" rule).
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled()
+  })
+
+  it('clearing the name never changes the carried count', async () => {
+    // The summary once read quantity through whole-form validity, so an
+    // empty NAME mid-rename collapsed "You'll carry 4" to 2.
+    const user = userEvent.setup()
+    renderEdit() // quantity 2 across 2 lunches = 4 carried
+    expect(screen.getByText(/2 per meal × 2 meals/)).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('Name'))
+    expect(screen.getByText(/2 per meal × 2 meals/)).toBeInTheDocument()
+  })
+
+  it('an out-of-range count swaps the summary for a hint instead of lying', () => {
+    renderEdit()
+    fireEvent.change(screen.getByLabelText('How many'), { target: { value: '0' } })
+    expect(screen.queryByText(/You'll carry/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Enter how many/)).toBeInTheDocument()
   })
 
   // AddFoodForm carried this pin; the coupling it protects (WeightInput's

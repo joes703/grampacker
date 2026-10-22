@@ -15,7 +15,7 @@ export type FoodItemDraft = {
   slotIds: readonly string[]
 }
 
-export type FoodItemSummary = {
+type FoodItemSummary = {
   /** What the plan carries of this item - foodUnitCount, never a local copy. */
   unitCount: number
   /** The carried weight, or null when the typed weight is still 0. */
