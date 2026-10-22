@@ -479,23 +479,25 @@ all-zero digest reaches `grampacker-deploy-ssh` but fails its image pull with
 exit 1. A timeout means the request never reached sshd; check the tailnet
 path (`tailscale status` on both ends) before repeating the checks.
 
-Next, grant GitHub Actions a path onto the tailnet. In the Tailscale admin
-console, edit the ACL policy: add `tag:ci` to `tagOwners`, and allow it to
-reach only the VPS on port 22. Tailscale grants are additive — a broader
-rule that also matches `tag:ci`, such as the default allow-all rule
-(`"src": ["*"]`), would admit it everywhere — so audit the whole policy and
-replace any such rule with ones scoped to your own devices. Keep a `tests`
-block so the policy editor itself refuses a regression:
+Next, grant GitHub Actions a path onto the tailnet. The tailnet policy uses
+grants syntax, and the VPS is the tagged device `tag:grampacker-vps`, so the
+CI grant names the tag and keeps working if the VPS's tailnet IP ever
+changes. In the Tailscale admin console, add `tag:ci` to `tagOwners` and
+grant it TCP port 22 to the VPS tag only. Grants are additive — any other
+grant whose `src` also matches `tag:ci` (or `*`) would widen CI's reach — so
+check the rest of the policy before saving. Keep a `tests` block so the
+policy editor itself refuses a regression (tests take literal IPs, so update
+them if the VPS is replaced):
 
 ```jsonc
 "tagOwners": {
-  "tag:ci": ["autogroup:admin"],
+  "tag:grampacker-vps": [], // the VPS; empty list: only admins manage it
+  "tag:ci": [],             // GitHub Actions deploy runners
 },
-"acls": [
-  // Your own devices keep full access.
-  {"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]},
+"grants": [
+  // ...the tailnet's own grants stay as they are...
   // CI reaches only the VPS's sshd.
-  {"action": "accept", "src": ["tag:ci"], "dst": ["<VPS tailnet IP>:22"]},
+  {"src": ["tag:ci"], "dst": ["tag:grampacker-vps"], "ip": ["tcp:22"]},
 ],
 "tests": [
   {
