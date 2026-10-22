@@ -59,16 +59,18 @@ export default function SignInPage() {
     }
   }
 
-  // Deliberately says "if you have an account" rather than confirming one
-  // exists: the send endpoint answers the same way for a known and an unknown
-  // address, and this copy must not undo that by turning the UI into an
-  // account-enumeration oracle.
+  // One copy for every address, known or unknown, so this screen cannot be
+  // turned into an account-enumeration oracle. The unconditional claim is
+  // also simply true here: signup is redemption, so an unknown address gets
+  // a working link too. The old "if you have an account" hedge was false for
+  // this app and contradicted the sign-in page's "no sign-up step" promise.
   if (sent) {
     return (
       <AuthCard title="Check your email">
         <p className="text-sm text-gray-700">
-          If <span className="font-medium">{email}</span> has an account, a
-          sign-in link is on its way. It works once and expires in 5 minutes.
+          A sign-in link is on its way to{' '}
+          <span className="font-medium">{email}</span>. It works once and
+          expires in 5 minutes.
         </p>
         <p className="mt-4 text-sm text-gray-600">
           <button
@@ -153,8 +155,8 @@ export default function SignInPage() {
       </form>
 
       <p className="mt-4 text-sm text-gray-600">
-        New here? Use the email link - your account is created when you open it,
-        and you can add a passkey straight after.
+        No sign-up step - the email link creates your account the first time
+        you use it.
       </p>
     </AuthCard>
   )

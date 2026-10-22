@@ -12,7 +12,7 @@ import { reportFailure } from '../lib/report-failure'
 type Props = { list: List }
 
 // Inner UI for the share/privacy controls - public/private toggle, a copyable
-// share URL when public, and a control to replace that URL. Consumed by
+// share URL when public, and a control to reset that URL. Consumed by
 // ListSettingsPanel's Sharing section on the list detail page, and by the
 // per-row Share dialog on the Lists page (modal-wrapped to avoid nesting
 // popovers inside a kebab). Section heading and supporting copy live in the
@@ -24,12 +24,14 @@ type Props = { list: List }
 // signature - so silently retargeting them on an unrelated action would break
 // other people's pages without telling anyone.
 //
-// Replacing the link is therefore its OWN control, because it is its own
+// Resetting the link is therefore its OWN control, because it is its own
 // intention. It swaps the slug and leaves sharing exactly as it was.
+// "Reset link", not "Replace link": replace read as unclear about what is
+// being swapped for what.
 //
 // The confirm is inline rather than a ConfirmDialog because this panel already
 // renders inside a Modal on the Lists page, and a ConfirmDialog is itself a
-// Modal. A failed replace is reported inline too, beside the control (the modal
+// Modal. A failed reset is reported inline too, beside the control (the modal
 // rule in src/lib/mutation-error-handler.ts). Unless the panel has left the
 // screen by the time it fails - then only a toast can be seen, so it gets one.
 //
@@ -41,18 +43,18 @@ type Props = { list: List }
 //
 export default function PrivacyPanel({ list }: Props) {
   const [copied, setCopied] = useState(false)
-  const [confirmingReplace, setConfirmingReplace] = useState(false)
-  // Held in state rather than read off replaceMut.isError, and rendered outside
+  const [confirmingReset, setConfirmingReset] = useState(false)
+  // Held in state rather than read off resetMut.isError, and rendered outside
   // the confirm and the isShared block, so a failure that lands after Cancel or
   // after sharing was turned off still has somewhere to show.
-  const [replaceError, setReplaceError] = useState<string | null>(null)
+  const [resetError, setResetError] = useState<string | null>(null)
   const qc = useQueryClient()
 
   // `disabled={isPending}` is render-derived, so two clicks inside one commit
   // window both get through and rotate the slug TWICE - burning a link the
   // person never saw. Same trap useListFlagToggle documents; same fix, a
   // synchronous ref. Cleared in the mutation's onSettled (success AND error).
-  const replacing = useRef(false)
+  const resetting = useRef(false)
   // Always rendered, so reportFailure can tell whether the panel is on screen.
   const anchorRef = useRef<HTMLDivElement>(null)
 
@@ -66,7 +68,7 @@ export default function PrivacyPanel({ list }: Props) {
   // request does not prove the server did not rotate, and the old link shown
   // may already be dead. The rotate is a non-idempotent POST, so the copy
   // advises checking before retrying (AGENTS.md "Traps").
-  const replaceMut = useMutation({
+  const resetMut = useMutation({
     mutationKey: mutationKeys.rotateShareLink(),
     mutationFn: (id: string) => rotateShareLink(id),
     // Inline while this panel is on screen; by toast if its Modal was closed or
@@ -74,22 +76,22 @@ export default function PrivacyPanel({ list }: Props) {
     onError: () => {
       reportFailure(
         anchorRef.current,
-        "Couldn't confirm the link was replaced. Refresh to check before trying again.",
-        setReplaceError,
+        "Couldn't confirm the link was reset. Refresh to check before trying again.",
+        setResetError,
       )
     },
     onSettled: () => {
-      replacing.current = false
-      setConfirmingReplace(false)
+      resetting.current = false
+      setConfirmingReset(false)
       void qc.invalidateQueries({ queryKey: queryKeys.lists() })
     },
   })
 
-  function replaceLink() {
-    if (replacing.current) return
-    replacing.current = true
-    setReplaceError(null)
-    replaceMut.mutate(list.id)
+  function resetLink() {
+    if (resetting.current) return
+    resetting.current = true
+    setResetError(null)
+    resetMut.mutate(list.id)
   }
 
   const shareUrl = `${window.location.origin}/r/${list.slug}`
@@ -134,46 +136,50 @@ export default function PrivacyPanel({ list }: Props) {
               )}
             </button>
           </div>
-          {confirmingReplace ? (
+          {confirmingReset ? (
             <div className="mt-2 flex items-center justify-between gap-2">
+              {/* Names the outcome, not just the loss: "Reset" alone could
+                  read as turning sharing off or restoring an old link. */}
               <span className="text-xs text-gray-600">
-                The current link stops working.
+                You get a new link; the current link stops working.
               </span>
               <div className="flex gap-1">
                 <button
                   type="button"
-                  onClick={() => setConfirmingReplace(false)}
+                  onClick={() => setConfirmingReset(false)}
                   className="rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={replaceLink}
-                  disabled={replaceMut.isPending}
+                  onClick={resetLink}
+                  disabled={resetMut.isPending}
                   className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
                 >
-                  Replace
+                  Reset
                 </button>
               </div>
             </div>
           ) : (
-            // Not reopenable while a replace is in flight: its settlement closes
+            // Not reopenable while a reset is in flight: its settlement closes
             // the confirm, and would close a reopened one out from under the user.
+            // Same small bordered recipe as the Copy button above, so the two
+            // link actions read as one family rather than an afterthought.
             <button
               type="button"
-              onClick={() => setConfirmingReplace(true)}
-              disabled={replaceMut.isPending}
-              className="mt-2 text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-60"
+              onClick={() => setConfirmingReset(true)}
+              disabled={resetMut.isPending}
+              className="mt-2 inline-flex items-center rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >
-              Replace link
+              Reset link
             </button>
           )}
         </>
       )}
-      {replaceError && (
+      {resetError && (
         <p role="alert" className="mt-2 text-xs text-red-600">
-          {replaceError}
+          {resetError}
         </p>
       )}
     </>

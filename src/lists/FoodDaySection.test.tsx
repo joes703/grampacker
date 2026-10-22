@@ -68,7 +68,7 @@ describe('FoodDaySection empty treatment', () => {
     const user = userEvent.setup()
     const props = renderDay({ itemsBySlot: new Map() })
     expect(screen.getByText('Nothing planned')).toBeInTheDocument()
-    expect(screen.queryByText('total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Total')).not.toBeInTheDocument()
     expect(screen.queryByText('Breakfast')).not.toBeInTheDocument()
 
     // The collapsed add preselects every meal of the day; the dialog's grid
@@ -80,7 +80,7 @@ describe('FoodDaySection empty treatment', () => {
   it('keeps the meal lines of a partly planned day; an empty slot adds to itself', async () => {
     const user = userEvent.setup()
     const props = renderDay() // lunch holds Trail mix; breakfast and dinner are empty
-    expect(screen.getByText('total')).toBeInTheDocument()
+    expect(screen.getByText('Total')).toBeInTheDocument()
     await user.click(
       within(mealGroup('Breakfast day 1')).getByRole('button', { name: /add/i }),
     )
@@ -182,7 +182,7 @@ describe('FoodDaySection day total', () => {
         ['l1', [shared]],
       ]),
     })
-    const totalRow = screen.getByText('total').closest('div')!
+    const totalRow = screen.getByText('Total').closest('div')!
     expect(within(totalRow).getByLabelText('500 g')).toBeInTheDocument()
     expect(screen.queryByLabelText('1000 g')).not.toBeInTheDocument()
   })
@@ -203,7 +203,7 @@ describe('FoodDaySection day total', () => {
         ['l1', [perMeal]],
       ]),
     })
-    const totalRow = screen.getByText('total').closest('div')!
+    const totalRow = screen.getByText('Total').closest('div')!
     expect(within(totalRow).getByLabelText('1000 g')).toBeInTheDocument()
   })
 })

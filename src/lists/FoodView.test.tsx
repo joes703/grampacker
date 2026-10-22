@@ -191,16 +191,19 @@ describe('FoodView query gate', () => {
 })
 
 describe('FoodView planning header', () => {
-  it('holds the trip length, the carried total, and the add button in one card', async () => {
+  it('holds the trip length, the food weight, and the add button in one card', async () => {
     h.fetchListFood.mockResolvedValue(guardFood)
     await renderFoodView()
     const daysInput = await screen.findByLabelText('Trip length in days')
     const header = daysInput.closest('section') as HTMLElement
     expect(header).not.toBeNull()
     expect(within(header).getByRole('button', { name: '+ Add food' })).toBeInTheDocument()
-    // One shared stash of Ramen, 120 g: the carried total, from foodGramsFor.
-    expect(within(header).getByText('Carried food')).toBeInTheDocument()
-    expect(within(header).getByLabelText('120 g')).toBeInTheDocument()
+    // One shared stash of Ramen, 120 g, from foodGramsFor. The stat shows
+    // BOTH units at once, like the Weight summary table, so the unit toggle
+    // does not change it - 120 g is 4.2 oz.
+    expect(within(header).getByText('Food weight')).toBeInTheDocument()
+    expect(within(header).getByText('120 g')).toBeInTheDocument()
+    expect(within(header).getByText('4.2 oz')).toBeInTheDocument()
     // The day grid lives outside the header card.
     expect(within(header).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
   })

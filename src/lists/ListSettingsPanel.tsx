@@ -68,7 +68,7 @@ type Props = {
 //     when it fails (src/lib/report-failure.ts). Its snap-back is not under the
 //     cursor here (the input is gone by the time it lands) and on mobile the
 //     title it reverts sits behind the backdrop, so the rollback alone says
-//     nothing. PrivacyPanel's Replace link reports the same way.
+//     nothing. PrivacyPanel's Reset link reports the same way.
 export default function ListSettingsPanel({ list, onClose }: Props) {
   const navigate = useNavigate()
 

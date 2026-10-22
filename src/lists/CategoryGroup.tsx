@@ -14,16 +14,17 @@ import {
   COL_QTY_MOBILE,
   COL_WEIGHT,
   COL_WEIGHT_MOBILE,
-  DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
+  FLAT_TABLE_FOOTER_LABEL,
+  FLAT_TABLE_FOOTER_ROW,
+  FLAT_TABLE_FOOTER_VALUE,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_HEADER_TITLE_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
-  MOBILE_ROW_HEIGHT,
   PRINT_UNTRUNCATE,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
@@ -777,11 +778,9 @@ function CategoryGroup({
               with the Weight column while giving compound lb+oz values room
               to extend left into the empty Qty rail. */}
           {!packMode && !adding && (
-            // Matches FLAT_TABLE_ROW density via the shared height tokens so
-            // this footer row tracks any future density change automatically;
-            // can't use FLAT_TABLE_ROW directly because the row is display-
-            // gated (hidden lg:flex print:flex) and carries no bottom border.
-            <div className={`hidden lg:flex print:flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-1.5 px-3 py-0 ${FLAT_TABLE_BODY_TEXT}`}>
+            // The shared footer recipe (FLAT_TABLE_FOOTER_ROW), display-gated:
+            // hidden on mobile, where the top-bar summary carries the totals.
+            <div className={`hidden lg:flex print:flex gap-1.5 ${FLAT_TABLE_FOOTER_ROW} ${FLAT_TABLE_BODY_TEXT}`}>
               {onAddItem ? (
                 <button
                   onClick={() => setAdding(true)}
@@ -873,14 +872,12 @@ function CategoryFooterMetric({
   grams: number
   weightUnit: WeightUnit
 }) {
-  // Keep label and value in one fixed line box. Applying numeric typography
-  // to the outer footer cell makes the label inherit monospace, while the
-  // responsive meta token bumps only the label to 13px on desktop. That
-  // combination looks vertically staggered even when flex baselines agree.
+  // The shared footer label/value pair; the stagger rationale (why the label
+  // is not FLAT_TABLE_META_TEXT) lives on the tokens in flat-table-styles.ts.
   return (
-    <span className="whitespace-nowrap text-xs leading-4">
-      <span className="font-sans font-normal text-gray-500">{label}</span>{' '}
-      <span className={`${FLAT_TABLE_NUMERIC_TEXT} leading-4 font-semibold text-gray-700`}>
+    <span className="whitespace-nowrap">
+      <span className={FLAT_TABLE_FOOTER_LABEL}>{label}</span>{' '}
+      <span className={FLAT_TABLE_FOOTER_VALUE}>
         <CategoryFooterWeightValue grams={grams} weightUnit={weightUnit} />
       </span>
     </span>

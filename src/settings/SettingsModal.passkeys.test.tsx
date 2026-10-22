@@ -48,7 +48,7 @@ describe('SettingsModal passkey guidance', () => {
 
     expect(screen.getByText(/This browser doesn't support passkeys/)).toBeInTheDocument()
     expect(
-      screen.queryByText('Your passkeys are how you sign in. Add one per device you use'),
+      screen.queryByText('Sign in without waiting for an email'),
     ).not.toBeInTheDocument()
   })
 
@@ -56,7 +56,7 @@ describe('SettingsModal passkey guidance', () => {
     render(<SettingsModal open onClose={() => {}} />)
 
     expect(
-      screen.getByText('Your passkeys are how you sign in. Add one per device you use'),
+      screen.getByText('Sign in without waiting for an email'),
     ).toBeInTheDocument()
   })
 })
