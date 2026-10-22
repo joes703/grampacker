@@ -19,9 +19,14 @@ export function AuthCard({ title, children }: { title: string; children: ReactNo
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
-        <h1 className="mb-6 text-center text-2xl font-bold tracking-tight text-gray-900">
+        <h1 className="text-center text-2xl font-bold tracking-tight text-gray-900">
           grampacker
         </h1>
+        {/* The one line that says what the site is, for someone landing cold:
+            every auth page is a possible front door. */}
+        <p className="mb-6 mt-1 text-center text-sm text-gray-600">
+          Pack lists and gear weights for backpacking
+        </p>
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">{title}</h2>
           {children}

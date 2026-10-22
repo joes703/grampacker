@@ -153,8 +153,8 @@ export default function SignInPage() {
       </form>
 
       <p className="mt-4 text-sm text-gray-600">
-        New here? Use the email link - your account is created when you open it,
-        and you can add a passkey straight after.
+        No sign-up step - the email link creates your account the first time
+        you use it.
       </p>
     </AuthCard>
   )
