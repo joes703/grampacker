@@ -71,6 +71,10 @@ describe('SignInPage', () => {
     await requestLink()
     expect(await screen.findByText(SENT)).toBeInTheDocument()
     expect(auth.magicLink).toHaveBeenCalledWith({ email: 'hiker@example.com' })
+    // Unconditional on purpose: one copy for every address (no enumeration
+    // oracle), and signup-on-redemption means the claim is true for an
+    // unknown address too. "If you have an account" was false for this app.
+    expect(screen.queryByText(/has an account/i)).not.toBeInTheDocument()
   })
 
   it.each([
