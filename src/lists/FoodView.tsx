@@ -1,16 +1,15 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import PrimaryButton from '../components/PrimaryButton'
-import ItemWeightValue from '../components/ItemWeightValue'
+import TotalWeightValue from '../components/TotalWeightValue'
 import FoodDaySection, { FoodPlanColumnLabels, FoodPlanRow } from './FoodDaySection'
 import FoodItemDialog, { type FoodItemDialogMode } from './FoodItemDialog'
 import {
-  COMPACT_PANEL_META_TEXT,
-  FLAT_TABLE_EYEBROW,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
+  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   FORM_INPUT,
 } from '../components/flat-table-styles'
@@ -36,15 +35,15 @@ import {
   type UpdateFoodItemRequest,
 } from '../../shared/food'
 import { useWeightUnit } from '../lib/use-weight-unit'
-import type { WeightUnit } from '../lib/weight'
+import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 
 // The Food view: /lists/:id/food. Owns the food document query and every food
 // mutation; ListDetailPage keeps its OWN subscription to the same query key
 // for the weight breakdown and for the rows it renders in the Category and
 // Pack arrangements (React Query dedupes the fetch).
 //
-// The layout is the 2026-10 redesign: a planning header (trip length, carried
-// total, add) over a single column of day tables, with the meal plan as the
+// The layout is the 2026-10 redesign: a planning header (trip length, food
+// weight, add) over a single column of day tables, with the meal plan as the
 // ONE editing surface (every "+ add" and every food line opens
 // FoodItemDialog). The shopping tally that used to sit beside the plan was
 // removed deliberately: it repeated the unitCount the Category and Pack food
@@ -397,8 +396,8 @@ type FoodDocumentProps = {
   onOpenEdit: (itemId: string) => void
 }
 
-// The resolved food document: the planning header (trip length, carried
-// total, add), then one column of day tables and, when needed, the
+// The resolved food document: the planning header (trip length, food
+// weight, add), then one column of day tables and, when needed, the
 // Not-scheduled table. Only ever runs once FoodView's query gate above has
 // confirmed real data - see the comment on that gate.
 function FoodDocument({
@@ -431,8 +430,12 @@ function FoodDocument({
   // retyping it. Rendered even at zero days.
   const unscheduled = food.items.filter((item) => item.slotIds.length === 0)
 
+  const totalFoodGrams = foodGramsFor(food.items)
+
   return (
-    <div className="mt-3 max-w-3xl space-y-3">
+    // mx-auto: this view has no sidebar, so without centering the capped
+    // column hugs the left edge of the full-width shell.
+    <div className="mx-auto mt-3 max-w-3xl space-y-3">
       <section
         aria-label="Food plan"
         className={`${FLAT_TABLE_SURFACE} flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2.5 lg:px-4`}
@@ -478,16 +481,21 @@ function FoodDocument({
           />
           <span>days</span>
         </label>
-        <div>
-          <div className={FLAT_TABLE_EYEBROW}>Carried food</div>
-          {/* foodGramsFor sums items alone - never joined through slots, or a
-              food eaten at several meals would count its weight once per meal.
-              COMPACT_PANEL_META_TEXT: the same stat treatment as the weight
-              summary's Base / Consumable values, so the one number in this
-              bar reads as kin to the app's other stats. */}
-          <div className={`mt-0.5 ${COMPACT_PANEL_META_TEXT} text-gray-900`}>
-            <ItemWeightValue grams={foodGramsFor(food.items)} unit={weightUnit} />
-          </div>
+        {/* Same label + value grammar as the Trip length control beside it,
+            so the bar reads as one row of facts rather than a form control
+            next to a stat card. foodGramsFor sums items alone - never joined
+            through slots, or a food eaten at several meals would count its
+            weight once per meal. Both units at once, like the Weight summary
+            table: a roll-up stat shows g and lb/oz side by side and ignores
+            the unit toggle. */}
+        <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
+          <span>Food weight</span>
+          <span className={`${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-900`}>
+            {formatTotalWeight(totalFoodGrams, 'g')}
+          </span>
+          <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+            <TotalWeightValue grams={totalFoodGrams} unit="oz" />
+          </span>
         </div>
         <span className="flex-1" aria-hidden="true" />
         <PrimaryButton disabled={busy} onClick={() => onOpenAdd([])}>
