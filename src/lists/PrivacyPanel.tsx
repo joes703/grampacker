@@ -138,8 +138,10 @@ export default function PrivacyPanel({ list }: Props) {
           </div>
           {confirmingReset ? (
             <div className="mt-2 flex items-center justify-between gap-2">
+              {/* Names the outcome, not just the loss: "Reset" alone could
+                  read as turning sharing off or restoring an old link. */}
               <span className="text-xs text-gray-600">
-                The current link stops working.
+                You get a new link; the current link stops working.
               </span>
               <div className="flex gap-1">
                 <button
