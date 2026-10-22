@@ -351,6 +351,12 @@ call site passes `''` because touch has no hover.
   that flip color reactively (e.g. the packed strikethrough) compose
   `FLAT_TABLE_BODY_TEXT` plus an inline color instead.
 - `FLAT_TABLE_META_TEXT` - small qty/weight chips and tiny in-row labels.
+- `FLAT_TABLE_FOOTER_ROW` / `FLAT_TABLE_FOOTER_LABEL` /
+  `FLAT_TABLE_FOOTER_VALUE` - the one recipe for a table's footer total row
+  (category footers, food day totals). Callers prepend their own display
+  gate. The label is pinned at `text-xs` on purpose: the mono value tier
+  never grows at `lg`, and a label that does reads vertically staggered
+  beside it.
 - `COMPACT_PANEL_BODY_TEXT` - compact stat panel body (WeightTable cells).
 - `MARKDOWN_COMPACT_BODY_TEXT` / `MARKDOWN_COMPACT_HEADING_TEXT` - notes.
 - `PANEL_TOGGLE_LABEL` - the label beside a `ToggleSwitch` in a control panel.

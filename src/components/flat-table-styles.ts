@@ -328,6 +328,19 @@ export const FLAT_TABLE_META_TEXT = 'text-xs lg:text-[13px]'
 // don't read like measurement data.
 export const FLAT_TABLE_QUANTITY_TEXT = `text-xs lg:text-[13px] tabular-nums ${PRINT_BODY_TEXT}`
 
+// A flat table's footer total row: the one recipe for how every table
+// closes, whichever view it is on. Callers prepend their own display gate
+// (plain `flex`, or the category footer's `hidden lg:flex print:flex`).
+export const FLAT_TABLE_FOOTER_ROW = `${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-2 border-t ${TABLE_DIVIDER} px-3 py-0`
+
+// Footer label and value. The label stays text-xs at EVERY width, not
+// FLAT_TABLE_META_TEXT: the value tier is pinned at text-xs (see
+// FLAT_TABLE_NUMERIC_TEXT), and a label that grows to 13px at lg beside it
+// reads vertically staggered even when flex baselines agree. leading-4 on
+// both keeps the pair in one line box.
+export const FLAT_TABLE_FOOTER_LABEL = 'text-xs leading-4 text-gray-500'
+export const FLAT_TABLE_FOOTER_VALUE = 'text-xs leading-4 font-mono tabular-nums font-semibold text-gray-700'
+
 // Size-neutral numeric value treatment. Compose this when a value display
 // already owns a deliberate size tier.
 // Keeping size out of this token lets migrations add mono alignment without

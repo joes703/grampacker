@@ -2,6 +2,9 @@ import {
   DESKTOP_ROW_HEIGHT,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
+  FLAT_TABLE_FOOTER_LABEL,
+  FLAT_TABLE_FOOTER_ROW,
+  FLAT_TABLE_FOOTER_VALUE,
   FLAT_TABLE_HEADER,
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
@@ -10,7 +13,6 @@ import {
   FLAT_TABLE_QUANTITY_TEXT,
   FLAT_TABLE_SURFACE,
   MOBILE_ROW_HEIGHT,
-  TABLE_DIVIDER,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import { foodGramsAtOneMeal } from '../lib/weight-breakdown'
@@ -229,17 +231,13 @@ export default function FoodDaySection({
           )
         })}
       </div>
-      {/* Footer total under the Weight column, the category footer's shape.
+      {/* Footer total under the Weight column, the shared footer recipe.
           Visible on every viewport, unlike a category's: mobile has no other
           surface carrying a per-day total. */}
-      <div
-        className={`flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-2 border-t ${TABLE_DIVIDER} px-3 py-0`}
-      >
+      <div className={`flex ${FLAT_TABLE_FOOTER_ROW}`}>
         <span className="flex-1" aria-hidden="true" />
-        <span className={`${FLAT_TABLE_META_TEXT} text-gray-500`}>total</span>
-        <span
-          className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-700`}
-        >
+        <span className={FLAT_TABLE_FOOTER_LABEL}>Total</span>
+        <span className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_FOOTER_VALUE}`}>
           <ItemWeightValue grams={dayGrams} unit={weightUnit} />
         </span>
       </div>
