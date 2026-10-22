@@ -486,8 +486,8 @@ changes. In the Tailscale admin console, add `tag:ci` to `tagOwners` and
 grant it TCP port 22 to the VPS tag only. Grants are additive — any other
 grant whose `src` also matches `tag:ci` (or `*`) would widen CI's reach — so
 check the rest of the policy before saving. Keep a `tests` block so the
-policy editor itself refuses a regression (tests take literal IPs, so update
-them if the VPS is replaced):
+policy editor itself refuses a regression (these tests use literal IPs, so
+update them if the VPS's IP changes):
 
 ```jsonc
 "tagOwners": {
