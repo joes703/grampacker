@@ -203,7 +203,7 @@ describe('FoodView planning header', () => {
     // does not change it - 120 g is 4.2 oz.
     expect(within(header).getByText('Food weight')).toBeInTheDocument()
     expect(within(header).getByText('120 g')).toBeInTheDocument()
-    expect(within(header).getByLabelText('4.2 oz')).toBeInTheDocument()
+    expect(within(header).getByText('4.2 oz')).toBeInTheDocument()
     // The day grid lives outside the header card.
     expect(within(header).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
   })

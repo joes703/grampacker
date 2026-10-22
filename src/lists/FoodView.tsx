@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import PrimaryButton from '../components/PrimaryButton'
-import TotalWeightValue from '../components/TotalWeightValue'
 import FoodDaySection, { FoodPlanColumnLabels, FoodPlanRow } from './FoodDaySection'
 import FoodItemDialog, { type FoodItemDialogMode } from './FoodItemDialog'
 import {
@@ -493,8 +492,11 @@ function FoodDocument({
           <span className={`${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-900`}>
             {formatTotalWeight(totalFoodGrams, 'g')}
           </span>
+          {/* Plain text, not TotalWeightValue: that component's fixed grid
+              columns exist to align a table's rows, and inline they read as
+              a stretched gap. */}
           <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
-            <TotalWeightValue grams={totalFoodGrams} unit="oz" />
+            {formatTotalWeight(totalFoodGrams, 'oz')}
           </span>
         </div>
         <span className="flex-1" aria-hidden="true" />
