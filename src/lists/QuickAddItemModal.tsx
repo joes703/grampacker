@@ -1,5 +1,6 @@
-import { type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { Minus, Plus, Shirt, UtensilsCrossed, X } from 'lucide-react'
+import type { Category } from '../lib/types'
 import FormLabel from '../components/FormLabel'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
@@ -10,21 +11,28 @@ import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 
 type Props = {
-  onSubmit: (data: AddItemData) => void
+  onSubmit: (data: AddItemData, categoryId: string | null) => void
   onClose: () => void
+  /** The caller's categories, which turns on the Category selector. The gear
+   *  picker's "New item" passes them: it has no section context, and before
+   *  the selector every item it created landed in Uncategorized with nothing
+   *  saying so - the first stumble both 2026-10 UX audits hit when building a
+   *  list from scratch. A category section's "Add item" omits this prop; its
+   *  category is implicit and the caller supplies it itself. */
+  categories?: Category[]
 }
 
 // Mobile presentation of the List Detail "Quick Add" flow. It uses the
 // same hook, validation, and submit payload as the desktop inline
 // AddItemRow; only the DOM differs, trading the cramped inline row for a
-// roomy, touch-sized modal. Category is implicit: the caller
-// (CategoryGroup) already knows which section's "Add item" button was
-// tapped.
+// roomy, touch-sized modal. Category is implicit when the caller is a
+// section's "Add item" button; the gear picker's "New item" has no section,
+// so it passes `categories` and the modal asks.
 //
 // Quick Add intentionally collects only the fields needed to put a new
 // item on this list. Full inventory details like cost and purchase date
 // live in GearItemDialog.
-export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
+export default function QuickAddItemModal({ onSubmit, onClose, categories }: Props) {
   const {
     name,
     setName,
@@ -42,6 +50,17 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
     buildData,
   } = useQuickAddForm()
 
+  // '' = Uncategorized; a <select> value cannot be null.
+  const [categoryId, setCategoryId] = useState('')
+  // Modal focuses the dialog itself by default; this is a form whose next
+  // action is always typing a name (the input's own autoFocus runs before
+  // showModal() and is overridden, so the ref goes through Modal).
+  const nameRef = useRef<HTMLInputElement>(null)
+  const sortedCategories = useMemo(
+    () => (categories ?? []).toSorted((a, b) => a.sortOrder - b.sortOrder),
+    [categories],
+  )
+
   // Form submit (Save button or Enter in a text field). buildData() is the
   // single validation gate; it returns null on a blank name, which the
   // disabled Save button already prevents, so this is belt-and-braces.
@@ -49,7 +68,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
     e.preventDefault()
     const data = buildData()
     if (!data) return
-    onSubmit(data)
+    onSubmit(data, categoryId === '' ? null : categoryId)
   }
 
   const qtyNum = parseInt(quantity, 10) || 1
@@ -61,6 +80,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
       title="Quick add item"
       className="w-full max-w-md"
       closeOnBackdropClick={false}
+      initialFocus={nameRef}
     >
       <div className="p-6">
         <div className="mb-5 flex items-center justify-between">
@@ -81,6 +101,7 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               Name
             </FormLabel>
             <input
+              ref={nameRef}
               id="qa-name"
               type="text"
               required
@@ -88,9 +109,29 @@ export default function QuickAddItemModal({ onSubmit, onClose }: Props) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={`w-full ${FORM_INPUT}`}
-              autoFocus
             />
           </div>
+
+          {categories && (
+            <div>
+              <FormLabel htmlFor="qa-cat">
+                Category
+              </FormLabel>
+              <select
+                id="qa-cat"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className={`w-full ${FORM_INPUT}`}
+              >
+                <option value="">Uncategorized</option>
+                {sortedCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <FormLabel htmlFor="qa-desc">

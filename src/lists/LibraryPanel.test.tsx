@@ -100,8 +100,12 @@ describe('creating a new item from the picker', () => {
     await user.type(screen.getByLabelText(/^Name/), 'Titanium spork')
     await user.click(screen.getByRole('button', { name: 'Add item' }))
 
+    // Second argument: the category chosen in the modal (null =
+    // Uncategorized kept). This caller has no section context, so the
+    // category travels with the payload.
     expect(onCreateNew).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Titanium spork' }),
+      null,
     )
   })
 
