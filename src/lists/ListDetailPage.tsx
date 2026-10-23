@@ -43,11 +43,7 @@ import FoodView from './FoodView'
 import type { FoodItemResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
-import {
-  FLAT_TABLE_HEADER_TITLE,
-  FLAT_TABLE_META_TEXT,
-  FLAT_TABLE_SURFACE,
-} from '../components/flat-table-styles'
+import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
@@ -1646,51 +1642,13 @@ function ListDetailInner({ listId }: { listId: string }) {
                   // under the food. Food is consumable by definition, which is
                   // the same bucket its grams already land in upstream.
                   consumableSubtotalGrams={foodGrams}
-                  // An explicit "Edit" alongside the section name, both
-                  // inside the title slot.
-                  //
-                  // Inside the title slot because the non-pack header ends in
-                  // fixed Qty/Weight column stubs that line up with the cells
-                  // beneath them, and the title absorbs the slack - so
-                  // anything appended AFTER the stubs shifts both labels off
-                  // their columns. Visible rather than a hover state on the
-                  // title, because hover does not exist on touch: an
-                  // affordance only a mouse can find is not an affordance
-                  // here. `name` still supplies every accessible label
-                  // ("Collapse Food").
-                  //
-                  // It leads out to the Food view rather than editing in
-                  // place: a food item is authored where its schedule lives,
-                  // and a second authoring path for one thing is how the two
-                  // drift.
-                  titleContent={
-                    <span className="flex min-w-0 flex-1 items-center gap-1">
-                      <span className={`truncate ${FLAT_TABLE_HEADER_TITLE}`}>Food</span>
-                      {/* aria-label, because "Edit" alone is the whole
-                          accessible name: the section title beside it is
-                          separate text, so a screen reader listing links
-                          would announce a destination-less "Edit".
-
-                          Sized to the 40px control target the density
-                          system uses for chevrons and kebabs, not the 44px
-                          ROW floor: the header's own 44px includes its 1px
-                          bottom border, so a 44px child would push it to
-                          45px on mobile. Desktop relaxes to the 28px row
-                          height. Both dimensions, not just height: "Edit" at
-                          this size is only ~36px wide, so a height-only floor
-                          would leave the target short in the axis nobody
-                          checks. Negative inline margin keeps the padded box
-                          from pushing the title without shrinking the target
-                          itself. */}
-                      <Link
-                        to={`/lists/${listId}/food`}
-                        aria-label="Edit food"
-                        className={`shrink-0 inline-flex items-center justify-center min-h-10 min-w-10 lg:min-h-7 lg:min-w-0 px-2 -mx-1 ${FLAT_TABLE_META_TEXT} text-gray-500 hover:text-blue-600`}
-                      >
-                        Edit
-                      </Link>
-                    </span>
-                  }
+                  // No "Edit" link, no kebab, no grip here: the rows are a
+                  // read-out, authored in the Food view (ListViewNav's Food
+                  // tab is the route), and one authoring path per thing.
+                  // The gear rows above carry a leading grip and a trailing
+                  // kebab; reserve both boxes empty so this table's cells
+                  // and footer sit on the same rails as theirs.
+                  reserveControlColumns
                 />
               )}
             </>

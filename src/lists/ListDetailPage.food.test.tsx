@@ -121,23 +121,17 @@ describe('food is reachable at its own route, and traced from List view', () => 
 
   // Food used to appear here as a single summary line - one number and a
   // link - while Pack showed the items. Category shows the items now too.
-  it('shows food as rows on the list view, with a route to edit them', async () => {
+  it('shows food as read-only rows, with no Edit link in the section header', async () => {
     await renderDetail(`/lists/${listId}`)
     const chevron = await screen.findByRole('button', { name: 'Collapse Food' })
     expect(foodRow()).toBeTruthy()
-    // The section header carries a VISIBLE "Edit" out to the Food view.
-    // Asserted on its own text rather than on a hover style, because hover
-    // does not exist on touch - an affordance only a mouse can find would
-    // pass a "there is a link" test and still be missing on a phone. Scoped
-    // to the section's card, since the ListViewNav Food tab points at the
-    // same href.
+    // No "Edit" in the header: this table is a read-out, and the Food tab in
+    // ListViewNav is the one route to authoring. A header link here was a
+    // second affordance for the same route, and it was the only control the
+    // other section headers do not carry. Scoped to the card so the nav tab
+    // (same destination) cannot satisfy the query.
     const card = chevron.closest('.overflow-hidden')!
-    const edit = within(card as HTMLElement).getByRole('link', { name: 'Edit food' })
-    expect(edit).toHaveAttribute('href', `/lists/${listId}/food`)
-    // The VISIBLE text is the short form; the accessible name carries the
-    // destination, because "Edit" alone tells a screen reader nothing about
-    // what is being edited.
-    expect(edit.textContent).toBe('Edit')
+    expect(within(card as HTMLElement).queryByRole('link', { name: 'Edit food' })).toBeNull()
   })
 
   it('does not render the food editor inline on the list view', async () => {

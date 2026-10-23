@@ -9,6 +9,7 @@ import {
   COL_WEIGHT_MOBILE,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
+  ROW_LEADING_CONTROL_TARGET,
   itemRowShell,
 } from '../components/flat-table-styles'
 import { MobileRowBody, NameDescriptionCell } from '../components/ItemRowScaffold'
@@ -40,11 +41,34 @@ type Props = {
   /** Page-level breakpoint, drilled from the section rather than subscribed
    *  per row - same reason ItemRow takes it. */
   isBelowLg?: boolean
+  /** Reserve the control columns the gear rows around this table carry:
+   *  the leading drag-grip box (both tiers) and the trailing kebab box
+   *  (desktop; mobile gear rows have no kebab). Set through CategoryGroup's
+   *  reserveControlColumns on the owner's page. The share page leaves it
+   *  unset - its gear rows are read-only too, with neither control.
+   *  print:hidden like the controls themselves, which vanish on paper. */
+  controlColumns?: boolean
 }
 
-export default function FoodRow({ food, weightUnit, isBelowLg = false }: Props) {
+export default function FoodRow({
+  food,
+  weightUnit,
+  isBelowLg = false,
+  controlColumns = false,
+}: Props) {
   return (
     <div className={itemRowShell(false)}>
+      {controlColumns && (
+        /* The drag grip's exact box (RowIconButton's dragHandle sizing).
+           Mobile gear rows put the grip OUTSIDE their px-3 foreground while
+           this shell's padding wraps everything, so -mr-1.5 gives back the
+           shell's gap and lands the name on the gear rows' name rail; at lg
+           the grip sits inside the padding like this one and the gap is
+           wanted, so the margin resets. */
+        <span
+          className={`shrink-0 ${ROW_LEADING_CONTROL_TARGET} -mr-1.5 lg:mr-0 print:hidden`}
+        />
+      )}
       {isBelowLg ? (
         <div className="flex flex-1 items-center gap-2">
           {/* status 'active' renders no badge; food has no gear status. */}
@@ -80,6 +104,7 @@ export default function FoodRow({ food, weightUnit, isBelowLg = false }: Props) 
           <span className={`${COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
             <ItemWeightValue grams={food.weightGrams} unit={weightUnit} />
           </span>
+          {controlColumns && <span className={`${COL_ICON} print:hidden`} />}
         </>
       )}
     </div>
