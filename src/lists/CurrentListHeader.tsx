@@ -41,7 +41,7 @@ export default function CurrentListHeader({ list }: Props) {
             type="button"
             onClick={() => draftToggle.toggle(list)}
             aria-label="Draft. Mark list complete"
-            title="Mark list complete"
+            title="New lists start as drafts. Click to mark the list complete."
             className="shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <DraftBadge />

@@ -9,7 +9,6 @@ import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-t
 import { useCommitOnce } from '../lib/use-commit-once'
 import { reportFailure } from '../lib/report-failure'
 import { MAX_NAME_LENGTH } from '../lib/caps'
-import PrivacyPanel from './PrivacyPanel'
 import { useCurrentListActions } from './use-current-list-actions'
 
 type Props = {
@@ -31,8 +30,11 @@ type Props = {
 // Toggles:
 //   - Draft: label-only lifecycle state, shared with CurrentListHeader's
 //     pill via draftToggle.
-//   - Shared: PrivacyPanel's inline body (toggle + url + Copy/Reset link
-//     when public).
+//
+// Sharing is deliberately NOT here. It lived in this panel between Rename
+// and Delete until the 2026-10 UX audits each took three clicks to find it;
+// it now has its own toolbar button (ListShareButton), its one home on this
+// page. Do not add a second entry point back here.
 //
 // "Add ready checks" used to live here as a third toggle. It moved to
 // PackingProgress and was then retired entirely: ready checks are
@@ -132,16 +134,24 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
 
   return (
     <div ref={panelRef} className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className={PANEL_TOGGLE_LABEL}>Draft</span>
-        <ToggleSwitch
-          checked={list.isDraft}
-          onChange={() => draftToggle.toggle(list)}
-          disabled={draftToggle.isPending}
-          ariaLabel="Draft"
-        />
+      <div>
+        <div className="flex items-center justify-between">
+          <span className={PANEL_TOGGLE_LABEL}>Draft</span>
+          <ToggleSwitch
+            checked={list.isDraft}
+            onChange={() => draftToggle.toggle(list)}
+            disabled={draftToggle.isPending}
+            ariaLabel="Draft"
+          />
+        </div>
+        {/* Every new list starts as a draft (server default), and nothing
+            else in the UI says so or says what the flag does - UX audit
+            2026-10 found testers stuck on an unexplained "Draft". */}
+        <p className="mt-1 text-xs text-gray-500">
+          New lists start as drafts. A shared draft shows visitors a
+          work-in-progress note.
+        </p>
       </div>
-      <PrivacyPanel list={list} />
 
       {/* Actions section. The -mx-3 spans the popover's p-3 padding so
           the divider and action rows go edge-to-edge while RowMenuItem's
