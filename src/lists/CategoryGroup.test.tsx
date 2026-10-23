@@ -169,12 +169,12 @@ describe('CategoryGroup footer subtotal', () => {
         consumableSubtotalGrams={333.6}
       />,
     )
-    expect(screen.getAllByText('777 g').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('334 g').length).toBeGreaterThan(0)
-    expect(screen.queryByText('777.4 g')).toBeNull()
-    expect(screen.queryByText('333.6 g')).toBeNull()
+    expect(screen.getAllByLabelText('777 g').length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText('334 g').length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('777.4 g')).toBeNull()
+    expect(screen.queryByLabelText('333.6 g')).toBeNull()
     // 200 g is what summing the two rows would produce.
-    expect(screen.queryByText('200 g')).toBeNull()
+    expect(screen.queryByLabelText('200 g')).toBeNull()
   })
 
   it('labels both kinds of category weight', () => {
@@ -252,8 +252,8 @@ describe('CategoryGroup footer subtotal', () => {
     const footer = document.querySelector<HTMLElement>('.print\\:flex')
     expect(footer).not.toBeNull()
     expect(within(footer!).getAllByText('Worn')).toHaveLength(2)
-    expect(within(footer!).getAllByText('777 g')).toHaveLength(2)
-    expect(screen.queryByText('777.4 g')).toBeNull()
+    expect(within(footer!).getAllByLabelText('777 g')).toHaveLength(2)
+    expect(screen.queryByLabelText('777.4 g')).toBeNull()
     expect(screen.queryByText(/Base/)).toBeNull()
   })
 
@@ -640,7 +640,7 @@ describe('CategoryGroup footer subtotal', () => {
       />,
     )
     expect(screen.queryByText(/Base/)).toBeNull()
-    expect(screen.queryByText('777 g')).toBeNull()
+    expect(screen.queryByLabelText('777 g')).toBeNull()
   })
 })
 
