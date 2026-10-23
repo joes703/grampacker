@@ -43,7 +43,7 @@ type Props = {
    *
    *  Optional: render paths with no list to add to pass none, and the
    *  control does not render. */
-  onCreateNew?: (data: AddItemData) => void
+  onCreateNew?: (data: AddItemData, categoryId: string | null) => void
   /** Non-empty when creating is unavailable: the button is disabled and this
    *  becomes its accessible description.
    *
@@ -156,14 +156,17 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
 
       {creating && onCreateNew && (
         <QuickAddItemModal
-          onSubmit={(data) => {
+          // This caller has no section context, so the modal asks for the
+          // category instead of silently filing the item Uncategorized.
+          categories={categories}
+          onSubmit={(data, categoryId) => {
             // Close FIRST, then hand off. This modal has no pending or
             // inline-error surface, so the create reports on the page it
             // returns to. (Closing first was also what once kept that toast
             // from expiring behind the dialog, before toasts rendered over
             // modals.)
             setCreating(false)
-            onCreateNew(data)
+            onCreateNew(data, categoryId)
           }}
           onClose={() => setCreating(false)}
         />

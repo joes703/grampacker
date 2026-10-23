@@ -41,6 +41,14 @@ type Props = {
    * above its own scroll region) keep their own.
    */
   header?: boolean
+  /**
+   * Element to focus when the dialog opens, instead of the dialog itself.
+   * The default (focusing the dialog) exists so a touch-open does not land
+   * a visible focus ring on an arbitrary first control; a FORM dialog whose
+   * next action is always typing (Quick Add's name) opts in here, because
+   * an element's own autoFocus runs before showModal() and is overridden.
+   */
+  initialFocus?: React.RefObject<HTMLElement | null>
 }
 
 export default function Modal({
@@ -52,6 +60,7 @@ export default function Modal({
   closeOnBackdropClick = true,
   preventDismiss = false,
   header = false,
+  initialFocus,
 }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   // Where ToastViewport renders while this dialog is open (src/lib/toast-host.ts):
@@ -74,9 +83,11 @@ export default function Modal({
       // onto the dialog itself instead — tabIndex={-1} makes it
       // programmatically focusable without entering the tab order, so
       // keyboard users still Tab into the first real control next.
-      // preventScroll avoids the browser scrolling the focused dialog into
-      // view (it's already centered by showModal()).
-      dialog.focus({ preventScroll: true })
+      // A caller whose dialog is a form can name its first field via
+      // initialFocus (see the prop). preventScroll avoids the browser
+      // scrolling the focused element into view (the dialog is already
+      // centered by showModal()).
+      ;(initialFocus?.current ?? dialog).focus({ preventScroll: true })
     } else if (!open && dialog.open) dialog.close()
     // The cleanup unregisters when `open` flips false (the native `close` event
     // is queued, so handleClose alone would leave the host pointing into a
@@ -84,7 +95,7 @@ export default function Modal({
     // replay, whose re-adds run in effect order and so keep showModal() order.
     if (dialog.open) addToastHost(slot)
     return () => removeToastHost(slot)
-  }, [open])
+  }, [open, initialFocus])
 
   // Escape (and other user-agent dismissals) fire a cancelable `cancel`
   // event BEFORE the dialog closes - this is the only point where dismissal

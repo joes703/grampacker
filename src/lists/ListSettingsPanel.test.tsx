@@ -82,6 +82,27 @@ describe('ListSettingsPanel worn grouping', () => {
   })
 })
 
+describe('ListSettingsPanel sharing', () => {
+  it('no longer hosts the share controls - the toolbar Share button is their one home', () => {
+    renderPanel()
+
+    expect(screen.queryByText('Shared')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Enable public link' })).toBeNull()
+  })
+})
+
+describe('ListSettingsPanel draft toggle', () => {
+  it('explains the draft default beside the toggle', () => {
+    // Every new list starts as a draft (server default) and nothing else in
+    // the UI said so - UX audit 2026-10 found testers stuck on it.
+    renderPanel()
+
+    expect(
+      screen.getByText(/New lists start as drafts\. A shared draft shows visitors a work-in-progress note\./),
+    ).toBeInTheDocument()
+  })
+})
+
 // On mobile the panel sits in a Modal; Duplicate and Export close it on the click.
 describe('ListSettingsPanel actions that can fail', () => {
   it.each([

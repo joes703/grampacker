@@ -93,7 +93,8 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 //                          locations yet, plus a food section under
 //                          regionKey 'packing-food-fallback'.
 //   6. Worn              — wornSection + regionKey 'worn', no renderRows
-//                          (structure actions do not apply), subtotalGrams.
+//                          (structure actions do not apply). Pack mode only:
+//                          outside pack, worn rows stay in their category.
 //
 // The sentinel rules those flavors lean on:
 //   - The section's identity is `regionKey ?? categoryId ?? 'uncategorized'`.
@@ -328,12 +329,14 @@ type GroupPropsBase = {
    *  subtotal is not rendered at all.
    *
    *  Category footers render each positive bucket with its label. Zero-value
-   *  buckets are omitted instead of showing Base 0 or Consumable 0. The Worn
-   *  pseudo-section keeps the legacy `subtotalGrams` input but labels its
-   *  canonical list-level total explicitly in the footer. */
+   *  buckets are omitted instead of showing Base 0 or Consumable 0. Worn has
+   *  its own bucket because worn rows render inside their category outside
+   *  pack mode, and a visible row whose weight silently counts nowhere is the
+   *  trust bug the labels exist to prevent. (Pack mode extracts worn rows
+   *  into the trailing Worn section and renders no footers at all.) */
   baseSubtotalGrams?: number
   consumableSubtotalGrams?: number
-  subtotalGrams?: number
+  wornSubtotalGrams?: number
   onUpdate?: (itemId: string, patch: ListItemPatch) => void
   onDelete?: (itemId: string) => void
   onSaveGearName?: (gearItemId: string, name: string) => void
@@ -409,7 +412,7 @@ function CategoryGroup({
   wornSection = false,
   baseSubtotalGrams,
   consumableSubtotalGrams,
-  subtotalGrams,
+  wornSubtotalGrams,
   onUpdate,
   onDelete,
   onSaveGearName,
@@ -449,12 +452,13 @@ function CategoryGroup({
   const sectionKey = regionKey ?? categoryId ?? 'uncategorized'
   const regionId = `cat-region-${sectionKey}`
   const section: SectionIdentity = { key: sectionKey, name }
-  // sectionItems = the items that BELONG to this category section. Worn
-  // items always belong to the trailing Worn section, so ordinary sections
-  // exclude them from the pack count, footer totals, and rows - by the one
-  // shared rule in section-rows.ts, which the reorder planner uses too. The
-  // Worn section opts into its own rows explicitly.
-  const sectionItems = wornSection ? items : items.filter(isOrdinarySectionRow)
+  // sectionItems = the items that BELONG to this category section. In pack
+  // mode worn items belong to the trailing Worn section, so ordinary pack
+  // sections exclude them from the pack count and rows - by the one shared
+  // mode-scoped rule in section-rows.ts, which the reorder planner uses too.
+  // Outside pack mode worn rows stay in their category (the rule returns
+  // everything). The Worn section opts into its own rows explicitly.
+  const sectionItems = wornSection ? items : items.filter((item) => isOrdinarySectionRow(item, packMode))
   // Only displayed in pack-mode header. Gating the read on packMode means
   // the share view (which never enters pack mode) doesn't pull is_packed
   // off each item; that field is excluded from the public read path.
@@ -805,7 +809,7 @@ function CategoryGroup({
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}
                     consumableGrams={consumableSubtotalGrams}
-                    wornGrams={subtotalGrams}
+                    wornGrams={wornSubtotalGrams}
                     weightUnit={weightUnit}
                   />
                 </div>
@@ -817,7 +821,7 @@ function CategoryGroup({
                   <CategoryFooterWeights
                     baseGrams={baseSubtotalGrams}
                     consumableGrams={consumableSubtotalGrams}
-                    wornGrams={subtotalGrams}
+                    wornGrams={wornSubtotalGrams}
                     weightUnit={weightUnit}
                   />
                 </div>
@@ -842,16 +846,13 @@ function CategoryFooterWeights({
   wornGrams?: number
   weightUnit: WeightUnit
 }) {
-  if (wornGrams !== undefined) {
-    return (
-      <CategoryFooterMetric label="Worn" grams={wornGrams} weightUnit={weightUnit} />
-    )
-  }
-
-  // Consumable first, Base last: Base is the figure every footer shows, so
-  // keeping it rightmost lines it up down the page with the sections that
-  // have Base alone.
+  // Worn first, then Consumable, Base last: Base is the figure every footer
+  // shows, so keeping it rightmost lines it up down the page with the
+  // sections that have Base alone.
   const totals = [
+    wornGrams !== undefined && wornGrams > 0
+      ? { label: 'Worn', grams: wornGrams }
+      : null,
     consumableGrams !== undefined && consumableGrams > 0
       ? { label: 'Consumable', grams: consumableGrams }
       : null,

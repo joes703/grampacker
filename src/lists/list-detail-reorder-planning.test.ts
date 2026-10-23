@@ -140,18 +140,19 @@ describe('ListDetailPage reorder planning', () => {
   )
 })
 
-// Worn rows render only in the trailing Worn section, in BOTH views: every
-// ordinary section filters them out (CategoryGroup's sectionItems). A List
-// drag planned over a worn row would let assignSortOrderSlots rewrite that
-// row's document rank along with the visible ones. Those ranks order the Worn
-// section itself (use-stable-worn-items), so the silent rewrite could reorder
-// that section across categories without the user touching it.
+// Worn rows are extracted into the trailing Worn section in PACK mode only
+// (section-rows.ts). In List view they render inside their category, so the
+// planner must permute over them exactly as CategoryGroup renders them - the
+// renderer and planner disagreeing is audit F1, in either direction: a plan
+// over a row the user cannot see rewrites ranks invisibly, and a plan that
+// skips a visible row drops the dragged row somewhere other than where it
+// was released.
 describe('worn rows and the category branch', () => {
   const first = item('first', 1)
   const worn = item('worn', 2, { isWorn: true })
   const last = item('last', 3)
 
-  it('leaves a worn row out of a List-view permutation and out of the payload', () => {
+  it('keeps a worn row in a List-view permutation, where it is a visible row', () => {
     expect(planListItemReorder({
       activeId: makeDnDId('item', last.id),
       overId: makeDnDId('item', first.id),
@@ -164,7 +165,8 @@ describe('worn rows and the category branch', () => {
       kind: 'list',
       updates: [
         { id: 'last', sortOrder: 1 },
-        { id: 'first', sortOrder: 3 },
+        { id: 'first', sortOrder: 2 },
+        { id: 'worn', sortOrder: 3 },
       ],
     })
   })
@@ -196,23 +198,39 @@ describe('worn rows and the category branch', () => {
     })
   })
 
-  it.each(['edit', 'pack'] as const)(
-    'refuses a worn row as source or target in %s mode',
-    (mode) => {
-      const plan = (activeId: string, overId: string) =>
-        planListItemReorder({
-          activeId: makeDnDId('item', activeId),
-          overId: makeDnDId('item', overId),
-          items: [first, worn, last],
-          groupingKind: 'category',
-          mode,
-          locations: mode === 'pack' ? [] : locations,
-          hiddenItemIds: new Set(),
-        })
-      expect(plan(worn.id, first.id)).toBeNull()
-      expect(plan(first.id, worn.id)).toBeNull()
-    },
-  )
+  it('refuses a worn row as source or target in pack mode, where it is not rendered', () => {
+    const plan = (activeId: string, overId: string) =>
+      planListItemReorder({
+        activeId: makeDnDId('item', activeId),
+        overId: makeDnDId('item', overId),
+        items: [first, worn, last],
+        groupingKind: 'category',
+        mode: 'pack',
+        locations: [],
+        hiddenItemIds: new Set(),
+      })
+    expect(plan(worn.id, first.id)).toBeNull()
+    expect(plan(first.id, worn.id)).toBeNull()
+  })
+
+  it('accepts a worn row as a drag source in edit mode, where it is an ordinary row', () => {
+    expect(planListItemReorder({
+      activeId: makeDnDId('item', worn.id),
+      overId: makeDnDId('item', first.id),
+      items: [first, worn, last],
+      groupingKind: 'category',
+      mode: 'edit',
+      locations,
+      hiddenItemIds: new Set(),
+    })).toEqual({
+      kind: 'list',
+      updates: [
+        { id: 'worn', sortOrder: 1 },
+        { id: 'first', sortOrder: 2 },
+        { id: 'last', sortOrder: 3 },
+      ],
+    })
+  })
 })
 
 describe('deriveFilteredItemIds', () => {

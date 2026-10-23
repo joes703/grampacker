@@ -1,19 +1,27 @@
 // Which rows belong to an ORDINARY section of a list - a category, or a
 // packing location - as opposed to the trailing Worn section.
 //
-// One rule, one place. Worn gear renders only in the Worn section, in every
-// view, and is never part of the sequence a drag rearranges. Two consumers
-// used to each spell this out: CategoryGroup (what a section renders) and
-// the reorder planner (what a drag permutes over). They disagreed - the
-// planner kept worn rows in List view on a false belief about what the
-// section showed - and an ordinary drag silently rewrote worn rows' document
-// ranks (audit F1). Both now ask here, so they cannot drift apart again.
+// One rule, one place, now MODE-SCOPED. In the Category arrangement and the
+// public share, worn rows stay inside their category: worn is a weight flag,
+// not an organizing principle, and flipping it must not move the row (UX
+// audit 2026-10). In PACK mode worn gear is a genuinely separate pile - you
+// lay it out to wear, you do not pack it - so pack still extracts it into
+// the trailing Worn section.
+//
+// Renderer (CategoryGroup) and reorder planner MUST agree on this per mode.
+// They once disagreed - the planner kept worn rows in List view on a false
+// belief about what the section showed - and an ordinary drag silently
+// rewrote worn rows' document ranks (audit F1). Both ask here, with their
+// mode, so they cannot drift apart again.
 //
 // Deliberately narrow: row-visibility rules shared by renderer and planner
 // only. Category matching and container rows are separate rules with their
 // own owners.
-export function isOrdinarySectionRow(item: { isWorn: boolean }): boolean {
-  return !item.isWorn
+export function isOrdinarySectionRow(
+  item: { isWorn: boolean },
+  packMode: boolean,
+): boolean {
+  return packMode ? !item.isWorn : true
 }
 
 // Pack-mode visibility: the AND of the two row filters, for gear and food

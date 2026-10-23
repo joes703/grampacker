@@ -4,6 +4,7 @@ import {
   computeListWeightBreakdown,
   foodGramsFor,
   consumableGramsForCategory,
+  wornGramsForCategory,
 } from './weight-breakdown'
 import type { Category, ListItemWithGear } from './types'
 
@@ -188,6 +189,40 @@ describe('consumableGramsForCategory', () => {
     expect(consumableGramsForCategory(breakdown(), 'cat-deleted')).toBe(0)
   })
 
+})
+
+// Worn rows now render inside their category (pack mode still extracts them),
+// so the category footer needs the same per-section answer for worn that it
+// has for base and consumable - computed once here, never summed from rows.
+describe('wornGramsForCategory', () => {
+  function breakdown() {
+    return computeListWeightBreakdown({
+      gear: {
+        items: [
+          listItem({ id: 'tent', categoryId: shelter.id, weightGrams: 900 }),
+          listItem({ id: 'shirt', categoryId: shelter.id, weightGrams: 150, quantity: 2, isWorn: true }),
+          listItem({ id: 'hat', categoryId: 'cat-deleted', weightGrams: 60, isWorn: true }),
+        ],
+        categories: [shelter],
+      },
+      food: { grams: 0 },
+    })
+  }
+
+  it('returns only worn gear in the requested category, counting quantity', () => {
+    expect(wornGramsForCategory(breakdown(), shelter.id)).toBe(300)
+  })
+
+  it('routes orphan category ids to Uncategorized', () => {
+    expect(wornGramsForCategory(breakdown(), null)).toBe(60)
+    expect(wornGramsForCategory(breakdown(), 'cat-deleted')).toBe(0)
+  })
+
+  it('keeps worn weight out of base, and the per-category figures sum to wornGrams', () => {
+    const b = breakdown()
+    expect(baseGramsForCategory(b, shelter.id)).toBe(900)
+    expect(wornGramsForCategory(b, shelter.id) + wornGramsForCategory(b, null)).toBe(b.wornGrams)
+  })
 })
 
 describe('food weight', () => {

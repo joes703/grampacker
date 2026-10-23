@@ -3,6 +3,7 @@ import type { List } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
 import CurrentListHeader from './CurrentListHeader'
 import ListSettingsButton from './ListSettingsButton'
+import ListShareButton from './ListShareButton'
 import ListViewNav from './ListViewNav'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
 
@@ -75,7 +76,12 @@ export default function ListDocumentToolbar({
         <ListViewNav listId={list.id} mode={mode} />
       </div>
 
-      <div className="order-3 lg:order-4">
+      <div className="order-3 lg:order-4 flex items-center gap-2">
+        {/* Share sits beside List options rather than inside it: it is the
+            end goal of building a list for this audience, and buried between
+            Rename and Delete it took UX audits three clicks to find. One
+            home - ListSettingsPanel no longer hosts it. */}
+        <ListShareButton list={list} />
         <ListSettingsButton list={list} />
       </div>
     </div>

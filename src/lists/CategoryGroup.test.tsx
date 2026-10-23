@@ -120,22 +120,32 @@ describe('CategoryGroup region id', () => {
 })
 
 describe('CategoryGroup worn extraction', () => {
-  // Mixed fixture, both modes: an ordinary section shows its non-worn rows
-  // and hides the worn one in List AND Pack view (the reorder planner assumes
-  // exactly this - audit F1 was the two disagreeing), while the Worn section
-  // shows every row it is handed.
-  it.each([false, true])('keeps worn rows out of ordinary sections (packMode=%s) and renders them in Worn', (packMode) => {
-    const jacket = { ...itemNamed('jacket', 'Rain jacket'), isWorn: true }
-    const shell = itemNamed('shell', 'Wind shell')
+  // Mixed fixture: worn extraction is PACK-ONLY (section-rows.ts). An
+  // ordinary pack section hides its worn row - the reorder planner assumes
+  // exactly this, audit F1 was the two disagreeing - while the Worn section
+  // shows every row it is handed. Outside pack mode, worn is a weight flag
+  // rather than an organizing principle, so the row stays in its category.
+  const jacket = { ...itemNamed('jacket', 'Rain jacket'), isWorn: true }
+  const shell = itemNamed('shell', 'Wind shell')
+
+  it('keeps worn rows out of ordinary pack sections and renders them in Worn', () => {
     const { rerender } = render(
-      <CategoryGroup name="Clothing" items={[shell, jacket]} weightUnit="g" packMode={packMode} />,
+      <CategoryGroup name="Clothing" items={[shell, jacket]} weightUnit="g" packMode />,
     )
     expect(screen.getByText('Wind shell')).toBeInTheDocument()
     expect(screen.queryByText('Rain jacket')).not.toBeInTheDocument()
 
     rerender(
-      <CategoryGroup name="Worn" items={[jacket]} weightUnit="g" wornSection packMode={packMode} />,
+      <CategoryGroup name="Worn" items={[jacket]} weightUnit="g" wornSection packMode />,
     )
+    expect(screen.getByText('Rain jacket')).toBeInTheDocument()
+  })
+
+  it('keeps worn rows inside their category outside pack mode', () => {
+    render(
+      <CategoryGroup name="Clothing" items={[shell, jacket]} weightUnit="g" />,
+    )
+    expect(screen.getByText('Wind shell')).toBeInTheDocument()
     expect(screen.getByText('Rain jacket')).toBeInTheDocument()
   })
 })
@@ -238,15 +248,19 @@ describe('CategoryGroup footer subtotal', () => {
     expect(screen.queryByText(/Consumable/)).toBeNull()
   })
 
-  it('prepends Worn to its rounded footer weight without mislabeling it Base', () => {
+  it('renders a labeled Worn bucket beside Base, rounded, leftmost', () => {
+    // Worn rows render inside their category outside pack mode, so the
+    // footer must say where their weight went - a visible row whose weight
+    // silently counts nowhere is the trust bug the labels exist to prevent.
+    const worn = { ...itemNamed('a', 'Jacket'), isWorn: true }
     render(
       <CategoryGroup
-        name="Worn"
-        regionKey="worn"
-        items={[itemNamed('a', 'Jacket')]}
+        name="Clothing"
+        categoryId="cat-1"
+        items={[worn, itemNamed('b', 'Shell')]}
         weightUnit="g"
-        subtotalGrams={777.4}
-        wornSection
+        baseSubtotalGrams={100}
+        wornSubtotalGrams={777.4}
       />,
     )
     const footer = document.querySelector<HTMLElement>('.print\\:flex')
@@ -254,7 +268,23 @@ describe('CategoryGroup footer subtotal', () => {
     expect(within(footer!).getAllByText('Worn')).toHaveLength(2)
     expect(within(footer!).getAllByLabelText('777 g')).toHaveLength(2)
     expect(screen.queryByLabelText('777.4 g')).toBeNull()
-    expect(screen.queryByText(/Base/)).toBeNull()
+    // Worn sits left of Base so Base stays rightmost down the page.
+    expect(footer!.textContent!.indexOf('Worn')).toBeLessThan(footer!.textContent!.indexOf('Base'))
+  })
+
+  it('omits Worn when the category has no worn weight', () => {
+    render(
+      <CategoryGroup
+        name="Shelter"
+        categoryId="cat-1"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+        baseSubtotalGrams={100}
+        wornSubtotalGrams={0}
+      />,
+    )
+    const footer = document.querySelector<HTMLElement>('.print\\:flex')
+    expect(within(footer!).queryByText('Worn')).toBeNull()
   })
 
   it('renders no subtotal when the parent supplies none', () => {

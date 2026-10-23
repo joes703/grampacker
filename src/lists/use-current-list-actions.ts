@@ -113,6 +113,13 @@ export function useCurrentListActions() {
   // own onSuccess (navigate) runs before this per-call onSuccess.
   const submitCreateList = useCallback(
     (name: string, options?: Parameters<typeof createListMut.mutate>[1]) => {
+      // Drop a repeat submit while a create is in flight. One Enter once made
+      // two lists: the pending re-render disables the inline input, Chrome
+      // fires a late blur on the newly disabled element, and NewListInline's
+      // row variant submits on blur. useCommitOnce only collapses same-batch
+      // duplicates and createListMut.isPending can be stale in this closure,
+      // so ask the mutation cache, which is synchronously current.
+      if (qc.isMutating({ mutationKey: mutationKeys.createList() }) > 0) return
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
       createListMut.mutate({ name, sortOrder: nextListSortOrder(currentLists) }, options)
     },

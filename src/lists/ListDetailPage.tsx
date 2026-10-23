@@ -36,6 +36,7 @@ import {
   baseGramsForCategory,
   computeListWeightBreakdown,
   consumableGramsForCategory,
+  wornGramsForCategory,
 } from '../lib/weight-breakdown'
 
 import WeightSummary from './WeightSummary'
@@ -770,18 +771,18 @@ function ListDetailInner({ listId }: { listId: string }) {
         weightUnit={weightUnit}
         onAdd={onLibraryAdd}
         onRemove={onLibraryRemove}
-        // null category: the item lands Uncategorized in Category view, and
-        // in Pack it lands Uncategorized too while the list has no bags
-        // (Pack falls back to category grouping there) or Unassigned once it
-        // does. Worn items go to the Worn section either way.
-        onCreateNew={(data) => {
+        // The modal asks for the category (this caller has no section
+        // context); null means the user kept Uncategorized. In Pack the item
+        // lands Unassigned once the list has bags, or by category while it
+        // falls back to category grouping.
+        onCreateNew={(data, categoryId) => {
           // Close the drawer too, not just the modal. Below lg this panel
           // lives inside the sidebar drawer, whose 88vw content is z-50 -
           // the same layer as the toast, and painted after it. A failed
           // create would report into a toast the drawer covers - the class of
           // bug toasts had behind an open modal before they rendered inside it.
           setDrawerOpen(false)
-          onAddNewItem(null, data)
+          onAddNewItem(categoryId, data)
         }}
         // The panel sits outside the detail gate below, so it stays
         // interactive during exactly the failure that would hide the result.
@@ -1477,6 +1478,7 @@ function ListDetailInner({ listId }: { listId: string }) {
                                 reorderPending={anyItemReorderPending}
                                 baseSubtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
                                 consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, definition.id)}
+                                wornSubtotalGrams={wornGramsForCategory(weightBreakdown, definition.id)}
                                 onAddItem={onAddNewItem}
                               />
                             )
@@ -1492,6 +1494,7 @@ function ListDetailInner({ listId }: { listId: string }) {
                               reorderPending={anyItemReorderPending}
                               baseSubtotalGrams={baseGramsForCategory(weightBreakdown, null)}
                               consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, null)}
+                              wornSubtotalGrams={wornGramsForCategory(weightBreakdown, null)}
                               onAddItem={onAddNewItem}
                             />
                           )
@@ -1551,12 +1554,15 @@ function ListDetailInner({ listId }: { listId: string }) {
                     </DndContext>
                     </PlacementProvider>
 
-                    {/* Worn section — visible in both normal and pack mode when
-                        at least one worn item exists.
+                    {/* Worn section — PACK MODE ONLY: worn gear is a separate
+                        pile when packing (you lay it out to wear, you do not
+                        pack it). In the Category arrangement worn rows stay
+                        inside their category - worn is a weight flag, not an
+                        organizing principle, and flipping it must not move
+                        the row (section-rows.ts owns the mode-scoped rule).
                         Sits outside the DndContext: it isn't a reorder target
-                        (no renderRows), and worn items don't render inside
-                        their original category or location sections.
-                        Spreads the
+                        (no renderRows), and in pack mode worn items don't
+                        render inside their location sections. Spreads the
                         same sharedGroupProps every in-category section uses so
                         row chrome stays consistent — onSetGearStatus,
                         edit/delete handlers, weight unit, and breakpoint.
@@ -1569,34 +1575,18 @@ function ListDetailInner({ listId }: { listId: string }) {
                         the collapsible region derives the same
                         'cat-region-uncategorized' id as the real Uncategorized
                         section above, duplicating the id in the document and
-                        pointing both chevrons' aria-controls at one target. */}
-                    {wornItems.length > 0 && (
+                        pointing both chevrons' aria-controls at one target.
+                        No footer: pack mode renders none, and the list-level
+                        worn total lives in the weight summary. */}
+                    {mode === 'pack' && wornItems.length > 0 && (
                       <CategoryGroup
                         {...sharedGroupProps}
                         name="Worn"
                         items={wornItems}
                         regionKey="worn"
                         wornSection
-                        // Unlabeled on purpose: the section title already says
-                        // Worn, and this is the canonical list-level worn total.
-                        // It must NOT look itself up by category - it has no
-                        // categoryId, and a null lookup would hand it
-                        // Uncategorized's base figure.
-                        //
-                        // Caveat, deliberately accepted: the weight breakdown
-                        // buckets the defensive isConsumable+isWorn state as
-                        // consumable, while this section's grouper selects on
-                        // isWorn. So a dual-flagged row would render here while
-                        // its weight sat in consumableGrams. A DB CHECK forbids
-                        // that state; the aggregator only tolerates it so an
-                        // optimistic-update glitch cannot crash the page. Do not
-                        // "fix" it by summing rows here - that reintroduces the
-                        // second definition of the metric this change removed.
-                        subtotalGrams={weightBreakdown.wornGrams}
                         renderRows={undefined}
-                        renderRowAction={
-                          mode === 'pack' ? renderWornPackRowAction : undefined
-                        }
+                        renderRowAction={renderWornPackRowAction}
                       />
                     )}
                   </div>

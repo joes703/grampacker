@@ -184,14 +184,15 @@ describe('GearItemRow select mode', () => {
     expect(props.onInlineSave).not.toHaveBeenCalled()
   })
 
-  it('keeps the description column on rows without one, so name cells align', () => {
-    // Dropping the flex-[3] cell on description-less rows while rows with a
-    // description kept the 2:3 split made name cells stop lining up in
-    // select mode. The column (an exceptional structural assert: the flex
-    // proportion IS the regression) must exist on every row.
+  it('keeps the description cell on rows without one, so row geometry stays uniform', () => {
+    // Dropping the description cell entirely on description-less rows once
+    // made name cells stop lining up in select mode. The cell must exist on
+    // every row (an exceptional structural assert: the cell's presence IS
+    // the regression). Empty descriptions now hide by OPACITY, never by
+    // removal - the opacity-gated wrapper is the structural proof.
     const { container } = render(
       <GearItemRow item={gear({ description: null })} {...baseProps()} selectMode />,
     )
-    expect(container.querySelector('.flex-\\[3\\]')).not.toBeNull()
+    expect(container.querySelector('.opacity-0.flex-1')).not.toBeNull()
   })
 })
