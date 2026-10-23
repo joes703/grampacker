@@ -63,7 +63,7 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 //                          surfacing the category context to add-item flows.
 //                          null ⇒ uncategorized. undefined ⇒ share view.
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
-//   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
+//   - onDelete + onUpdate + onSaveGear* + onEditGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
 //   - collapsible        ⇒ header gets a chevron + toggle. No membership
 //                          count: pack mode's packed/total is the only
@@ -350,9 +350,9 @@ type GroupPropsBase = {
   // shallow compare every render. null = uncategorized.
   onAddItem?: (categoryId: string | null, data: AddItemData) => void
   // Kebab handlers receive the gear item's id; the parent resolves to a full
-  // GearItem from its gearItems query before opening dialogs.
+  // GearItem from its gearItems query before opening dialogs. Deleting from
+  // inventory is deliberately not among them (ItemRow's RowKebab says why).
   onEditGearItem?: (gearItemId: string) => void
-  onDeleteGearItem?: (gearItemId: string) => void
   onSetGearStatus?: (gearItemId: string, status: GearStatus) => void
 }
 
@@ -420,7 +420,6 @@ function CategoryGroup({
   onSaveGearWeight,
   onAddItem,
   onEditGearItem,
-  onDeleteGearItem,
   onSetGearStatus,
 }: GroupProps) {
   // `adding` drives the desktop inline AddItemRow. Mobile no longer
@@ -526,7 +525,6 @@ function CategoryGroup({
       onSaveDescription: onSaveGearDescription ? (d: string) => onSaveGearDescription(gearId, d) : undefined,
       onSaveWeight: onSaveGearWeight ? (w: number) => onSaveGearWeight(gearId, w) : undefined,
       onEditGearItem: onEditGearItem ? () => onEditGearItem(gearId) : undefined,
-      onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
       rowAction: renderRowAction?.(item, visibleItems, section, unionRowCount),

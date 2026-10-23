@@ -873,10 +873,9 @@ function ListDetailInner({ listId }: { listId: string }) {
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
       onEditGearItem: openGearEditor,
-      onDeleteGearItem: (gearId: string) => {
-        const g = gearItemsRef.current.find((x) => x.id === gearId)
-        if (g) setDialog({ type: 'delete-gear', candidate: g })
-      },
+      // No onDeleteGearItem: the row menu deliberately offers no inventory
+      // delete (ItemRow's RowKebab says why). GearItemDialog's own delete
+      // path below still works from Edit.
       // Quick status - same updateGearItem path the dialog uses, so the
       // existing list-items fan-out (gearItem.status is in the embedded
       // projection) keeps open list views consistent.

@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 // can never drag anything. A VALUE import from @dnd-kit here would pull the
 // whole drag-and-drop library into the anonymous bundle. That is exactly what
 // SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
-import { CircleMinus, Pencil, Shirt, Trash2, UtensilsCrossed } from 'lucide-react'
+import { CircleMinus, Pencil, Shirt, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
@@ -55,9 +55,9 @@ import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 //     `InlineText`; absent ⇒ static span with the same typography.
 //   - `onSaveWeight` enables the clickable weight cell.
 //   - `onDelete` (remove from list) enables the kebab. Without it, no kebab.
-//   - `onEditGearItem` / `onDeleteGearItem` add the Edit / Delete-from-
-//     inventory items to the kebab; without them the kebab shows only
-//     "Remove from list".
+//   - `onEditGearItem` adds the Edit item to the kebab; without it the
+//     kebab shows only "Remove from list". Deleting from inventory is
+//     deliberately absent here - see RowKebab below.
 //   - `dragHandle` injects a drag handle button as the row's first in-flow
 //     child. Provided by the SortableItemRow wrapper, omitted by share view.
 //     (It used to sit in an absolutely-positioned outside-left gutter; that
@@ -87,7 +87,6 @@ export type ItemRowProps = {
   onSaveWeight?: (weightGrams: number) => void
   onDelete?: () => void
   onEditGearItem?: () => void
-  onDeleteGearItem?: () => void
   // Quick status setter for the row kebab. When provided alongside the
   // other gear handlers (private list view), the kebab gets the three-row
   // status sub-menu. Omitted on the share view, which can't mutate.
@@ -115,7 +114,6 @@ export default function ItemRow({
   onSaveWeight,
   onDelete,
   onEditGearItem,
-  onDeleteGearItem,
   onSetGearStatus,
   dragHandle,
   rowAction,
@@ -347,15 +345,14 @@ export default function ItemRow({
           className={`${COL_WEIGHT} text-gray-600`}
         />
 
-        {/* Kebab — Remove from list (always when handler present), Edit + Delete
-            from inventory (only when handlers present). Hidden entirely on
-            read-only rows. */}
+        {/* Kebab — Remove from list (always when handler present), Edit and
+            the status shortcuts (only when handlers present). Hidden entirely
+            on read-only rows. */}
         {showKebab && (
           <RowKebab
             currentStatus={item.gearItem.status}
             onRemoveFromList={onDelete!}
             onEdit={onEditGearItem}
-            onDeleteFromInventory={onDeleteGearItem}
             onSetGearStatus={onSetGearStatus}
           />
         )}
@@ -405,21 +402,24 @@ function ListMobileRowBody({
 }
 
 // Kebab popover — three-dot button + portal-rendered menu. Items: Remove
-// from list (always), Edit and Delete from inventory (only when those
+// from list (always), Edit and the status shortcuts (only when those
 // handlers are passed). Each ItemRow owns its own popover state so
 // multiple kebabs can't open at once and click-outside closes only the
 // relevant menu.
+//
+// Deliberately NO "Delete from inventory" here. The list view shows "this
+// item is on this trip"; deleting the gear item destroys it in every list,
+// and the entry sat one row under the near-identical, harmless "Remove from
+// list" (UX audits 2026-10). Deleting gear happens on the Gear page.
 function RowKebab({
   currentStatus,
   onRemoveFromList,
   onEdit,
-  onDeleteFromInventory,
   onSetGearStatus,
 }: {
   currentStatus: GearStatus
   onRemoveFromList: () => void
   onEdit?: () => void
-  onDeleteFromInventory?: () => void
   onSetGearStatus?: (status: GearStatus) => void
 }) {
   return (
@@ -445,18 +445,6 @@ function RowKebab({
                 current={currentStatus}
                 onSelect={(s) => { close(); onSetGearStatus(s) }}
               />
-            </>
-          )}
-          {onDeleteFromInventory && (
-            <>
-              <RowMenuSeparator />
-              <RowMenuItem
-                icon={<Trash2 size={13} />}
-                onClick={() => { close(); onDeleteFromInventory() }}
-                tone="danger"
-              >
-                Delete from inventory
-              </RowMenuItem>
             </>
           )}
         </>
