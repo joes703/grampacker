@@ -48,6 +48,7 @@ import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
+import AddCategoryControl from './AddCategoryControl'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
@@ -63,6 +64,7 @@ import ItemRow from './ItemRow'
 import RowIconButton from '../components/RowIconButton'
 import StatusPanel from '../components/StatusPanel'
 import GearItemDialog from '../components/gear/GearItemDialog'
+import QuickEditItemModal from './QuickEditItemModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
@@ -109,6 +111,11 @@ const EMPTY_CATEGORIES: Category[] = []
 // one variant so they can never drift apart.
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
+  // The phone editor: name, weight, quantity, flags. Same shape as
+  // edit-gear so More details can switch between them without losing the
+  // target. Opened by the mobile row tap (sharedGroupProps picks it below
+  // lg); the full form stays the desktop Edit and the Gear page's editor.
+  | { type: 'quick-edit-item'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
   // `returnDialog` lets the confirm dialog restore the prior dialog on
   // cancel — set when the delete is launched from inside GearItemDialog
   // so the user lands back in the form they were editing rather than
@@ -260,6 +267,16 @@ function ListDetailInner({ listId }: { listId: string }) {
   // switching gear items naturally discards the error: no separate state to
   // keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  // Categories created from THIS page this session, so their sections can
+  // render while still empty. The list view hides empty categories on
+  // purpose (your 30 gear categories must not all appear in every list), so
+  // without this a category created here would be invisible until its first
+  // item - a dead end. Session-local by design: an abandoned empty category
+  // disappears from the list on reload and stays available on /gear.
+  // Whole Category objects, not ids: the server row arrives before the
+  // ['categories'] refetch lands, and a section that flashes out of
+  // existence during that gap reads as the create failing.
+  const [starterCategories, setStarterCategories] = useState<Category[]>([])
   // The edit-gear save currently awaiting a response, held as the exact DialogState
   // object it was submitted from. Same device as GearLibraryPage's: it is both the
   // dialog's own pending flag (the mutations behind it are shared with inline row
@@ -818,6 +835,16 @@ function ListDetailInner({ listId }: { listId: string }) {
     // refs, the compiler rule wants the setter.
   }, [gearItemsRef, listItemsRef, setDialog])
 
+  // The phone row tap's editor: the compact form instead of the full
+  // inventory dialog (UX audit 2026-10 - tapping a row to change one weight
+  // opened cost, purchase date, status and a delete button). Same stability
+  // story as openGearEditor above.
+  const openQuickEditor = useCallback((gearId: string) => {
+    const g = gearItemsRef.current.find((x) => x.id === gearId)
+    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    if (g) setDialog({ type: 'quick-edit-item', gear: g, listItem: li ?? null, saveError: null })
+  }, [gearItemsRef, listItemsRef, setDialog])
+
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
   //
@@ -872,11 +899,13 @@ function ListDetailInner({ listId }: { listId: string }) {
         updateGearItem.mutate({ id: gearId, patch: { description: d || null } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
-      onEditGearItem: openGearEditor,
-      onDeleteGearItem: (gearId: string) => {
-        const g = gearItemsRef.current.find((x) => x.id === gearId)
-        if (g) setDialog({ type: 'delete-gear', candidate: g })
-      },
+      // Below lg this handler is the mobile row TAP (no kebab renders
+      // there), so it opens the compact editor; at lg+ it is the kebab's
+      // Edit, which keeps the full form.
+      onEditGearItem: isBelowLg ? openQuickEditor : openGearEditor,
+      // No onDeleteGearItem: the row menu deliberately offers no inventory
+      // delete (ItemRow's RowKebab says why). GearItemDialog's own delete
+      // path below still works from Edit.
       // Quick status - same updateGearItem path the dialog uses, so the
       // existing list-items fan-out (gearItem.status is in the embedded
       // projection) keeps open list views consistent.
@@ -1387,10 +1416,26 @@ function ListDetailInner({ listId }: { listId: string }) {
                 />
               )}
 
-              {/* Items grouped by category */}
+              {/* Items grouped by category. A starter category (created from
+                  this page, still empty) counts as content in CATEGORY view
+                  only - its section renders there so the user can type the
+                  first item in. Pack never renders starter sections, so
+                  counting them there would blank Pack's empty-state guidance
+                  while showing nothing in its place (Codex review). */}
               {listItems.length === 0 &&
+              (mode === 'pack' || starterCategories.length === 0) &&
               (mode !== 'pack' || packFoodItems.length === 0) ? (
-                <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                <div className="flex flex-col gap-3">
+                  <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                  {mode !== 'pack' && (
+                    <AddCategoryControl
+                      onCreate={(name) => addCategory.mutateAsync(name)}
+                      onCreated={(category) =>
+                        setStarterCategories((prev) => [...prev, category])
+                      }
+                    />
+                  )}
+                </div>
               ) : (() => {
                 const activeParsed = activeId ? parseDnDId(activeId) : null
                 const activeItem =
@@ -1499,6 +1544,31 @@ function ListDetailInner({ listId }: { listId: string }) {
                             />
                           )
                         })}
+                        {/* Starter sections: categories created from this
+                            page that have no items yet (grouped hides empty
+                            categories), rendered with the add-item row
+                            already open - the whole point of making one is
+                            typing an item into it next. Skipped once the
+                            category has items (grouped covers it then). */}
+                        {mode !== 'pack' &&
+                          starterCategories
+                            .filter((starter) => !grouped.some((group) => group.group?.id === starter.id))
+                            // Prefer the cached row (it follows a rename on
+                            // /gear); the stored object covers the gap before
+                            // the refetch lands.
+                            .map((starter) => categories.find((category) => category.id === starter.id) ?? starter)
+                            .map((category) => (
+                              <CategoryGroup
+                                key={`starter-${category.id}`}
+                                name={category.name}
+                                categoryId={category.id}
+                                items={EMPTY_LIST_ITEMS}
+                                {...sharedGroupProps}
+                                reorderPending={anyItemReorderPending}
+                                onAddItem={onAddNewItem}
+                                startAdding
+                              />
+                            ))}
                         {/* Pack's no-locations fallback groups gear by
                             category; food gets its own section so the
                             checklist still covers the whole pack. Rows check
@@ -1587,6 +1657,18 @@ function ListDetailInner({ listId }: { listId: string }) {
                         wornSection
                         renderRows={undefined}
                         renderRowAction={renderWornPackRowAction}
+                      />
+                    )}
+                    {/* In-list category creation (Category view only; pack
+                        organizes by location, and category ORDER is still
+                        authored on /gear). Every 2026-10 UX audit run went
+                        hunting for this. */}
+                    {mode !== 'pack' && (
+                      <AddCategoryControl
+                        onCreate={(name) => addCategory.mutateAsync(name)}
+                        onCreated={(category) =>
+                          setStarterCategories((prev) => [...prev, category])
+                        }
                       />
                     )}
                   </div>
@@ -1792,6 +1874,72 @@ function ListDetailInner({ listId }: { listId: string }) {
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* The phone row tap's compact editor. Same two-stage guarded save as
+          the full dialog above: gear fields first, then the list-item patch,
+          each failure reported inline with copy that claims only what it can
+          prove. More details switches to the full GearItemDialog with the
+          same target, so nothing is re-looked-up. */}
+      {dialog?.type === 'quick-edit-item' && (
+        <QuickEditItemModal
+          key={dialog.gear.id}
+          gear={dialog.gear}
+          listItem={dialog.listItem}
+          saving={savingGearAttempt === dialog}
+          saveError={dialog.saveError}
+          onClose={() => setDialog(null)}
+          // The drafts travel into the full form by overlaying the snapshots
+          // it initializes from. GearItemDialog computes its save from its
+          // own form values, so a draft-seeded baseline changes what the
+          // form SHOWS, never what a save would write on its own.
+          onMoreDetails={(gearDraft, listDraft) =>
+            setDialog({
+              type: 'edit-gear',
+              gear: { ...dialog.gear, ...gearDraft },
+              listItem:
+                dialog.listItem && listDraft
+                  ? { ...dialog.listItem, ...listDraft }
+                  : dialog.listItem,
+              saveError: null,
+            })
+          }
+          onSave={(gearPatch, listPatch) => {
+            const attempt: DialogState = { ...dialog, saveError: null }
+            const gearTarget = dialog.gear
+            const listTarget = dialog.listItem
+            runGuardedSave<DialogState>({
+              attempt,
+              setState: setDialog,
+              setSaving: setSavingGearAttempt,
+              run: async (settle) => {
+                try {
+                  await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
+                } catch {
+                  settle((prev) => ({
+                    ...prev,
+                    saveError:
+                      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
+                  }))
+                  return
+                }
+                if (listPatch && listTarget) {
+                  try {
+                    await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                  } catch {
+                    settle((prev) => ({
+                      ...prev,
+                      saveError:
+                        "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
+                    }))
+                    return
+                  }
+                }
+                settle(() => null)
+              },
+            })
+          }}
         />
       )}
 

@@ -63,7 +63,7 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 //                          surfacing the category context to add-item flows.
 //                          null ⇒ uncategorized. undefined ⇒ share view.
 //   - onAddItem          ⇒ "+ Add new item" footer button + AddItemRow draft.
-//   - onDelete + onUpdate + onSaveGear* + onEditGearItem + onDeleteGearItem
+//   - onDelete + onUpdate + onSaveGear* + onEditGearItem
 //                        ⇒ forwarded per-row to ItemRow's editing affordances.
 //   - collapsible        ⇒ header gets a chevron + toggle. No membership
 //                          count: pack mode's packed/total is the only
@@ -350,10 +350,16 @@ type GroupPropsBase = {
   // shallow compare every render. null = uncategorized.
   onAddItem?: (categoryId: string | null, data: AddItemData) => void
   // Kebab handlers receive the gear item's id; the parent resolves to a full
-  // GearItem from its gearItems query before opening dialogs.
+  // GearItem from its gearItems query before opening dialogs. Deleting from
+  // inventory is deliberately not among them (ItemRow's RowKebab says why).
   onEditGearItem?: (gearItemId: string) => void
-  onDeleteGearItem?: (gearItemId: string) => void
   onSetGearStatus?: (gearItemId: string, status: GearStatus) => void
+  /** Open with the desktop AddItemRow already showing. Set on a section the
+   *  user just created from the list page (AddCategoryControl): the whole
+   *  point of making a category there is typing an item into it next, and
+   *  the section is empty, so there is nothing else to look at. Initial
+   *  state only - a primitive, so the memo contract above holds. */
+  startAdding?: boolean
 }
 
 /** Nested item-backed location sections stay injected so this public-share
@@ -420,14 +426,15 @@ function CategoryGroup({
   onSaveGearWeight,
   onAddItem,
   onEditGearItem,
-  onDeleteGearItem,
   onSetGearStatus,
+  startAdding = false,
 }: GroupProps) {
   // `adding` drives the desktop inline AddItemRow. Mobile no longer
   // exposes a per-category "Add new item" footer — the single mobile add
   // path is the top-bar "Add" button, which opens the gear picker drawer
-  // over existing inventory. New gear is created from the Gear page.
-  const [adding, setAdding] = useState(false)
+  // over existing inventory (whose New item modal carries a category
+  // select). startAdding seeds the just-created-category flow.
+  const [adding, setAdding] = useState(startAdding)
   const [localCollapsed, setLocalCollapsed] = useState(false)
   // A collapsed section removes its body from the DOM (see `!collapsed` at the
   // rows below), so - exactly like pack's row filters - no print stylesheet
@@ -526,7 +533,6 @@ function CategoryGroup({
       onSaveDescription: onSaveGearDescription ? (d: string) => onSaveGearDescription(gearId, d) : undefined,
       onSaveWeight: onSaveGearWeight ? (w: number) => onSaveGearWeight(gearId, w) : undefined,
       onEditGearItem: onEditGearItem ? () => onEditGearItem(gearId) : undefined,
-      onDeleteGearItem: onDeleteGearItem ? () => onDeleteGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
       rowAction: renderRowAction?.(item, visibleItems, section, unionRowCount),

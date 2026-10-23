@@ -54,6 +54,29 @@ describe('ItemRow', () => {
 
     expect(screen.getByRole('button', { name: 'Edit Backpack, quantity 2, 1200 g' })).toBeInTheDocument()
   })
+
+  it('offers no Delete from inventory in the row menu', async () => {
+    // The list view shows "this item is on this trip"; deleting the gear
+    // item destroys it in EVERY list, and that entry sat one row under the
+    // near-identical, harmless "Remove from list" (UX audits 2026-10).
+    // Deleting gear happens on the Gear page. Status shortcuts stay: they
+    // are harmless and used mid-planning.
+    render(
+      <ItemRow
+        item={item}
+        weightUnit="g"
+        isBelowLg={false}
+        onDelete={vi.fn()}
+        onEditGearItem={vi.fn()}
+        onSetGearStatus={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Item options' }))
+    expect(screen.getByText('Remove from list')).toBeInTheDocument()
+    expect(screen.getByText('Edit')).toBeInTheDocument()
+    expect(screen.getByText('Needs repair')).toBeInTheDocument()
+    expect(screen.queryByText('Delete from inventory')).toBeNull()
+  })
 })
 
 // Pack rows carried no weight at all, which made "adjust a weight while
