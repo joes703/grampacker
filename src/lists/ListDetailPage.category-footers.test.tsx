@@ -159,4 +159,18 @@ describe('category footers show the canonical per-section figures', () => {
     expect(uncategorized).toMatch(/Base\s*30 g/)
     expect(uncategorized).toMatch(/Consumable\s*20 g/)
   })
+
+  it('renders Consumable before Base, so Base sits on the right rail', async () => {
+    // Base is the figure every footer has; keeping it rightmost means it
+    // lines up down the page with the sections that show Base alone.
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
+    await screen.findAllByText('Shelter')
+
+    // First-occurrence order, not a `.*` regex: the footer renders twice
+    // (desktop and mobile copies back to back), so a spanning regex would
+    // match the OLD order across the copy boundary and never fail.
+    const shelter = regionText('cat-a')
+    expect(shelter.indexOf('Consumable')).toBeGreaterThanOrEqual(0)
+    expect(shelter.indexOf('Consumable')).toBeLessThan(shelter.indexOf('Base'))
+  })
 })
