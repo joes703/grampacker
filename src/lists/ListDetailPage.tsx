@@ -1417,10 +1417,13 @@ function ListDetailInner({ listId }: { listId: string }) {
               )}
 
               {/* Items grouped by category. A starter category (created from
-                  this page, still empty) counts as content: its section must
-                  render so the user can type the first item into it. */}
+                  this page, still empty) counts as content in CATEGORY view
+                  only - its section renders there so the user can type the
+                  first item in. Pack never renders starter sections, so
+                  counting them there would blank Pack's empty-state guidance
+                  while showing nothing in its place (Codex review). */}
               {listItems.length === 0 &&
-              starterCategories.length === 0 &&
+              (mode === 'pack' || starterCategories.length === 0) &&
               (mode !== 'pack' || packFoodItems.length === 0) ? (
                 <div className="flex flex-col gap-3">
                   <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
@@ -1887,8 +1890,20 @@ function ListDetailInner({ listId }: { listId: string }) {
           saving={savingGearAttempt === dialog}
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
-          onMoreDetails={() =>
-            setDialog({ type: 'edit-gear', gear: dialog.gear, listItem: dialog.listItem, saveError: null })
+          // The drafts travel into the full form by overlaying the snapshots
+          // it initializes from. GearItemDialog computes its save from its
+          // own form values, so a draft-seeded baseline changes what the
+          // form SHOWS, never what a save would write on its own.
+          onMoreDetails={(gearDraft, listDraft) =>
+            setDialog({
+              type: 'edit-gear',
+              gear: { ...dialog.gear, ...gearDraft },
+              listItem:
+                dialog.listItem && listDraft
+                  ? { ...dialog.listItem, ...listDraft }
+                  : dialog.listItem,
+              saveError: null,
+            })
           }
           onSave={(gearPatch, listPatch) => {
             const attempt: DialogState = { ...dialog, saveError: null }

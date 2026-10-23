@@ -168,10 +168,12 @@ describe('the phone row tap editor', () => {
     expect(screen.queryByLabelText(/Cost/)).toBeNull()
     expect(screen.queryByText('Delete from inventory')).toBeNull()
 
+    // Edits made in the compact editor must survive the switch: the full
+    // form opens seeded with the drafts, not the saved snapshot.
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Tent 2P draft' } })
     fireEvent.click(screen.getByRole('button', { name: 'More details' }))
-    // The full form: inventory fields appear, same gear prefilled.
     expect(await screen.findByLabelText(/Cost/)).toBeInTheDocument()
-    expect(nameField().value).toBe('Tent')
+    expect(nameField().value).toBe('Tent 2P draft')
   })
 
   it('saves gear and list patches from the compact editor', async () => {

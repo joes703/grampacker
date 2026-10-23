@@ -94,10 +94,19 @@ describe('QuickEditItemModal', () => {
     )
   })
 
-  it('opens the full form through More details', async () => {
+  it('hands its current drafts to More details, so the switch loses nothing', async () => {
+    // The switch unmounts this form; edits that silently vanish on the way
+    // to "more" would be worse than no shortcut (Codex review finding).
     const { onMoreDetails } = renderModal()
+    const name = screen.getByLabelText('Name')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Wind shirt XL')
+    await userEvent.click(screen.getByRole('checkbox', { name: /worn/i }))
     await userEvent.click(screen.getByRole('button', { name: 'More details' }))
-    expect(onMoreDetails).toHaveBeenCalled()
+    expect(onMoreDetails).toHaveBeenCalledWith(
+      { name: 'Wind shirt XL', weightGrams: 150 },
+      { quantity: 2, isWorn: true, isConsumable: false },
+    )
   })
 
   it('reports a save failure inline', () => {

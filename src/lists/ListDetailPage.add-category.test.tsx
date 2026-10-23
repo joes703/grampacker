@@ -81,4 +81,19 @@ describe('in-list category creation', () => {
     // The empty-state cell has yielded to the section.
     expect(screen.queryByText('Add gear to this list')).toBeNull()
   })
+
+  it('a starter category does not blank Pack’s empty state', async () => {
+    // Pack never renders starter sections, so counting them as content there
+    // would hide the "Add gear" guidance and show nothing in its place
+    // (Codex review finding).
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id', '/lists/:id/pack'])
+    await screen.findByText('Add gear to this list')
+    fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
+    fireEvent.change(screen.getByLabelText('Category name'), { target: { value: 'Shelter' } })
+    fireEvent.keyDown(screen.getByLabelText('Category name'), { key: 'Enter' })
+    await screen.findByPlaceholderText('Item name')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Pack' }))
+    expect(await screen.findByText('Add gear to this list')).toBeInTheDocument()
+  })
 })

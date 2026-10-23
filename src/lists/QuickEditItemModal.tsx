@@ -26,8 +26,14 @@ type Props = {
   onClose: () => void
   onSave: (gearPatch: QuickEditGearPatch, listPatch: QuickEditListPatch | null) => void
   /** Switches to the full GearItemDialog (inventory fields, category,
-   *  remove/delete paths). */
-  onMoreDetails: () => void
+   *  remove/delete paths). Receives the CURRENT drafts - the switch unmounts
+   *  this form, and edits that silently vanish on the way to "more" would be
+   *  worse than no shortcut. The name travels untrimmed so the full form
+   *  shows exactly what was typed. */
+  onMoreDetails: (
+    gearDraft: { name: string; weightGrams: number },
+    listDraft: QuickEditListPatch | null,
+  ) => void
 }
 
 // The phone editor for a list row. Tapping a row used to open the full
@@ -207,7 +213,18 @@ export default function QuickEditItemModal({
           <div className="flex items-center gap-2 pt-1">
             <button
               type="button"
-              onClick={onMoreDetails}
+              onClick={() =>
+                onMoreDetails(
+                  { name, weightGrams },
+                  listItem
+                    ? {
+                        quantity: Math.min(MAX_LIST_ITEM_QUANTITY, Math.max(1, qtyNum)),
+                        isWorn: worn,
+                        isConsumable: consumable,
+                      }
+                    : null,
+                )
+              }
               disabled={saving}
               className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >
