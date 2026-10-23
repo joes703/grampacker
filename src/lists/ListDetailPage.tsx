@@ -48,6 +48,7 @@ import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
 import EmptyListCell from './EmptyListCell'
+import AddCategoryControl from './AddCategoryControl'
 import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
@@ -266,6 +267,16 @@ function ListDetailInner({ listId }: { listId: string }) {
   // switching gear items naturally discards the error: no separate state to
   // keep in sync.
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  // Categories created from THIS page this session, so their sections can
+  // render while still empty. The list view hides empty categories on
+  // purpose (your 30 gear categories must not all appear in every list), so
+  // without this a category created here would be invisible until its first
+  // item - a dead end. Session-local by design: an abandoned empty category
+  // disappears from the list on reload and stays available on /gear.
+  // Whole Category objects, not ids: the server row arrives before the
+  // ['categories'] refetch lands, and a section that flashes out of
+  // existence during that gap reads as the create failing.
+  const [starterCategories, setStarterCategories] = useState<Category[]>([])
   // The edit-gear save currently awaiting a response, held as the exact DialogState
   // object it was submitted from. Same device as GearLibraryPage's: it is both the
   // dialog's own pending flag (the mutations behind it are shared with inline row
@@ -1405,10 +1416,23 @@ function ListDetailInner({ listId }: { listId: string }) {
                 />
               )}
 
-              {/* Items grouped by category */}
+              {/* Items grouped by category. A starter category (created from
+                  this page, still empty) counts as content: its section must
+                  render so the user can type the first item into it. */}
               {listItems.length === 0 &&
+              starterCategories.length === 0 &&
               (mode !== 'pack' || packFoodItems.length === 0) ? (
-                <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                <div className="flex flex-col gap-3">
+                  <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
+                  {mode !== 'pack' && (
+                    <AddCategoryControl
+                      onCreate={(name) => addCategory.mutateAsync(name)}
+                      onCreated={(category) =>
+                        setStarterCategories((prev) => [...prev, category])
+                      }
+                    />
+                  )}
+                </div>
               ) : (() => {
                 const activeParsed = activeId ? parseDnDId(activeId) : null
                 const activeItem =
@@ -1517,6 +1541,31 @@ function ListDetailInner({ listId }: { listId: string }) {
                             />
                           )
                         })}
+                        {/* Starter sections: categories created from this
+                            page that have no items yet (grouped hides empty
+                            categories), rendered with the add-item row
+                            already open - the whole point of making one is
+                            typing an item into it next. Skipped once the
+                            category has items (grouped covers it then). */}
+                        {mode !== 'pack' &&
+                          starterCategories
+                            .filter((starter) => !grouped.some((group) => group.group?.id === starter.id))
+                            // Prefer the cached row (it follows a rename on
+                            // /gear); the stored object covers the gap before
+                            // the refetch lands.
+                            .map((starter) => categories.find((category) => category.id === starter.id) ?? starter)
+                            .map((category) => (
+                              <CategoryGroup
+                                key={`starter-${category.id}`}
+                                name={category.name}
+                                categoryId={category.id}
+                                items={EMPTY_LIST_ITEMS}
+                                {...sharedGroupProps}
+                                reorderPending={anyItemReorderPending}
+                                onAddItem={onAddNewItem}
+                                startAdding
+                              />
+                            ))}
                         {/* Pack's no-locations fallback groups gear by
                             category; food gets its own section so the
                             checklist still covers the whole pack. Rows check
@@ -1605,6 +1654,18 @@ function ListDetailInner({ listId }: { listId: string }) {
                         wornSection
                         renderRows={undefined}
                         renderRowAction={renderWornPackRowAction}
+                      />
+                    )}
+                    {/* In-list category creation (Category view only; pack
+                        organizes by location, and category ORDER is still
+                        authored on /gear). Every 2026-10 UX audit run went
+                        hunting for this. */}
+                    {mode !== 'pack' && (
+                      <AddCategoryControl
+                        onCreate={(name) => addCategory.mutateAsync(name)}
+                        onCreated={(category) =>
+                          setStarterCategories((prev) => [...prev, category])
+                        }
                       />
                     )}
                   </div>

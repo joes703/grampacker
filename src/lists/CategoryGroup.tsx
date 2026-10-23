@@ -354,6 +354,12 @@ type GroupPropsBase = {
   // inventory is deliberately not among them (ItemRow's RowKebab says why).
   onEditGearItem?: (gearItemId: string) => void
   onSetGearStatus?: (gearItemId: string, status: GearStatus) => void
+  /** Open with the desktop AddItemRow already showing. Set on a section the
+   *  user just created from the list page (AddCategoryControl): the whole
+   *  point of making a category there is typing an item into it next, and
+   *  the section is empty, so there is nothing else to look at. Initial
+   *  state only - a primitive, so the memo contract above holds. */
+  startAdding?: boolean
 }
 
 /** Nested item-backed location sections stay injected so this public-share
@@ -421,12 +427,14 @@ function CategoryGroup({
   onAddItem,
   onEditGearItem,
   onSetGearStatus,
+  startAdding = false,
 }: GroupProps) {
   // `adding` drives the desktop inline AddItemRow. Mobile no longer
   // exposes a per-category "Add new item" footer — the single mobile add
   // path is the top-bar "Add" button, which opens the gear picker drawer
-  // over existing inventory. New gear is created from the Gear page.
-  const [adding, setAdding] = useState(false)
+  // over existing inventory (whose New item modal carries a category
+  // select). startAdding seeds the just-created-category flow.
+  const [adding, setAdding] = useState(startAdding)
   const [localCollapsed, setLocalCollapsed] = useState(false)
   // A collapsed section removes its body from the DOM (see `!collapsed` at the
   // rows below), so - exactly like pack's row filters - no print stylesheet
