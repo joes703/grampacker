@@ -15,6 +15,7 @@ import {
   MOBILE_ROW_HEIGHT,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
+import TotalWeightValue from '../components/TotalWeightValue'
 import { foodGramsAtOneMeal } from '../lib/weight-breakdown'
 import { MEAL_LABELS } from './FoodMealGrid'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
@@ -233,12 +234,19 @@ export default function FoodDaySection({
       </div>
       {/* Footer total under the Weight column, the shared footer recipe.
           Visible on every viewport, unlike a category's: mobile has no other
-          surface carrying a per-day total. */}
+          surface carrying a per-day total. The day total is an AGGREGATE, so
+          it renders through TotalWeightValue (compound lb+oz past 1 lb), not
+          the rows' plain-ounce form. min-w instead of the rows' fixed
+          FOOD_PLAN_COL_WEIGHT: the compound grid is wider than the column,
+          and with the flex-1 spacer before it, min-w keeps the cell's right
+          edge on the Weight rail (footer px-3 = row pr-3) while letting the
+          lb part grow leftward. The compound grid's trailing oz cells match
+          the rows' grid, so the oz digits stay on the rows' digit rail. */}
       <div className={`flex gap-2 ${FLAT_TABLE_FOOTER_ROW}`}>
         <span className="flex-1" aria-hidden="true" />
         <span className={FLAT_TABLE_FOOTER_LABEL}>Total</span>
-        <span className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_FOOTER_VALUE}`}>
-          <ItemWeightValue grams={dayGrams} unit={weightUnit} />
+        <span className={`shrink-0 min-w-20 lg:min-w-24 text-right ${FLAT_TABLE_FOOTER_VALUE}`}>
+          <TotalWeightValue grams={dayGrams} unit={weightUnit} />
         </span>
       </div>
     </section>

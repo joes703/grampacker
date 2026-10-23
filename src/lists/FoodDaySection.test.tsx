@@ -206,6 +206,24 @@ describe('FoodDaySection day total', () => {
     const totalRow = screen.getByText('Total').closest('div')!
     expect(within(totalRow).getByLabelText('1000 g')).toBeInTheDocument()
   })
+
+  it('shows a day over a pound as compound lb + oz, like every other total', () => {
+    // The day total is an aggregate, so in imperial it uses the compound
+    // lb+oz form the category footers and Weight summary use - not the
+    // plain-ounce form of a single row. 500 g is 17.6 oz, past the 16 oz
+    // threshold where the compound form kicks in.
+    const heavy = item({ id: 'heavy', name: 'Dinner bag', weightGrams: 500 })
+    render(
+      <FoodDaySection
+        {...baseProps}
+        weightUnit="oz"
+        slots={DEFAULT_SLOTS}
+        itemsBySlot={new Map([['d1', [heavy]]])}
+      />,
+    )
+    const totalRow = screen.getByText('Total').closest('div')!
+    expect(within(totalRow).getByLabelText('1 lb 1.6 oz')).toBeInTheDocument()
+  })
 })
 
 describe('FoodDaySection has no plan-completeness opinion', () => {
