@@ -212,9 +212,17 @@ describe('the printed sheet identifies itself', () => {
     expect(header.textContent).toContain('Sierra High Route')
   })
 
-  it('names the two checkbox columns, which print as identical blank squares', async () => {
+  it('labels each checkbox column, since blank squares are identical', async () => {
     await renderPack()
-    expect(screen.getByText(/Ready · Packed/)).toBeTruthy()
+    const header = screen.getByTestId('print-list-header')
+    expect(within(header).getByText('Ready')).toBeTruthy()
+    expect(within(header).getByText('Packed')).toBeTruthy()
+  })
+
+  it('dates the sheet in ISO format with the time', async () => {
+    await renderPack()
+    const header = screen.getByTestId('print-list-header')
+    expect(header.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
   })
 
   it('counts gear and food as one union, matching the progress metric', async () => {
@@ -225,6 +233,58 @@ describe('the printed sheet identifies itself', () => {
     await renderPack()
     // 2 gear rows + 1 food row.
     expect(await screen.findByText(/^3 items/)).toBeTruthy()
+  })
+})
+
+describe('printed checkboxes reflect what is already marked', () => {
+  // The print squares mirror the on-screen state: a sheet printed mid-pack
+  // shows what is already in the bag instead of pretending nothing is. A
+  // fresh list still prints blank because nothing is checked yet. The check
+  // glyph is an inline stroke SVG, so it prints without background colors.
+  function squareStates(variant: 'ready' | 'packed'): boolean[] {
+    return screen
+      .getAllByTestId(`print-square-${variant}`)
+      .map((el) => el.querySelector('svg') !== null)
+  }
+
+  it('fills exactly the squares that are checked, for gear and food rows', async () => {
+    h.fetchListItems.mockResolvedValue([
+      makeListItem({ ...unpackedItem, isReady: true }),
+      packedItem,
+    ])
+    h.fetchListFood.mockResolvedValue({
+      ...emptyFood,
+      items: [{ id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: true, isReady: true, packingLocationId: null, packSortOrder: 0, slotIds: [] }],
+    })
+    await renderPack()
+
+    // Rows render gear sections first (ready-only pot, packed-only spork),
+    // then the food fallback section (tortillas, both checked).
+    expect(squareStates('ready')).toEqual([true, false, true])
+    expect(squareStates('packed')).toEqual([false, true, true])
+  })
+
+  it('fills a container header square too', async () => {
+    const bagGear = makeGearItem({ id: 'gear-bag', name: 'Big bag', weightGrams: 900, categoryId: null })
+    const bagItem = makeListItem({
+      ...unpackedItem,
+      id: 'li-bag',
+      gearItemId: 'gear-bag',
+      gearItem: bagGear,
+      isPacked: true,
+      sortOrder: 2,
+    })
+    h.fetchListItems.mockResolvedValue([unpackedItem, bagItem])
+    h.fetchPackingLocations.mockResolvedValue([
+      { id: 'loc-1', name: 'Big bag', sortOrder: 0, containerListItemId: 'li-bag' },
+    ] as PackingLocation[])
+    await renderPack()
+    await screen.findAllByText('Big bag')
+
+    // One header pair (the container, packed but not ready) plus one row pair
+    // (the unassigned pot, neither).
+    expect(squareStates('packed')).toContain(true)
+    expect(squareStates('ready')).not.toContain(true)
   })
 })
 

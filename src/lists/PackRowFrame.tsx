@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Check } from 'lucide-react'
 import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_ROW,
@@ -30,20 +31,34 @@ import PackModeCheckbox from './PackModeCheckbox'
 //   that gesture. Ready gets its own aria-label since it's not wrapped.
 // - The wrapping label means clicking/tapping the name toggles Packed, and
 //   screen readers announce the item name as the checkbox's accessible name.
-// - Print-only empty squares shadow both checkboxes. The native inputs are
-//   suppressed in print because browsers render their checked state, and
-//   the printed sheet should be a blank checklist regardless of what the
-//   user has already marked digitally.
+// - Print-only squares shadow both checkboxes, and they MIRROR the checked
+//   state: a sheet printed mid-pack shows what is already in the bag (a fresh
+//   list still prints blank, because nothing is checked yet). The native
+//   inputs stay suppressed in print because their rendering is browser
+//   chrome; the check here is an inline stroke SVG in currentColor, so it
+//   prints reliably without depending on background-color printing.
 // - Anything interactive that must NOT toggle Packed (the weight cell, the
 //   row action menu) belongs in `children`, which render as SIBLINGS of the
 //   label, never inside it.
 
-function PrintCheckboxSquare() {
+// Shared with the container-header squares in CategoryGroup, so the state
+// mirroring cannot drift between rows and headers. size 11 fits the square's
+// 12px interior (14px minus its borders); an unsized lucide icon is 24px.
+export function PrintCheckboxSquare({
+  variant,
+  checked,
+}: {
+  variant: 'ready' | 'packed'
+  checked: boolean
+}) {
   return (
     <span
       aria-hidden="true"
-      className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-    />
+      data-testid={`print-square-${variant}`}
+      className="hidden print:inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border border-gray-900 text-gray-900"
+    >
+      {checked && <Check size={11} strokeWidth={3} />}
+    </span>
   )
 }
 
@@ -108,14 +123,14 @@ export default function PackRowFrame({
         title="Ready"
         standaloneLabel
       />
-      <PrintCheckboxSquare />
+      <PrintCheckboxSquare variant="ready" checked={isReady} />
       <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
         <PackModeCheckbox
           variant="packed"
           checked={isPacked}
           onChange={(checked) => onUpdate?.({ isPacked: checked })}
         />
-        <PrintCheckboxSquare />
+        <PrintCheckboxSquare variant="packed" checked={isPacked} />
         {statusBadge}
         {/* Name + description at lg+ in the same 2:3 proportion as edit
             mode. <lg keeps the single-column name-only layout. */}

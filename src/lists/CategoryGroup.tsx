@@ -35,6 +35,7 @@ import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
 import PackModeCheckbox from './PackModeCheckbox'
+import { PrintCheckboxSquare } from './PackRowFrame'
 import { ConsumableIcon, WornIcon } from './list-item-flags'
 
 // Single source of truth for a category section. Used by both the
@@ -600,20 +601,14 @@ function CategoryGroup({
                   title="Ready"
                   standaloneLabel
                 />
-                <span
-                  aria-hidden="true"
-                  className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-                />
+                <PrintCheckboxSquare variant="ready" checked={containerItem.isReady} />
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5">
                   <PackModeCheckbox
                     variant="packed"
                     checked={containerItem.isPacked}
                     onChange={(checked) => onUpdate?.(containerItem.id, { isPacked: checked })}
                   />
-                  <span
-                    aria-hidden="true"
-                    className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-                  />
+                  <PrintCheckboxSquare variant="packed" checked={containerItem.isPacked} />
                   <span className={`truncate ${PRINT_UNTRUNCATE} ${
                     containerItem.isPacked
                       ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`

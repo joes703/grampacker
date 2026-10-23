@@ -7,6 +7,29 @@ type Props = {
   itemCount: number
 }
 
+// Local time, formatted as `YYYY-MM-DD HH:MM`. The sheet is read where it was
+// printed, so wall-clock time; ISO date order so the sheet dates itself the
+// same way whatever the browser locale is.
+function formatPrintTimestamp(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    ` ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  )
+}
+
+// A small vertical label sitting over one printed checkbox column. w-3.5
+// matches the squares' width and rotate-180 over vertical-rl makes the text
+// read bottom-up, so a word longer than 14px costs height instead of
+// colliding with its neighbor.
+function ColumnLabel({ children }: { children: string }) {
+  return (
+    <span className="inline-block w-3.5 text-[8px] leading-none text-gray-600 [writing-mode:vertical-rl] rotate-180">
+      {children}
+    </span>
+  )
+}
+
 // The printed document's header, and the only thing on paper that is not also
 // on screen. `hidden print:block`.
 //
@@ -15,10 +38,12 @@ type Props = {
 // rows per page. The list name is set at body weight rather than as a display
 // heading for the same reason.
 //
-// The legend is not decoration. Both checkbox columns print as identical empty
-// squares - they are only distinguishable on screen, and only once ticked
-// (amber for ready, blue for packed). On paper, position is the sole cue, so
-// the columns get named once at the top.
+// The column labels are not decoration. The two checkbox squares in every row
+// are only distinguishable by position when both are blank, so the columns
+// get named once at the top, directly over the squares. The pl-[5px] + gap-1
+// mirror a top-level row's geometry (1px section border + print:px-1 inset,
+// print:gap-1 between the squares); rows nested inside a bag indent and the
+// labels knowingly stop lining up there.
 export default function PrintListHeader({ name, itemCount }: Props) {
   return (
     <div
@@ -34,12 +59,13 @@ export default function PrintListHeader({ name, itemCount }: Props) {
         <p className={`shrink-0 ${FLAT_TABLE_EYEBROW} print:text-[9px]`}>
           {itemCount} {itemCount === 1 ? 'item' : 'items'}
           {' · '}
-          {new Date().toLocaleDateString()}
+          {formatPrintTimestamp(new Date())}
         </p>
       </div>
-      <p className="mt-0.5 text-[9px] text-gray-600">
-        Checkbox columns, left to right: Ready · Packed
-      </p>
+      <div className="mt-1 flex items-end gap-1 pl-[5px]">
+        <ColumnLabel>Ready</ColumnLabel>
+        <ColumnLabel>Packed</ColumnLabel>
+      </div>
     </div>
   )
 }
