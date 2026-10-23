@@ -151,6 +151,56 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe('the phone row tap editor', () => {
+  // Tapping a row on a phone used to open the full inventory form - cost,
+  // purchase date, status, a delete button - to change one weight (UX audit
+  // 2026-10). Below lg the tap opens the compact editor; the full form stays
+  // one tap further, behind More details.
+  it('opens the compact editor, not the inventory form, and More details reaches the full form', async () => {
+    stubViewport(390)
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
+    const tap = await screen.findByRole('button', { name: /^Edit Tent/ })
+    fireEvent.click(tap)
+
+    expect(await screen.findByRole('heading', { name: 'Edit item' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Weight')).toBeInTheDocument()
+    expect(screen.getByLabelText('Quantity')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Cost/)).toBeNull()
+    expect(screen.queryByText('Delete from inventory')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'More details' }))
+    // The full form: inventory fields appear, same gear prefilled.
+    expect(await screen.findByLabelText(/Cost/)).toBeInTheDocument()
+    expect(nameField().value).toBe('Tent')
+  })
+
+  it('saves gear and list patches from the compact editor', async () => {
+    stubViewport(390)
+    h.updateGearItem.mockResolvedValue(undefined)
+    h.updateListItem.mockResolvedValue(undefined)
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
+    fireEvent.click(await screen.findByRole('button', { name: /^Edit Tent/ }))
+    await screen.findByRole('heading', { name: 'Edit item' })
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Tent 2P' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /worn/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(h.updateGearItem).toHaveBeenCalledWith('g1', expect.objectContaining({ name: 'Tent 2P' })),
+    )
+    await waitFor(() =>
+      expect(h.updateListItem).toHaveBeenCalledWith(
+        listId,
+        'li-1',
+        expect.objectContaining({ isWorn: true, isConsumable: false, quantity: 1 }),
+      ),
+    )
+    // Clean save closes the editor.
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Edit item' })).toBeNull())
+  })
+})
+
 describe('the edit-gear dialog save', () => {
   it('reports an unconfirmed gear write inline, keeps the draft, and does not go on to the list write', async () => {
     const d = deferred()

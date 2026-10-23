@@ -63,6 +63,7 @@ import ItemRow from './ItemRow'
 import RowIconButton from '../components/RowIconButton'
 import StatusPanel from '../components/StatusPanel'
 import GearItemDialog from '../components/gear/GearItemDialog'
+import QuickEditItemModal from './QuickEditItemModal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
@@ -109,6 +110,11 @@ const EMPTY_CATEGORIES: Category[] = []
 // one variant so they can never drift apart.
 type DialogState =
   | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
+  // The phone editor: name, weight, quantity, flags. Same shape as
+  // edit-gear so More details can switch between them without losing the
+  // target. Opened by the mobile row tap (sharedGroupProps picks it below
+  // lg); the full form stays the desktop Edit and the Gear page's editor.
+  | { type: 'quick-edit-item'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
   // `returnDialog` lets the confirm dialog restore the prior dialog on
   // cancel — set when the delete is launched from inside GearItemDialog
   // so the user lands back in the form they were editing rather than
@@ -818,6 +824,16 @@ function ListDetailInner({ listId }: { listId: string }) {
     // refs, the compiler rule wants the setter.
   }, [gearItemsRef, listItemsRef, setDialog])
 
+  // The phone row tap's editor: the compact form instead of the full
+  // inventory dialog (UX audit 2026-10 - tapping a row to change one weight
+  // opened cost, purchase date, status and a delete button). Same stability
+  // story as openGearEditor above.
+  const openQuickEditor = useCallback((gearId: string) => {
+    const g = gearItemsRef.current.find((x) => x.id === gearId)
+    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    if (g) setDialog({ type: 'quick-edit-item', gear: g, listItem: li ?? null, saveError: null })
+  }, [gearItemsRef, listItemsRef, setDialog])
+
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
   //
@@ -872,7 +888,10 @@ function ListDetailInner({ listId }: { listId: string }) {
         updateGearItem.mutate({ id: gearId, patch: { description: d || null } }),
       onSaveGearWeight: (gearId: string, w: number) =>
         updateGearItem.mutate({ id: gearId, patch: { weightGrams: w } }),
-      onEditGearItem: openGearEditor,
+      // Below lg this handler is the mobile row TAP (no kebab renders
+      // there), so it opens the compact editor; at lg+ it is the kebab's
+      // Edit, which keeps the full form.
+      onEditGearItem: isBelowLg ? openQuickEditor : openGearEditor,
       // No onDeleteGearItem: the row menu deliberately offers no inventory
       // delete (ItemRow's RowKebab says why). GearItemDialog's own delete
       // path below still works from Edit.
@@ -1791,6 +1810,60 @@ function ListDetailInner({ listId }: { listId: string }) {
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* The phone row tap's compact editor. Same two-stage guarded save as
+          the full dialog above: gear fields first, then the list-item patch,
+          each failure reported inline with copy that claims only what it can
+          prove. More details switches to the full GearItemDialog with the
+          same target, so nothing is re-looked-up. */}
+      {dialog?.type === 'quick-edit-item' && (
+        <QuickEditItemModal
+          key={dialog.gear.id}
+          gear={dialog.gear}
+          listItem={dialog.listItem}
+          saving={savingGearAttempt === dialog}
+          saveError={dialog.saveError}
+          onClose={() => setDialog(null)}
+          onMoreDetails={() =>
+            setDialog({ type: 'edit-gear', gear: dialog.gear, listItem: dialog.listItem, saveError: null })
+          }
+          onSave={(gearPatch, listPatch) => {
+            const attempt: DialogState = { ...dialog, saveError: null }
+            const gearTarget = dialog.gear
+            const listTarget = dialog.listItem
+            runGuardedSave<DialogState>({
+              attempt,
+              setState: setDialog,
+              setSaving: setSavingGearAttempt,
+              run: async (settle) => {
+                try {
+                  await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
+                } catch {
+                  settle((prev) => ({
+                    ...prev,
+                    saveError:
+                      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
+                  }))
+                  return
+                }
+                if (listPatch && listTarget) {
+                  try {
+                    await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+                  } catch {
+                    settle((prev) => ({
+                      ...prev,
+                      saveError:
+                        "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
+                    }))
+                    return
+                  }
+                }
+                settle(() => null)
+              },
+            })
+          }}
         />
       )}
 
