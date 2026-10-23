@@ -261,6 +261,36 @@ describe('useCurrentListActions - createListMut', () => {
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
   })
 
+  it('drops a repeat submit while a create is in flight, then accepts the next one', async () => {
+    // One Enter made two lists in production: the pending re-render disables
+    // the inline input, Chrome fires a late blur on the newly disabled
+    // element, and the row variant submits on blur. useCommitOnce only
+    // collapses same-batch duplicates, so the blur arrived with the guard
+    // re-armed. The in-flight check must live here, in the one submit path.
+    let finish: (row: List) => void = () => {}
+    q.createList.mockReturnValue(new Promise<List>((resolve) => { finish = resolve }))
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+
+    act(() => { result.current.submitCreateList('New') })
+    await waitFor(() => expect(q.createList).toHaveBeenCalledTimes(1))
+    // The late blur: a second submit while the first is still pending. Its
+    // mutationFn would only run after an async onMutate, so the proof is the
+    // exact call sequence at the end, not a count taken here.
+    act(() => { result.current.submitCreateList('New') })
+
+    await act(async () => { finish({ ...LIST, id: 'new-id', name: 'New' }) })
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
+
+    // The guard must re-open once the create settles: the NEXT deliberate
+    // create still goes through.
+    act(() => { result.current.submitCreateList('Another') })
+    await waitFor(() =>
+      expect(q.createList.mock.calls.map((call) => call[0])).toContain('Another'),
+    )
+    // Exactly one 'New': the in-flight repeat never reached the server.
+    expect(q.createList.mock.calls.map((call) => call[0])).toEqual(['New', 'Another'])
+  })
+
   it('does not navigate when createList rejects, and the toast does not claim nothing was created', async () => {
     q.createList.mockRejectedValueOnce(new Error('nope'))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })
