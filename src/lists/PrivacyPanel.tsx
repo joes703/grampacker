@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, RotateCcw } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { List } from '../lib/types'
 import ToggleSwitch from '../components/ToggleSwitch'
@@ -13,7 +13,7 @@ type Props = { list: List }
 
 // Inner UI for the share/privacy controls - public/private toggle, a copyable
 // share URL when public, and a control to reset that URL. Consumed by
-// ListSettingsPanel's Sharing section on the list detail page, and by the
+// ListSettingsPanel's Shared section on the list detail page, and by the
 // per-row Share dialog on the Lists page (modal-wrapped to avoid nesting
 // popovers inside a kebab). Section heading and supporting copy live in the
 // parent so this body stays minimal.
@@ -99,7 +99,9 @@ export default function PrivacyPanel({ list }: Props) {
   return (
     <>
       <div ref={anchorRef} className="flex items-center justify-between">
-        <span className={PANEL_TOGGLE_LABEL}>Sharing</span>
+        {/* "Shared", a state adjective like its sibling "Draft": the switch
+            shows whether the list IS shared, not a place sharing happens. */}
+        <span className={PANEL_TOGGLE_LABEL}>Shared</span>
         <ToggleSwitch
           checked={list.isShared}
           onChange={() => shareToggle.toggle(list)}
@@ -109,13 +111,15 @@ export default function PrivacyPanel({ list }: Props) {
       </div>
       {list.isShared && (
         <>
-          <div className="mt-2 flex gap-1">
-            <input
-              readOnly
-              value={shareUrl}
-              onFocus={(e) => e.currentTarget.select()}
-              className="flex-1 min-w-0 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          {/* The URL gets the full row to itself; its two actions sit
+              together below it in one small bordered family, Copy first. */}
+          <input
+            readOnly
+            value={shareUrl}
+            onFocus={(e) => e.currentTarget.select()}
+            className="mt-2 w-full min-w-0 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="mt-2 flex items-center gap-1">
             <button
               type="button"
               onClick={async () => {
@@ -135,8 +139,21 @@ export default function PrivacyPanel({ list }: Props) {
                 <><Copy size={12} /> Copy</>
               )}
             </button>
+            {!confirmingReset && (
+              // Not reopenable while a reset is in flight: its settlement
+              // closes the confirm, and would close a reopened one out from
+              // under the user.
+              <button
+                type="button"
+                onClick={() => setConfirmingReset(true)}
+                disabled={resetMut.isPending}
+                className="inline-flex items-center gap-1 rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                <RotateCcw size={12} /> Reset link
+              </button>
+            )}
           </div>
-          {confirmingReset ? (
+          {confirmingReset && (
             <div className="mt-2 flex items-center justify-between gap-2">
               {/* Names the outcome, not just the loss: "Reset" alone could
                   read as turning sharing off or restoring an old link. */}
@@ -161,19 +178,6 @@ export default function PrivacyPanel({ list }: Props) {
                 </button>
               </div>
             </div>
-          ) : (
-            // Not reopenable while a reset is in flight: its settlement closes
-            // the confirm, and would close a reopened one out from under the user.
-            // Same small bordered recipe as the Copy button above, so the two
-            // link actions read as one family rather than an afterthought.
-            <button
-              type="button"
-              onClick={() => setConfirmingReset(true)}
-              disabled={resetMut.isPending}
-              className="mt-2 inline-flex items-center rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            >
-              Reset link
-            </button>
           )}
         </>
       )}

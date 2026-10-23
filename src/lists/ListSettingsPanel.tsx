@@ -31,8 +31,8 @@ type Props = {
 // Toggles:
 //   - Draft: label-only lifecycle state, shared with CurrentListHeader's
 //     pill via draftToggle.
-//   - Sharing: PrivacyPanel's inline body (toggle + url + Copy when
-//     public).
+//   - Shared: PrivacyPanel's inline body (toggle + url + Copy/Reset link
+//     when public).
 //
 // "Add ready checks" used to live here as a third toggle. It moved to
 // PackingProgress and was then retired entirely: ready checks are
