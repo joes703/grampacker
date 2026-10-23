@@ -18,9 +18,10 @@ type Props = {
 
 // The summary table intentionally presents gram aggregates as whole numbers.
 // Keep this display-only: the breakdown and ounce conversion retain the full
-// stored precision.
-function fmtG(grams: number): string {
-  return `${Math.round(grams)} g`
+// stored precision. Rendering goes through TotalWeightValue so the gram cells
+// share the ounce cells' number/unit geometry instead of a string copy.
+function GramCell({ grams }: { grams: number }) {
+  return <TotalWeightValue grams={Math.round(grams)} unit="g" />
 }
 
 export default function WeightTable({ items, breakdown }: Props) {
@@ -42,7 +43,7 @@ export default function WeightTable({ items, breakdown }: Props) {
           {catRows.map((row) => (
             <tr key={row.id}>
               <td className={labelCell}>{row.name}</td>
-              <td className={valueCell}>{fmtG(row.grams)}</td>
+              <td className={valueCell}><GramCell grams={row.grams} /></td>
               <td className={valueCell}><TotalWeightValue grams={row.grams} unit="oz" /></td>
             </tr>
           ))}
@@ -50,26 +51,26 @@ export default function WeightTable({ items, breakdown }: Props) {
         <tfoot className={`divide-y ${TABLE_DIVIDER_LINE} border-t-2 ${TABLE_STRONG_DIVIDER}`}>
           <tr className="font-semibold">
             <td className={labelCell}>Base weight</td>
-            <td className={valueCell}>{fmtG(baseGrams)}</td>
+            <td className={valueCell}><GramCell grams={baseGrams} /></td>
             <td className={valueCell}><TotalWeightValue grams={baseGrams} unit="oz" /></td>
           </tr>
           {consumableGrams > 0 && (
             <tr>
               <td className={labelCell}>Consumables</td>
-              <td className={valueCell}>{fmtG(consumableGrams)}</td>
+              <td className={valueCell}><GramCell grams={consumableGrams} /></td>
               <td className={valueCell}><TotalWeightValue grams={consumableGrams} unit="oz" /></td>
             </tr>
           )}
           {wornGrams > 0 && (
             <tr className="text-gray-500">
               <td className={labelCell}>Worn (not added)</td>
-              <td className={valueCell}>{fmtG(wornGrams)}</td>
+              <td className={valueCell}><GramCell grams={wornGrams} /></td>
               <td className={valueCell}><TotalWeightValue grams={wornGrams} unit="oz" /></td>
             </tr>
           )}
           <tr className={`font-semibold border-t-2 ${TABLE_STRONG_DIVIDER}`}>
             <td className={labelCell}>Total pack weight</td>
-            <td className={valueCell}>{fmtG(totalPackGrams)}</td>
+            <td className={valueCell}><GramCell grams={totalPackGrams} /></td>
             <td className={valueCell}><TotalWeightValue grams={totalPackGrams} unit="oz" /></td>
           </tr>
         </tfoot>

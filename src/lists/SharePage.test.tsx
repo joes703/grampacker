@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SHARE_WEIGHT_UNIT_KEY, WEIGHT_UNIT_KEY } from '../lib/weight'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -210,14 +210,19 @@ describe('SharePage read-only public sharing', () => {
     renderShareView()
 
     await screen.findByText('Oatmeal')
-    const summary = screen.getByText('Weight summary').closest('div')?.parentElement
+    const summary = screen.getByText('Weight summary').closest('div')
+      ?.parentElement as HTMLElement
     // Tent 1200 g base + oatmeal 3 x 90 = 270 g consumable, total 1470 g.
     // Asserted through the rendered figures rather than a computed constant,
     // so a breakdown that dropped food - or that counted it as base weight -
-    // fails here.
-    expect(summary?.textContent).toContain('Consumables270 g')
-    expect(summary?.textContent).toContain('Total pack weight1470 g')
-    expect(summary?.textContent).toContain('Base weight1200 g')
+    // fails here. The value components carry the formatted string as an
+    // aria-label (the visible number and unit are separate grid cells), so
+    // each figure is read from its labeled row.
+    const summaryRow = (label: string) =>
+      within(summary).getByText(label).closest('tr') as HTMLElement
+    expect(within(summaryRow('Consumables')).getByLabelText('270 g')).toBeTruthy()
+    expect(within(summaryRow('Total pack weight')).getByLabelText('1470 g')).toBeTruthy()
+    expect(within(summaryRow('Base weight')).getByLabelText('1200 g')).toBeTruthy()
   })
 
   // A trip can be food-only - a resupply box, or a list started from the
@@ -338,20 +343,20 @@ describe('SharePage category subtotals', () => {
     // Shelter holds 1200 base + 230 consumable + 550 worn. Its footer reports
     // the first two buckets separately; 1980 g (the row sum) must appear nowhere.
     expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('1200 g').length).toBeGreaterThan(0)
-    expect(screen.queryByText('1980 g')).toBeNull()
+    expect(screen.getAllByLabelText('1200 g').length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('1980 g')).toBeNull()
     // Orphan: 2 x 40 g, routed to Uncategorized by both paths.
-    expect(screen.getAllByText('80 g').length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText('80 g').length).toBeGreaterThan(0)
     // Scope the assertion to a section footer. The Weight summary above also
     // contains these labels and values, so page-wide queries would stay green
-    // if SharePage forgot to wire the new footer props.
-    const footers = [...document.querySelectorAll('.print\\:flex')]
-      .map((footer) => footer.textContent ?? '')
-    expect(footers.some((text) =>
-      text.includes('Base')
-      && text.includes('1200 g')
-      && text.includes('Consumable')
-      && text.includes('230 g')
+    // if SharePage forgot to wire the new footer props. Figures are read by
+    // aria-label: the visible number and unit are separate grid cells.
+    const footers = [...document.querySelectorAll<HTMLElement>('.print\\:flex')]
+    expect(footers.some((footer) =>
+      (footer.textContent ?? '').includes('Base')
+      && within(footer).queryAllByLabelText('1200 g').length > 0
+      && (footer.textContent ?? '').includes('Consumable')
+      && within(footer).queryAllByLabelText('230 g').length > 0
     )).toBe(true)
   })
 
@@ -367,12 +372,13 @@ describe('SharePage category subtotals', () => {
     renderShareView()
 
     const wornItem = await screen.findByText('Jacket')
-    expect(screen.getAllByText('550 g').length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText('550 g').length).toBeGreaterThan(0)
     // 80 g still appears (it is Uncategorized's own legitimate subtotal), so
-    // assert the Worn section specifically does not contain it.
-    const wornSection = wornItem.closest('.overflow-hidden')
-    expect(wornSection?.textContent).toContain('550 g')
-    expect(wornSection?.textContent).not.toContain('80 g')
+    // assert the Worn section specifically does not contain it. By label:
+    // the visible number and unit are separate grid cells.
+    const wornSection = wornItem.closest('.overflow-hidden') as HTMLElement
+    expect(within(wornSection).getAllByLabelText('550 g').length).toBeGreaterThan(0)
+    expect(within(wornSection).queryByLabelText('80 g')).toBeNull()
   })
 })
 
@@ -398,16 +404,17 @@ describe('SharePage unit control isolation', () => {
     expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
     // Scope to the category section footer. The summary WeightTable renders a
     // grams AND an ounces column unconditionally, so document-wide assertions
-    // on '1200 g' prove nothing about the preference.
-    const footer = () => document.querySelector('.print\\:flex')?.textContent ?? ''
-    expect(footer()).toMatch(/1200 g/)
+    // on '1200 g' prove nothing about the preference. Figures are read by
+    // aria-label: the visible number and unit are separate grid cells.
+    const footer = () => document.querySelector<HTMLElement>('.print\\:flex') as HTMLElement
+    expect(within(footer()).getAllByLabelText('1200 g').length).toBeGreaterThan(0)
 
     // A visitor switches to imperial.
     fireEvent.click(screen.getByTitle('Imperial'))
 
     // The section follows...
-    expect(footer()).not.toMatch(/1200 g/)
-    expect(footer()).toMatch(/oz/)
+    expect(within(footer()).queryByLabelText('1200 g')).toBeNull()
+    expect(footer().textContent).toMatch(/oz/)
     // ...the share-scoped key records it...
     expect(localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)).toBe('oz')
     // ...and the signed-in app's preference is untouched. This is the assertion
@@ -427,8 +434,8 @@ describe('SharePage unit control isolation', () => {
 
     // Owner opening their own link sees their usual units, not a reset to g.
     expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
-    const footer = document.querySelector('.print\\:flex')?.textContent ?? ''
-    expect(footer).not.toMatch(/1200 g/)
-    expect(footer).toMatch(/oz/)
+    const footer = document.querySelector<HTMLElement>('.print\\:flex') as HTMLElement
+    expect(within(footer).queryByLabelText('1200 g')).toBeNull()
+    expect(footer.textContent).toMatch(/oz/)
   })
 })

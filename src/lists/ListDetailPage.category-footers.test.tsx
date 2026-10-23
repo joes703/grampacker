@@ -2,7 +2,7 @@
 import { makeGearItem, makeListItem } from '../test/fixtures'
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, screen } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Category, GearItem, ListItemWithGear, PackingLocation } from '../lib/types'
 import {
@@ -132,10 +132,18 @@ afterEach(() => {
 
 // The footer renders twice (a desktop and a mobile copy; jsdom applies no
 // responsive CSS), so read the whole region's text once and match on it.
-function regionText(sectionKey: string): string {
+// The weight components render number and unit as separate grid cells, so
+// region text carries NO space between them ("Base 210g"): match with \s*
+// and assert exact figures through their aria-labels, which carry the full
+// "210 g" string.
+function regionEl(sectionKey: string): HTMLElement {
   const region = document.getElementById(`cat-region-${sectionKey}`)
   if (!region) throw new Error(`no rendered region for ${sectionKey}`)
-  return region.textContent ?? ''
+  return region
+}
+
+function regionText(sectionKey: string): string {
+  return regionEl(sectionKey).textContent ?? ''
 }
 
 describe('category footers show the canonical per-section figures', () => {
@@ -145,19 +153,34 @@ describe('category footers show the canonical per-section figures', () => {
     await screen.findAllByText('Shelter')
 
     const shelter = regionText('cat-a')
-    expect(shelter).toMatch(/Base\s*210 g/)
-    expect(shelter).toMatch(/Consumable\s*50 g/)
+    expect(shelter).toMatch(/Base\s*210\s*g/)
+    expect(shelter).toMatch(/Consumable\s*50\s*g/)
     for (const wrong of ['660 g', '610 g', '260 g']) {
-      expect(shelter).not.toContain(wrong)
+      expect(within(regionEl('cat-a')).queryByLabelText(wrong)).toBeNull()
     }
 
     const cook = regionText('cat-b')
-    expect(cook).toMatch(/Base\s*100 g/)
+    expect(cook).toMatch(/Base\s*100\s*g/)
     expect(cook).not.toMatch(/Consumable/)
 
     const uncategorized = regionText('uncategorized')
-    expect(uncategorized).toMatch(/Base\s*30 g/)
-    expect(uncategorized).toMatch(/Consumable\s*20 g/)
+    expect(uncategorized).toMatch(/Base\s*30\s*g/)
+    expect(uncategorized).toMatch(/Consumable\s*20\s*g/)
+  })
+
+  it('renders footer weights through the shared two-cell layout', async () => {
+    // The shared layout (ItemWeightValue's grid) carries the full "210 g"
+    // string as an aria-label on the wrapper; a bare formatted string has
+    // none. Scoped to the footer element: the Tent ROW above legitimately
+    // carries the same 210 g label through the same component.
+    await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
+    await screen.findAllByText('Shelter')
+
+    const region = document.getElementById('cat-region-cat-a')!
+    const footer = region.querySelector<HTMLElement>('.print\\:flex')
+    expect(footer).not.toBeNull()
+    expect(within(footer!).getAllByLabelText('210 g').length).toBeGreaterThan(0)
+    expect(within(footer!).getAllByLabelText('50 g').length).toBeGreaterThan(0)
   })
 
   it('renders Consumable before Base, so Base sits on the right rail', async () => {

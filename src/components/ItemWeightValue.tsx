@@ -5,6 +5,13 @@ type Props = {
   unit: WeightUnit
 }
 
+// The PER-ROW weight display: item rows, picker rows, and meal subtotals.
+// In imperial it stays plain ounces; aggregates (footers, summary stats) use
+// TotalWeightValue, which switches to compound lb+oz past 1 lb. The two share
+// this geometry - number right-aligned in a fixed-width cell, a 4px grid gap,
+// unit in its own cell - which is what keeps digits on one rail down a column
+// and the number-to-unit gap identical on every surface. Render weights
+// through one of these two components, not with a formatted string.
 export default function ItemWeightValue({ grams, unit }: Props) {
   const label = formatItemWeight(grams, unit)
 

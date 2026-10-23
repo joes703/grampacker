@@ -78,10 +78,10 @@ describe('WeightTable', () => {
     render(<WeightTable items={[listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })]} categories={[shelter]} breakdown={breakdownFor([listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })], [shelter])} />)
 
     // Category row carries its name and gram weight.
-    expect(within(rowFor('Shelter')).getByText('250 g')).toBeInTheDocument()
+    expect(within(rowFor('Shelter')).getByLabelText('250 g')).toBeInTheDocument()
     // Footer totals are always present.
-    expect(within(rowFor('Base weight')).getByText('250 g')).toBeInTheDocument()
-    expect(within(rowFor('Total pack weight')).getByText('250 g')).toBeInTheDocument()
+    expect(within(rowFor('Base weight')).getByLabelText('250 g')).toBeInTheDocument()
+    expect(within(rowFor('Total pack weight')).getByLabelText('250 g')).toBeInTheDocument()
     // No consumables / worn items -> those optional rows collapse out.
     expect(screen.queryByText('Consumables')).not.toBeInTheDocument()
     expect(screen.queryByText(/Worn/)).not.toBeInTheDocument()
@@ -106,10 +106,10 @@ describe('WeightTable', () => {
       />,
     )
 
-    expect(within(rowFor('Shelter')).getByText('300 g')).toBeInTheDocument()
-    expect(within(rowFor('Base weight')).getByText('300 g')).toBeInTheDocument()
-    expect(within(rowFor('Total pack weight')).getByText('300 g')).toBeInTheDocument()
-    expect(screen.queryByText('300.3 g')).not.toBeInTheDocument()
+    expect(within(rowFor('Shelter')).getByLabelText('300 g')).toBeInTheDocument()
+    expect(within(rowFor('Base weight')).getByLabelText('300 g')).toBeInTheDocument()
+    expect(within(rowFor('Total pack weight')).getByLabelText('300 g')).toBeInTheDocument()
+    expect(screen.queryByLabelText('300.3 g')).not.toBeInTheDocument()
   })
 
   it('shows the Consumables and Worn rows only when those weights are present', () => {
@@ -129,11 +129,11 @@ describe('WeightTable', () => {
       />,
     )
 
-    expect(within(rowFor('Consumables')).getByText('50 g')).toBeInTheDocument()
-    expect(within(rowFor('Worn (not added)')).getByText('30 g')).toBeInTheDocument()
+    expect(within(rowFor('Consumables')).getByLabelText('50 g')).toBeInTheDocument()
+    expect(within(rowFor('Worn (not added)')).getByLabelText('30 g')).toBeInTheDocument()
     // Worn weight is excluded from pack weight; base + consumables = 150.
-    expect(within(rowFor('Base weight')).getByText('100 g')).toBeInTheDocument()
-    expect(within(rowFor('Total pack weight')).getByText('150 g')).toBeInTheDocument()
+    expect(within(rowFor('Base weight')).getByLabelText('100 g')).toBeInTheDocument()
+    expect(within(rowFor('Total pack weight')).getByLabelText('150 g')).toBeInTheDocument()
   })
 
   it('renders nothing for an empty list with no projected weight', () => {
@@ -156,10 +156,10 @@ describe('WeightTable', () => {
       />,
     )
 
-    expect(within(rowFor('Consumables')).getByText('500 g')).toBeInTheDocument()
-    expect(within(rowFor('Total pack weight')).getByText('700 g')).toBeInTheDocument()
+    expect(within(rowFor('Consumables')).getByLabelText('500 g')).toBeInTheDocument()
+    expect(within(rowFor('Total pack weight')).getByLabelText('700 g')).toBeInTheDocument()
     // Food is not gear: it has no category and must never inflate one, or the
     // per-section subtotals stop summing to the whole.
-    expect(within(rowFor('Shelter')).getByText('200 g')).toBeInTheDocument()
+    expect(within(rowFor('Shelter')).getByLabelText('200 g')).toBeInTheDocument()
   })
 })
