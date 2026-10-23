@@ -15,13 +15,21 @@ import { FLAT_TABLE_BODY_TEXT_MUTED } from './flat-table-styles'
 // nothing in this module may import @dnd-kit (the emitted share bundle is
 // the check - see docs/testing-and-ci.md section 2 notes on the share seam).
 
-// Desktop name + description as proportional columns - name : description =
-// 2 : 3. The status badge is the first thing inside the name cell;
-// null-for-active means active rows reserve no extra whitespace, while
-// non-active rows pick up a subtle leading icon. Each text cell is an
-// InlineText when its save handler is present, and a static span with the
-// same typography otherwise (the read-only share view, or a surface that
-// gates editing).
+// Desktop name + description. In a gear list the NAME is the content (UX
+// audits 2026-10: names truncated at a fixed 2:5 of the row while empty
+// description space sat idle), so the name cell takes its natural width
+// first - capped at 70% so a pathological name cannot evict the description
+// entirely - and the description gets the remainder and truncates first.
+// The status badge is the first thing inside the name cell; null-for-active
+// means active rows reserve no extra whitespace, while non-active rows pick
+// up a subtle leading icon. Each text cell is an InlineText when its save
+// handler is present, and a static span with the same typography otherwise
+// (the read-only share view, or a surface that gates editing).
+//
+// An EMPTY description's "Add description" affordance is visual noise on
+// every row of a long list, so it fades in only while the row is hovered -
+// opacity, not display, so it stays keyboard-focusable and reveals itself
+// on focus. A description with content always shows.
 export function NameDescriptionCell({
   status,
   name,
@@ -39,7 +47,7 @@ export function NameDescriptionCell({
 }) {
   return (
     <div className="flex-1 min-w-0 flex items-center gap-3">
-      <div className="flex-[2] min-w-0 flex items-center gap-1.5">
+      <div className="min-w-0 max-w-[70%] flex items-center gap-1.5">
         <GearStatusBadge status={status} compact className="shrink-0 print:hidden" />
         {onSaveName ? (
           <InlineText
@@ -51,7 +59,11 @@ export function NameDescriptionCell({
           <span className="block min-w-0 flex-1 truncate font-normal text-gray-900">{name}</span>
         )}
       </div>
-      <div className="flex-[3] min-w-0">
+      <div
+        className={`flex-1 min-w-0 ${
+          description ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+        }`}
+      >
         {onSaveDescription ? (
           <InlineText
             value={description}
