@@ -1206,19 +1206,17 @@ function ListDetailInner({ listId }: { listId: string }) {
             items (always visible; packing checkbox column appears in pack
             mode).
 
-            Pack used to narrow from 7xl (AppShell main) to 3xl + mx-auto so
-            the sparser layout read as focused rather than stretched across
-            the width the missing sidebar left behind. The sidebar is back at
-            xl, so on screen that compensation is now wrong.
-
-            It survives for PRINT, and not by inertia: max-w-3xl is an
-            unprefixed utility, so it always governed paper too. Dropping it
-            outright would widen the printed checklist on any print config
-            whose content area exceeds 768px - a silent regression in the one
-            output nobody re-checks. */}
+            Pack is capped at the Food view's measure (max-w-3xl, centered in
+            the leftover flex space by mx-auto). The cap was dropped once on
+            the argument that the xl aside fills the width, but the aside only
+            exists at xl - everywhere below that the document stretched across
+            the whole shell and pack rows read as a ribbon. Print narrows
+            further: the unprefixed 3xl would govern paper too, and 768px is
+            the entire printable width of portrait Letter - a sheet that wide
+            is hard to tick through, so paper gets max-w-xl. */}
         <div
           data-testid="list-document-column"
-          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'print:max-w-3xl print:mx-auto' : ''}`}
+          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto print:max-w-xl' : ''}`}
         >
           {/* Paper's only document header. The screen toolbar below is
               print:hidden, so without this nothing on the sheet says which
