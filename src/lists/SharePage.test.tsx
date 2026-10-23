@@ -104,6 +104,29 @@ describe('SharePage draft banner', () => {
   })
 })
 
+describe('SharePage notes panel', () => {
+  it('omits the Notes panel entirely when the list has none', async () => {
+    // "No notes" told a stranger nothing and reserved ~160px of a phone
+    // screen for it. The owner's editor keeps its placeholder (the panel is
+    // an editing surface there); the public page renders notes only when
+    // they exist.
+    vi.mocked(fetchSharedList).mockResolvedValue(share({ items: [tentItem] }))
+    renderShareView()
+    await screen.findByText('Tent')
+    expect(screen.queryByText('No notes')).toBeNull()
+    expect(screen.queryByText('Notes')).toBeNull()
+  })
+
+  it('renders the notes when the list has them', async () => {
+    vi.mocked(fetchSharedList).mockResolvedValue(
+      share({ list: { description: 'Bring the small stove.' } }),
+    )
+    renderShareView()
+    expect(await screen.findByText('Notes')).toBeTruthy()
+    expect(await screen.findByText('Bring the small stove.')).toBeTruthy()
+  })
+})
+
 describe('SharePage read-only public sharing', () => {
   it('renders items grouped by category with the weight summary', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
@@ -133,7 +156,10 @@ describe('SharePage read-only public sharing', () => {
     expect(screen.getByText('Weight summary')).toBeTruthy()
   })
 
-  it('always renders worn gear in a trailing Worn section', async () => {
+  it('renders worn gear inside its category, with its weight labeled Worn in the footer', async () => {
+    // Worn is a weight flag, not an organizing principle: the row stays in
+    // its category (no trailing Worn section) and the category footer says
+    // where its weight went. Pack mode is the one view that extracts worn.
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
@@ -153,9 +179,15 @@ describe('SharePage read-only public sharing', () => {
     renderShareView()
 
     const wornItem = await screen.findByText('Rain jacket')
-    const wornSection = wornItem.closest('.overflow-hidden')
-    expect(wornSection?.textContent).toContain('Worn')
+    const section = wornItem.closest('.overflow-hidden')
+    // Same card as its category's other row: not extracted anywhere.
+    expect(section?.textContent).toContain('Shelter')
+    expect(section?.textContent).toContain('Tent')
     expect(screen.getAllByText('Rain jacket')).toHaveLength(1)
+    // The footer accounts for the visible worn row's weight by label.
+    expect(section?.textContent).toContain('Worn')
+    // No trailing Worn section header anywhere on the page.
+    expect(screen.queryByText('Worn', { selector: 'span.truncate' })).toBeNull()
   })
 
   // Food used to cross this boundary as a single number: the share showed a
@@ -331,7 +363,7 @@ describe('SharePage category subtotals', () => {
     gear: { name: 'Mystery', description: null, weightGrams: 40, categoryId: 'cat-gone' },
   }
 
-  it('gives each section its nonzero base and consumable weights, excluding worn', async () => {
+  it('gives each section its nonzero base, consumable and worn weights, separately labeled', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
@@ -341,7 +373,7 @@ describe('SharePage category subtotals', () => {
     renderShareView()
 
     // Shelter holds 1200 base + 230 consumable + 550 worn. Its footer reports
-    // the first two buckets separately; 1980 g (the row sum) must appear nowhere.
+    // the three buckets separately; 1980 g (the row sum) must appear nowhere.
     expect((await screen.findAllByText('Shelter')).length).toBeGreaterThan(0)
     expect(screen.getAllByLabelText('1200 g').length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('1980 g')).toBeNull()
@@ -357,28 +389,30 @@ describe('SharePage category subtotals', () => {
       && within(footer).queryAllByLabelText('1200 g').length > 0
       && (footer.textContent ?? '').includes('Consumable')
       && within(footer).queryAllByLabelText('230 g').length > 0
+      && (footer.textContent ?? '').includes('Worn')
+      && within(footer).queryAllByLabelText('550 g').length > 0
     )).toBe(true)
   })
 
-  it('does not give the Worn section the Uncategorized base figure', async () => {
+  it('does not hand one category another category’s worn figure', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
         categories: [{ id: 'cat-1', name: 'Shelter', sortOrder: 0 }],
-        // Uncategorized base is 80 g; worn is 550 g. If the Worn section were
-        // looked up with a null categoryId it would render 80 g here.
+        // Uncategorized base is 80 g; Shelter's worn is 550 g. A null-keyed
+        // lookup would cross those wires.
         items: [shelterBase, shelterWorn, orphan],
       }),
     )
     renderShareView()
 
     const wornItem = await screen.findByText('Jacket')
-    expect(screen.getAllByLabelText('550 g').length).toBeGreaterThan(0)
-    // 80 g still appears (it is Uncategorized's own legitimate subtotal), so
-    // assert the Worn section specifically does not contain it. By label:
-    // the visible number and unit are separate grid cells.
-    const wornSection = wornItem.closest('.overflow-hidden') as HTMLElement
-    expect(within(wornSection).getAllByLabelText('550 g').length).toBeGreaterThan(0)
-    expect(within(wornSection).queryByLabelText('80 g')).toBeNull()
+    // The worn row renders inside Shelter, whose footer carries the 550 g
+    // Worn figure; Uncategorized's footer must not.
+    const shelterSection = wornItem.closest('.overflow-hidden') as HTMLElement
+    expect(within(shelterSection).getAllByLabelText('550 g').length).toBeGreaterThan(0)
+    const uncatSection = screen.getByText('Mystery').closest('.overflow-hidden') as HTMLElement
+    expect(within(uncatSection).queryByText('Worn')).toBeNull()
+    expect(within(uncatSection).queryByLabelText('550 g')).toBeNull()
   })
 })
 

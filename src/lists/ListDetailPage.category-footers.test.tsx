@@ -155,6 +155,10 @@ describe('category footers show the canonical per-section figures', () => {
     const shelter = regionText('cat-a')
     expect(shelter).toMatch(/Base\s*210\s*g/)
     expect(shelter).toMatch(/Consumable\s*50\s*g/)
+    // The worn row renders inside its category in list view (pack mode is the
+    // one view that extracts it), and its weight is labeled Worn, never Base.
+    expect(within(regionEl('cat-a')).getByText('Jacket')).toBeInTheDocument()
+    expect(shelter).toMatch(/Worn\s*400\s*g/)
     for (const wrong of ['660 g', '610 g', '260 g']) {
       expect(within(regionEl('cat-a')).queryByLabelText(wrong)).toBeNull()
     }
@@ -183,7 +187,7 @@ describe('category footers show the canonical per-section figures', () => {
     expect(within(footer!).getAllByLabelText('50 g').length).toBeGreaterThan(0)
   })
 
-  it('renders Consumable before Base, so Base sits on the right rail', async () => {
+  it('renders Worn, then Consumable, then Base, so Base sits on the right rail', async () => {
     // Base is the figure every footer has; keeping it rightmost means it
     // lines up down the page with the sections that show Base alone.
     await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
@@ -193,7 +197,8 @@ describe('category footers show the canonical per-section figures', () => {
     // (desktop and mobile copies back to back), so a spanning regex would
     // match the OLD order across the copy boundary and never fail.
     const shelter = regionText('cat-a')
-    expect(shelter.indexOf('Consumable')).toBeGreaterThanOrEqual(0)
+    expect(shelter.indexOf('Worn')).toBeGreaterThanOrEqual(0)
+    expect(shelter.indexOf('Worn')).toBeLessThan(shelter.indexOf('Consumable'))
     expect(shelter.indexOf('Consumable')).toBeLessThan(shelter.indexOf('Base'))
   })
 })

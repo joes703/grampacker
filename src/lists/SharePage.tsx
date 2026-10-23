@@ -16,6 +16,7 @@ import {
   computeListWeightBreakdown,
   consumableGramsForCategory,
   foodGramsFor,
+  wornGramsForCategory,
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
@@ -187,14 +188,6 @@ export default function SharePage() {
   // slug fetch).
   const grouped = groupListItemsByCategory(itemsForRender, categoriesForRender)
 
-  // Match the owner view: worn rows always leave their categories for one
-  // trailing read-only Worn section. This page DID once honor a per-list
-  // groupWorn preference - it read list.groupWorn and passed hideWorn - until
-  // #110 made worn grouping unconditional (2026-07-21). The flag went dead
-  // there and was retired from the DTO later; what was left behind in between
-  // was a comment claiming this page still honored it.
-  const wornItems = grouped.flatMap((g) => g.items.filter((i) => i.isWorn))
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10">
@@ -220,25 +213,32 @@ export default function SharePage() {
         </div>
 
         {/* Notes + Weight summary - side by side on desktop, with Notes
-            getting the wider read-only column. */}
-        <div className={`mb-6 grid gap-4 ${showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
-          <PanelCard title="Notes">
-            {list.description ? (
-              <div className="px-3 py-2 min-h-[8rem]">
-                <Suspense fallback={null}>
-                  <MarkdownContent content={list.description} />
-                </Suspense>
-              </div>
-            ) : (
-              <p className={`px-3 py-2 min-h-[8rem] ${PANEL_EMPTY_TEXT}`}>No notes</p>
+            getting the wider read-only column. A list with no notes renders
+            no Notes panel at all: "No notes" tells a stranger nothing and
+            reserved ~160px of a phone screen for it. (The owner's editor
+            keeps its placeholder - the panel is an editing surface there.)
+            Without notes the summary keeps roughly its two-column width
+            instead of stretching the table across the whole page. */}
+        {(list.description || showWeightSummary) && (
+          <div className={`mb-6 grid gap-4 ${list.description && showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
+            {list.description && (
+              <PanelCard title="Notes">
+                <div className="px-3 py-2 min-h-[8rem]">
+                  <Suspense fallback={null}>
+                    <MarkdownContent content={list.description} />
+                  </Suspense>
+                </div>
+              </PanelCard>
             )}
-          </PanelCard>
-          {showWeightSummary && (
-            <PanelCard title="Weight summary">
-              <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
-            </PanelCard>
-          )}
-        </div>
+            {showWeightSummary && (
+              <div className={list.description ? undefined : 'lg:max-w-md'}>
+                <PanelCard title="Weight summary">
+                  <WeightTable items={itemsForRender} categories={categoriesForRender} breakdown={weightBreakdown} />
+                </PanelCard>
+              </div>
+            )}
+          </div>
+        )}
 
         {items.length === 0 && (
           <div className={`px-3 py-4 ${FLAT_TABLE_SURFACE}`}>
@@ -262,31 +262,20 @@ export default function SharePage() {
                 collapsible={false}
                 baseSubtotalGrams={baseGramsForCategory(weightBreakdown, group.category?.id ?? null)}
                 consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, group.category?.id ?? null)}
+                wornSubtotalGrams={wornGramsForCategory(weightBreakdown, group.category?.id ?? null)}
               />
             ))}
-            {wornItems.length > 0 && (
-              <CategoryGroup
-                name="Worn"
-                items={wornItems}
-                weightUnit={weightUnit}
-                isBelowLg={isBelowLg}
-                collapsible={false}
-                wornSection
-                // See the owner-page Worn section for the full reasoning,
-                // including the accepted dual-flag caveat: unlabeled, sourced
-                // from the canonical list-level wornGrams, never looked up as
-                // a category.
-                subtotalGrams={weightBreakdown.wornGrams}
-              />
-            )}
+            {/* No trailing Worn section here: worn rows stay inside their
+                category with the worn icon, matching the owner's Category
+                arrangement (section-rows.ts owns the rule; pack mode is the
+                one view that extracts worn). This also means a category whose
+                items are all worn no longer renders as an empty section. */}
             {/* Food, as its own trailing section rather than mixed into the
                 gear categories: it is not filed under one, and grouping it
                 with gear would need a category it does not have.
-                The subtotal goes through the CONSUMABLE channel, not the bare
-                `subtotalGrams` one: that prop belongs to the Worn section and
-                CategoryFooterWeights labels it "Worn". Food is consumable by
-                definition, which is the bucket its grams already land in
-                upstream. */}
+                The subtotal goes through the CONSUMABLE channel: food is
+                consumable by definition, which is the bucket its grams
+                already land in upstream. */}
             {share.food.items.length > 0 && (
               <CategoryGroup
                 name="Food"

@@ -112,15 +112,16 @@ export function planListItemReorder({
     .filter((item) =>
       item.gearItem.categoryId === categoryId &&
       !hiddenItemIds.has(item.id) &&
-      // Worn rows render only in the trailing Worn section - in BOTH views -
-      // and are not draggable, so they are not part of the sequence the user
-      // is rearranging. They keep their document and pack ranks untouched.
-      // The location branch already excludes them
-      // (derivePackReorderExclusions). The rule itself lives in
-      // section-rows.ts, shared with CategoryGroup, because this branch and
-      // the renderer once disagreed about it (audit F1): a List drag permuted
-      // over an invisible worn row and rewrote its document rank.
-      isOrdinarySectionRow(item),
+      // Worn rows are extracted into the trailing Worn section in PACK mode
+      // only, so there they are not part of the sequence the user is
+      // rearranging and keep their ranks untouched; in List view they render
+      // inside their category and reorder like any row. The location branch
+      // already excludes them in pack (derivePackReorderExclusions). The
+      // mode-scoped rule itself lives in section-rows.ts, shared with
+      // CategoryGroup, because this branch and the renderer once disagreed
+      // (audit F1): a List drag permuted over an invisible worn row and
+      // rewrote its document rank.
+      isOrdinarySectionRow(item, mode === 'pack'),
     )
     // Sorted by whichever order the user is actually looking at. The cache is
     // canonically in document order, so the pack fallback has to re-sort or it

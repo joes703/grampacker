@@ -79,9 +79,14 @@ export default function WeightSummary({
 
 function SummaryStrip({ breakdown }: { breakdown: WeightBreakdown }) {
   const { weightUnit } = useWeightUnit()
+  // All four buckets, always rendered - a 0 g Worn stat stays put rather
+  // than appearing when a flag flips, so the layout never shifts under a
+  // tap. Worn sits beside Base because both describe gear you take that
+  // the pack total does not carry on your back the same way.
   return (
-    <div className={`grid grid-cols-3 divide-x divide-gray-100 ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`}>
+    <div className={`grid grid-cols-4 divide-x divide-gray-100 ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`}>
       <Stat label="Base" grams={breakdown.baseGrams} unit={weightUnit} />
+      <Stat label="Worn" grams={breakdown.wornGrams} unit={weightUnit} />
       <Stat label="Consumable" grams={breakdown.consumableGrams} unit={weightUnit} />
       <Stat label="Pack total" grams={breakdown.totalPackGrams} unit={weightUnit} />
     </div>
