@@ -352,16 +352,17 @@ describe('the gear picker beside Pack', () => {
     expect(aside.className).not.toContain('xl:flex')
   })
 
-  // max-w-3xl is unprefixed, so it governs paper as well as screen. Screen
-  // gets the width back now the aside fills it; print keeps the 768px measure
-  // the checklist was designed around.
-  it('constrains the Pack document for print only', async () => {
+  // Pack reads at the Food view's measure: the unprefixed max-w-3xl caps the
+  // document on screen (the full shell width made pack rows read as a
+  // ribbon), and print narrows further - 3xl is the whole printable width of
+  // portrait Letter, and a sheet that wide is hard to tick through.
+  it('constrains the Pack document on screen, and narrower for print', async () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
 
     const column = screen.getByTestId('list-document-column')
-    expect(column.className).toContain('print:max-w-3xl')
-    expect(column.className).not.toMatch(/(^|\s)max-w-3xl(\s|$)/)
+    expect(column.className).toMatch(/(^|\s)max-w-3xl(\s|$)/)
+    expect(column.className).toContain('print:max-w-xl')
   })
 
   // Nobody switches lists mid-pack, and the switcher's max-h-72 is height the

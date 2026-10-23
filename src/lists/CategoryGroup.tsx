@@ -14,7 +14,6 @@ import {
   COL_QTY_MOBILE,
   COL_WEIGHT,
   COL_WEIGHT_MOBILE,
-  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_EYEBROW,
   FLAT_TABLE_FOOTER_LABEL,
   FLAT_TABLE_FOOTER_ROW,
@@ -35,6 +34,7 @@ import AddItemRow from './AddItemRow'
 import { type AddItemData } from './use-quick-add-form'
 import TotalWeightValue from '../components/TotalWeightValue'
 import PackModeCheckbox from './PackModeCheckbox'
+import { PrintCheckboxSquare } from './PackRowFrame'
 import { ConsumableIcon, WornIcon } from './list-item-flags'
 
 // Single source of truth for a category section. Used by both the
@@ -600,20 +600,14 @@ function CategoryGroup({
                   title="Ready"
                   standaloneLabel
                 />
-                <span
-                  aria-hidden="true"
-                  className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-                />
+                <PrintCheckboxSquare variant="ready" checked={containerItem.isReady} />
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5">
                   <PackModeCheckbox
                     variant="packed"
                     checked={containerItem.isPacked}
                     onChange={(checked) => onUpdate?.(containerItem.id, { isPacked: checked })}
                   />
-                  <span
-                    aria-hidden="true"
-                    className="hidden print:inline-block h-3.5 w-3.5 shrink-0 rounded-sm border border-gray-900"
-                  />
+                  <PrintCheckboxSquare variant="packed" checked={containerItem.isPacked} />
                   <span className={`truncate ${PRINT_UNTRUNCATE} ${
                     containerItem.isPacked
                       ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
@@ -780,16 +774,23 @@ function CategoryGroup({
           {!packMode && !adding && (
             // The shared footer recipe (FLAT_TABLE_FOOTER_ROW), display-gated:
             // hidden on mobile, where the top-bar summary carries the totals.
-            <div className={`hidden lg:flex print:flex gap-1.5 ${FLAT_TABLE_FOOTER_ROW} ${FLAT_TABLE_BODY_TEXT}`}>
+            // The whole row sits in the footer's own text-xs tier
+            // (FLAT_TABLE_FOOTER_LABEL on the button, the FOOTER_LABEL/VALUE
+            // pair in the metrics) - composing body text here put the button
+            // a size above the totals beside it.
+            <div className={`hidden lg:flex print:flex gap-1.5 ${FLAT_TABLE_FOOTER_ROW}`}>
               {onAddItem ? (
+                // print:hidden like every interactive control; the spacer
+                // below takes over the flex-1 slot on paper wide enough for
+                // the lg tier.
                 <button
                   onClick={() => setAdding(true)}
-                  className="hidden lg:flex flex-1 min-w-0 items-center gap-1 text-left text-gray-500 hover:text-blue-600"
+                  className={`hidden lg:flex print:hidden flex-1 min-w-0 items-center gap-1 text-left ${FLAT_TABLE_FOOTER_LABEL} hover:text-blue-600`}
                 >
                   <Plus size={12} /> Add new item
                 </button>
               ) : null}
-              <div className={`flex-1 min-w-0 ${onAddItem ? 'lg:hidden' : ''}`} />
+              <div className={`flex-1 min-w-0 ${onAddItem ? 'lg:hidden print:block' : ''}`} />
               <div className="hidden lg:contents">
                 <div className={COL_ICON} />
                 <div className={COL_ICON} />
@@ -840,12 +841,15 @@ function CategoryFooterWeights({
     )
   }
 
+  // Consumable first, Base last: Base is the figure every footer shows, so
+  // keeping it rightmost lines it up down the page with the sections that
+  // have Base alone.
   const totals = [
-    baseGrams !== undefined && baseGrams > 0
-      ? { label: 'Base', grams: baseGrams }
-      : null,
     consumableGrams !== undefined && consumableGrams > 0
       ? { label: 'Consumable', grams: consumableGrams }
+      : null,
+    baseGrams !== undefined && baseGrams > 0
+      ? { label: 'Base', grams: baseGrams }
       : null,
   ].filter((total): total is { label: string; grams: number } => total !== null)
 
