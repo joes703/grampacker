@@ -242,12 +242,11 @@ type GroupPropsBase = {
    *  supplies every accessible label ("Collapse {name}"), so a section stays
    *  announceable whatever its title becomes.
    *
-   *  Two callers: pack mode's rename-in-place on a packing location, and the
-   *  Category arrangement's Food section, which pairs the name with a link
-   *  out to the Food view. The second is why this slot is worth preferring
-   *  over `headerAction` for anything with width: it sits inside the header's
-   *  flex-1 region, so it costs the fixed Qty/Weight column stubs nothing,
-   *  while an appended action shifts both labels off the cells below them.
+   *  One caller: pack mode's rename-in-place on a packing location. Prefer
+   *  this slot over `headerAction` for anything with width: it sits inside
+   *  the header's flex-1 region, so it costs the fixed Qty/Weight column
+   *  stubs nothing, while an appended action shifts both labels off the
+   *  cells below them.
    *
    *  Only rendered on the COLLAPSIBLE branch. `collapsible={false}` (the
    *  public share) falls through to plain `name`. */
@@ -290,6 +289,14 @@ type GroupPropsBase = {
    *  Collapsing them would mean either importing the drag machinery here or
    *  demanding pack state from a surface that has none. */
   foodRows?: PlainFoodRow[]
+  /** Reserve the control columns this section's read-only rows do not have:
+   *  the leading drag-grip box and the trailing kebab box. The owner's
+   *  Category page sets it on the Food section, whose rows sit under gear
+   *  sections that carry both controls - without the reservation every food
+   *  cell (name, icons, qty, weight, footer) sits off the gear tables'
+   *  rails. The public share leaves it unset: no row there has a grip or a
+   *  kebab, so nothing to align to. */
+  reserveControlColumns?: boolean
   onUpdateFood?: (
     foodId: string,
     patch: { isPacked?: boolean; isReady?: boolean },
@@ -396,6 +403,7 @@ function CategoryGroup({
   renderRowAction,
   packFoodRows,
   foodRows,
+  reserveControlColumns = false,
   onUpdateFood,
   renderFoodRowAction,
   wornSection = false,
@@ -461,7 +469,7 @@ function CategoryGroup({
       sectionFood.filter((f) => f.isPacked).length
     : 0
   const progressTotal = progressItems.length + sectionFood.length
-  const showKebabSlot = !packMode && Boolean(onDelete)
+  const showKebabSlot = !packMode && (Boolean(onDelete) || reserveControlColumns)
   // "Complete" = pack mode, has contents, every one of them packed.
   const complete = packMode && progressTotal > 0 && packedCount === progressTotal
   // Filters hide finished rows from the rendered list. Applied AFTER the
@@ -622,11 +630,9 @@ function CategoryGroup({
                  Chevron is the obvious affordance; the name remains
                  read-only here (rename happens via the section menu or the
                  modal, not by tapping the header). titleContent is the one
-                 override: a packing location being renamed in place, and the
-                 Category arrangement's Food section, which pairs the name
-                 with a link out to the Food view. See the prop's doc for why
-                 anything with width belongs here rather than in
-                 headerAction. */
+                 override: a packing location being renamed in place. See
+                 the prop's doc for why anything with width belongs here
+                 rather than in headerAction. */
               titleContent ?? (
                 <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
               )
@@ -732,6 +738,7 @@ function CategoryGroup({
                 food={food}
                 weightUnit={weightUnit}
                 isBelowLg={isBelowLg}
+                controlColumns={reserveControlColumns}
               />
             ))}
           {/* An empty pack section says WHY it is empty. Without this a

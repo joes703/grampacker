@@ -693,4 +693,36 @@ describe('plain food rows belong to the non-pack arrangements', () => {
     expect(screen.getAllByText('Oatmeal')).toHaveLength(1)
     expect(screen.getByText('3')).toBeTruthy()
   })
+
+  // On the owner's page every gear row starts with a drag grip and ends in a
+  // kebab. Food rows are read-only (neither control), so without reserving
+  // both boxes the whole Food table sits off the gear tables' rails - name
+  // left of theirs, icon/qty/weight and footer right of theirs.
+  // reserveControlColumns is that reservation; the share page - where gear
+  // rows carry no controls either - omits it.
+  it('reserveControlColumns pads each food row with empty grip and kebab boxes', () => {
+    render(
+      <CategoryGroup
+        name="Food"
+        items={[]}
+        foodRows={[oats]}
+        weightUnit="g"
+        reserveControlColumns
+      />,
+    )
+    const row = screen.getByText('Oatmeal').closest('.group')!
+    expect(row.firstElementChild!.textContent).toBe('')
+    expect(row.lastElementChild!.textContent).toBe('')
+    // The weight moved one cell in from the edge, onto the gear rows' rail.
+    expect(row.querySelector('[aria-label="90 g"]')).not.toBeNull()
+  })
+
+  it('without reserveControlColumns the name and weight cells stay outermost', () => {
+    render(
+      <CategoryGroup name="Food" items={[]} foodRows={[oats]} weightUnit="g" />,
+    )
+    const row = screen.getByText('Oatmeal').closest('.group')!
+    expect(row.firstElementChild!.textContent).toContain('Oatmeal')
+    expect(row.lastElementChild!.querySelector('[aria-label="90 g"]')).not.toBeNull()
+  })
 })
