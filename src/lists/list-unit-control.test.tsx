@@ -113,6 +113,17 @@ describe('list unit control placement', () => {
     expect(screen.queryByRole('button', { name: 'Print' })).toBeNull()
   })
 
+  // The tabs get a row of their own under the title, at every width, so they
+  // read as the list's sections rather than one more control beside Share.
+  it('puts the view tabs on their own row under the title', () => {
+    render(<ListDocumentToolbar list={list} mode="edit" />, { wrapper: MemoryRouter })
+    const titleRow = screen.getByTestId('list-toolbar-title-row')
+    const nav = screen.getByRole('navigation', { name: 'List views' })
+    expect(titleRow).toContainElement(screen.getByText('current-list-header'))
+    expect(titleRow).not.toContainElement(nav)
+    expect(titleRow.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   // The toolbar passes its mode on to the view nav, which marks that view as
   // the current page. ListViewNav.test.tsx covers the nav's own links.
   it('marks the current view in the view nav', () => {
@@ -124,7 +135,7 @@ describe('list unit control placement', () => {
       { wrapper: MemoryRouter },
     )
     expect(screen.getByRole('navigation', { name: 'List views' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Category', current: 'page' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'List', current: 'page' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Pack' })).not.toHaveAttribute('aria-current')
 
     rerender(

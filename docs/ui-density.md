@@ -282,11 +282,16 @@ interchangeable. Cited by `ToggleSwitch.tsx`.
 | `ToggleSwitch` | Binary settings and in-content view toggles | `role="switch"` |
 | `RowIconButton` (`purpleToggle` / `orangeToggle`) | Per-row flag markers on one item (worn, consumable) | button with an `active` chip state |
 | `UnitSegmentedControl` | One of several mutually exclusive options | real `sr-only` radios behind visual labels |
+| `ListViewNav` | The list's sections (List, Pack, Food) | links with `aria-current="page"` |
 
 The three mistakes worth naming:
 
 - **Route views are navigation, not state.** Peer destinations with their own
   URLs are links with `aria-current="page"`, never pressed buttons.
+- **Navigation and settings must not look alike.** The list's sections are
+  underline tabs on their own row under the title (44px touch, 32px at
+  `lg`). A value picker such as g/oz is a gray track with a white chip and
+  no blue fill; each choice is 40px touch, 28px at `lg`.
 - **More than two options is a radio group.** Use real radio inputs, visually
   relabeled - keyboard arrow navigation then works without reimplementing it.
 - **A row flag is not a setting.** It belongs to one item in a scanning
