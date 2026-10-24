@@ -3,7 +3,6 @@ import {
   APIError,
   createAuthMiddleware,
   getSessionFromCtx,
-  isAPIError,
 } from 'better-auth/api'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins/magic-link'
@@ -13,13 +12,6 @@ import { createEmailSender } from './email'
 import { authLogger } from './middleware/error-handler'
 import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
 
-// Per-request holder for the error behind an auth 5xx. better-call catches
-// every throw inside its router and returns a Response, so the only way the
-// error itself reaches the correlated incident log is for the onAPIError
-// hook (authOptions) to stash it here and for the caller that built this
-// auth instance to hand it to withAuthErrorCorrelation. One holder per
-// createAuth call, so it cannot cross requests.
-export type AuthIncident = { error?: unknown }
 import { createUsersRepo } from './repos/users'
 import {
   DELETE_ACCOUNT_USER_HEADER,
@@ -72,7 +64,7 @@ const PASSKEY_UNGATED = new Set([
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
 // plugins) MUST live here so the generated tables cannot drift from runtime.
-export function authOptions(env: AppEnv, incident?: AuthIncident) {
+export function authOptions(env: AppEnv) {
   const db = createDb(env.DB)
   const email = createEmailSender(env)
 
@@ -86,32 +78,21 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
     // default logger hands raw Error objects to console.error, and a failed
     // session lookup's error carries the session token as a bound param.
     logger: authLogger,
-    // What happens to an error that escapes an endpoint. With no hook here
+    // What happens to an error that escapes an endpoint. By default
     // better-auth logs it itself - `err.message` alone when the text looks
     // like SQL, the raw object otherwise - and then better-call ALSO writes
     // `console.error('# SERVER_ERROR: ', error)` for any non-APIError before
     // answering a bare 500 (better-call/dist/router.mjs). Both sinks bypass
-    // the budget and the redaction.
+    // the budget and the redaction. An `onError` hook cannot prevent the
+    // second one: better-auth catches and logs anything the hook throws
+    // (better-auth/dist/api/index.mjs).
     //
-    // This hook is the only place better-auth lets us in, and it ignores the
-    // hook's return value, so the way to take over the response is to THROW:
-    // better-call's catch around the hook turns a thrown APIError into the
-    // response and never reaches its own console fallback. The original error
-    // is stashed on the per-request holder so withAuthErrorCorrelation
-    // (server/index.ts) can log it in the one correlated entry; an APIError
-    // is a deliberate answer and is left to better-auth to serialize.
-    onAPIError: {
-      onError: (error: unknown) => {
-        if (incident) incident.error = error
-        if (isAPIError(error)) return
-        // The same body shape withAuthErrorCorrelation synthesizes for
-        // better-call's bare 500, so auth callers see one dialect.
-        throw new APIError('INTERNAL_SERVER_ERROR', {
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Internal Server Error',
-        })
-      },
-    },
+    // `throw` skips better-auth's logging and rethrows to better-call, which
+    // still turns an APIError into its normal response and rethrows any other
+    // error out of `handler()` without logging it. The /api/auth/* route in
+    // server/index.ts catches that error and logs it in the one correlated
+    // entry. This affects only the HTTP handler, not `auth.api.*` calls.
+    onAPIError: { throw: true },
     // NO emailAndPassword. Its absence is load-bearing, not an oversight:
     // better-auth mounts /sign-in/email and /sign-up/email unconditionally and
     // gates them on this option, so leaving it out is what makes them 400
@@ -476,16 +457,10 @@ export function authOptions(env: AppEnv, incident?: AuthIncident) {
   }
 }
 
-// This is config wiring only - no I/O happens until a handler runs.
-//
-// Per-request on purpose, and the holder is REQUIRED: an instance built here
-// is bound to one request's incident, so it must never be cached or shared -
-// concurrent requests would overwrite each other's error. The holderless,
-// cacheable construction lives in sessionAuth below; keeping the two
-// signatures apart is what stops a request-bound instance from entering the
-// cache. server/auth-cache.test.ts pins both sides.
-export function createAuth(env: AppEnv, incident: AuthIncident) {
-  return betterAuth(authOptions(env, incident))
+// This is config wiring only - no I/O happens until a handler runs. Built
+// per /api/auth/* request; sessionAuth below is the cached instance.
+export function createAuth(env: AppEnv) {
+  return betterAuth(authOptions(env))
 }
 
 export type Auth = ReturnType<typeof createAuth>
@@ -493,10 +468,9 @@ export type Auth = ReturnType<typeof createAuth>
 // The ONE auth instance requireSession reads sessions through, cached per env
 // object (the Node entry builds a single env at startup and hands it to every
 // request, so production constructs this once; a test that swaps DB passes a
-// copied env and gets its own instance). Safe to share precisely because it
-// has no incident holder: requireSession never serves /api/auth/*, so an
-// error from getSession surfaces through the app's own error handler. Never
-// add an incident parameter here.
+// copied env and gets its own instance). Safe to share because it holds no
+// per-request state. requireSession never serves /api/auth/*, so an error
+// from getSession surfaces through the app's own error handler.
 const sessionInstances = new WeakMap<AppEnv, Auth>()
 
 export function sessionAuth(env: AppEnv): Auth {

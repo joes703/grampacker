@@ -56,8 +56,9 @@ reasoning behind them. Where the two overlap, the matrix wins on detail.
   the SQLite root-cause message, which never embed values
   (`server/middleware/error-handler.ts`, `describeError`): the incident
   handler's own entries, better-auth's logger (`logger` option), and the
-  `onAPIError` hook that takes over from better-call's raw `console.error`
-  fallback for any error escaping an auth endpoint. Proven over the real
+  /api/auth/* route, which catches any error escaping an auth endpoint
+  (`onAPIError.throw`) before better-call's raw `console.error` fallback
+  can print it. Proven over the real
   app in `server/auth-error-logging.test.ts`.
 
   Two things this does NOT cover, stated so nobody reads more into it:
