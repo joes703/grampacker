@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import type { ListDetailMode } from './list-detail-mode'
 import { persistedListPath } from './list-detail-mode'
 
-// Order encodes a distinction, and it is not cosmetic. Category and Pack are
+// Order encodes a distinction, and it is not cosmetic. Gear and Pack are
 // two ARRANGEMENTS of the same rows - the same gear, grouped by category or
 // grouped into bags - so they belong adjacent. Food is a different document
 // with its own model (days, meals, slots); it cannot be expressed as a
@@ -16,7 +16,7 @@ import { persistedListPath } from './list-detail-mode'
 // Keep in step with LIST_VIEW_LABELS in list-detail-mode.ts, which feeds the
 // document title from the same strings.
 const VIEWS: { mode: ListDetailMode; label: string }[] = [
-  { mode: 'edit', label: 'Category' },
+  { mode: 'edit', label: 'Gear' },
   { mode: 'pack', label: 'Pack' },
   { mode: 'food', label: 'Food' },
 ]

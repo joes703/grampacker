@@ -124,7 +124,7 @@ describe('list unit control placement', () => {
       { wrapper: MemoryRouter },
     )
     expect(screen.getByRole('navigation', { name: 'List views' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Category', current: 'page' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Gear', current: 'page' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Pack' })).not.toHaveAttribute('aria-current')
 
     rerender(
