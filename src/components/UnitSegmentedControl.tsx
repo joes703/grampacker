@@ -47,15 +47,15 @@ export function UnitSegmentedControlView({
           {label}
         </div>
       )}
-      {/* Inline value selector. It uses normal text/button height for
-          readability and touch, but a flatter radius than action buttons
-          so it reads as a compact segmented value picker, not a mode
-          toggle or primary action. */}
+      {/* Inline value selector: a gray track with the chosen unit as a
+          white chip. No border and no blue fill - that is the selected-
+          button look, and beside the list's view tabs it read as
+          navigation. The labels carry the size (40px touch, 28px at lg). */}
       <div
         role="radiogroup"
         aria-labelledby={label ? `${idPrefix}-label` : undefined}
         aria-label={label ? undefined : 'Weight units'}
-        className="inline-grid grid-cols-2 rounded-md border border-gray-300 bg-white p-0.5"
+        className="inline-grid grid-cols-2 rounded-md bg-gray-100 p-0.5"
       >
         <input
           type="radio"
@@ -68,10 +68,10 @@ export function UnitSegmentedControlView({
         <label
           htmlFor={metricId}
           title="Metric"
-          className={`min-w-9 cursor-pointer rounded px-2 py-1 text-center text-sm font-semibold transition-colors ${
+          className={`inline-flex min-h-10 min-w-9 cursor-pointer items-center justify-center rounded px-2 text-xs font-medium transition-colors lg:min-h-7 ${
             value === 'g'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-600 hover:bg-gray-50'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
           } peer-focus-visible/m:ring-2 peer-focus-visible/m:ring-blue-300`}
         >
           g
@@ -87,10 +87,10 @@ export function UnitSegmentedControlView({
         <label
           htmlFor={imperialId}
           title="Imperial"
-          className={`min-w-9 cursor-pointer rounded px-2 py-1 text-center text-sm font-semibold transition-colors ${
+          className={`inline-flex min-h-10 min-w-9 cursor-pointer items-center justify-center rounded px-2 text-xs font-medium transition-colors lg:min-h-7 ${
             value === 'oz'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-600 hover:bg-gray-50'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
           } peer-focus-visible/i:ring-2 peer-focus-visible/i:ring-blue-300`}
         >
           oz
