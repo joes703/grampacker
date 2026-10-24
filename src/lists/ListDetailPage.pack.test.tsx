@@ -335,11 +335,11 @@ describe('the gear picker beside Pack', () => {
     screen.queryByRole('button', { name: 'New list or import CSV' })
 
   // The document column is shaped differently per mode (aside from lg in
-  // Gear, from xl in Pack, a centered 3xl cap in Pack). A toolbar inside it
+  // Category, from xl in Pack, a centered 3xl cap in Pack). A toolbar inside it
   // moved the view switcher sideways on every switch, so it sits above the
   // columns, at full width, in every mode.
   it.each([
-    ['Gear', `/lists/${listId}`],
+    ['Category', `/lists/${listId}`],
     ['Pack', `/lists/${listId}/pack`],
   ])('renders the view switcher outside the document column in %s', async (_mode, path) => {
     stubViewport(1280)
@@ -358,7 +358,7 @@ describe('the gear picker beside Pack', () => {
     expect(aside.className).not.toContain('lg:flex')
   })
 
-  it('keeps Gear view on the lg gate it already had', async () => {
+  it('keeps Category view on the lg gate it already had', async () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}`)
 
@@ -381,7 +381,7 @@ describe('the gear picker beside Pack', () => {
 
   // Nobody switches lists mid-pack, and the switcher's max-h-72 is height the
   // picker wants back.
-  it('drops the lists switcher in Pack but keeps it in Gear', async () => {
+  it('drops the lists switcher in Pack but keeps it in Category', async () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
     expect(listsPanel()).toBeNull()

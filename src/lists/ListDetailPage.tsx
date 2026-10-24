@@ -317,7 +317,7 @@ function ListDetailInner({ listId }: { listId: string }) {
   // locking the loop in. The reactive dep `list?.id` is undefined while
   // the lists query is in-flight or the route is invalid, so no write
   // fires on those paths. The `mode` dep tracks peer-mode toggling so the
-  // stored path stays in sync with Gear, Pack, or Food - the three shapes
+  // stored path stays in sync with Category, Pack, or Food - the three shapes
   // persistedListPath produces and last-list-path's validator accepts.
   useEffect(() => {
     if (list?.id) {
@@ -1182,7 +1182,7 @@ function ListDetailInner({ listId }: { listId: string }) {
   return (
     <div className="flex flex-col gap-4 print:pb-0">
       {/* Full width, above the columns, in every mode. The columns below
-          differ by mode (Gear has the aside from lg, Pack only from xl
+          differ by mode (Category has the aside from lg, Pack only from xl
           and centers a capped document, Food has no aside), so a toolbar
           inside the document column moved sideways on every view switch. */}
       <ListDocumentToolbar list={list} mode={mode} />
@@ -1666,7 +1666,7 @@ function ListDetailInner({ listId }: { listId: string }) {
                         renderRowAction={renderWornPackRowAction}
                       />
                     )}
-                    {/* In-list category creation (Gear view only; pack
+                    {/* In-list category creation (Category view only; pack
                         organizes by location, and category ORDER is still
                         authored on /gear). Every 2026-10 UX audit run went
                         hunting for this. */}
@@ -1692,7 +1692,7 @@ function ListDetailInner({ listId }: { listId: string }) {
                   food you carry is part of the pack - and it cost a
                   permanent asymmetry: the same list showed items in Pack and
                   one number in Category, and the share showed neither.
-                  Gear, Pack and the share now all show the rows.
+                  Category, Pack and the share now all show the rows.
 
                   INSIDE the loaded branch, OUTSIDE the listItems.length === 0
                   one. Inside, because a document half-rendered under a
