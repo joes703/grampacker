@@ -20,11 +20,11 @@ type Props = {
 // next to the slack. The title owns all free space (flex-1), so everything
 // after it packs against the right edge, and a control that appears or
 // disappears displaces only what is to its LEFT - the right edge is the
-// anchor. The unit control, view nav and List options therefore render in
-// EVERY mode, and the one contextual tool (Print, pack-only) sits at the
-// LEFT end of the control group, where its churn is absorbed by the title's
-// slack. Hiding chrome per mode is what used to make the view nav slide
-// sideways on every view switch.
+// anchor. The unit control and List options therefore render in EVERY
+// mode, and the one contextual tool (Print, pack-only) sits at the LEFT end
+// of the control group, where its churn is absorbed by the title's slack.
+// The view tabs sit on their own row below, so nothing on the title row
+// can move them.
 //
 // The unit control is not dead weight in any mode: edit and food are weights
 // everywhere, and the pack row edits a weight at lg+ (ItemRow's pack
@@ -40,49 +40,45 @@ export default function ListDocumentToolbar({
   mode,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <div className="order-1 flex min-w-0 flex-1">
-        <CurrentListHeader list={list} />
+    <div className="flex flex-col gap-1 print:hidden">
+      <div data-testid="list-toolbar-title-row" className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1">
+          <CurrentListHeader list={list} />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {mode === 'pack' && (
+            <button
+              type="button"
+              onClick={() => window.print()}
+              aria-label="Print"
+              title="Print"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <Printer size={14} />
+              {/* Icon-only below sm, like List options: at phone width this
+                  row also holds the title, the unit control and List options. */}
+              <span className="hidden sm:inline">Print</span>
+            </button>
+          )}
+          <UnitSegmentedControl idPrefix="list-toolbar" />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Share sits beside List options rather than inside it: it is the
+              end goal of building a list for this audience, and buried between
+              Rename and Delete it took UX audits three clicks to find. One
+              home - ListSettingsPanel no longer hosts it. */}
+          <ListShareButton list={list} />
+          <ListSettingsButton list={list} />
+        </div>
       </div>
 
-      <div className="order-2 flex items-center gap-2">
-        {mode === 'pack' && (
-          <button
-            type="button"
-            onClick={() => window.print()}
-            aria-label="Print"
-            title="Print"
-            // Same recipe as ListSettingsButton's trigger, so the two
-            // bordered toolbar buttons read as one family and match heights
-            // in the row. docs/ui-density.md exempts toolbar buttons from
-            // the row target tokens.
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <Printer size={14} />
-            {/* Icon-only below sm, like List options: at phone width this
-                row also holds the title, the unit control and List options. */}
-            <span className="hidden sm:inline">Print</span>
-          </button>
-        )}
-        <UnitSegmentedControl idPrefix="list-toolbar" />
-      </div>
-
-      {/* Below lg the nav takes its own full-width second row (basis-full),
-          after List options in visual order; at lg it slots between the unit
-          control and List options on the one row. Both tiers are explicit:
-          the order- pair below is what keeps List options at the right edge
-          on both. */}
-      <div className="order-4 basis-full lg:order-3 lg:basis-auto">
+      {/* The view tabs take their own row under the title at every width, so
+          they read as sections of this list rather than one more control
+          beside Share. The rule under them spans the toolbar. */}
+      <div className="border-b border-gray-200">
         <ListViewNav listId={list.id} mode={mode} />
-      </div>
-
-      <div className="order-3 lg:order-4 flex items-center gap-2">
-        {/* Share sits beside List options rather than inside it: it is the
-            end goal of building a list for this audience, and buried between
-            Rename and Delete it took UX audits three clicks to find. One
-            home - ListSettingsPanel no longer hosts it. */}
-        <ListShareButton list={list} />
-        <ListSettingsButton list={list} />
       </div>
     </div>
   )

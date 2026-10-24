@@ -21,12 +21,12 @@ export type ListDetailMode = 'edit' | 'pack' | 'food'
 // the same strings - changing one and not the other leaves the tab and the
 // document title disagreeing.
 //
-// 'edit' is called Category because the label should say how the rows are
-// ARRANGED, which is the only thing that changes between it and Pack. The
-// mode key and the URL both stay 'edit'/'/lists/:id' so no bookmark, stored
+// 'edit' is called List: it is the list itself, and Pack and Food are
+// sections of it (ListViewNav says why not Category or Gear). The mode key
+// and the URL both stay 'edit'/'/lists/:id' so no bookmark, stored
 // last-list path or legacy /organize redirect has to move.
 const LIST_VIEW_LABELS: Record<ListDetailMode, string> = {
-  edit: 'Category',
+  edit: 'List',
   pack: 'Pack',
   food: 'Food',
 }
