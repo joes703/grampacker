@@ -15,11 +15,11 @@ import { FLAT_TABLE_BODY_TEXT_MUTED } from './flat-table-styles'
 // nothing in this module may import @dnd-kit (the emitted share bundle is
 // the check - see docs/testing-and-ci.md section 2 notes on the share seam).
 
-// Desktop name + description. In a gear list the NAME is the content (UX
-// audits 2026-10: names truncated at a fixed 2:5 of the row while empty
-// description space sat idle), so the name cell takes its natural width
-// first - capped at 70% so a pathological name cannot evict the description
-// entirely - and the description gets the remainder and truncates first.
+// Desktop name + description as two FIXED proportional columns, name :
+// description = 3 : 2, so every description in a table starts at the same
+// x. Sizing the name to its own text gave names room, but each description
+// then started where its own name ended and the column went ragged. The name
+// is the content, so it gets the larger share; both cells truncate.
 // The status badge is the first thing inside the name cell; null-for-active
 // means active rows reserve no extra whitespace, while non-active rows pick
 // up a subtle leading icon. Each text cell is an InlineText when its save
@@ -47,7 +47,7 @@ export function NameDescriptionCell({
 }) {
   return (
     <div className="flex-1 min-w-0 flex items-center gap-3">
-      <div className="min-w-0 max-w-[70%] flex items-center gap-1.5">
+      <div className="flex-[3] min-w-0 flex items-center gap-1.5">
         <GearStatusBadge status={status} compact className="shrink-0 print:hidden" />
         {onSaveName ? (
           <InlineText
@@ -60,7 +60,7 @@ export function NameDescriptionCell({
         )}
       </div>
       <div
-        className={`flex-1 min-w-0 ${
+        className={`flex-[2] min-w-0 ${
           description ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
         }`}
       >

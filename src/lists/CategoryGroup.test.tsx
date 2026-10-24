@@ -756,3 +756,55 @@ describe('plain food rows belong to the non-pack arrangements', () => {
     expect(row.lastElementChild!.querySelector('[aria-label="90 g"]')).not.toBeNull()
   })
 })
+
+describe('CategoryGroup pack header columns', () => {
+  // A pack row ends Qty, Weight (lg+), then its row controls: one menu, or
+  // Edit + Remove in Worn. The header must end with the same columns or its
+  // Qty label sits over the rows' Weight (it did, 140px off at desktop width).
+  // jsdom has no layout, so the proof is the column sequence after Qty.
+  function trailingAfterQty(): Element[] {
+    const qty = screen.getByText('Qty')
+    const header = qty.parentElement as HTMLElement
+    const children = [...header.children]
+    return children.slice(children.indexOf(qty) + 1)
+  }
+
+  it.each([
+    ['an ordinary section', false, 1],
+    ['the Worn section (Edit + Remove)', true, 2],
+  ])('ends %s with a Weight label and one slot per row control', (_label, wornSection, slots) => {
+    render(
+      <CategoryGroup
+        name={wornSection ? 'Worn' : 'Shelter'}
+        items={[{ ...itemNamed('a', 'Tarp'), isWorn: wornSection }]}
+        weightUnit="g"
+        wornSection={wornSection}
+        packMode
+      />,
+    )
+    const [weight, ...rest] = trailingAfterQty()
+    expect(weight?.textContent).toBe('Weight')
+    expect(rest).toHaveLength(slots)
+    for (const slot of rest) expect(slot.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('lets a section menu fill the control slot, and keeps other header controls in the title region', () => {
+    render(
+      <CategoryGroup
+        name="Main pack"
+        regionKey="loc-main"
+        items={[itemNamed('a', 'Tarp')]}
+        weightUnit="g"
+        packMode
+        titleAction={<button type="button">Nest</button>}
+        headerAction={<button type="button">Menu</button>}
+      />,
+    )
+    const [weight, ...rest] = trailingAfterQty()
+    expect(weight?.textContent).toBe('Weight')
+    expect(rest.map((el) => el.textContent)).toEqual(['Menu'])
+    // The nest handle is before Qty, inside the flex-1 title region.
+    const nest = screen.getByRole('button', { name: 'Nest' })
+    expect(nest.closest('.flex-1')).not.toBeNull()
+  })
+})

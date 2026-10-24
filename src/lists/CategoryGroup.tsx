@@ -25,6 +25,7 @@ import {
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   PRINT_UNTRUNCATE,
+  ROW_CONTROL_TARGET,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
@@ -236,9 +237,14 @@ type GroupPropsBase = {
    *  boolean would not be.
    *
    *  headerLeading sits before the collapse chevron (the drag grip).
-   *  headerAction sits at the end of the header row (nest handle, kebab). */
+   *  headerAction sits at the end of the header row, in the column the rows'
+   *  own menu occupies, so it must be exactly one row control wide (a kebab).
+   *  titleAction is any OTHER header control (the container nest handle): it
+   *  sits at the right end of the flex-1 title region, where its width costs
+   *  the Qty/Weight columns nothing - see titleContent. */
   headerLeading?: ReactNode
   headerAction?: ReactNode
+  titleAction?: ReactNode
   /** Replaces the rendered title text. `name` is still required and still
    *  supplies every accessible label ("Collapse {name}"), so a section stays
    *  announceable whatever its title becomes.
@@ -408,6 +414,7 @@ function CategoryGroup({
   showUnreadyOnly = false,
   headerLeading,
   headerAction,
+  titleAction,
   titleContent,
   renderRowAction,
   packFoodRows,
@@ -545,8 +552,8 @@ function CategoryGroup({
     // exception — it stays one continuous surface to avoid nested cards.
     <div className={FLAT_TABLE_SURFACE}>
       {/* Header — also functions as the column header for Weight / Qty.
-          In pack mode the header tightens on mobile so the Qty label stays
-          aligned over the (newly tightened) pack-mode row's qty column.
+          In pack mode it uses the pack row's padding and gaps so the Qty
+          label stays over the row's qty column.
           Height comes from FLAT_TABLE_HEADER (mobile 44px touch floor /
           desktop 32px scanline, sourced from MOBILE_HEADER_HEIGHT and
           DESKTOP_HEADER_HEIGHT in flat-table-styles.ts), so a density
@@ -561,8 +568,11 @@ function CategoryGroup({
         // than taken from FLAT_TABLE_HEADER_PADDING, so the print tier has
         // to be spelled out alongside them or the header keeps screen
         // padding while its rows tighten.
+        // The gaps are PackRowFrame's (gap-2 lg:gap-2.5 print:gap-1): every
+        // trailing column adds one gap, so a narrower header gap walks the
+        // Qty label off the row quantities one gap per column.
         packMode
-          ? 'gap-0.5 lg:gap-1.5 print:gap-1 px-2 lg:px-3 print:px-1 py-0'
+          ? 'gap-2 lg:gap-2.5 print:gap-1 px-2 lg:px-3 print:px-1 py-0'
           : `gap-1.5 print:gap-1 ${FLAT_TABLE_HEADER_PADDING}`
       } ${
         // Collapsed: the header is the card's only child, so its divider
@@ -571,13 +581,13 @@ function CategoryGroup({
       }`}>
         {headerLeading}
         {collapsible ? (
-          // print:gap-1 matches the ROW's outer gap. A row's Ready checkbox and
-          // its Packed label are siblings one level up, spaced by that outer
-          // gap; here they sit inside this group instead, so without the match
-          // a container header's Packed square and name print 2px right of the
-          // ones in every row beneath it. Alignment down the checkbox columns
-          // is the whole point of a printed checklist.
-          <div className="flex flex-1 min-w-0 items-center gap-1.5 print:gap-1">
+          // In pack mode this gap matches the ROW's outer gap, on screen and on
+          // paper. A row's Ready checkbox and its Packed label are siblings one
+          // level up, spaced by that outer gap; here they sit inside this group
+          // instead, so without the match a container header's Packed square
+          // and name sit right of the ones in every row beneath it. Alignment
+          // down the checkbox columns is the whole point of a checklist.
+          <div className={`flex flex-1 min-w-0 items-center ${packMode ? 'gap-2 lg:gap-2.5' : 'gap-1.5'} print:gap-1`}>
             {/* Chevron is the only interactive collapse target. Mobile mistaps
                 (tapping near the first row but landing on the header) used to
                 collapse the whole section because the entire header strip was
@@ -650,6 +660,7 @@ function CategoryGroup({
             {complete && (
               <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
             )}
+            {titleAction && <span className="ml-auto flex shrink-0 items-center">{titleAction}</span>}
           </div>
         ) : (
           <span className={`flex-1 min-w-0 truncate ${FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
@@ -661,7 +672,7 @@ function CategoryGroup({
             <div className="hidden lg:contents">
               <div className={COL_ICON} />
               <div className={COL_ICON} />
-              <div className={`${COL_QTY_EDIT} text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={`${COL_QTY_EDIT} text-center ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
               <div className={`${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW}`}>
@@ -673,7 +684,7 @@ function CategoryGroup({
                 and weight columns matching MobileRowBody. No kebab stub. */}
             <div className="lg:hidden flex items-center gap-2">
               <div className={COL_ICON} />
-              <div className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_EYEBROW}`}>
+              <div className={`${COL_QTY_MOBILE} text-center ${FLAT_TABLE_EYEBROW}`}>
                 Qty
               </div>
               <div className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_EYEBROW}`}>
@@ -689,20 +700,34 @@ function CategoryGroup({
             <span className={`${COL_ICON} inline-flex items-center justify-center`}>
               {containerItem.isConsumable && <ConsumableIcon />}
             </span>
-            <span className={`${COL_QTY} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
+            <span className={`${COL_QTY} text-center ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
               {containerItem.quantity}
             </span>
+            <div className={`hidden lg:block ${COL_WEIGHT} print:hidden`} />
           </>
         ) : (
           <>
             <div className={COL_ICON} />
             <div className={COL_ICON} />
-            <div className={`${COL_QTY} text-right ${FLAT_TABLE_EYEBROW}`}>
+            <div className={`${COL_QTY} text-center ${FLAT_TABLE_EYEBROW}`}>
               Qty
+            </div>
+            <div className={`hidden lg:block ${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW} print:hidden`}>
+              Weight
             </div>
           </>
         )}
-        {headerAction}
+        {/* A pack row ends Qty, Weight (lg+), then its row controls: one menu
+            button, or Edit + Remove in the Worn section. The header must end
+            with the same columns or its Qty label sits over the row's Weight.
+            A section with its own menu (headerAction) fills the slot itself;
+            otherwise empty slots of the controls' size stand in. Print hides
+            row weight and controls, so the stand-ins hide there too. */}
+        {packMode && !headerAction
+          ? Array.from({ length: wornSection ? 2 : 1 }, (_, i) => (
+              <span key={i} aria-hidden="true" className={`shrink-0 ${ROW_CONTROL_TARGET} print:hidden`} />
+            ))
+          : headerAction}
       </div>
 
       {/* Items + footer (footer is the row's "total" line, lined up under Weight) */}

@@ -8,7 +8,6 @@ import {
   FLAT_TABLE_HEADER_PADDING,
   FLAT_TABLE_HEADER_TITLE,
   FLAT_TABLE_META_TEXT,
-  FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
   FORM_INPUT,
 } from '../components/flat-table-styles'
@@ -480,23 +479,16 @@ function FoodDocument({
           />
           <span>days</span>
         </label>
-        {/* Same label + value grammar as the Trip length control beside it,
-            so the bar reads as one row of facts rather than a form control
-            next to a stat card. foodGramsFor sums items alone - never joined
-            through slots, or a food eaten at several meals would count its
-            weight once per meal. Both units at once, like the Weight summary
-            table: a roll-up stat shows g and lb/oz side by side and ignores
-            the unit toggle. */}
+        {/* Same label + value grammar as the Trip length control beside it:
+            the same sans face and size, the value only darker and heavier,
+            so the bar reads as one row of facts. One unit, following the
+            g/oz toggle like every footer total. foodGramsFor sums items
+            alone - never joined through slots, or a food eaten at several
+            meals would count its weight once per meal. */}
         <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
           <span>Food weight</span>
-          <span className={`${FLAT_TABLE_NUMERIC_TEXT} font-semibold text-gray-900`}>
-            {formatTotalWeight(totalFoodGrams, 'g')}
-          </span>
-          {/* Plain text, not TotalWeightValue: that component's fixed grid
-              columns exist to align a table's rows, and inline they read as
-              a stretched gap. */}
-          <span className={`${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
-            {formatTotalWeight(totalFoodGrams, 'oz')}
+          <span className="font-semibold tabular-nums text-gray-900">
+            {formatTotalWeight(totalFoodGrams, weightUnit)}
           </span>
         </div>
         <span className="flex-1" aria-hidden="true" />

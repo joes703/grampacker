@@ -1,10 +1,5 @@
-import { FLAT_TABLE_EYEBROW } from '../components/flat-table-styles'
-
 type Props = {
   name: string
-  /** Gear rows plus food rows, containers counted once - the same union the
-   *  pack progress metric counts, so the paper and the screen agree. */
-  itemCount: number
 }
 
 // Local time, formatted as `YYYY-MM-DD HH:MM`. The sheet is read where it was
@@ -18,13 +13,11 @@ function formatPrintTimestamp(d: Date): string {
   )
 }
 
-// A small vertical label sitting over one printed checkbox column. w-3.5
-// matches the squares' width and rotate-180 over vertical-rl makes the text
-// read bottom-up, so a word longer than 14px costs height instead of
-// colliding with its neighbor.
-function ColumnLabel({ children }: { children: string }) {
+// One legend entry: a small square drawn like the row squares, then its name.
+function LegendSquare({ children }: { children: string }) {
   return (
-    <span className="inline-block w-3.5 text-[8px] leading-none text-gray-600 [writing-mode:vertical-rl] rotate-180">
+    <span className="inline-flex items-center gap-1">
+      <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-sm border border-gray-900" />
       {children}
     </span>
   )
@@ -38,13 +31,10 @@ function ColumnLabel({ children }: { children: string }) {
 // rows per page. The list name is set at body weight rather than as a display
 // heading for the same reason.
 //
-// The column labels are not decoration. The two checkbox squares in every row
-// are only distinguishable by position when both are blank, so the columns
-// get named once at the top, directly over the squares. The pl-[5px] + gap-1
-// mirror a top-level row's geometry (1px section border + print:px-1 inset,
-// print:gap-1 between the squares); rows nested inside a bag indent and the
-// labels knowingly stop lining up there.
-export default function PrintListHeader({ name, itemCount }: Props) {
+// The legend is not decoration. The two checkbox squares in every row are
+// only distinguishable by position when both are blank, so the header names
+// them once, in the same left-to-right order as the squares in each row.
+export default function PrintListHeader({ name }: Props) {
   return (
     <div
       data-testid="print-list-header"
@@ -53,18 +43,14 @@ export default function PrintListHeader({ name, itemCount }: Props) {
       <div className="flex items-baseline justify-between gap-3">
         {/* A list name has no guaranteed whitespace either; see
             PRINT_UNTRUNCATE. */}
-        <h1 className="min-w-0 text-[13px] font-semibold text-gray-900 [overflow-wrap:anywhere]">
+        <h1 className="min-w-0 text-[12px] font-semibold text-gray-900 [overflow-wrap:anywhere]">
           {name}
         </h1>
-        <p className={`shrink-0 ${FLAT_TABLE_EYEBROW} print:text-[9px]`}>
-          {itemCount} {itemCount === 1 ? 'item' : 'items'}
-          {' · '}
-          {formatPrintTimestamp(new Date())}
+        <p className="flex shrink-0 items-center gap-3 text-[9px] text-gray-600">
+          <LegendSquare>Ready</LegendSquare>
+          <LegendSquare>Packed</LegendSquare>
+          <span className="tabular-nums">{formatPrintTimestamp(new Date())}</span>
         </p>
-      </div>
-      <div className="mt-1 flex items-end gap-1 pl-[5px]">
-        <ColumnLabel>Ready</ColumnLabel>
-        <ColumnLabel>Packed</ColumnLabel>
       </div>
     </div>
   )

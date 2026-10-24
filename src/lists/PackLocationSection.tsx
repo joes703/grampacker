@@ -201,13 +201,10 @@ function PackContainerSection({
           // name) and no delete - only "stop using as container", which the
           // move menu also offers. The nest handle is what makes containers
           // nestable by drag; containerAction carries the same move actions
-          // for keyboard and touch.
-          headerAction={confirmed ? (
-            <>
-              {nestHandle}
-              {containerAction}
-            </>
-          ) : undefined}
+          // for keyboard and touch. The nest handle goes in the title region:
+          // headerAction is the rows' menu column, one control wide.
+          titleAction={confirmed ? nestHandle : undefined}
+          headerAction={confirmed ? containerAction : undefined}
         >
           {children}
         </CategoryGroup>

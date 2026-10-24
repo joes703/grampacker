@@ -4,8 +4,7 @@ import { Copy, Download, Pencil, Trash2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
-import ToggleSwitch from '../components/ToggleSwitch'
-import { INLINE_EDIT_FOCUS_RING, PANEL_TOGGLE_LABEL } from '../components/flat-table-styles'
+import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { reportFailure } from '../lib/report-failure'
 import { MAX_NAME_LENGTH } from '../lib/caps'
@@ -23,20 +22,16 @@ type Props = {
   onClose?: () => void
 }
 
-// Current-list management panel. Toggles for list-level settings stack
-// above a subtle divider; below the divider are list lifecycle actions
-// (Rename inline, Duplicate, Export CSV, Delete list).
+// Current-list management panel: list lifecycle actions (Rename inline,
+// Duplicate, Export CSV, Delete list).
 //
-// Toggles:
-//   - Draft: label-only lifecycle state, shared with CurrentListHeader's
-//     pill via draftToggle.
+// Sharing is deliberately NOT here: buried between Rename and Delete, the
+// 2026-10 UX audits each took three clicks to find it. It has its own
+// toolbar button (ListShareButton), its one home on this page. The Draft
+// flag went with it, because a draft only changes what a share's visitors
+// see. Do not add a second entry point for either back here.
 //
-// Sharing is deliberately NOT here. It lived in this panel between Rename
-// and Delete until the 2026-10 UX audits each took three clicks to find it;
-// it now has its own toolbar button (ListShareButton), its one home on this
-// page. Do not add a second entry point back here.
-//
-// "Add ready checks" used to live here as a third toggle. It moved to
+// "Add ready checks" used to live here as a toggle. It moved to
 // PackingProgress and was then retired entirely: ready checks are
 // unconditional, so there is nothing left to toggle. What survives of the
 // original reasoning is why it did not belong here - this panel is
@@ -74,7 +69,7 @@ type Props = {
 export default function ListSettingsPanel({ list, onClose }: Props) {
   const navigate = useNavigate()
 
-  const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId, draftToggle } = useCurrentListActions()
+  const { renameMut, duplicateMut, deleteListMut, exportCsv, exportingListId } = useCurrentListActions()
   const exporting = exportingListId === list.id
 
   // Inline rename state. Mirrors InlineTitle's keyboard semantics
@@ -134,33 +129,13 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
 
   return (
     <div ref={panelRef} className="space-y-3">
-      <div>
-        <div className="flex items-center justify-between">
-          <span className={PANEL_TOGGLE_LABEL}>Draft</span>
-          <ToggleSwitch
-            checked={list.isDraft}
-            onChange={() => draftToggle.toggle(list)}
-            disabled={draftToggle.isPending}
-            ariaLabel="Draft"
-          />
-        </div>
-        {/* Every new list starts as a draft (server default), and nothing
-            else in the UI says so or says what the flag does - UX audit
-            2026-10 found testers stuck on an unexplained "Draft". */}
-        <p className="mt-1 text-xs text-gray-500">
-          New lists start as drafts. A shared draft shows visitors a
-          work-in-progress note.
-        </p>
-      </div>
-
-      {/* Actions section. The -mx-3 spans the popover's p-3 padding so
-          the divider and action rows go edge-to-edge while RowMenuItem's
-          own px-3 keeps the visible content inset where the toggles
-          above sit.
+      {/* The -mx-3 spans the popover's p-3 padding so the action rows go
+          edge-to-edge while RowMenuItem's own px-3 keeps their content
+          inset.
           This surface is a settings panel rather than an ARIA menu, so each
           action is a plain button. The card
           kebabs in ListsPage keep menu semantics where they belong. */}
-      <div className="-mx-3 border-t border-gray-100 pt-1">
+      <div className="-mx-3">
         <div className="space-y-0.5">
           {renaming ? (
             <div className="px-3 py-0.5">

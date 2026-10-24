@@ -2,7 +2,6 @@ import type { ListItemWithGear, Category } from '../lib/types'
 import { type WeightBreakdown } from '../lib/weight-breakdown'
 import {
   COMPACT_PANEL_BODY_TEXT,
-  FLAT_TABLE_EYEBROW,
   TABLE_DIVIDER_LINE,
   TABLE_STRONG_DIVIDER,
 } from '../components/flat-table-styles'
@@ -40,20 +39,6 @@ export default function WeightTable({ items, breakdown }: Props) {
 
   return (
     <table className={`w-full ${COMPACT_PANEL_BODY_TEXT} text-gray-700`}>
-        {/* The per-category block is BASE ONLY (worn and consumable weight
-            live in their own footer rows), so a category holding consumable
-            or worn gear shows less here than its rows sum to. Untitled,
-            that correct number reads as a bug - the heading states what
-            the column is. */}
-        {catRows.length > 0 && (
-          <thead>
-            <tr>
-              <th colSpan={3} className={`${labelCell} text-left font-normal ${FLAT_TABLE_EYEBROW}`}>
-                Base weight by category
-              </th>
-            </tr>
-          </thead>
-        )}
         <tbody className={`divide-y ${TABLE_DIVIDER_LINE}`}>
           {catRows.map((row) => (
             <tr key={row.id}>

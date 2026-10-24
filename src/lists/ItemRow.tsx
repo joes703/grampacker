@@ -180,7 +180,7 @@ export default function ItemRow({
         <span className={`${COL_ICON} inline-flex items-center justify-center`}>
           {item.isConsumable && <ConsumableIcon />}
         </span>
-        <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
+        <span className={`${COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
           {item.quantity}
         </span>
         {/* Weight. A SIBLING of the frame's label, never a child (the frame
@@ -333,6 +333,7 @@ export default function ItemRow({
           max={MAX_LIST_ITEM_QUANTITY}
           onSave={editable && onUpdate ? (quantity) => onUpdate({ quantity }) : undefined}
           itemName={name}
+          align="center"
           className={COL_QTY_EDIT}
         />
 
@@ -391,7 +392,7 @@ function ListMobileRowBody({
       <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         {item.isWorn ? <WornIcon /> : item.isConsumable ? <ConsumableIcon /> : null}
       </span>
-      <span className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+      <span className={`${COL_QTY_MOBILE} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
       <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>

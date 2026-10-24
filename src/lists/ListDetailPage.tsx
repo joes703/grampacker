@@ -1181,6 +1181,12 @@ function ListDetailInner({ listId }: { listId: string }) {
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
+      {/* Full width, above the columns, in every mode. The columns below
+          differ by mode (Category has the aside from lg, Pack only from xl
+          and centers a capped document, Food has no aside), so a toolbar
+          inside the document column moved sideways on every view switch. */}
+      <ListDocumentToolbar list={list} mode={mode} />
+
       {/* Two-column grid. The aside serves BOTH gear arrangements now
           (Organize returned through its exclusive branch above; Food keeps
           its own left rail and is excluded here). */}
@@ -1236,29 +1242,20 @@ function ListDetailInner({ listId }: { listId: string }) {
             the leftover flex space by mx-auto). The cap was dropped once on
             the argument that the xl aside fills the width, but the aside only
             exists at xl - everywhere below that the document stretched across
-            the whole shell and pack rows read as a ribbon. Print narrows
-            further: the unprefixed 3xl would govern paper too, and 768px is
-            the entire printable width of portrait Letter - a sheet that wide
-            is hard to tick through, so paper gets max-w-xl. */}
+            the whole shell and pack rows read as a ribbon. Paper lifts the
+            cap (print:max-w-none) and uses the full printable width for two
+            columns of sections instead (see the section wrapper below). */}
         <div
           data-testid="list-document-column"
-          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto print:max-w-xl' : ''}`}
+          className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto print:max-w-none' : ''}`}
         >
           {/* Paper's only document header. The screen toolbar below is
               print:hidden, so without this nothing on the sheet says which
               list it is. Pack only: the other modes are not checklists and
               have not been designed for paper. */}
           {mode === 'pack' && (
-            <PrintListHeader
-              name={list.name}
-              itemCount={listItems.length + packFoodItems.length}
-            />
+            <PrintListHeader name={list.name} />
           )}
-
-          <ListDocumentToolbar
-            list={list}
-            mode={mode}
-          />
 
           {mode === 'food' ? (
             // Food owns its own query gates (see FoodView), branched here
@@ -1449,7 +1446,17 @@ function ListDetailInner({ listId }: { listId: string }) {
                     ? (foodById.get(activeParsed.id) ?? null)
                     : null
                 return (
-                  <div className="flex flex-col gap-3">
+                  // Paper gets two columns in Pack: a checklist row is
+                  // narrow, so one column wasted half of every sheet. Rows
+                  // and section headers already refuse to split from what
+                  // follows them (PRINT_KEEP_TOGETHER / PRINT_KEEP_WITH_NEXT),
+                  // so a section may continue into the next column but never
+                  // leaves a header or half a row behind. Block layout drops
+                  // the flex gap, so each card carries its own margin there.
+                  <div
+                    data-testid={mode === 'pack' ? 'pack-print-columns' : undefined}
+                    className={`flex flex-col gap-3 ${mode === 'pack' ? 'print:block print:columns-2 print:gap-4 print:*:mb-2' : ''}`}
+                  >
                     <PlacementProvider placement={placement} actions={placementActions}>
                     <DndContext
                       sensors={sensors}

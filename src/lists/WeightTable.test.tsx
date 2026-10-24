@@ -87,16 +87,6 @@ describe('WeightTable', () => {
     expect(screen.queryByText(/Worn/)).not.toBeInTheDocument()
   })
 
-  it('titles the per-category block so base-only figures read as base, not errors', () => {
-    // A category holding consumable or worn gear shows LESS here than its
-    // rows sum to, by design (base never includes consumables or worn).
-    // Untitled, a correct 70 g beside a 180 g category read as a bug to two
-    // UX audits; the heading states what the column is.
-    const items = [listItem({ id: '1', categoryId: shelter.id, weightGrams: 250 })]
-    render(<WeightTable items={items} categories={[shelter]} breakdown={breakdownFor(items, [shelter])} />)
-    expect(screen.getByText('Base weight by category')).toBeInTheDocument()
-  })
-
   it('rounds aggregate gram values to whole grams', () => {
     // Three 100.1 g items sum to a fractional aggregate. The table keeps the
     // underlying breakdown precise but presents its gram column as whole grams.

@@ -334,6 +334,21 @@ describe('the gear picker beside Pack', () => {
   const listsPanel = () =>
     screen.queryByRole('button', { name: 'New list or import CSV' })
 
+  // The document column is shaped differently per mode (aside from lg in
+  // Category, from xl in Pack, a centered 3xl cap in Pack). A toolbar inside it
+  // moved the view switcher sideways on every switch, so it sits above the
+  // columns, at full width, in every mode.
+  it.each([
+    ['Category', `/lists/${listId}`],
+    ['Pack', `/lists/${listId}/pack`],
+  ])('renders the view switcher outside the document column in %s', async (_mode, path) => {
+    stubViewport(1280)
+    await renderDetail(path)
+
+    const nav = screen.getByRole('navigation', { name: 'List views' })
+    expect(screen.getByTestId('list-document-column').contains(nav)).toBe(false)
+  })
+
   it('renders the picker aside in Pack, gated at xl rather than lg', async () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
@@ -354,15 +369,14 @@ describe('the gear picker beside Pack', () => {
 
   // Pack reads at the Food view's measure: the unprefixed max-w-3xl caps the
   // document on screen (the full shell width made pack rows read as a
-  // ribbon), and print narrows further - 3xl is the whole printable width of
-  // portrait Letter, and a sheet that wide is hard to tick through.
-  it('constrains the Pack document on screen, and narrower for print', async () => {
+  // ribbon). Paper lifts the cap and splits the sections into two columns.
+  it('constrains the Pack document on screen, and lifts the cap for two print columns', async () => {
     stubViewport(1280)
     await renderDetail(`/lists/${listId}/pack`)
 
     const column = screen.getByTestId('list-document-column')
     expect(column.className).toMatch(/(^|\s)max-w-3xl(\s|$)/)
-    expect(column.className).toContain('print:max-w-xl')
+    expect(column.className).toContain('print:max-w-none')
   })
 
   // Nobody switches lists mid-pack, and the switcher's max-h-72 is height the
