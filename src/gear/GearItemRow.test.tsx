@@ -193,6 +193,6 @@ describe('GearItemRow select mode', () => {
     const { container } = render(
       <GearItemRow item={gear({ description: null })} {...baseProps()} selectMode />,
     )
-    expect(container.querySelector('.opacity-0.flex-1')).not.toBeNull()
+    expect(container.querySelector('.opacity-0.flex-\\[2\\]')).not.toBeNull()
   })
 })
