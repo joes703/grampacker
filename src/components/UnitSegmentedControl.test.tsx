@@ -17,7 +17,7 @@ describe('UnitSegmentedControlView', () => {
     const chosen = screen.getByText('oz')
     expect(chosen).toHaveClass('bg-white', 'text-gray-900')
     expect(chosen).not.toHaveClass('bg-blue-600')
-    expect(screen.getByText('g')).toHaveClass('text-gray-500')
+    expect(screen.getByText('g')).toHaveClass('text-gray-600')
   })
 
   // The clickable labels carry the size, not the track: 40px on touch,

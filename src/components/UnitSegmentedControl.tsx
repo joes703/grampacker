@@ -71,7 +71,7 @@ export function UnitSegmentedControlView({
           className={`inline-flex min-h-10 min-w-9 cursor-pointer items-center justify-center rounded px-2 text-xs font-medium transition-colors lg:min-h-7 ${
             value === 'g'
               ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-900'
+              : 'text-gray-600 hover:text-gray-900'
           } peer-focus-visible/m:ring-2 peer-focus-visible/m:ring-blue-300`}
         >
           g
@@ -90,7 +90,7 @@ export function UnitSegmentedControlView({
           className={`inline-flex min-h-10 min-w-9 cursor-pointer items-center justify-center rounded px-2 text-xs font-medium transition-colors lg:min-h-7 ${
             value === 'oz'
               ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-900'
+              : 'text-gray-600 hover:text-gray-900'
           } peer-focus-visible/i:ring-2 peer-focus-visible/i:ring-blue-300`}
         >
           oz
