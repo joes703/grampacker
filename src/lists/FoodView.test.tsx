@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { queryKeys } from '../lib/queries'
 import { FOOD_ITEM_CAP, type ListFoodResponse } from '../../shared/food'
 import { ApiError } from '../lib/api'
+import { setWeightUnit } from '../lib/weight'
 import { clearToasts, shownToasts } from '../test/mutation-hook-harness'
 import { shimDialog } from './test/list-detail-harness'
 
@@ -198,12 +199,15 @@ describe('FoodView planning header', () => {
     const header = daysInput.closest('section') as HTMLElement
     expect(header).not.toBeNull()
     expect(within(header).getByRole('button', { name: '+ Add food' })).toBeInTheDocument()
-    // One shared stash of Ramen, 120 g, from foodGramsFor. The stat shows
-    // BOTH units at once, like the Weight summary table, so the unit toggle
-    // does not change it - 120 g is 4.2 oz.
+    // One shared stash of Ramen, 120 g, from foodGramsFor. The stat follows
+    // the g/oz toggle like every footer total: one unit, never both.
     expect(within(header).getByText('Food weight')).toBeInTheDocument()
     expect(within(header).getByText('120 g')).toBeInTheDocument()
+    expect(within(header).queryByText('4.2 oz')).toBeNull()
+    act(() => setWeightUnit('oz'))
     expect(within(header).getByText('4.2 oz')).toBeInTheDocument()
+    expect(within(header).queryByText('120 g')).toBeNull()
+    act(() => setWeightUnit('g'))
     // The day grid lives outside the header card.
     expect(within(header).queryByRole('region', { name: 'Day 1' })).not.toBeInTheDocument()
   })
