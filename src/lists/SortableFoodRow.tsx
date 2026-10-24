@@ -79,7 +79,7 @@ export default function SortableFoodRow({
       <span className={`${COL_ICON} inline-flex items-center justify-center`}>
         <ConsumableIcon />
       </span>
-      <span className={`${COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
+      <span className={`${COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
         {food.unitCount}
       </span>
       {/* Same component and the same PACK_ROW_WEIGHT_CELL as the gear pack row:

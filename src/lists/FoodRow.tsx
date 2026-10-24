@@ -79,7 +79,7 @@ export default function FoodRow({
             <span className={`${COL_ICON} inline-flex items-center justify-center`}>
               <ConsumableIcon />
             </span>
-            <span className={`${COL_QTY_MOBILE} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+            <span className={`${COL_QTY_MOBILE} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
               {food.unitCount}
             </span>
             <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
@@ -98,7 +98,7 @@ export default function FoodRow({
           <span className={`${COL_ICON} inline-flex items-center justify-center`}>
             <ConsumableIcon />
           </span>
-          <span className={`${COL_QTY_EDIT} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+          <span className={`${COL_QTY_EDIT} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
             {food.unitCount}
           </span>
           <span className={`${COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>

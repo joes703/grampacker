@@ -50,7 +50,7 @@ export const FOOD_PLAN_COL_WEIGHT = 'shrink-0 w-20 lg:w-24'
 export function FoodPlanColumnLabels() {
   return (
     <>
-      <div className={`${FOOD_PLAN_COL_QTY} text-right ${FLAT_TABLE_EYEBROW}`}>Qty</div>
+      <div className={`${FOOD_PLAN_COL_QTY} text-center ${FLAT_TABLE_EYEBROW}`}>Qty</div>
       <div className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW}`}>Weight</div>
     </>
   )
@@ -88,7 +88,7 @@ export function FoodPlanRow({ item, weightUnit, busy, onEdit, indent }: FoodPlan
           one container
         </span>
       )}
-      <span className={`${FOOD_PLAN_COL_QTY} text-right ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
+      <span className={`${FOOD_PLAN_COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
       {/* The full stash weight at each occurrence (weight × this meal's
