@@ -212,11 +212,13 @@ describe('the printed sheet identifies itself', () => {
     expect(header.textContent).toContain('Sierra High Route')
   })
 
-  it('labels each checkbox column, since blank squares are identical', async () => {
+  it('names the two checkbox squares once, in row order, since blank squares are identical', async () => {
     await renderPack()
     const header = screen.getByTestId('print-list-header')
     expect(within(header).getByText('Ready')).toBeTruthy()
     expect(within(header).getByText('Packed')).toBeTruthy()
+    // The legend reads in the same order as the squares in every row.
+    expect(header.textContent?.indexOf('Ready')).toBeLessThan(header.textContent?.indexOf('Packed') ?? -1)
   })
 
   it('dates the sheet in ISO format with the time', async () => {
@@ -225,14 +227,18 @@ describe('the printed sheet identifies itself', () => {
     expect(header.textContent).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
   })
 
-  it('counts gear and food as one union, matching the progress metric', async () => {
-    h.fetchListFood.mockResolvedValue({
-      ...emptyFood,
-      items: [{ id: 'food-1', name: 'Tortillas', weightGrams: 300, quantity: 1, isPerMeal: false, unitCount: 1, sortOrder: 0, isPacked: false, isReady: false, packingLocationId: null, packSortOrder: 0, slotIds: [] }],
-    })
+  it('prints no item count: a checklist is read by its rows, not a total', async () => {
     await renderPack()
-    // 2 gear rows + 1 food row.
-    expect(await screen.findByText(/^3 items/)).toBeTruthy()
+    const header = screen.getByTestId('print-list-header')
+    expect(header.textContent).not.toMatch(/\bitems?\b/)
+  })
+
+  it('lays the sections out in two columns on paper, so a long list fits fewer sheets', async () => {
+    await renderPack()
+    const sections = screen.getByTestId('pack-print-columns')
+    expect(sections.className).toContain('print:columns-2')
+    // The column is the full printable width; a cap would squeeze both columns.
+    expect(screen.getByTestId('list-document-column').className).not.toContain('print:max-w-xl')
   })
 })
 

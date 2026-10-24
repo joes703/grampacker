@@ -218,8 +218,10 @@ export const FLAT_TABLE_HEADER =
 //     toggles. One token so these don't drift apart in size/case/color.
 export const FLAT_TABLE_HEADER_TITLE = `text-sm font-medium text-gray-700 ${PRINT_BODY_TEXT}`
 export const FLAT_TABLE_HEADER_TITLE_MUTED = `text-sm font-medium text-gray-500 ${PRINT_BODY_TEXT}`
+// On paper the eyebrow drops below the 10px body tier: at 12px bold uppercase
+// the Qty label was the loudest thing on the checklist.
 export const FLAT_TABLE_EYEBROW =
-  'text-xs font-semibold uppercase tracking-wider text-gray-500'
+  'text-xs font-semibold uppercase tracking-wider text-gray-500 print:text-[8px]'
 
 // Item / list row: a table row, not a mini card. Heights flow from the
 // density tokens above (44px touch floor, 28px desktop). The bottom border

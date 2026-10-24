@@ -68,8 +68,17 @@ why it is defined against the base tier rather than against `lg:`.)
 | Row / header height | none (`print:min-h-0`) |
 | Row / header padding | `print:px-1 print:py-0` |
 | Body text | 10px (`print:text-[10px]`) |
+| Column labels (`FLAT_TABLE_EYEBROW`) | 8px (`print:text-[8px]`) |
 | Row gap | `print:gap-1` |
 | Interactive controls | not rendered (`print:hidden`) |
+| Pack layout | two columns of sections (`print:columns-2`), full printable width |
+
+**Two columns.** A checklist row is two squares, a name and a quantity, so one
+column across a Letter sheet left half of every page empty and turned a
+50-item list into two sheets. Pack's section wrapper becomes a two-column
+block on paper and the document column drops its screen cap
+(`print:max-w-none`). The row and header fragmentation hints below apply to
+column breaks as well as page breaks.
 
 Paper needs no touch targets and resolves far finer than a screen, so this
 tier is denser than either screen tier. Rows have no minimum height because
@@ -103,7 +112,7 @@ something print-hidden was doubling as an indicator.
 **Fragmentation is deliberately partial.** `FLAT_TABLE_ROW` carries
 `print:break-inside-avoid` and `FLAT_TABLE_HEADER` carries
 `print:break-after-avoid`, asking the browser not to split a row across a page
-and not to strand a heading at the foot of one. These are hints, not
+or column and not to strand a heading at the foot of one. These are hints, not
 guarantees - the spec lets a browser relax avoidance to make progress - and
 they have not been checked against real pagination. Whole SECTIONS are NOT
 protected: nested packing locations are descendants of their parent section,
