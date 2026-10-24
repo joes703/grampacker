@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { env } from './test/node-env'
-import { createAuth, sessionAuth } from './auth'
+import { sessionAuth } from './auth'
 
 // The cache contract behind requireSession's auth instance (server/auth.ts).
-// The split is load-bearing: sessionAuth is holderless and MAY be cached;
-// createAuth carries a per-request incident holder and must NEVER be, or
-// concurrent /api/auth/* requests would overwrite each other's incident.
 // Identity is compared with Object.is so a failure does not try to diff two
 // whole better-auth instances.
 describe('auth instance caching', () => {
@@ -20,9 +17,5 @@ describe('auth instance caching', () => {
     const copy = { ...env }
     expect(Object.is(sessionAuth(copy), sessionAuth(env))).toBe(false)
     expect(Object.is(sessionAuth(copy), sessionAuth(copy))).toBe(true)
-  })
-
-  it('createAuth constructs per call: a request-bound instance is never cached', () => {
-    expect(Object.is(createAuth(env, {}), createAuth(env, {}))).toBe(false)
   })
 })

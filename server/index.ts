@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
-import { createAuth, type AuthIncident } from './auth'
+import { createAuth } from './auth'
 import { createDb } from './db'
 import { assetCache } from './middleware/asset-cache'
 import { apiBodyLimit } from './middleware/body-limit'
@@ -72,19 +72,21 @@ api.use('/auth/*', authRateLimit)
 // email+password routes are still mounted by the library but answer 400 -
 // there is no emailAndPassword config for them to run against.
 //
-// Wrapped for observability, not for behavior: better-call catches every throw
-// inside its own router and RETURNS a Response, so nothing here ever reaches
-// app.onError. Without this wrapper, auth 5xx would be the one part of the
-// server outside the correlation scheme entirely.
+// Wrapped for observability: better-call answers an APIError with a Response,
+// and with `onAPIError.throw` (server/auth.ts) any other error escaping an
+// endpoint is rethrown here instead of being logged raw. Both kinds of 5xx get
+// one correlated entry, so auth is not outside the correlation scheme.
 api.on(['GET', 'POST'], '/auth/*', async (c) => {
-  // The error behind a 5xx is captured by the onAPIError hook in
-  // server/auth.ts and logged here, in the same entry as the correlation id.
-  const incident: AuthIncident = {}
-  return withAuthErrorCorrelation(
-    await createAuth(c.env, incident).handler(c.req.raw),
-    { method: c.req.method, path: new URL(c.req.raw.url).pathname },
-    incident.error,
-  )
+  const req = { method: c.req.method, path: new URL(c.req.raw.url).pathname }
+  let res: Response
+  try {
+    res = await createAuth(c.env).handler(c.req.raw)
+  } catch (err) {
+    // The same bare 500 better-call would have answered; the wrapper fills
+    // in the body and logs the error beside the correlation id.
+    return withAuthErrorCorrelation(new Response(null, { status: 500 }), req, err)
+  }
+  return withAuthErrorCorrelation(res, req)
 })
 
 // ONE session gate for the three sub-apps that share the /lists base. Each

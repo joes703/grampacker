@@ -307,9 +307,9 @@ export const authLogger = {
   ) => recordAuthLog(level, message, ...args),
 }
 
-// better-call catches every throw inside its own router and returns a Response,
-// so /api/auth/* failures never reach the handler below. This brings them into
-// the same scheme from the outside.
+// /api/auth/* failures never reach the handler below: better-call answers an
+// APIError with a Response, and the /api/auth/* route in server/index.ts
+// catches any other error. This brings both into the same scheme.
 //
 // The id has to ride in the BODY: @better-fetch/fetch returns
 // {...parsedJsonBody, status, statusText} to callers and drops response headers
@@ -325,8 +325,9 @@ export const authLogger = {
 export async function withAuthErrorCorrelation(
   res: Response,
   req: { method: string; path: string },
-  // The error behind the response, when the onAPIError hook in server/auth.ts
-  // caught one. Absent for a 5xx better-auth produced without throwing.
+  // The error behind the response, when one escaped better-auth's handler
+  // (the /api/auth/* route in server/index.ts). Absent for a 5xx better-auth
+  // answered itself, such as an APIError.
   err?: unknown,
 ): Promise<Response> {
   if (res.status < 500) return res
