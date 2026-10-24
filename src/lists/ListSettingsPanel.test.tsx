@@ -22,7 +22,6 @@ vi.mock('./use-current-list-actions', () => ({
     deleteListMut: { mutate: actions.deleteMutate, isPending: false },
     exportCsv: actions.exportCsv,
     exportingListId: null,
-    draftToggle: { toggle: vi.fn(), isPending: false },
   }),
 }))
 
@@ -77,7 +76,6 @@ describe('ListSettingsPanel worn grouping', () => {
   it('does not offer a toggle for the always-on Worn section', () => {
     renderPanel()
 
-    expect(screen.getByRole('switch', { name: 'Draft' })).toBeInTheDocument()
     expect(screen.queryByRole('switch', { name: 'Group worn items' })).not.toBeInTheDocument()
   })
 })
@@ -88,18 +86,8 @@ describe('ListSettingsPanel sharing', () => {
 
     expect(screen.queryByText('Shared')).toBeNull()
     expect(screen.queryByRole('switch', { name: 'Enable public link' })).toBeNull()
-  })
-})
-
-describe('ListSettingsPanel draft toggle', () => {
-  it('explains the draft default beside the toggle', () => {
-    // Every new list starts as a draft (server default) and nothing else in
-    // the UI said so - UX audit 2026-10 found testers stuck on it.
-    renderPanel()
-
-    expect(
-      screen.getByText(/New lists start as drafts\. A shared draft shows visitors a work-in-progress note\./),
-    ).toBeInTheDocument()
+    // Draft moved with them: it only changes what a share's visitors see.
+    expect(screen.queryByRole('switch', { name: 'Draft' })).toBeNull()
   })
 })
 

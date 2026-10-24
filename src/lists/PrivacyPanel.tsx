@@ -12,10 +12,10 @@ import { reportFailure } from '../lib/report-failure'
 type Props = { list: List }
 
 // Inner UI for the share/privacy controls - public/private toggle, a copyable
-// share URL when public, and a control to reset that URL. Consumed by
-// ListSettingsPanel's Shared section on the list detail page, and by the
-// per-row Share dialog on the Lists page (modal-wrapped to avoid nesting
-// popovers inside a kebab). Section heading and supporting copy live in the
+// share URL when public, a control to reset that URL, and the Draft flag.
+// Consumed by ListShareButton on the list detail page, and by the per-row
+// Share dialog on the Lists page (modal-wrapped to avoid nesting popovers
+// inside a kebab). Section heading and supporting copy live in the
 // parent so this body stays minimal.
 //
 // TOGGLING IS NOT DESTRUCTIVE. Off kills /r/:slug access, on revives the SAME
@@ -61,6 +61,10 @@ export default function PrivacyPanel({ list }: Props) {
   const shareToggle = useListFlagToggle({
     read: (l) => l.isShared,
     patch: (isShared) => ({ isShared }),
+  })
+  const draftToggle = useListFlagToggle({
+    read: (l) => l.isDraft,
+    patch: (isDraft) => ({ isDraft }),
   })
 
   // Not optimistic: the slug is server-minted, so there is nothing to guess.
@@ -186,6 +190,25 @@ export default function PrivacyPanel({ list }: Props) {
           {resetError}
         </p>
       )}
+      {/* Draft lives here because it only changes what a share's visitors
+          see: a work-in-progress note on the shared page (DraftBanner).
+          Every new list starts as a draft (server default), so the line
+          below says what the flag does. */}
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <div className="flex items-center justify-between">
+          <span className={PANEL_TOGGLE_LABEL}>Draft</span>
+          <ToggleSwitch
+            checked={list.isDraft}
+            onChange={() => draftToggle.toggle(list)}
+            disabled={draftToggle.isPending}
+            ariaLabel="Draft"
+          />
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          New lists start as drafts. A shared draft shows visitors a
+          work-in-progress note.
+        </p>
+      </div>
     </>
   )
 }

@@ -82,6 +82,26 @@ describe('PrivacyPanel', () => {
     })
   })
 
+  // Draft only changes what a share's visitors see, so it sits with the share
+  // controls, explained: every new list starts as one (server default).
+  it('hosts the Draft toggle with its explanation, and toggling sends the isDraft PATCH', async () => {
+    updateList.mockResolvedValue({ ...list, isDraft: false })
+    renderPanel()
+    const user = userEvent.setup()
+
+    expect(
+      screen.getByText(/New lists start as drafts\. A shared draft shows visitors a work-in-progress note\./),
+    ).toBeInTheDocument()
+    const draft = screen.getByRole('switch', { name: 'Draft' })
+    expect(draft).toHaveAttribute('aria-checked', 'true')
+
+    await user.click(draft)
+
+    await waitFor(() => {
+      expect(updateList).toHaveBeenCalledWith('list-1', { isDraft: false })
+    })
+  })
+
   it('shows the share URL (built from the slug) with a Copy button when public', () => {
     renderPanel({ ...list, isShared: true })
 
