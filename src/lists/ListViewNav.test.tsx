@@ -8,7 +8,7 @@ afterEach(cleanup)
 
 describe('ListViewNav', () => {
   it.each([
-    ['edit', 'Gear'],
+    ['edit', 'Category'],
     ['food', 'Food'],
     ['pack', 'Pack'],
   ] as const)('offers direct links with %s marked current', (mode, currentLabel) => {
@@ -20,10 +20,10 @@ describe('ListViewNav', () => {
 
     const nav = screen.getByRole('navigation', { name: 'List views' })
     const links = screen.getAllByRole('link')
-    // Gear and Pack are two arrangements of the SAME rows; Food is a
+    // Category and Pack are two arrangements of the SAME rows; Food is a
     // different document. Ordering the two arrangements adjacently and putting
     // Food last is the cheap half of saying so.
-    expect(links.map((link) => link.textContent)).toEqual(['Gear', 'Pack', 'Food'])
+    expect(links.map((link) => link.textContent)).toEqual(['Category', 'Pack', 'Food'])
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/lists/list-1',
       '/lists/list-1/pack',
