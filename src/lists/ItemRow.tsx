@@ -244,7 +244,7 @@ export default function ItemRow({
           icon={<CircleMinus size={22} />}
           allowFullSwipe
         >
-          <div className="flex flex-1 items-center gap-1 px-3 py-2">
+          <div className="flex flex-1 min-w-0 items-center gap-1 px-3 py-2">
             <ListMobileRowBody
               item={item}
               name={name}
@@ -255,7 +255,7 @@ export default function ItemRow({
         </SwipeableRow>
       ) : isBelowLg ? (
         /* Mobile read-only (share) row — no swipe, no kebab; tap is inert. */
-        <div className="flex flex-1 items-center gap-1">
+        <div className="flex flex-1 min-w-0 items-center gap-1">
           <ListMobileRowBody
             item={item}
             name={name}

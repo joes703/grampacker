@@ -70,7 +70,7 @@ export default function FoodRow({
         />
       )}
       {isBelowLg ? (
-        <div className="flex flex-1 items-center gap-2">
+        <div className="flex flex-1 min-w-0 items-center gap-2">
           {/* status 'active' renders no badge; food has no gear status. */}
           <MobileRowBody status="active" name={food.name}>
             {/* The single worn/consumable slot mobile gear rows carry. Food

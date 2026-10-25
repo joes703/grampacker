@@ -4,6 +4,7 @@ import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import GearItemRow, { SortableGearItemRow } from './GearItemRow'
 import type { GearItem } from '../lib/types'
+import { expectNameCanShrink } from '../test/row-shrink'
 
 // Locks the entity-aware row callback contract introduced with the gear-row
 // memoization (P5). The row now binds its own item/id internally, so these
@@ -194,5 +195,15 @@ describe('GearItemRow select mode', () => {
       <GearItemRow item={gear({ description: null })} {...baseProps()} selectMode />,
     )
     expect(container.querySelector('.opacity-0.flex-\\[2\\]')).not.toBeNull()
+  })
+})
+
+// On a phone a long name must truncate, not push the weight off the row.
+describe('GearItemRow mobile name', () => {
+  it.each([false, true])('can shrink when selectMode=%s', (selectMode) => {
+    const { container } = render(
+      <GearItemRow item={gear()} {...baseProps()} isBelowLg selectMode={selectMode} />,
+    )
+    expectNameCanShrink(screen.getByText('Tent'), container.firstElementChild as HTMLElement)
   })
 })
