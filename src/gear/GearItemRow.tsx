@@ -65,7 +65,7 @@ export default function GearItemRow({
 
   // The shared badge+name body; this surface's only trailing cell is weight.
   const mobileBody = (
-    <div className="flex flex-1 items-center gap-2">
+    <div className="flex flex-1 min-w-0 items-center gap-2">
       <MobileRowBody
         status={item.status}
         name={item.name}
@@ -117,12 +117,12 @@ export default function GearItemRow({
             actionClassName="bg-red-600 text-white"
             actionArmedClassName="bg-red-600 text-white"
           >
-            <div className="flex flex-1 items-center gap-1.5 px-3 py-2">
+            <div className="flex flex-1 min-w-0 items-center gap-1.5 px-3 py-2">
               {mobileBody}
             </div>
           </SwipeableRow>
         ) : (
-          <div className="flex flex-1 items-center gap-1.5">
+          <div className="flex flex-1 min-w-0 items-center gap-1.5">
             {mobileBody}
           </div>
         )

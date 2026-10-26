@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import type { ListItemWithGear } from '../lib/types'
 import ItemRow from './ItemRow'
 import SortableItemRow from './SortableItemRow'
+import { expectNameCanShrink } from '../test/row-shrink'
 
 afterEach(() => {
   cleanup()
@@ -161,5 +162,19 @@ describe('SortableItemRow activator', () => {
 
     const handle = screen.getByRole('button', { name: 'Reorder Backpack' })
     expect(handle).toHaveAttribute('tabindex', '0')
+  })
+})
+
+// On a phone a long name must truncate, not push the weight off the row.
+// The read-only branch is the share page's.
+describe('ItemRow mobile name', () => {
+  it.each([
+    ['owner, swipe to remove', { onDelete: () => {} }],
+    ['read-only share', {}],
+  ])('can shrink: %s', (_label, extra) => {
+    const { container } = render(
+      <ItemRow item={item} weightUnit="g" isBelowLg {...extra} />,
+    )
+    expectNameCanShrink(screen.getByText('Backpack'), container.firstElementChild as HTMLElement)
   })
 })
