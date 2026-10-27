@@ -19,6 +19,7 @@ import PickerEmptyState from './PickerEmptyState'
 import QuickAddItemModal from './QuickAddItemModal'
 import { type AddItemData } from './use-quick-add-form'
 import { useToggleSet } from '../lib/use-toggle-set'
+import { filterGearBySearch } from '../lib/gear-search'
 
 type Props = {
   gearItems: GearItem[]
@@ -65,17 +66,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
   const createReasonId = useId()
 
   const q = search.trim().toLowerCase()
-  const searchFiltered = useMemo(
-    () =>
-      q
-        ? gearItems.filter(
-            (g) =>
-              g.name.toLowerCase().includes(q) ||
-              (g.description?.toLowerCase().includes(q) ?? false),
-          )
-        : gearItems,
-    [gearItems, q],
-  )
+  const searchFiltered = useMemo(() => filterGearBySearch(gearItems, search), [gearItems, search])
 
   // Build groups ordered by category sort_order. sortedCats stays in its
   // own memo so the sort only reruns when `categories` changes — not on

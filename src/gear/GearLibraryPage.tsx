@@ -55,6 +55,7 @@ import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
 import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
 import { useDragSensors } from '../lib/use-drag-sensors'
+import { filterGearBySearch } from '../lib/gear-search'
 
 // `saveError` on the two GearItemDialog variants is the dialog's own failure
 // surface. It is inline rather than a toast because the dialog stays open on
@@ -178,11 +179,7 @@ export default function GearLibraryPage() {
   // The rows matching the search: what the category sections render and what
   // a within-category drag plans against. Declared up here, ahead of the drag
   // handler that reads it.
-  const searchFiltered = useMemo(() => {
-    if (!search) return allItems
-    const q = search.toLowerCase()
-    return allItems.filter((i) => i.name.toLowerCase().includes(q))
-  }, [allItems, search])
+  const searchFiltered = useMemo(() => filterGearBySearch(allItems, search), [allItems, search])
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
