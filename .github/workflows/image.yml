@@ -1,51 +1,24 @@
-# Builds the production container image, tests it as a running container,
-# and, when started by hand on main, publishes it to GHCR and, only if the
-# dispatch asks, deploys that image to the VPS.
+# Builds the production container image and tests it as a running container.
 #
-# Nothing here changes DNS or the public route.
-#
-# TRIGGERS
-# --------
-#   * pull_request: builds the image and runs scripts/check-image.sh. Read-only
-#     token; publishes nothing. ci.yml runs the other checks on pull requests.
-#   * workflow_dispatch: on main only, runs the build, unit, API and migration
-#     checks, builds and checks the image, then pushes it as
+#   * pull_request: build and scripts/check-image.sh only. Read-only token;
+#     publishes nothing. ci.yml runs the other checks.
+#   * workflow_dispatch, main only: reruns the build, unit, API and migration
+#     checks on `github.sha`, builds and checks the image, pushes it as
 #     ghcr.io/joes703/grampacker:<full commit SHA> and prints its digest.
-#     With the `deploy` input set, a last job deploys that digest to the VPS.
-#     The input is one true/false value, read only by a job's `if`: nothing
-#     a person types reaches a command, and no one can name an image or a
-#     digest.
+#     With the true/false `deploy` input set, a last job deploys that digest
+#     to the VPS over the tailnet (docs/vps-runbook.md, "Deploy"). The input
+#     is read only by a job's `if`: no typed value reaches a command, and no
+#     one can name an image or a digest.
 #
-# There is no push trigger yet: each publish is started by hand
-# (`docs/vps-runbook.md`, "Deploy").
+# There is no push trigger: each publish is started by hand. Nothing here
+# changes DNS or the public route.
 #
-# WHAT "MAIN ONLY" RESTS ON
-# -------------------------
-# A dispatch runs the CHOSEN REF's copy of this file. Every job that runs on a
-# dispatch therefore carries `github.ref == 'refs/heads/main'`, so a dispatch
-# from any other branch runs nothing. That condition is enforced by this file,
-# not by GitHub: a branch could edit it away. The same is true of
-# `packages: write` on any trigger. What prevents that is who can change a
-# workflow file at all: only Joe; the agent tokens have no Workflows permission
-# (docs/testing-and-ci.md section 10). The token here can push images, which
-# is why a deployment uses the digest this workflow prints for a main run,
-# never a tag.
-#
-# The deploy job is the only one that reads secrets: the deploy SSH key and
-# the Tailscale OAuth client. It runs in the `production` environment. They
-# are secrets of that environment, which allows only main, so GitHub itself
-# refuses them to any other branch. On the VPS the key can do one thing:
-# deploy one image digest (`deploy/grampacker-deploy-ssh`; see
-# `docs/vps-runbook.md`).
-#
-# The checkout is `github.sha`, the commit the dispatch started on, in every
-# job. Both jobs therefore test and publish the same commit even if main moves
-# during the run, and the tag names that commit.
-#
-# Every action is pinned to a full commit SHA as in ci.yml. One third-party
-# action runs, tailscale/github-action in the deploy job, because the VPS's
-# sshd answers only over the tailnet. Docker login, build and push are the
-# runner's own docker CLI, not third-party actions.
+# Every job that runs on a dispatch requires `github.ref == 'refs/heads/main'`.
+# Only the publish job has `packages: write`; only the deploy job reads
+# secrets, from the `production` environment, which admits main only. Why
+# this is safe, and what it does not protect: SECURITY.md, "Supply chain".
+# Actions are pinned to full commit SHAs; the one third-party action is
+# tailscale/github-action in the deploy job.
 name: Image
 
 on:
