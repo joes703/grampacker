@@ -7,6 +7,7 @@ import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
 import { useLocation, useNavigationType } from 'react-router'
 import type { Category, PackingLocation } from '../lib/types'
+import { getToastHost } from '../lib/toast-host'
 import {
   emptyFood,
   list,
@@ -163,6 +164,21 @@ describe('adding gear from Pack view', () => {
 
     // The drawer is lazy-loaded, so this also proves the chunk resolves.
     expect(await screen.findByText('Add from gear')).toBeTruthy()
+  })
+
+  // A toast raised while the drawer is open (a failed remove, say) must land
+  // inside it: anything outside an open modal is painted behind it and inert.
+  // Only Modal hosts toasts, so the drawer has to be a Modal.
+  it('hosts toasts inside the open drawer', async () => {
+    stubViewport(1100)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(addGear() as HTMLElement)
+    const drawer = await screen.findByRole('dialog', { name: 'Add from gear' })
+
+    expect(getToastHost()).not.toBeNull()
+    expect(drawer.contains(getToastHost())).toBe(true)
   })
 
   // The bottom action bar already carries Add below lg. A second button would

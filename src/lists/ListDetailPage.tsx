@@ -1,9 +1,9 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
-const ListSidebarDrawer = lazy(() => import('./ListSidebarDrawer'))
+import ListSidebarDrawer from './ListSidebarDrawer'
 import {
   queryKeys,
   fetchLists,
@@ -793,11 +793,8 @@ function ListDetailInner({ listId }: { listId: string }) {
         // lands Unassigned once the list has bags, or by category while it
         // falls back to category grouping.
         onCreateNew={(data, categoryId) => {
-          // Close the drawer too, not just the modal. Below lg this panel
-          // lives inside the sidebar drawer, whose 88vw content is z-50 -
-          // the same layer as the toast, and painted after it. A failed
-          // create would report into a toast the drawer covers - the class of
-          // bug toasts had behind an open modal before they rendered inside it.
+          // Close the drawer too, so the user sees the new item land in the
+          // list.
           setDrawerOpen(false)
           onAddNewItem(categoryId, data)
         }}
@@ -1736,14 +1733,9 @@ function ListDetailInner({ listId }: { listId: string }) {
         </div>
       </div>
 
-      {/* Mobile gear-library drawer — mirrors the desktop left aside.
-          Slides in from the LEFT, dismissed by overlay tap, the close
-          button, or Escape. Stays open across multiple add/remove
-          actions so the user can build up a list quickly.
-
-          JS-gated so a surface that has another way to reach the library
-          doesn't mount the drawer at all; React.lazy on the wrapper means
-          those surfaces also never fetch the Radix Dialog chunk.
+      {/* Gear-library drawer: mirrors the desktop left aside. Dismissed by
+          backdrop tap, the close button, or Escape. Stays open across
+          add/remove actions so the user can build up a list quickly.
 
           Below lg: edit and pack, since there is no room for the aside there.
           At lg+: pack only. Desktop Pack hides the left aside on purpose (see
@@ -1753,20 +1745,11 @@ function ListDetailInner({ listId }: { listId: string }) {
 
           Food is excluded at every width: it has no drawer registration (see
           useRegisterSidebarDrawer above, gated the same `edit || pack` way)
-          and MobileListActionBar pushes no Add there, so mounting this would
-          only fetch the Radix Dialog chunk for a sheet that can never open. */}
+          and MobileListActionBar pushes no Add there. */}
       {((isBelowLg && mode !== 'food') || mode === 'pack') && (
-        <div className="print:hidden">
-          <Suspense fallback={null}>
-            <ListSidebarDrawer
-              open={drawerOpen}
-              onOpenChange={setDrawerOpen}
-              title="Add from gear"
-            >
-              <div className="flex h-full flex-col">{libraryPane}</div>
-            </ListSidebarDrawer>
-          </Suspense>
-        </div>
+        <ListSidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen} title="Add from gear">
+          <div className="flex h-full flex-col">{libraryPane}</div>
+        </ListSidebarDrawer>
       )}
 
       {/* Gear-item edit (reached from the row tap on mobile or the kebab →

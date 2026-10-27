@@ -19,8 +19,7 @@ import ListDetailPage from './lists/ListDetailPage'
 // cache from then on, and navigates without a network hop at all.
 //
 // Leaf-level splitting still happens inside the pages, where it does pay:
-// ListSidebarDrawer's Radix Dialog, NotesEditor's markdown renderer. Those are
-// genuinely optional - most sessions never open them.
+// NotesEditor's markdown renderer is optional - most sessions never open it.
 //
 // Routes are relative because App.tsx mounts this at path="/*": the splat is
 // the remainder of the URL, and this nested <Routes> matches against it.
