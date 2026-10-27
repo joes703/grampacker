@@ -3,7 +3,6 @@ import type { ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db, Tx } from '../db'
 import { listFoodItems, listItems } from '../db/schema'
-import { isPackRankUniqueViolation } from './db-errors'
 
 // The ONE implementation of "permute a packing cohort safely", shared by both
 // packable tables.
@@ -39,7 +38,6 @@ export type PackReorderResult =
         | 'cross_cohort'
         | 'not_a_permutation'
         | 'worn_row'
-        | 'conflict'
     }
 
 // The next rank an ARRIVAL takes in a cohort: one past the UNION maximum.
@@ -173,19 +171,13 @@ export function createPackReorderRepo(db: Db, userId: string) {
       listId: string,
       payload: ReorderPackPayload,
     ): Promise<PackReorderResult> {
-      try {
-        return db.transaction(
-          (tx) => reorderInTransaction(tx, userId, listId, payload),
-          { behavior: 'immediate' },
-        )
-      } catch (err) {
-        // Not reachable through concurrency (see the header). Kept as the
-        // route's documented retryable answer should a PACK-RANK unique
-        // index ever disagree with validation rule 4; the transaction rolled
-        // back. Any other constraint failure is a 500: retrying cannot fix it.
-        if (isPackRankUniqueViolation(err)) return { ok: false, reason: 'conflict' }
-        throw err
-      }
+      // A unique-index failure here would mean validation rule 4 and the
+      // index disagree: a defect, answered 500, with the transaction rolled
+      // back.
+      return db.transaction(
+        (tx) => reorderInTransaction(tx, userId, listId, payload),
+        { behavior: 'immediate' },
+      )
     },
   }
 }

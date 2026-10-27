@@ -108,10 +108,10 @@ describe('pack reorder is all-or-nothing', () => {
     for (const move of payload) expect(after.get(move.id)).toBe(move.packSortOrder)
   })
 
-  it('a pack-rank index collision maps to the route 409 and still rolls back', async () => {
-    // The 409 path no longer has a race to report (the transaction holds the
-    // write lock), but it stays as the backstop should the cohort index ever
-    // disagree with validation. Stage that disagreement: a test-only trigger
+  it('a pack-rank index collision is a 500 defect and still rolls back', async () => {
+    // Nothing can race the write (the transaction holds the write lock), so a
+    // collision means the cohort index and validation disagree: a defect.
+    // Stage that disagreement: a test-only trigger
     // moves an UNTOUCHED row of the same bag onto b's target rank just before
     // b settles there, so b's settle hits the real cohort index.
     const { cookie, listId } = await seedBag(3)
@@ -132,7 +132,7 @@ describe('pack reorder is all-or-nothing', () => {
       ],
       foodItems: [],
     })
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(500)
     // a's park and settle, b's park, and the trigger's move of c: all undone.
     expect(itemsIn(listId)).toEqual(before)
   })

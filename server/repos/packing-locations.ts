@@ -10,7 +10,6 @@ import {
   packingLocations,
 } from '../db/schema'
 import {
-  isPackRankUniqueViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -251,7 +250,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     async remove(
       listId: string,
       id: string,
-    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted' | 'conflict'> {
+    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted'> {
       try {
         return db.transaction(
           (tx) => (removeInTransaction(tx, listId, id) ? 'deleted' : 'not_found'),
@@ -263,11 +262,8 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
         // classified because a 500 on an ordinary delete would be a poor way
         // to find out otherwise.
         if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
-        // Not reachable through concurrency any more (nothing can change
-        // between the reads and the writes). Kept as the route's documented
-        // retryable answer should a PACK-RANK unique index ever disagree with
-        // the plan. Any other constraint failure is a 500.
-        if (isPackRankUniqueViolation(err)) return 'conflict'
+        // Anything else, a pack-rank collision included, is a defect: nothing
+        // can change between the reads and the writes. It answers 500.
         throw err
       }
     },

@@ -6,7 +6,6 @@ import type { Db, Tx } from '../db'
 import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
 import {
   isPackRankRangeError,
-  isPackRankUniqueViolation,
   isTriggerAbort,
 } from './db-errors'
 import type { GearItemRow } from './gear-items'
@@ -95,7 +94,6 @@ export type ListItemWriteResult =
         | 'cap_exceeded'
         | 'gear_cap_exceeded'
         | 'pack_rank_exhausted'
-        | 'conflict'
     }
 
 // The 0004 trigger is the single enforcement point; keep in lockstep
@@ -339,13 +337,6 @@ export function createListItemsRepo(db: Db, userId: string) {
           { behavior: 'immediate' },
         )
       } catch (err) {
-        // A move's destination rank hit a pack-rank unique index, and only
-        // those. The rank is computed inside the same transaction that
-        // writes it, so nothing should be able to take it first; this stays
-        // as the backstop should the index and the rank computation ever
-        // disagree (the same backstop as pack-reorder.ts). Adding an item
-        // never answered 409, so only the move maps it.
-        if (isPackRankUniqueViolation(err)) return { ok: false, reason: 'conflict' }
         const reason = classifyWriteError(err)
         if (reason !== null) return { ok: false, reason }
         throw err

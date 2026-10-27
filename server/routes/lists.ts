@@ -132,10 +132,6 @@ export function listItemFailure(
     case 'list_not_found':
     case 'not_found':
       return { status: 404, error: 'Not found' }
-    case 'conflict':
-      // Same dialect as the pack-order 409 below: someone else's write landed
-      // first; the client refetches and retries.
-      return { status: 409, error: 'This bag changed while you were moving that item' }
     case 'invalid_gear':
       return { status: 400, error: 'Invalid gear item' }
     case 'invalid_category':
@@ -357,13 +353,6 @@ listRoutes.put('/:id/items/pack-order', async (c) => {
   // from a list that does not exist, deliberately - the same 404 either way,
   // so the response never confirms that someone else's item id is real.
   if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
-  // The unique index refused the write. No longer reachable by a concurrent
-  // reorder (the repo works in one transaction); kept as the backstop. The
-  // transaction rolled back, so nothing partial landed; the client refetches
-  // and retries.
-  if (result.reason === 'conflict') {
-    return c.json({ error: 'This bag changed while you were reordering' }, 409)
-  }
   return c.json({ error: 'Invalid request body' }, 400)
 })
 

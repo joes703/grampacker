@@ -12,8 +12,7 @@ import { PACK_RANK_MAX } from '../../shared/lists'
 //
 // - a failure injected AFTER some of an operation's writes have run leaves
 //   no trace of any of them;
-// - the pack-rank unique indexes still answer 409, and every other
-//   constraint failure is a 500;
+// - a constraint failure, a pack-rank collision included, is a 500;
 // - overlapping requests run one after the other and leave consistent data.
 //
 // Failures are test-only triggers and indexes, created in this file's own
@@ -224,10 +223,9 @@ describe('every food write is all-or-nothing', () => {
 })
 
 describe('food error classification', () => {
-  it('create: a pack-rank index collision is the route 409, with nothing written', async () => {
+  it('create: a pack-rank index collision is a 500 defect, with nothing written', async () => {
     // The arrival rank is computed inside the write's own transaction, so
-    // nothing should be able to take it first; the 409 stays as the
-    // backstop. Stage the collision: a trigger moves an existing Unassigned
+    // nothing can take it first; a collision is a defect. Stage it: a trigger moves an existing Unassigned
     // food item onto the new row's rank just before the insert.
     const { cookie, listId } = await seedList(0)
     const existing = await addItem(cookie, listId, { name: 'Existing', slotIds: [] })
@@ -246,12 +244,11 @@ describe('food error classification', () => {
       quantity: 1,
       slotIds: [],
     })
-    expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: 'This bag changed while you were moving' })
+    expect(res.status).toBe(500)
     expect(foodRows(listId)).toEqual(before)
   })
 
-  it('update: a pack-rank index collision on a move is the route 409, with nothing written', async () => {
+  it('update: a pack-rank index collision on a move is a 500 defect, with nothing written', async () => {
     const { cookie, listId } = await seedList(1)
     const food = await getFood(cookie, listId)
     const bagRes = await apiRequest(cookie, 'POST', `/api/lists/${listId}/packing-locations`, {
@@ -284,8 +281,7 @@ describe('food error classification', () => {
       packingLocationId: bag,
       slotIds: [slotId(food, 1, 'dinner')],
     })
-    expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: 'This bag changed while you were moving' })
+    expect(res.status).toBe(500)
     expect(foodRows(listId)).toEqual(before)
   })
 

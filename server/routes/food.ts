@@ -83,11 +83,6 @@ foodRoutes.post('/:id/food/items', async (c) => {
     if (result.reason === 'cap_exceeded') {
       return c.json({ error: `Food item limit reached (${FOOD_ITEM_CAP} per list)` }, 422)
     }
-    // The arrival rank claims one past the Unassigned union maximum, so
-    // these are reachable here exactly as they are on the PATCH move path.
-    if (result.reason === 'conflict') {
-      return c.json({ error: 'This bag changed while you were moving' }, 409)
-    }
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)
     }
@@ -111,10 +106,6 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     // wording and status as the gear item PATCH uses for the same failure.
     if (result.reason === 'invalid_location') {
       return c.json({ error: 'Invalid packing location' }, 400)
-    }
-    // Lost a race for the destination rank; nothing partial landed.
-    if (result.reason === 'conflict') {
-      return c.json({ error: 'This bag changed while you were moving' }, 409)
     }
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)

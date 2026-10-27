@@ -1,5 +1,4 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
-import { ApiError } from '../api'
 import { showToast } from '../toast'
 
 // This module holds only the TanStack Query cache lifecycle helpers
@@ -527,13 +526,7 @@ export function makeOptimisticUnionPackReorder<
             : curr,
         )
       }
-      const conflict = err instanceof ApiError && err.status === 409
-      showToast(
-        conflict
-          ? 'This bag changed somewhere else. Reloading its order.'
-          : "Couldn't save the new order. Please try again.",
-        { type: 'error' },
-      )
+      showToast("Couldn't save the new order. Please try again.", { type: 'error' })
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: gearQueryKey })

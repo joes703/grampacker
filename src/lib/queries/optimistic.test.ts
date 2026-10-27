@@ -14,7 +14,6 @@ import {
   makeOptimisticUnionPackReorder,
 } from './optimistic'
 import { showToast } from '../toast'
-import { ApiError } from '../api'
 
 type Row = { id: string; name: string; categoryId: string | null }
 type SortableRow = { id: string; name: string; sortOrder: number }
@@ -681,14 +680,4 @@ describe('makeOptimisticUnionPackReorder', () => {
     expect(qc.getQueryData<GearRow[]>(GEAR_KEY)!.map((r) => r.packSortOrder)).toEqual([0, 4])
   })
 
-  it('names the concurrent-reorder cause on a 409', () => {
-    const { helper } = setup()
-    const updates = { items: [], foodItems: [{ id: 'f1', packSortOrder: 2 }] }
-    const ctx = helper.onMutate(updates)
-    helper.onError(new ApiError(409, 'conflict'), updates, ctx)
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/changed somewhere else/i),
-      expect.objectContaining({ type: 'error' }),
-    )
-  })
 })

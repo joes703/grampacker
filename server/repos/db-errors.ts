@@ -46,29 +46,6 @@ export function isUniqueViolation(err: unknown, column: string): boolean {
   )
 }
 
-// The pack-rank unique indexes, and ONLY those: the cohort index and the
-// Unassigned partial index on each packable table (app-schema.ts,
-// list_items_pack_cohort_uq / list_items_pack_unassigned_uq and the
-// list_food_items pair). SQLite names an index's columns in its message, so
-// the match is on the exact text. The converted pack repos map this to the
-// retryable 409; any other constraint failure stays a 500, because retrying
-// cannot fix it.
-const PACK_RANK_UNIQUE_MESSAGES = new Set(
-  ['list_items', 'list_food_items'].flatMap((table) => [
-    `UNIQUE constraint failed: ${table}.list_id, ${table}.packing_location_id, ${table}.pack_sort_order`,
-    `UNIQUE constraint failed: ${table}.list_id, ${table}.pack_sort_order`,
-  ]),
-)
-
-export function isPackRankUniqueViolation(err: unknown): boolean {
-  const root = rootError(err)
-  return (
-    root !== null &&
-    root.code === 'SQLITE_CONSTRAINT_UNIQUE' &&
-    PACK_RANK_UNIQUE_MESSAGES.has(root.message)
-  )
-}
-
 // Migration 0019's range triggers. Reachable only when a cohort has exhausted
 // the rank space (its maximum is already PACK_RANK_MAX, so the `max + 1` every
 // arrival computes would step past it).

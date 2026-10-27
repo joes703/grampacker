@@ -11,7 +11,6 @@ import {
 import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
 import {
   isPackRankRangeError,
-  isPackRankUniqueViolation,
   isTriggerAbort,
 } from './db-errors'
 import { nextUnionPackRank } from './pack-reorder'
@@ -65,7 +64,6 @@ export type FoodWriteResult<T> =
         | 'invalid_slots'
         | 'invalid_location'
         | 'pack_rank_exhausted'
-        | 'conflict'
     }
 
 function isFoodItemCapError(err: unknown): boolean {
@@ -92,16 +90,11 @@ const itemCols = {
 // trigger) is a defect and stays a 500.
 function classifyWriteError(
   err: unknown,
-): 'cap_exceeded' | 'pack_rank_exhausted' | 'conflict' | null {
+): 'cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isFoodItemCapError(err)) return 'cap_exceeded'
   // 0022's range trigger: the destination cohort's rank space is exhausted,
   // so the union max + 1 stepped past PACK_RANK_MAX.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
-  // The pack-rank unique indexes, and only those. The rank is computed inside
-  // the same transaction that writes it, so nothing should be able to take
-  // it first; this stays as the backstop should the index and the rank
-  // computation ever disagree (the same backstop as pack-reorder.ts).
-  if (isPackRankUniqueViolation(err)) return 'conflict'
   return null
 }
 

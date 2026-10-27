@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { isCategoryCapError } from './categories'
 import {
   isPackRankRangeError,
-  isPackRankUniqueViolation,
   isTriggerAbort,
   isUniqueViolation,
 } from './db-errors'
@@ -68,40 +67,6 @@ describe('isUniqueViolation', () => {
     )
     expect(isUniqueViolation(err, 'lists.slug')).toBe(true)
     expect(isUniqueViolation(err, 'lists.id')).toBe(false)
-  })
-})
-
-// isPackRankUniqueViolation decides the pack-order and food 409s with no
-// other check behind it. Same discipline as above: real root shapes match
-// here, and the wrapper forgeries are in the table at the end.
-
-describe('isPackRankUniqueViolation', () => {
-  it.each([
-    'UNIQUE constraint failed: list_items.list_id, list_items.packing_location_id, list_items.pack_sort_order',
-    'UNIQUE constraint failed: list_items.list_id, list_items.pack_sort_order',
-    'UNIQUE constraint failed: list_food_items.list_id, list_food_items.packing_location_id, list_food_items.pack_sort_order',
-    'UNIQUE constraint failed: list_food_items.list_id, list_food_items.pack_sort_order',
-  ])('matches the pack-rank index %s', (message) => {
-    expect(
-      isPackRankUniqueViolation(
-        wrapped(sqliteError(message, 'SQLITE_CONSTRAINT_UNIQUE'), 'Failed query: ...'),
-      ),
-    ).toBe(true)
-  })
-
-  it('rejects every other unique index and every other constraint', () => {
-    for (const err of [
-      sqliteError('UNIQUE constraint failed: lists.slug', 'SQLITE_CONSTRAINT_UNIQUE'),
-      sqliteError('UNIQUE constraint failed: list_items.pack_sort_order', 'SQLITE_CONSTRAINT_UNIQUE'),
-      sqliteError('UNIQUE constraint failed: packing_locations.container_list_item_id', 'SQLITE_CONSTRAINT_UNIQUE'),
-      sqliteError('NOT NULL constraint failed: list_items.pack_sort_order', 'SQLITE_CONSTRAINT_NOTNULL'),
-      // The right text without SQLite's code: user text in a wrapper, or a
-      // trigger RAISE, is not the index.
-      sqliteError('UNIQUE constraint failed: list_items.list_id, list_items.pack_sort_order', 'SQLITE_CONSTRAINT_TRIGGER'),
-    ]) {
-      expect(isPackRankUniqueViolation(wrapped(err, 'Failed query: ...'))).toBe(false)
-    }
-    expect(isPackRankUniqueViolation(null)).toBe(false)
   })
 })
 

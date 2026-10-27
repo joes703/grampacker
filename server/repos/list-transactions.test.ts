@@ -14,8 +14,8 @@ import { createPackingLocationsRepo } from './packing-locations'
 //
 // - a failure injected AFTER some of an operation's writes have run leaves
 //   no trace of any of them;
-// - a pack-rank collision on a move is still the route 409, and every other
-//   constraint failure is a redacted 500;
+// - a constraint failure, a pack-rank collision on a move included, is a
+//   redacted 500;
 // - a write that lands while another operation is in progress cannot split
 //   it: the operations run one after the other;
 // - a write's response is the row it committed;
@@ -321,10 +321,9 @@ describe('list and list-item error classification', () => {
     return { list, bag, resident, mover }
   }
 
-  it('a pack-rank collision on a move is the route 409, with nothing written', async () => {
+  it('a pack-rank collision on a move is a 500 defect, with nothing written', async () => {
     // The destination rank is computed inside the move's own transaction, so
-    // nothing should be able to take it first; the 409 stays as the
-    // backstop. Stage the collision: just before the mover lands last in the
+    // nothing can take it first; a collision is a defect. Stage it: just before the mover lands last in the
     // bag, a trigger moves the bag's resident onto that same rank.
     const { cookie, userId } = await newUser()
     const { list, bag, resident, mover } = await moverAndResident(cookie)
@@ -341,8 +340,7 @@ describe('list and list-item error classification', () => {
       packingLocationId: bag,
       quantity: 3,
     })
-    expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: 'This bag changed while you were moving that item' })
+    expect(res.status).toBe(500)
     expect(snapshot(userId)).toEqual(before)
   })
 
