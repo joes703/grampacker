@@ -1,64 +1,12 @@
-// Pure max+1 sortOrder slot pickers. The server assigns the persisted slot on
-// every create; the optimistic write paths (the use-*-actions hooks, reached
-// through the queries barrel) compute the same value against the cached rows
-// so a placeholder lands where the server row will. Importing nothing but
-// types keeps them trivially testable and free of any fetch module. The CSV
-// import planner does NOT use these: its dedup key lives in
-// src/lib/csv/sort-keys.ts.
-
-import type { Category, GearItem, List, ListItemWithGear } from '../types'
-
-// Next sortOrder slot for a newly-created category. Robust to gaps:
-// deleteCategory does NOT compact remaining rows, so the existing
-// sequence is sparse whenever a delete has happened, and naive
-// length-based slot picking (the original convention everywhere a
-// category was created) collides with an existing row. Reads order by
-// (sortOrder, name), so the collision either ties or rearranges
-// silently.
-export function nextCategorySortOrder(
-  existing: Pick<Category, 'sortOrder'>[],
-): number {
+// The max+1 sortOrder slot for a new row: the server assigns the persisted
+// slot on create, and the optimistic write paths compute the same value over
+// the cached rows so a placeholder lands where the server row will. Deletes
+// do not compact the survivors, so the sequence is sparse after any delete:
+// length-based slot picking would tie with an existing row and silently
+// reshuffle the (sortOrder, name) read order. The CSV import planner does not
+// use this: its dedup key lives in src/lib/csv/sort-keys.ts.
+export function nextSortOrder(existing: readonly { sortOrder: number }[]): number {
   let max = -1
-  for (const c of existing) if (c.sortOrder > max) max = c.sortOrder
-  return max + 1
-}
-
-// Next sortOrder slot for a newly-created gear item. Same rationale as
-// nextCategorySortOrder: deleteGearItem (and bulkDeleteGearItems) do not
-// compact, so the existing sequence is sparse after any delete, and
-// length-based slot picking ties with an existing row. The (sortOrder,
-// name) read order then silently reshuffles the user's gear library.
-export function nextGearItemSortOrder(
-  existing: Pick<GearItem, 'sortOrder'>[],
-): number {
-  let max = -1
-  for (const g of existing) if (g.sortOrder > max) max = g.sortOrder
-  return max + 1
-}
-
-// Next sortOrder slot for a newly-created list. Same sparse-order
-// rationale as the helpers above: deleteList does not compact survivors,
-// so length-based slot picking ties with an existing row whenever a
-// delete has happened, and the (sortOrder, name) read order silently
-// reshuffles the lists index. The SERVER assigns the persisted slot on
-// create; this computes the same value against the cached rows so the
-// optimistic placeholder lands where the server row will.
-export function nextListSortOrder(
-  existing: Pick<List, 'sortOrder'>[],
-): number {
-  let max = -1
-  for (const l of existing) if (l.sortOrder > max) max = l.sortOrder
-  return max + 1
-}
-
-// Next sortOrder slot for a newly-created list_item, scoped to its list.
-// Pass the cached list-items array for the current list; the helper only
-// reads sortOrder so a Pick is enough. Server-assigned on create, same
-// placeholder rationale as nextListSortOrder.
-export function nextListItemSortOrder(
-  existing: Pick<ListItemWithGear, 'sortOrder'>[],
-): number {
-  let max = -1
-  for (const li of existing) if (li.sortOrder > max) max = li.sortOrder
+  for (const row of existing) if (row.sortOrder > max) max = row.sortOrder
   return max + 1
 }

@@ -52,7 +52,7 @@ vi.mock('../lib/queries', async () => {
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
-    nextListSortOrder: vi.fn(() => 0),
+    nextSortOrder: vi.fn(() => 0),
   }
 })
 

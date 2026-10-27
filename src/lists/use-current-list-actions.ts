@@ -10,7 +10,7 @@ import {
   makeOptimisticUpdate,
   makeOptimisticDelete,
   makeOptimisticInsert,
-  nextListSortOrder,
+  nextSortOrder,
 } from '../lib/queries'
 import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
@@ -117,7 +117,7 @@ export function useCurrentListActions() {
       // so ask the mutation cache, which is synchronously current.
       if (qc.isMutating({ mutationKey: mutationKeys.createList() }) > 0) return
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
-      createListMut.mutate({ name, sortOrder: nextListSortOrder(currentLists) }, options)
+      createListMut.mutate({ name, sortOrder: nextSortOrder(currentLists) }, options)
     },
     [qc, createListMut],
   )

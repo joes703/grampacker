@@ -4,7 +4,7 @@ import {
   createGearItem,
   updateGearItem,
   deleteGearItem,
-  nextGearItemSortOrder,
+  nextSortOrder,
   makeOptimisticInsert,
   makeOptimisticGearItemUpdate,
   makeOptimisticGearItemDelete,
@@ -29,7 +29,7 @@ type GearItemPatch = Parameters<typeof updateGearItem>[1]
 //
 // `allItems` seeds the optimistic insert placeholder's sort slot. The
 // SERVER assigns the real sortOrder on create (max+1); the client-side
-// nextGearItemSortOrder computes the same value against the cached rows so
+// nextSortOrder computes the same value against the cached rows so
 // the placeholder lands where the server row will (the settled refetch
 // reconciles any race).
 export function useGearItemActions(allItems: GearItem[]) {
@@ -52,7 +52,7 @@ export function useGearItemActions(allItems: GearItem[]) {
           cost: data.cost ?? null,
           purchaseDate: data.purchaseDate ?? null,
           status: data.status ?? 'active',
-          sortOrder: nextGearItemSortOrder(allItems),
+          sortOrder: nextSortOrder(allItems),
           createdAt: now,
           updatedAt: now,
         }

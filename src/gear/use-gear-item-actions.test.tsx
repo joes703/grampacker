@@ -120,7 +120,7 @@ describe('useGearItemActions', () => {
       })
 
       // The placeholder's sortOrder mirrors what the server will assign
-      // (nextGearItemSortOrder over the cached rows) so the row lands in
+      // (nextSortOrder over the cached rows) so the row lands in
       // place before the settled refetch reconciles it.
       await waitFor(() => expect(cachedGear(qc)).toHaveLength(2))
       expect(cachedGear(qc)?.[1]).toMatchObject({

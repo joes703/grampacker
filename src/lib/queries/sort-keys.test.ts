@@ -1,37 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import {
-  nextCategorySortOrder,
-  nextGearItemSortOrder,
-  nextListItemSortOrder,
-  nextListSortOrder,
-} from './sort-keys'
+import { nextSortOrder } from './sort-keys'
 
-// Direct tests for the sort-slot helpers (review P2.2: consumer tests mock
-// these, so the mock was the only assertion). The property that is their
-// whole reason to exist: deletes do not compact, so the existing sequence is
-// SPARSE, and the next slot must come off the maximum - length-based picking
-// collides with a surviving row and the (sortOrder, name) read order then
-// reshuffles silently.
-
-const rows = (...sortOrders: number[]) => sortOrders.map((sortOrder) => ({ sortOrder }))
-
-// One shared spec: all four helpers implement the same contract over their
-// own row type, and all four must keep doing so independently.
-const helpers = [
-  ['nextCategorySortOrder', nextCategorySortOrder],
-  ['nextGearItemSortOrder', nextGearItemSortOrder],
-  ['nextListSortOrder', nextListSortOrder],
-  ['nextListItemSortOrder', nextListItemSortOrder],
-] as const
-
-describe.each(helpers)('%s', (_name, next) => {
-  it('uses the maximum of an unsorted sparse sequence', () => {
-    // Length-based picking would answer 3 here - colliding with the row
-    // already holding 3. The gap at 1-2 is what a delete leaves behind.
-    expect(next(rows(7, 0, 3))).toBe(8)
+describe('nextSortOrder', () => {
+  it('returns 0 for an empty list', () => {
+    expect(nextSortOrder([])).toBe(0)
   })
 
-  it('starts at 0 for an empty collection', () => {
-    expect(next([])).toBe(0)
+  it('returns max+1 over a sparse sequence (gaps from earlier deletes)', () => {
+    // A delete leaves [0, 2, 3]; length-based slot picking would return 3,
+    // colliding with the existing row at sortOrder 3.
+    expect(nextSortOrder([{ sortOrder: 0 }, { sortOrder: 2 }, { sortOrder: 3 }])).toBe(4)
+  })
+
+  it('does not depend on input order', () => {
+    expect(nextSortOrder([{ sortOrder: 3 }, { sortOrder: 0 }, { sortOrder: 2 }])).toBe(4)
   })
 })

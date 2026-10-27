@@ -35,7 +35,7 @@ vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 // Keep the real optimistic and sort helpers; mock only data transport.
 vi.mock('../lib/queries', async () => {
   const optimistic = await import('../lib/queries/optimistic')
-  const { nextListSortOrder } = await import('../lib/queries/sort-keys')
+  const { nextSortOrder } = await import('../lib/queries/sort-keys')
   return {
     queryKeys: {
       lists: () => ['lists'],
@@ -51,7 +51,7 @@ vi.mock('../lib/queries', async () => {
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
-    nextListSortOrder,
+    nextSortOrder,
   }
 })
 

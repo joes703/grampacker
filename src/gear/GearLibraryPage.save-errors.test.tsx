@@ -88,7 +88,7 @@ vi.mock('../lib/queries', () => ({
   createCategory: h.createCategory,
   renameCategory: vi.fn(),
   deleteCategory: vi.fn(),
-  nextCategorySortOrder: () => 0,
+  nextSortOrder: () => 0,
   makeOptimisticInsert: () => ({}),
   makeOptimisticUpdate: () => ({}),
   makeOptimisticDelete: () => ({}),

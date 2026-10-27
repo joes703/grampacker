@@ -11,6 +11,7 @@ import {
 import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { PackingLocation } from '../lib/types'
+import { nextSortOrder } from '../lib/queries/sort-keys'
 
 export function promotedContainerSortOrder(locations: PackingLocation[]): number {
   return locations.length === 0
@@ -32,7 +33,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
         id: `temp-${randomTempId()}`,
         name,
         containerListItemId: null,
-        sortOrder: locations.reduce((max, location) => Math.max(max, location.sortOrder), -1) + 1,
+        sortOrder: nextSortOrder(locations),
       }),
     }),
   })

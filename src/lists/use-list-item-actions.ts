@@ -5,7 +5,7 @@ import {
   quickAddListItem,
   updateListItem,
   deleteListItem,
-  nextListItemSortOrder,
+  nextSortOrder,
   makeOptimisticInsert,
   makeOptimisticDelete,
   type ListItemPatch,
@@ -103,7 +103,7 @@ export function useListItemActions(
           isPacked: false,
           isReady: false,
           packingLocationId: null,
-          sortOrder: nextListItemSortOrder(listItems),
+          sortOrder: nextSortOrder(listItems),
           // A new item is Unassigned, so its placeholder rank comes from that
           // cohort - mirroring what the server assigns. Reusing the document
           // rank here would put the row in the wrong place in Pack for the one

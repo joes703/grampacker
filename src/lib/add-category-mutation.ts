@@ -3,7 +3,7 @@ import {
   queryKeys,
   createCategory,
   makeOptimisticInsert,
-  nextCategorySortOrder,
+  nextSortOrder,
 } from './queries'
 import { randomTempId } from './random-temp-id'
 import type { Category } from './types'
@@ -34,7 +34,7 @@ export function addCategoryMutationOptions(
       optimistic: (name) => ({
         id: `temp-${randomTempId()}`,
         name,
-        sortOrder: nextCategorySortOrder(categories),
+        sortOrder: nextSortOrder(categories),
         createdAt: new Date().toISOString(),
       }),
     }),
