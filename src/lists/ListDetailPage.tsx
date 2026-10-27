@@ -28,7 +28,7 @@ import {
 } from '../lib/last-list-path'
 import { parseDnDId } from '../lib/dnd-ids'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
-import { useStableWornItems } from '../lib/use-stable-worn-items'
+import { wornItemsInDocumentOrder } from '../lib/worn-items'
 import {
   baseGramsForCategory,
   computeListWeightBreakdown,
@@ -594,10 +594,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   const showWeightSummary = listItems.length > 0 || weightBreakdown.totalPackGrams > 0
 
   // Worn rows are always extracted into one trailing section in Edit and Pack.
-  // CategoryGroup filters ordinary sections at the leaf so unchanged groups
-  // retain their stable item-array references. useStableWornItems similarly
-  // preserves the trailing section's array identity across unrelated updates.
-  const wornItems = useStableWornItems(grouped)
+  const wornItems = wornItemsInDocumentOrder(grouped)
 
   // gearItems / listItems are read by handlers in sharedGroupProps and the
   // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
@@ -1582,10 +1579,10 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
                         row chrome stays consistent — onSetGearStatus,
                         edit/delete handlers, weight unit, and breakpoint.
                         Worn-specific overrides come after the spread
-                        so they win: section name "Worn", the stable wornItems
-                        list, and renderRows={undefined} (no drag). The items
-                        array is in document order (use-stable-worn-items
-                        sorts it), not category order. regionKey is explicit
+                        so they win: section name "Worn", the wornItems list,
+                        and renderRows={undefined} (no drag). The items are in
+                        document order (wornItemsInDocumentOrder), not
+                        category order. regionKey is explicit
                         because this section passes no categoryId: without it
                         the collapsible region derives the same
                         'cat-region-uncategorized' id as the real Uncategorized

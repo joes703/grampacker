@@ -327,9 +327,9 @@ type GroupPropsBase = {
    *  definition of each weight bucket.
    *
    *  Passed as PRIMITIVES, deliberately, not as `{label, grams}` objects.
-   *  object. This component is memo'd and its call sites go to real lengths to
-   *  keep every prop reference stable (see useGroupedListItems, sharedGroupProps,
-   *  useStableWornItems). An object literal in JSX is freshly allocated on every
+   *  This component is memo'd and its List-view call sites keep every prop
+   *  reference stable (see useGroupedListItems, sharedGroupProps). An object
+   *  literal in JSX is freshly allocated on every
    *  parent render, so it would fail the shallow compare and re-render every
    *  section on unrelated list mutations - including in pack mode, where the
    *  subtotal is not rendered at all.
