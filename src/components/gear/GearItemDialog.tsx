@@ -9,7 +9,7 @@ import InlineCreateCategory from '../InlineCreateCategory'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../../lib/caps'
+import { MAX_COST, MAX_ITEM_WEIGHT_GRAMS, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_LIST_ITEM_QUANTITY } from '../../lib/caps'
 import { clampQuantity } from '../../../shared/lists'
 import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
 
@@ -74,6 +74,7 @@ export default function GearItemDialog({
   // "89.9") without React fighting the cursor; parsed to number on
   // submit. Empty string → null. Initial value is the existing cost
   // formatted to two decimals so editing doesn't drift the display.
+  const [costError, setCostError] = useState<string | null>(null)
   const [cost, setCost] = useState(
     item?.cost != null ? item.cost.toFixed(2) : '',
   )
@@ -99,14 +100,19 @@ export default function GearItemDialog({
     e.preventDefault()
     const trimmedCost = cost.trim()
     const parsedCost = trimmedCost === '' ? NaN : parseFloat(trimmedCost)
+    // The server refuses a cost above its maximum; say so here instead.
+    if (parsedCost > MAX_COST) {
+      setCostError(`Cost must be $${MAX_COST.toLocaleString('en-US')} or less.`)
+      return
+    }
+    setCostError(null)
     const trimmedDate = purchaseDate.trim()
     const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
       weightGrams: Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS)),
       categoryId: categoryId,
-      // Blank / NaN / negative → null, never 0. Same rule as parseCost
-      // in csv.ts so manual entry and CSV import agree.
+      // Blank / NaN / negative -> null (unknown), never 0.
       cost: !isFinite(parsedCost) || parsedCost < 0
         ? null
         : Math.round(parsedCost * 100) / 100,
@@ -411,6 +417,15 @@ export default function GearItemDialog({
                 <Trash2 size={14} />
                 Delete from inventory
               </button>
+            </div>
+          )}
+
+          {costError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {costError}
             </div>
           )}
 

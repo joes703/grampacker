@@ -28,7 +28,7 @@ export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 // Defined in shared/gear.ts next to weightGramsSchema.
-export { MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
+export { MAX_COST, MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
 
 // Upper bound for a list item's quantity; drafts clamp to this. Consumed by
 // GearItemDialog's list-context field, Quick Add, CSV import and the row's
