@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SetStateAction } from 'react'
 import { runGuardedSave } from './guarded-save'
+import { showToast } from './toast'
+
+vi.mock('./toast', () => ({ showToast: vi.fn() }))
 
 // The page-level pins live in GearLibraryPage.save-errors.test.tsx and
 // ListDetailPage.edit-gear.test.tsx (late completions against the real
@@ -107,16 +110,17 @@ describe('runGuardedSave', () => {
     expect(saving.box.value).toBeNull()
   })
 
-  it('clears the saving slot even when run escapes with a rejection', async () => {
+  // AGENTS.md: every rejected promise has an owner. A rejection escaping
+  // `run` is a defect in the caller, but the user still learns the save may
+  // not have happened, and nothing is left unhandled.
+  it('reports a rejection escaping run, clears the saving slot, and leaves nothing unhandled', async () => {
     const saving = cell<Dialog | null>(null)
     const attempt: Dialog = { id: 'a', saveError: null }
     let escaped: unknown = null
     const handler = (reason: unknown) => {
       escaped = reason
     }
-    // This tier's tsconfig has no node types; reach process structurally. The
-    // listener both proves the defect is surfaced (not swallowed) and keeps
-    // the deliberate unhandled rejection from failing the test run.
+    // This tier's tsconfig has no node types; reach process structurally.
     const proc = (
       globalThis as unknown as {
         process: {
@@ -129,6 +133,7 @@ describe('runGuardedSave', () => {
       }
     ).process
     proc.on('unhandledRejection', handler)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       runGuardedSave<Dialog>({
         attempt,
@@ -138,13 +143,18 @@ describe('runGuardedSave', () => {
           throw new Error('defect')
         },
       })
-      // Give the rejection a macrotask to be reported as unhandled.
+      // Give a rejection a macrotask to be reported as unhandled.
       await new Promise((res) => setTimeout(res, 0))
       await new Promise((res) => setTimeout(res, 0))
       expect(saving.box.value).toBeNull()
-      expect(escaped).toBeInstanceOf(Error)
+      expect(escaped).toBeNull()
+      expect(showToast).toHaveBeenCalledWith(
+        "Couldn't confirm the save. Refresh to check before trying again.",
+        { type: 'error' },
+      )
     } finally {
       proc.removeListener('unhandledRejection', handler)
+      error.mockRestore()
     }
   })
 })

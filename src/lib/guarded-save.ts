@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import { showToast } from './toast'
 
 // The identity-guarded "attempt" save pattern for dialogs that stay open and
 // stay DISMISSABLE while their save is out (abandoning a slow save is
@@ -22,9 +23,9 @@ import type { Dispatch, SetStateAction } from 'react'
 // settling cannot unfreeze a newer attempt whose own request is still out.
 //
 // `run` owns its failures: every await inside it is caught and settled into
-// state the user can see (usually a saveError on the attempt). The helper
-// deliberately adds no catch - a rejection escaping `run` is a defect, and
-// surfacing it as an unhandled rejection beats swallowing it.
+// state the user can see (usually a saveError on the attempt). A rejection
+// that still escapes `run` is a defect: it is logged, and the user is told
+// the save is unconfirmed, so no promise is left without an owner.
 
 export type SettleAttempt<S> = (next: (prev: S) => S | null) => void
 
@@ -46,6 +47,9 @@ export function runGuardedSave<S extends object>({
   void (async () => {
     try {
       await run(settle)
+    } catch (error) {
+      console.error('runGuardedSave: run rejected', error)
+      showToast("Couldn't confirm the save. Refresh to check before trying again.", { type: 'error' })
     } finally {
       setSaving?.((prev) => (prev === attempt ? null : prev))
     }
