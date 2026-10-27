@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { type MeResponse } from '../../shared/me'
 import { requireSession, type SessionVars } from '../middleware/session'
 import type { SelfRow } from '../repos/users'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET /api/me - session - self row only - MeResponse
@@ -15,7 +15,7 @@ import type { AppEnv } from '../env'
 // There is no POST /api/me/reauth any more. Proving "it is really you" was a
 // password check; passwordless, it is a fresh session, which only a sign-in
 // ceremony can mint (enforced by the hooks.before gate in server/auth.ts).
-export const meRoutes = new Hono<{ Bindings: AppEnv; Variables: SessionVars }>()
+export const meRoutes = new Hono<{ Bindings: AppDeps; Variables: SessionVars }>()
 
 meRoutes.use('*', requireSession)
 

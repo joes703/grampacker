@@ -1,5 +1,4 @@
-import { env, testDb } from './node-env'
-import app from '../index'
+import { app, testDb } from './node-env'
 import { lastEmailTo } from '../email/console'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
@@ -71,7 +70,6 @@ export async function signUpVerifiedUser(
       },
       body: JSON.stringify({ email, name }),
     },
-    env,
   )
   if (!send.ok) {
     throw new Error(`magic-link request failed: HTTP ${send.status}`)
@@ -84,7 +82,6 @@ export async function signUpVerifiedUser(
       method: 'GET',
       headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp },
     },
-    env,
   )
   if (!verify.ok) {
     throw new Error(`magic-link verify failed: HTTP ${verify.status}`)

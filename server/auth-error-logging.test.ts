@@ -1,6 +1,6 @@
+import { createApp } from './index'
 import { env } from './test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import app from './index'
 import { resetLogBudget } from './middleware/error-handler'
 import { signUpVerifiedUser } from './test/auth-helpers'
 import type { Sqlite } from './db'
@@ -124,10 +124,9 @@ describe('auth failures in the log', () => {
     consoleLog.mockClear()
 
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen) }).request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     // The failing statement really was the token lookup.
@@ -161,10 +160,9 @@ describe('auth failures in the log', () => {
     consoleLog.mockClear()
 
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen, (query) => query.includes('"user"')) }).request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen, (query) => query.includes('"user"')) },
     )
     expect(res.status).toBe(500)
     // The session read succeeded (its token was never bound to a doomed
@@ -185,10 +183,9 @@ describe('auth failures in the log', () => {
     // raw object (params included) and better-auth used to log err.message
     // alone whenever it mentioned a table.
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen) }).request(
       '/api/auth/magic-link/verify?token=not-a-real-token',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     expect(seen.length).toBeGreaterThan(0)
@@ -209,7 +206,7 @@ describe('auth failures in the log', () => {
   it('fails a magic-link send closed when no mail key is set outside local dev', async () => {
     // The test bindings carry no RESEND_API_KEY; only the origin changes.
     const prodEnv = { ...env, BETTER_AUTH_URL: PROD_ORIGIN }
-    const res = await app.request(
+    const res = await createApp(prodEnv).request(
       '/api/auth/sign-in/magic-link',
       {
         method: 'POST',
@@ -220,7 +217,6 @@ describe('auth failures in the log', () => {
         },
         body: JSON.stringify({ email: `nokey-${crypto.randomUUID()}@example.com` }),
       },
-      prodEnv,
     )
     expect(res.status).toBe(500)
     const body = (await res.json()) as { correlationId?: string; code?: string }
@@ -239,10 +235,9 @@ describe('auth failures in the log', () => {
 
     // The rest of auth keeps working without a mail key: the failure is at
     // send time, not at construction.
-    const session = await app.request(
+    const session = await createApp(prodEnv).request(
       '/api/auth/get-session',
       { headers: { Origin: PROD_ORIGIN, 'x-forwarded-for': clientIp() } },
-      prodEnv,
     )
     expect(session.status).toBe(200)
   })
@@ -255,7 +250,7 @@ describe('auth failures in the log', () => {
     vi.stubGlobal('fetch', resend)
     const email = `refused-${crypto.randomUUID()}@example.com`
     try {
-      const res = await app.request(
+      const res = await createApp({ ...env, BETTER_AUTH_URL: PROD_ORIGIN, RESEND_API_KEY: 're_test_not_a_real_key' }).request(
         '/api/auth/sign-in/magic-link',
         {
           method: 'POST',
@@ -266,7 +261,6 @@ describe('auth failures in the log', () => {
           },
           body: JSON.stringify({ email }),
         },
-        { ...env, BETTER_AUTH_URL: PROD_ORIGIN, RESEND_API_KEY: 're_test_not_a_real_key' },
       )
       expect(res.status).toBe(500)
       const body = (await res.json()) as { correlationId?: string; code?: string }

@@ -9,7 +9,7 @@ import {
 } from '../../shared/lists'
 import { type SessionVars } from '../middleware/session'
 import type { PackingLocationRow } from '../repos/packing-locations'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/lists/:id/packing-locations           - session - own list or 404
@@ -28,7 +28,7 @@ import type { AppEnv } from '../env'
 // server/index.ts, shared with the other /lists sub-apps so one request pays
 // the session lookup once. There is no visible gate in this file on purpose.
 export const packingLocationRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 

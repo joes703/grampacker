@@ -10,7 +10,7 @@ import {
 } from '../../shared/food'
 import type { FoodItemRow } from '../repos/food'
 import { type SessionVars } from '../middleware/session'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // The food estimate on one list. Everything here is nested under a list id, and
 // EVERY handler passes that id to the repo - the child id alone is never enough
@@ -49,7 +49,7 @@ function toFoodItemResponse(row: FoodItemRow): FoodItemResponse {
 }
 
 export const foodRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 

@@ -1,6 +1,5 @@
-import { env } from '../test/node-env'
+import { app } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { CSRF_HEADER } from './csrf'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -21,7 +20,6 @@ function postLists(headers: Record<string, string>) {
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify({ name: 'CSRF probe' }),
     },
-    env,
   )
 }
 

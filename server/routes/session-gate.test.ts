@@ -1,5 +1,5 @@
+import { app } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { apiRequest } from '../test/api-helpers'
 
 // The routes an anonymous caller may reach. Every other route is

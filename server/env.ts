@@ -1,13 +1,13 @@
-import type { Sqlite } from './db'
+import type { Auth } from './auth'
+import type { Db, Sqlite } from './db'
 
-// What every request handler can read from `c.env`. The Node entry
-// (server/node.ts) builds ONE of these at startup from the process
-// environment and passes it to every request; tests build their own
-// (server/test/node-env.ts).
+// The configuration and database connection the app is built from. The
+// Node entry (server/node.ts) builds one at startup from the process
+// environment; tests build their own (server/test/node-env.ts).
 //
-// DB is the process's single SQLite connection. Route handlers still never
-// touch it: they receive user-scoped repositories from the session
-// middleware (AGENTS.md "Invariants").
+// DB is the process's single SQLite connection. Route handlers never touch
+// it: they receive user-scoped repositories from the session middleware
+// (AGENTS.md "Invariants").
 export type AppEnv = {
   DB: Sqlite
   // The one canonical origin. better-auth's baseURL, the passkey origin and
@@ -21,6 +21,19 @@ export type AppEnv = {
   EMAIL_FROM: string
   // Directory holding the built SPA (index.html and assets/).
   STATIC_DIR: string
+}
+
+// What every request reads from `c.env`: the configuration plus what
+// createApp (server/index.ts) builds from it once, at startup. Route
+// handlers still never touch `db`: they receive user-scoped repositories
+// from the session middleware.
+export type AppDeps = AppEnv & {
+  db: Db
+  auth: Auth
+  // A localhost BETTER_AUTH_URL selects the dev header set and email sender.
+  dev: boolean
+  // The origin the CSRF check accepts.
+  origin: string
 }
 
 export class ConfigError extends Error {}

@@ -21,7 +21,7 @@ import type {
   ImportGearResult,
   UpdateGearItemPatch,
 } from '../repos/gear-items'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/gear-items             - session - own rows only
@@ -53,7 +53,7 @@ function importGearFailure(
 }
 
 export const gearItemRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 

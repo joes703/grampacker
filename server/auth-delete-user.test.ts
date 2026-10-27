@@ -1,8 +1,7 @@
-import { env, testDb } from './test/node-env'
+import { app, env, testDb } from './test/node-env'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
-import app from './index'
 import { lastEmailTo } from './email/console'
 import { resetLogBudget } from './middleware/error-handler'
 import { DELETE_ACCOUNT_USER_HEADER, MAGIC_LINK_PATH } from '../shared/auth'
@@ -405,7 +404,6 @@ describe('POST /api/auth/delete-user', () => {
           },
           body: JSON.stringify({ email: to }),
         },
-        env,
       )
       expect(send.status, `magic-link request for ${to}`).toBe(200)
     }
@@ -418,7 +416,6 @@ describe('POST /api/auth/delete-user', () => {
       app.request(
         `/api/auth/magic-link/verify?token=${encodeURIComponent(token)}`,
         { headers: { Origin: 'http://localhost:5173', 'x-forwarded-for': '10.88.0.2' } },
-        env,
       )
 
     // The plugin answers a bad token with a redirect carrying INVALID_TOKEN

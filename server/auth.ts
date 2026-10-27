@@ -7,7 +7,7 @@ import {
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins/magic-link'
 import { passkey } from '@better-auth/passkey'
-import { createDb } from './db'
+import { createDb, type Db } from './db'
 import { createEmailSender } from './email'
 import { authLogger } from './middleware/error-handler'
 import { chargeMagicLinkGlobalQuota } from './middleware/rate-limit'
@@ -64,8 +64,7 @@ const PASSKEY_UNGATED = new Set([
 // Shared between the runtime factory below and the CLI schema config
 // (auth-schema.config.ts). Schema-affecting options (adapter provider,
 // plugins) MUST live here so the generated tables cannot drift from runtime.
-export function authOptions(env: AppEnv) {
-  const db = createDb(env.DB)
+export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
   const email = createEmailSender(env)
 
   return {
@@ -457,27 +456,11 @@ export function authOptions(env: AppEnv) {
   }
 }
 
-// This is config wiring only - no I/O happens until a handler runs. Built
-// per /api/auth/* request; sessionAuth below is the cached instance.
-export function createAuth(env: AppEnv) {
-  return betterAuth(authOptions(env))
+// Built once per app by createApp (server/index.ts), which serves
+// /api/auth/* and the session gate from the same instance. It holds no
+// per-request state.
+export function createAuth(env: AppEnv, db: Db) {
+  return betterAuth(authOptions(env, db))
 }
 
 export type Auth = ReturnType<typeof createAuth>
-
-// The ONE auth instance requireSession reads sessions through, cached per env
-// object (the Node entry builds a single env at startup and hands it to every
-// request, so production constructs this once; a test that swaps DB passes a
-// copied env and gets its own instance). Safe to share because it holds no
-// per-request state. requireSession never serves /api/auth/*, so an error
-// from getSession surfaces through the app's own error handler.
-const sessionInstances = new WeakMap<AppEnv, Auth>()
-
-export function sessionAuth(env: AppEnv): Auth {
-  let auth = sessionInstances.get(env)
-  if (!auth) {
-    auth = betterAuth(authOptions(env))
-    sessionInstances.set(env, auth)
-  }
-  return auth
-}

@@ -1,8 +1,7 @@
-import { env } from '../test/node-env'
+import { app, env } from '../test/node-env'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PACK_RANK_MAX } from '../../shared/lists'
-import app from '../index'
 import { createDb } from '../db'
 import {
   listItems,
@@ -127,7 +126,6 @@ async function requestWithoutCsrf(
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     },
-    env,
   )
 }
 

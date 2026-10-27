@@ -1,20 +1,22 @@
+import { createApp } from '../index'
 import { env } from '../test/node-env'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import app from '../index'
 import { sql } from 'drizzle-orm'
 import { DrizzleQueryError } from 'drizzle-orm/errors'
-import { createDb } from '../db'
+import { createDb, openSqlite } from '../db'
 import {
   errorHandler,
   resetLogBudget,
 } from './error-handler'
 import { securityHeaders } from './security-headers'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Prod-like origin so securityHeaders emits the full set (the test default is
 // localhost = dev mode, which omits the CSP).
 const prodEnv = { ...env, BETTER_AUTH_URL: 'https://grampacker.app' }
+// The synthetic apps below read only the dev flag.
+const prodDeps = { dev: false } as AppDeps
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -22,9 +24,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // sub-app, because that topology is the thing being relied on: a sub-app's own
 // onError would win, so `api` must not have one. Mirrors server/index.ts.
 function appThatThrows(thrown: unknown) {
-  const root = new Hono<{ Bindings: AppEnv }>()
+  const root = new Hono<{ Bindings: AppDeps }>()
   root.use('*', securityHeaders)
-  const api = new Hono<{ Bindings: AppEnv }>()
+  const api = new Hono<{ Bindings: AppDeps }>()
   api.get('/boom', () => {
     throw thrown
   })
@@ -56,9 +58,11 @@ describe('the real app', () => {
 
   it('routes a genuine route failure through the handler', async () => {
     // Not a synthetic throw: /api/health round-trips through Drizzle to the
-    // database, so removing the connection fails the way a real outage would - and
-    // proves the handler is actually wired to the exported app.
-    const res = await app.request('/api/health', {}, { ...prodEnv, DB: undefined })
+    // database, so a closed connection fails the way a real outage would - and
+    // proves the handler is actually wired to the app createApp builds.
+    const closed = openSqlite(':memory:')
+    closed.close()
+    const res = await createApp({ ...prodEnv, DB: closed }).request('/api/health', {})
     expect(res.status).toBe(500)
 
     const body = (await res.json()) as { error: string; correlationId?: string }
@@ -99,7 +103,7 @@ describe('bound parameters never reach the log', () => {
     }
     expect(thrown).toBeInstanceOf(Error)
 
-    const res = await appThatThrows(thrown).request('/api/boom', {}, prodEnv)
+    const res = await appThatThrows(thrown).request('/api/boom', {}, prodDeps)
     expect(res.status).toBe(500)
 
     const everything = consoleError.mock.calls.flat().map(String).join('\n')
@@ -134,7 +138,7 @@ describe('bound parameters never reach the log', () => {
     )
     expect(thrown.message).toContain(sentinel)
 
-    const res = await appThatThrows(thrown).request('/api/boom', {}, prodEnv)
+    const res = await appThatThrows(thrown).request('/api/boom', {}, prodDeps)
     expect(res.status).toBe(500)
 
     const everything = consoleError.mock.calls.flat().map(String).join('\n')

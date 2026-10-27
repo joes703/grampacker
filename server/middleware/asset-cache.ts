@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Browser caching for Vite's content-hashed assets.
 //
@@ -62,7 +62,7 @@ function mediaType(contentType: string | null): string {
   return (contentType ?? '').split(';')[0]!.trim().toLowerCase()
 }
 
-export const assetCache = createMiddleware<{ Bindings: AppEnv }>(async (c, next) => {
+export const assetCache = createMiddleware<{ Bindings: AppDeps }>(async (c, next) => {
   await next()
 
   if (!HASHED_ASSET.test(c.req.path)) return

@@ -2,7 +2,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
-import app from './index'
+import { createApp } from './index'
 import { openSqlite, type Sqlite } from './db'
 import { applyMigrations, MigrationStateError, pendingMigrationCount } from './db/migrate'
 import { ConfigError, loadConfig, type AppEnv } from './env'
@@ -28,16 +28,17 @@ export type RunningServer = {
   close(graceMs?: number): Promise<void>
 }
 
-// Listens and serves `app` with `env` on every request. Exported for tests,
+// Listens and serves the app built from `env`. Exported for tests,
 // which start it on port 0 against their own database.
 export function startServer(
   env: AppEnv,
   opts: { port: number; hostname: string },
 ): Promise<RunningServer> {
+  const app = createApp(env)
   return new Promise((resolve, reject) => {
     const server = serve(
       {
-        fetch: (request) => app.fetch(request, env),
+        fetch: app.fetch,
         port: opts.port,
         hostname: opts.hostname,
       },

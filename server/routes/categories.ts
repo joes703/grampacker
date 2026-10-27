@@ -9,7 +9,7 @@ import {
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
 import type { CategoryRow } from '../repos/categories'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/categories        - session - own rows only
@@ -19,7 +19,7 @@ import type { AppEnv } from '../env'
 //   DELETE /api/categories/:id    - session - own row or 404; uncategorizes
 //                                   its gear in the same transaction
 export const categoryRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 

@@ -29,7 +29,7 @@ import type {
   ListRow,
   ListWriteResult,
 } from '../repos/lists'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/lists                          - session - own rows only
@@ -81,7 +81,7 @@ import type { AppEnv } from '../env'
 // Session-gated by the hoisted api.use('/lists/*', requireSession) in
 // server/index.ts - one lookup for all three sub-apps on this mount.
 export const listRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 

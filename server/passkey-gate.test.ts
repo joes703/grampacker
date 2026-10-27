@@ -1,6 +1,5 @@
-import { env, testDb } from './test/node-env'
+import { app, testDb } from './test/node-env'
 import { describe, it, expect } from 'vitest'
-import app from './index'
 import { makeSessionStale, signInAgain, signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from '../shared/api'
 
@@ -58,7 +57,6 @@ async function request(
       headers,
       body: method === 'GET' ? undefined : JSON.stringify({}),
     },
-    env,
   )
 }
 
@@ -90,7 +88,7 @@ describe('passkey fresh-auth gate', () => {
       method: 'POST',
       headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json', 'x-forwarded-for': '10.60.1.2' },
       body: JSON.stringify({ id: 'reauth-key' }),
-    }, env)
+    })
     expect((await remove(stale)).status).toBe(403)
     expect(await passkeyRow('reauth-key')).toEqual({ name: 'Laptop' })
     const { cookie: fresh } = await signInAgain(email)
@@ -129,7 +127,6 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         },
         body: JSON.stringify(body),
       },
-      env,
     )
   }
 
@@ -175,14 +172,12 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         },
         body: JSON.stringify({ id: 'pk-owner-1', name: 'Anonymous' }),
       },
-      env,
     )
     expect(anonRename.status).toBe(401)
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
     const anonList = await app.request(
       '/api/auth/passkey/list-user-passkeys',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': '10.61.0.7' } },
-      env,
     )
     expect(anonList.status).toBe(401)
 
@@ -190,7 +185,6 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     const listed = await app.request(
       '/api/auth/passkey/list-user-passkeys',
       { headers: { Origin: ORIGIN, Cookie: other.cookie, 'x-forwarded-for': '10.61.0.3' } },
-      env,
     )
     expect(listed.status).toBe(200)
     expect(((await listed.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-other-1'])
@@ -207,7 +201,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Work laptop' })
     const ownList = await app.request('/api/auth/passkey/list-user-passkeys', {
       headers: { Cookie: owner.cookie, Origin: ORIGIN, 'x-forwarded-for': '10.61.0.8' },
-    }, env)
+    })
     expect(ownList.status).toBe(200)
     expect(((await ownList.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-owner-1'])
     const fresh = await signInAgain('pk-owner@test.dev')

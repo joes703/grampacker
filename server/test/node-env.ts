@@ -1,6 +1,7 @@
 import { openSqlite, type Sqlite } from '../db'
 import { applyMigrations } from '../db/migrate'
 import type { AppEnv } from '../env'
+import { createApp } from '../index'
 
 // The API tests' environment: the real app against a real SQLite database
 // built by the real migrations.
@@ -23,6 +24,10 @@ export const env: AppEnv = {
   // exercisable.
   STATIC_DIR: 'server/test/fixtures/assets',
 }
+
+// The app every API test calls, built once per file from `env`. A test that
+// needs another configuration or connection builds its own with createApp.
+export const app = createApp(env)
 
 // Raw SQL for test setup and assertions, in the call shape the tests were
 // first written in (`prepare(sql).bind(...).first()/all()/run()`), which many

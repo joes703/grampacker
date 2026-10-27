@@ -1,5 +1,4 @@
-import { env } from './node-env'
-import app from '../index'
+import { app } from './node-env'
 import { CSRF_HEADER } from '../middleware/csrf'
 
 const ORIGIN = 'http://localhost:5173'
@@ -27,6 +26,5 @@ export async function apiRequest(
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     },
-    env,
   )
 }

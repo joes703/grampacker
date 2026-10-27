@@ -1,6 +1,5 @@
-import { env, testDb } from '../test/node-env'
+import { app, testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { meResponseSchema } from '../../shared/me'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
@@ -10,13 +9,13 @@ import { signUpVerifiedUser } from '../test/auth-helpers'
 
 describe('/api/me authorization matrix', () => {
   it('anon GET is 401', async () => {
-    const res = await app.request('/api/me', {}, env)
+    const res = await app.request('/api/me', {})
     expect(res.status).toBe(401)
   })
 
   it('owner GET returns own profile shaped by the DTO allowlist', async () => {
     const { cookie } = await signUpVerifiedUser('me-owner@example.com', 'Owner')
-    const res = await app.request('/api/me', { headers: { Cookie: cookie } }, env)
+    const res = await app.request('/api/me', { headers: { Cookie: cookie } })
     expect(res.status).toBe(200)
     const body = meResponseSchema.parse(await res.json())
     expect(body.email).toBe('me-owner@example.com')
@@ -59,7 +58,7 @@ describe('/api/me authorization matrix', () => {
       )
       .run()
 
-    const mine = await app.request('/api/me', { headers: { Cookie: owner.cookie } }, env)
+    const mine = await app.request('/api/me', { headers: { Cookie: owner.cookie } })
     expect(meResponseSchema.parse(await mine.json()).passkeyCount).toBe(1)
 
     // The other account has only ever used email. Zero is the whole "account
@@ -67,15 +66,15 @@ describe('/api/me authorization matrix', () => {
     // would drift the moment a passkey was deleted out-of-band. Zero makes the
     // client prompt for enrollment, and an email-only account is legitimate,
     // so it is a prompt, never a gate.
-    const theirs = await app.request('/api/me', { headers: { Cookie: other.cookie } }, env)
+    const theirs = await app.request('/api/me', { headers: { Cookie: other.cookie } })
     expect(meResponseSchema.parse(await theirs.json()).passkeyCount).toBe(0)
   })
 
   it('two sessions each see only their own row', async () => {
     const a = await signUpVerifiedUser('me-a@example.com', 'UserA')
     const b = await signUpVerifiedUser('me-b@example.com', 'UserB')
-    const resA = await app.request('/api/me', { headers: { Cookie: a.cookie } }, env)
-    const resB = await app.request('/api/me', { headers: { Cookie: b.cookie } }, env)
+    const resA = await app.request('/api/me', { headers: { Cookie: a.cookie } })
+    const resB = await app.request('/api/me', { headers: { Cookie: b.cookie } })
     const bodyA = meResponseSchema.parse(await resA.json())
     const bodyB = meResponseSchema.parse(await resB.json())
     expect(bodyA.email).toBe('me-a@example.com')
@@ -97,7 +96,6 @@ describe('/api/me authorization matrix', () => {
         },
         body: JSON.stringify({ name: 'ghost' }),
       },
-      env,
     )
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type')).toContain('application/json')

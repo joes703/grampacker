@@ -1,9 +1,9 @@
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
-import { createDb, type Db } from '../db'
+import type { Db } from '../db'
 import { rateLimits, verification } from '../db/schema'
 import { clientIpFromForwardedFor, rateLimitIpKey } from './client-ip'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 type Rule = { scope: string; limit: number; windowMs: number }
 
@@ -431,7 +431,7 @@ function consume(db: Db, rule: Rule, keySuffix: string, now: number): Response |
 // address Caddy saw (client-ip.ts says why only that entry is trusted). It
 // is absent in local dev and tests unless injected, where everything shares
 // one bucket ('local').
-export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
+export const authRateLimit = createMiddleware<{ Bindings: AppDeps }>(
   async (c, next) => {
     if (
       (c.req.method === 'GET' || c.req.method === 'HEAD') &&
@@ -447,7 +447,7 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     // own prefix and mint unlimited budget.
     const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
     const now = Date.now()
-    const db = createDb(c.env.DB)
+    const db = c.env.db
 
     const byIp = consume(db, rule, ip, now)
     if (byIp) return byIp

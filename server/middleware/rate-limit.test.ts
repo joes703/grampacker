@@ -1,6 +1,6 @@
-import { env, testDb } from '../test/node-env'
+import { createApp } from '../index'
+import { app, env, testDb } from '../test/node-env'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import app from '../index'
 import { createAuth } from '../auth'
 import { createDb } from '../db'
 import { chargeMagicLinkGlobalQuota, peekMagicLinkGlobalQuota } from './rate-limit'
@@ -61,7 +61,6 @@ function authPost(path: string, body: unknown, ip: string) {
       },
       body: JSON.stringify(body),
     },
-    env,
   )
 }
 
@@ -81,7 +80,6 @@ function signIn(ip: string) {
   return app.request(
     '/api/auth/passkey/generate-authenticate-options',
     { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-    env,
   )
 }
 
@@ -186,7 +184,6 @@ describe('auth rate limiting', () => {
         },
         body: '{}',
       },
-      env,
     )
     expect(viaRealIp.status).toBe(429)
   })
@@ -311,7 +308,6 @@ describe('auth rate limiting', () => {
           },
           body: 'this is not json',
         },
-        env,
       )
     }
     expect(await globalCount()).toBe(before)
@@ -389,7 +385,7 @@ describe('auth rate limiting', () => {
       .run()
 
     const email = 'callback-429@example.com'
-    const res = await createAuth(env).api.signInMagicLink({
+    const res = await createAuth(env, createDb(env.DB)).api.signInMagicLink({
       body: { email },
       headers: new Headers({ Origin: ORIGIN }),
       asResponse: true,
@@ -513,14 +509,12 @@ describe('auth rate limiting', () => {
       const res = await app.request(
         `/api/auth/magic-link/verify?token=bogus-${i}`,
         { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-        env,
       )
       expect(res.status).not.toBe(429)
     }
     const blocked = await app.request(
       '/api/auth/magic-link/verify?token=bogus-over',
       { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-      env,
     )
     expect(blocked.status).toBe(429)
   })
@@ -628,7 +622,6 @@ describe('auth rate limiting', () => {
           headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
           body: JSON.stringify({ email: 'nobody@example.com', password: DEAD_PASSWORD }),
         },
-        env,
       )
     for (let i = 0; i < SIGN_IN_LIMIT; i++) {
       expect((await post()).status).not.toBe(429)
@@ -683,7 +676,6 @@ describe('auth rate limiting', () => {
       app.request(
         '/api/auth/sign-in/email',
         { method: 'OPTIONS', headers: { 'x-forwarded-for': ip } },
-        env,
       )
     expect((await options()).status).toBe(404)
 
@@ -752,7 +744,6 @@ describe('auth rate limiting', () => {
       app.request(
         '/api/auth/passkey/generate-authenticate-options',
         { headers: { 'x-forwarded-for': ip } },
-        env,
       )
     const start = await testDb.prepare(
       'select count(*) as n from verification',
@@ -831,10 +822,9 @@ describe('auth rate limiting', () => {
       .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
       .run()
 
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: brokenSweep }).request(
       '/api/auth/passkey/generate-authenticate-options',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-      { ...env, DB: brokenSweep },
     )
     // The sweep really ran and really failed...
     expect(sweepFailures).toBe(1)
@@ -906,7 +896,6 @@ describe('auth rate limiting', () => {
     const session = await app.request(
       '/api/auth/get-session',
       { headers: { 'x-forwarded-for': ip } },
-      env,
     )
     expect(session.status).toBe(200)
   })

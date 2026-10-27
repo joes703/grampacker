@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import app from '../index'
-import { env, testDb } from '../test/node-env'
+import { app, testDb } from '../test/node-env'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
@@ -354,7 +353,6 @@ describe('/api/lists/:id/food authorization', () => {
           headers,
           body: body === undefined ? undefined : JSON.stringify(body),
         },
-        env,
       )
     }
 
@@ -367,7 +365,6 @@ describe('/api/lists/:id/food authorization', () => {
         headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 2 }),
       },
-      env,
     )
     expect(anonNoHeader.status).toBe(403)
 

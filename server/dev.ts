@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { dirname } from 'node:path'
 import { getRequestListener } from '@hono/node-server'
 import { createServer as createViteServer } from 'vite'
-import app from './index'
+import { createApp } from './index'
 import { openSqlite } from './db'
 import { applyMigrations } from './db/migrate'
 import type { AppEnv } from './env'
@@ -50,7 +50,7 @@ const vite = await createViteServer({
   appType: 'spa',
   server: { middlewareMode: true, hmr: { server: httpServer } },
 })
-const api = getRequestListener((request) => app.fetch(request, env))
+const api = getRequestListener(createApp(env).fetch)
 
 httpServer.on('request', (req, res) => {
   const path = req.url ?? '/'

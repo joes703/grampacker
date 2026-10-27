@@ -1,6 +1,5 @@
 import { serveStatic } from '@hono/node-server/serve-static'
-import type { Handler, MiddlewareHandler } from 'hono'
-import type { AppEnv } from '../env'
+import type { Handler } from 'hono'
 
 // Serves the built SPA from STATIC_DIR: real files as themselves, and
 // index.html for any other path so client-side routes work on deep links.
@@ -27,31 +26,20 @@ import type { AppEnv } from '../env'
 // year, immutable.
 const SHELL_CACHE_CONTROL = 'public, max-age=0, must-revalidate'
 
-const handlers = new Map<string, { file: MiddlewareHandler; shell: MiddlewareHandler }>()
-
-function handlersFor(root: string) {
-  let entry = handlers.get(root)
-  if (!entry) {
-    entry = {
-      file: serveStatic({ root }),
-      shell: serveStatic({ root, path: 'index.html' }),
+// The last handler for every non-API path. Built once per app with its root.
+export function createServeSpa(root: string): Handler {
+  const file = serveStatic({ root })
+  const shell = serveStatic({ root, path: 'index.html' })
+  return async (c) => {
+    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      return c.text('Method Not Allowed', 405, { Allow: 'GET, HEAD' })
     }
-    handlers.set(root, entry)
+    let res = await file(c, async () => {})
+    if (!res && !c.req.path.startsWith('/assets/')) {
+      res = await shell(c, async () => {})
+    }
+    if (!res) return c.text('Not Found', 404)
+    res.headers.set('Cache-Control', SHELL_CACHE_CONTROL)
+    return res
   }
-  return entry
-}
-
-// The last handler for every non-API path.
-export const serveSpa: Handler<{ Bindings: AppEnv }> = async (c) => {
-  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
-    return c.text('Method Not Allowed', 405, { Allow: 'GET, HEAD' })
-  }
-  const { file, shell } = handlersFor(c.env.STATIC_DIR)
-  let res = await file(c, async () => {})
-  if (!res && !c.req.path.startsWith('/assets/')) {
-    res = await shell(c, async () => {})
-  }
-  if (!res) return c.text('Not Found', 404)
-  res.headers.set('Cache-Control', SHELL_CACHE_CONTROL)
-  return res
 }

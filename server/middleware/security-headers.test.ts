@@ -1,6 +1,6 @@
+import { createApp } from '../index'
 import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { securityHeaderMap } from './security-headers'
 
 // Prod-like env: /api/health never touches better-auth, so overriding the
@@ -10,7 +10,7 @@ const prodEnv = { ...env, BETTER_AUTH_URL: 'https://grampacker.app' }
 
 describe('security headers on the real app', () => {
   it('API responses carry the full production set', async () => {
-    const res = await app.request('/api/health', {}, prodEnv)
+    const res = await createApp(prodEnv).request('/api/health', {})
     expect(res.status).toBe(200)
     for (const [key, value] of Object.entries(securityHeaderMap({ dev: false }))) {
       expect(res.headers.get(key)).toBe(value)
@@ -20,10 +20,9 @@ describe('security headers on the real app', () => {
   it('error responses carry the set too', async () => {
     // A CSRF-refused request still gets headers: the middleware wraps
     // every response, not just happy paths.
-    const res = await app.request(
+    const res = await createApp(prodEnv).request(
       '/api/me',
       { method: 'PUT', body: '{}' },
-      prodEnv,
     )
     expect(res.status).toBe(403)
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
@@ -31,13 +30,13 @@ describe('security headers on the real app', () => {
   })
 
   it('unknown /api/* paths return JSON 404, not the SPA shell', async () => {
-    const res = await app.request('/api/definitely-not-a-route', {}, prodEnv)
+    const res = await createApp(prodEnv).request('/api/definitely-not-a-route', {})
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type') ?? '').toContain('application/json')
   })
 
   it('the SPA shell carries the full production set', async () => {
-    const res = await app.request('/', {}, prodEnv)
+    const res = await createApp(prodEnv).request('/', {})
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type') ?? '').toContain('text/html')
     for (const [key, value] of Object.entries(securityHeaderMap({ dev: false }))) {

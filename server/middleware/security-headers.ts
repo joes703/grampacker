@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import type { AppEnv } from '../env'
+import type { AppDeps, AppEnv } from '../env'
 
 // One security-header map covers the SPA shell, static assets, and API
 // responses. Keeping it in middleware lets tests assert the same policy on
@@ -58,10 +58,10 @@ export function securityHeaderMap(opts: { dev: boolean }): Record<string, string
   }
 }
 
-export const securityHeaders = createMiddleware<{ Bindings: AppEnv }>(
+export const securityHeaders = createMiddleware<{ Bindings: AppDeps }>(
   async (c, next) => {
     await next()
-    const dev = isDevEnvironment(c.env)
+    const dev = c.env.dev
     // Some responses (static files) arrive with headers that should not be
     // edited in place; reconstruct before writing.
     const res = new Response(c.res.body, c.res)

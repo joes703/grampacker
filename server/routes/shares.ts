@@ -6,7 +6,7 @@ import {
   type PublicShareVars,
 } from '../middleware/public-shares'
 import type { PublicShare } from '../repos/public-shares'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET /api/shares/v2/:slug - anon - gated on lists.is_shared; unknown slug
@@ -18,7 +18,7 @@ import type { AppEnv } from '../env'
 // invocation it was counting. If this ever needs a budget it belongs at the
 // edge; SECURITY.md records the trigger and the fact that none exists yet.
 export const shareRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: PublicShareVars
 }>()
 
