@@ -523,9 +523,9 @@ describe('packing location CRUD, assignment, and integrity', () => {
     // surface at an arbitrary depth of its new location.
     //
     // It must NOT touch sortOrder. That column is the document order, read by
-    // List view, CSV export and the anonymous share, and a move used to rebase
-    // it too - so dropping something into a bag walked it to the bottom of the
-    // list you wrote and of the link you had already shared.
+    // List view, CSV export and the anonymous share, so rebasing it would walk
+    // something dropped into a bag to the bottom of the list you wrote and of
+    // the link you had already shared.
     const { cookie } = await signUpVerifiedUser('packing-move-rank@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const location = await createPackingLocation(cookie, list.id, 'Main')
@@ -663,7 +663,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
   // to "this user", and every parent-scoped guarantee in the feature is
   // decoration. All three write verbs are covered because the composite
   // predicate is per-handler - one of them getting it right proves nothing
-  // about the others, which is how PATCH went uncovered until 2026-08-11.
+  // about the others.
   it('wrong-parent PATCH rejects with zero writes', async () => {
     const { cookie } = await signUpVerifiedUser('packing-parent-patch@example.com', 'O')
     const a = await createList(cookie, 'A')
@@ -1352,9 +1352,10 @@ describe('pack-order rank bounds and scratch band', () => {
   }
 
   it('rejects a negative packSortOrder with 400, not a 500 from the trigger', async () => {
-    // packSortOrder used to reuse sortOrderSchema, which allows negatives. With
-    // 0019 in place anything slipping past the DTO would RAISE(ABORT) and
-    // surface as a 500, so the DTO is the thing that has to say no.
+    // sortOrderSchema allows negatives, so packSortOrder must not reuse it.
+    // Anything slipping past the DTO would hit the pack rank range trigger's
+    // RAISE(ABORT) and surface as a 500, so the DTO is the thing that has to
+    // say no.
     const { cookie, list, inBag } = await bagOfThree('pack-negative@example.com')
     const before = await getListItems(cookie, list.id)
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
@@ -1418,7 +1419,8 @@ describe('pack-order rank bounds and scratch band', () => {
 describe('pack rank exhaustion is a status, not a 500', () => {
   it('answers 422 when a cohort has no rank headroom left', async () => {
     // Reachable whenever a cohort's maximum is PACK_RANK_MAX, because every
-    // arrival computes max+1 and 0019 refuses to commit past the bound. A
+    // arrival computes max+1 and the pack rank range trigger refuses to
+    // commit past the bound. A
     // pack-order PUT may set any free rank up to PACK_RANK_MAX, so a user can
     // reach this. Forced directly here because it is shorter.
     const { cookie } = await signUpVerifiedUser('pack-exhausted@example.com', 'O')
@@ -1476,9 +1478,7 @@ describe('location deletion near the top of the rank space', () => {
   it('deletes a two-item location when Unassigned sits just below the ceiling', async () => {
     // packingLocations.remove() appends every orphan at base + i, so a cohort
     // one below PACK_RANK_MAX needs 1000000000 AND 1000000001 for two orphans -
-    // and the second overflows. This is why 0019 normalizes cohorts lacking
-    // LIST_ITEM_CAP of headroom rather than only those already out of range.
-    // A pack-order PUT with a free rank near PACK_RANK_MAX reaches this state;
+    // and the second overflows. A pack-order PUT with a free rank near PACK_RANK_MAX reaches this state;
     // it is forced directly here because that is shorter.
     const { cookie } = await signUpVerifiedUser('pack-nearceiling@example.com', 'O')
     const list = await createList(cookie, 'Trip')
@@ -1492,7 +1492,7 @@ describe('location deletion near the top of the rank space', () => {
       .where(and(eq(listItems.id, loose.id), eq(listItems.userId, userId)))
 
     const location = await createPackingLocation(cookie, list.id, 'Bag')
-    // Each arrival lands in Unassigned at max+1, which is now PACK_RANK_MAX
+    // Each arrival lands in Unassigned at max+1, which is PACK_RANK_MAX
     // itself, so the items must be moved into the bag one at a time - a
     // second arrival before the first moved would already be refused.
     const bag = async (name: string) => {
@@ -1559,9 +1559,9 @@ describe('deleting a list with bagged items (P0.1)', () => {
   })
 
   it('deletes an item-backed container without colliding', async () => {
-    // Needs THREE rows. A two-row fixture passes without the fix, because
-    // deleting the backing item frees its own rank first - so it would prove
-    // nothing. Assert the pre-delete shape to keep it that way.
+    // Needs THREE rows. A two-row fixture passes even without collision
+    // handling, because deleting the backing item frees its own rank first -
+    // so it would prove nothing. Assert the pre-delete shape to keep it that way.
     const { cookie } = await signUpVerifiedUser('p01-container@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const survivor = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Survivor'))

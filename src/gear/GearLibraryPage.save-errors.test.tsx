@@ -169,7 +169,7 @@ vi.mock('./use-gear-item-actions', () => ({
   // isPending is driven by the test, not pinned. Defaulting it to false pins that
   // the dialog's "Saving…" comes from the page's per-attempt state; setting it TRUE
   // with no save outstanding pins the other half - that the shared mutation flag,
-  // which an inline row edit behind the dialog also raises, no longer leaks in.
+  // which an inline row edit behind the dialog also raises, does not leak in.
   useGearItemActions: () => ({
     addItem: { mutateAsync: h.addItemAsync, isPending: h.addItemPending() },
     editItem: {
@@ -549,10 +549,10 @@ describe('completions that arrive after the user has moved on', () => {
   })
 
   it('the shared mutation being busy elsewhere does not make an idle dialog claim it is saving', async () => {
-    // The cross-talk this replaced: `saving` used to read
-    // `addItem.isPending || editItem.isPending`, which an inline row edit BEHIND
-    // the dialog also raises. Pinned by asserting the label with the shared flag
-    // true and no save of the dialog's own outstanding.
+    // `saving` must not read `addItem.isPending || editItem.isPending`, which an
+    // inline row edit BEHIND the dialog also raises. Pinned by asserting the
+    // label with the shared flag true and no save of the dialog's own
+    // outstanding.
     h.editItemPending.mockReturnValue(true)
     renderPage()
 
@@ -618,9 +618,7 @@ describe('the inline new-category editor, concurrency', () => {
 describe('create list from selection', () => {
   it('reports a failure inside its own dialog, which stays open to retry', async () => {
     // This mutation is NOT optimistic - the case meta.errorToast exists for - but
-    // its dialog stays open on failure, so the error goes beside the form. (The
-    // toast it used to raise expired behind the backdrop, before toasts rendered
-    // over modals, and the create failed silently.)
+    // its dialog stays open on failure, so the error goes beside the form.
     h.createListFromSelection.mockRejectedValue(new Error('nope'))
     renderPage()
 

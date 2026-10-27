@@ -17,15 +17,14 @@ import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortab
 import { formatRelativeDate } from '../lib/dates'
 
 // The one lists-surface row, shared by /lists (variant 'page') and the
-// desktop lists panel on /lists/:id (variant 'panel'). The two surfaces
-// used to carry near-identical copies - same rename-inline swap, same kebab
-// wiring, same sortable wrapper - that had to agree change-for-change.
+// desktop lists panel on /lists/:id (variant 'panel'), so the rename-inline
+// swap, kebab wiring and sortable wrapper exist once.
 // What genuinely differs stays keyed on `variant`:
 //   - chrome: the page row is the roomier /lists manager row with the
 //     "Updated ..." meta; the panel row tracks FLAT_TABLE_ROW density and
 //     carries the current-list highlight.
-//   - menu: the page offers Share (sharing lives in List options inside the
-//     open list, so the panel deliberately does not) and orders
+//   - menu: the page offers Share (the open list has its own Share button,
+//     so the panel deliberately does not) and orders
 //     Rename/Share/Export/Duplicate; the panel orders Rename/Duplicate/
 //     Export.
 //

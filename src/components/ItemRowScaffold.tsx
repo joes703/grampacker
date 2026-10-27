@@ -5,11 +5,8 @@ import GearStatusBadge from './gear/GearStatusBadge'
 import { FLAT_TABLE_BODY_TEXT_MUTED } from './flat-table-styles'
 
 // The leading scaffold shared by the gear-library row (GearItemRow) and the
-// list-detail row (ItemRow). The two used to re-build these pieces verbatim
-// - same column proportions, same typography, down to the same comments - so
-// a density fix to "the row" meant editing two files that had to agree
-// character-for-character. Trailing columns genuinely differ per surface and
-// stay in each row file.
+// list-detail row (ItemRow), so a density fix to "the row" is one edit.
+// Trailing columns genuinely differ per surface and stay in each row file.
 //
 // Share-path constraint: ItemRow renders on the anonymous share page, so
 // nothing in this module may import @dnd-kit (the emitted share bundle is

@@ -17,12 +17,12 @@ import { FLAT_TABLE_HEADER_TITLE } from '../components/flat-table-styles'
 //
 // Same seam as SortableCategoryRows: PackSection must not import @dnd-kit or
 // any authenticated component. This module owns both and hands PackSection
-// opaque ReactNodes through its headerLeading / headerAction props. Only ListDetailPage imports this file.
+// opaque ReactNodes through its headerLeading / headerAction props. Only the
+// authenticated Pack view (PackDocument, PackLocationSection) imports this
+// file.
 //
-// This replaces OrganizePackPanel's SortableLocationSection and
-// SortableItemContainerSection, which wrapped a LocationSection. The wiring is
-// the same; the thing being wrapped is now the checklist section, because
-// arranging and packing are one view.
+// It wraps the checklist section itself, because arranging and packing are
+// one view.
 
 // A location section that is NOT backed by an item. One identity: the section
 // itself, which reorders among its siblings and accepts item drops.
@@ -147,8 +147,7 @@ export function useSortableContainerSection({
 }
 
 // Rename / Delete for a plain location, Stop-using-as-container for an
-// item-backed one. Lifted from LocationSection's header menu so the merged
-// pack section keeps the same actions in the same place.
+// item-backed one.
 export function PackSectionMenu({
   title,
   itemBacked,
@@ -192,7 +191,7 @@ export function PackSectionMenu({
   )
 }
 
-// Rename-in-place for a packing location, lifted from LocationSection's header.
+// Rename-in-place for a packing location.
 // Self-contained draft state: the page owns only WHICH section is renaming, so
 // switching sections cannot leak a half-typed name between them (the caller
 // keys this by location id).

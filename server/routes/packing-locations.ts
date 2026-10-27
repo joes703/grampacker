@@ -117,9 +117,8 @@ packingLocationRoutes.delete(
       )
     if (result === 'not_found') return c.json({ error: 'Not found' }, 404)
     // The orphans are appended above the Unassigned maximum, so a cohort near
-    // the top of the rank space has nowhere to put them. 0019 normalizes any
-    // legacy cohort without headroom, so this is effectively unreachable - but
-    // a 500 on an ordinary delete would be a poor way to find out otherwise.
+    // the top of the rank space has nowhere to put them. This is effectively
+    // unreachable (see isPackRankRangeError), but a 500 on an ordinary delete would be a poor way to find out otherwise.
     if (result === 'pack_rank_exhausted') {
       return c.json(
         {

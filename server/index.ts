@@ -30,8 +30,8 @@ const api = new Hono<{ Bindings: AppDeps }>()
 api.use('*', apiBodyLimit)
 
 // Unsafe methods on our routes require the custom header + a matching
-// Origin. Registered first so no later route can be added in front of it;
-// it skips /api/auth/* internally (better-auth validates origins itself).
+// Origin. Registered before every route so no route can be added in front
+// of it; it skips /api/auth/* internally (better-auth validates origins itself).
 // Sub-app note: c.req.path stays the full /api/... path inside route(),
 // so the middleware's path checks are unaffected by the mount.
 api.use('*', csrfProtection)
@@ -42,13 +42,8 @@ api.use('*', csrfProtection)
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
 
-// Passkey freshness is gated INSIDE better-auth now, not here: a
-// deny-by-default hooks.before in server/auth.ts covers every /passkey/*
-// endpoint (with an explicit ungated allowlist), keyed on the RESOLVED
-// endpoint path - so there is no second URL parser to diverge from the
-// router, and a future plugin endpoint fails closed instead of shipping
-// ungated. Account deletion is gated the same way by better-auth itself
-// (session.freshAge via user.deleteUser, server/auth.ts).
+// Passkey and account-delete freshness checks are not middleware here. They
+// run inside better-auth (hooks.before and user.deleteUser in server/auth.ts).
 
 // better-auth owns everything under /api/auth/* (magic-link send and verify,
 // sign-out, passkeys). It does its own origin checking against baseURL. The
@@ -93,11 +88,10 @@ api.route('/lists', foodRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
 // the trust model). Everything else API-shaped stays session-gated.
 //
-// Deliberately NOT metered in application code, and UNMETERED today. If a
-// budget is ever needed it belongs at the edge, where a rule refuses before
-// the app runs and before SQLite is touched - an app-level counter would add
-// a write to every anonymous view to protect a read. SECURITY.md records the
-// trigger for creating one.
+// Not rate limited. If a budget is ever needed, put it in the reverse proxy,
+// which refuses before the app runs and before SQLite is touched. An
+// app-level counter would add a write to every anonymous view to protect a
+// read. SECURITY.md records when to add one.
 api.route('/shares', shareRoutes)
 
 api.get('/health', async (c) => {

@@ -3,8 +3,8 @@ import type { AppEnv } from '../env'
 
 // Hono's secureHeaders, on every response: SPA shell, static assets and API.
 // Its defaults apply except where ours are stricter or specific to this app.
-// The site is served directly by the Node process, so no edge layer injects
-// scripts or changes this policy.
+// Caddy proxies to the Node process and adds no headers (deploy/Caddyfile),
+// so nothing in front of the app injects scripts or changes this policy.
 const CSP = {
   defaultSrc: ["'self'"],
   scriptSrc: ["'self'"],

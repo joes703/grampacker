@@ -21,7 +21,7 @@ import {
 // different contracts that happen to agree today.
 export const CATEGORY_CAP = 500
 
-// Mirrors the gear_items_user_cap trigger (0003, recreated in 0013); the DB
+// Mirrors the gear_items_user_cap trigger; the DB
 // is authoritative. Single source: src/lib/caps.ts re-exports this for the
 // client preflights.
 export const GEAR_ITEM_CAP = 500
@@ -63,9 +63,9 @@ export const weightGramsSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GR
 
 // Dollars with at most 2 decimal places (stored as integer cents; REAL is
 // the wrong tool for money and numeric(10,2) does not exist in SQLite).
-// The round-trip check in decimalNumber, not the epsilon form this used to
-// carry: the epsilon let 1e-9 through (stored as 0 cents) and, near the cap,
-// 99999999.00999999 (v*100 lands exactly on an integer). Max stays inclusive -
+// decimalNumber's round-trip check rejects 1e-9 (which would store as 0 cents)
+// and, near the cap, 99999999.00999999 (v*100 lands exactly on an integer),
+// which an epsilon check would let through. Max stays inclusive -
 // src/lib/csv/money.ts relies on that.
 export const MAX_COST = 99_999_999.99
 export const costSchema = decimalNumber({ min: 0, max: MAX_COST, decimals: 2 })
@@ -183,8 +183,7 @@ export type BulkMoveRequest = z.infer<typeof bulkMoveRequestSchema>
 // ---------------------------------------------------------------- csv import
 
 // Atomic gear-library import: new categories and new gear land in ONE
-// transaction (the old app created categories before the gear insert
-// non-atomically, so a mid-flight failure orphaned the categories). The
+// transaction, so a mid-flight failure cannot orphan the categories. The
 // client plans the import (CSV parse + dedup against its library snapshot)
 // and references not-yet-created categories by a client-minted tempId; the
 // server mints the real ids.

@@ -62,7 +62,7 @@ export function useWeightUnit(): {
   function toggleWeightUnit() {
     // setWeightUnit writes localStorage AND dispatches WEIGHT_UNIT_EVENT, so
     // every mounted consumer's getSnapshot re-runs and any with a changed
-    // value re-renders. No setState here — the hook is no longer the
+    // value re-renders. No setState here — the hook is not the
     // source of truth.
     setWeightUnit(weightUnit === 'g' ? 'oz' : 'g')
   }

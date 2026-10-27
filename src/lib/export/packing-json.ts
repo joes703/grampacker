@@ -1,9 +1,8 @@
 import type { List, ListItemWithGear, PackingLocation } from '../types'
 import type { ListFoodResponse } from '../../../shared/food'
 
-// Bumped to 3 when list items gained pack_sort_order, and to 4 when food
-// became packable (0022): a bag's contents are the gear+food union now, and
-// this file promises a LOSSLESS snapshot of how a list is organized - "which
+// Version 3 added list items' pack_sort_order; version 4 added food, because
+// a bag's contents are the gear+food union. This file promises a LOSSLESS snapshot of how a list is organized - "which
 // bag" and "where in the bag" for BOTH kinds, or the food half of the user's
 // arranging silently vanishes from their own backup.
 const PACKING_DATA_VERSION = 4 as const
@@ -27,7 +26,7 @@ export type PackingData = {
       // job, and the two are independent by design.
       packSortOrder: number
     }[]
-    // The food half of the union (0022). Same rank space as the gear items:
+    // The food half of the union. Same rank space as the gear items:
     // merge both arrays by (packSortOrder, gear-before-food, id) to read a
     // bag the way Pack mode shows it. Food AUTHORING data (weight, qty,
     // schedule) lives in food.json; this file carries only its organization.

@@ -5,7 +5,7 @@ import { PACK_RANK_MAX } from '../../shared/lists'
 import { apiRequest, createList, createPackingLocation } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
-// Food as a full peer of gear in Pack mode (0022): pack state on the food
+// Food as a full peer of gear in Pack mode: pack state on the food
 // item PATCH, the union pack-order permutation, reset-packed spanning both
 // tables, and location deletion reranking food. Matrix rows:
 // docs/authz-matrix.md (food PATCH, pack-order, reset-packed).
@@ -613,7 +613,7 @@ describe('duplicate copies food pack state', () => {
 
     const [copiedFood] = await getFoodItems(cookie, copy.id)
     expect(copiedFood?.isPacked).toBe(true)
-    // Ready state copies too (GATE 2 caught the original dropping it).
+    // Ready state copies too.
     expect(copiedFood?.isReady).toBe(true)
     expect(copiedFood?.packingLocationId).not.toBeNull()
     expect(copiedFood?.packingLocationId).not.toBe(location.id)
@@ -622,10 +622,7 @@ describe('duplicate copies food pack state', () => {
 
 // The database-level guards on list_food_items, exercised directly. The API
 // validates first, so the route tests above never reach these triggers and
-// indexes; they are the backstop for any writer that skips the API. Until
-// 2026-09 they were probed only inside the migration harness, as a side
-// effect of replaying migrations 0022-0024 - tests of the CURRENT schema
-// belong here instead.
+// indexes; they are the backstop for any writer that skips the API.
 describe('list_food_items guards below the API', () => {
   type FoodRow = {
     id: string
@@ -768,7 +765,7 @@ describe('list_food_items guards below the API', () => {
   })
 
   it('refuses a row whose is_per_meal is NULL', async () => {
-    // 0024 made the flag mandatory so no food row is ever weighed under an
+    // The flag is mandatory so no food row is ever weighed under an
     // unstated assumption about what its quantity means.
     const { userId, list } = await ownerWithTwoLists('fg-mode@example.com')
     expect(() =>

@@ -28,12 +28,9 @@ type Props = {
 // ListDetailPage's useRegisterSidebarDrawer gate), so an Add here would sit
 // permanently disabled.
 //
-// Pack mode used to live as a fifth slot here, but pack is URL state on
-// a list (/lists/:id/pack), not a global destination — it would have
-// forced either a 5-slot inconsistent shape or a confusing
-// always-grayed Add in pack mode. The list view navigation now lives inline on
-// the list page itself, which also keeps Add
-// available mid-pack so the "I forgot water filter" flow is one tap.
+// Pack mode is not a slot here: pack is URL state on a list
+// (/lists/:id/pack), not a global destination. The list view navigation
+// lives inline on the list page itself.
 //
 // Visibility: this component is only rendered by ListDetailPage's authed
 // branch, so it's automatically scoped away from Gear, Lists, Settings,
@@ -44,10 +41,8 @@ export default function MobileListActionBar({ list, mode }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const items: MobileBottomBarItem[] = buildMobileDestinationItems()
-  // Add is available in Edit and Pack. It used to be suppressed in Organize,
-  // where adding gear was outside that view's one job; Pack absorbed Organize
-  // and Pack has always kept Add, so the "I forgot the water filter" flow
-  // stays one tap from anywhere on the list. Withheld in Food: the drawer
+  // Add is available in Edit and Pack, so the "I forgot the water filter"
+  // flow stays one tap from anywhere on the list. Withheld in Food: the drawer
   // isn't registered there (nothing to add gear to), so the button would be
   // a dead, permanently-disabled control.
   if (mode !== 'food') {

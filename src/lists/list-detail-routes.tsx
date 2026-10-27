@@ -2,7 +2,7 @@ import { Navigate, useLocation, useParams } from 'react-router'
 import ListDetailPage from './ListDetailPage'
 import { persistedListPath } from './list-detail-mode'
 
-// The retired Organize URLs. Organize merged into Pack, so an old bookmark or
+// Old Organize URLs. Organize is part of Pack, so an old bookmark or
 // home-screen shortcut lands on /pack, keeping its query and fragment. The
 // router matches case-insensitively and ignores a trailing slash.
 function OrganizeRedirect() {

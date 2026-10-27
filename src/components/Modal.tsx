@@ -142,7 +142,7 @@ export default function Modal({
     // a child. If a future modal child leaves the dialog content area
     // exposed (e.g., reintroducing padding on the dialog itself), revisit
     // this — target===currentTarget would no longer be exclusively
-    // backdrop. Today it is.
+    // backdrop.
     if (e.target === e.currentTarget) e.currentTarget.close()
   }
 

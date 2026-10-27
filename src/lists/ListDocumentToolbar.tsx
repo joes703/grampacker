@@ -68,8 +68,8 @@ export default function ListDocumentToolbar({
         <div className="flex items-center gap-2">
           {/* Share sits beside List options rather than inside it: it is the
               end goal of building a list for this audience, and buried between
-              Rename and Delete it took UX audits three clicks to find. One
-              home - ListSettingsPanel no longer hosts it. */}
+              Rename and Delete it is hard to find. One home - ListSettingsPanel
+              does not host it. */}
           <ListShareButton list={list} />
           <ListSettingsButton list={list} />
         </div>

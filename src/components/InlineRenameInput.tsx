@@ -18,8 +18,7 @@ type Props = {
 // The inline-rename machine, in one place: focus/select on mount, Enter
 // commits, Escape cancels, blur commits, and useCommitOnce arbitrates the
 // same-batch double delivery (Enter then blur must not commit twice; Escape
-// then blur must not turn a cancel into a save - the semantics that used to
-// drift per hand-rolled copy). Parents own the draft value and what commit
+// then blur must not turn a cancel into a save). Parents own the draft value and what commit
 // and cancel mean; an async submit still needs its own in-flight guard
 // (useCommitOnce re-arms every render - see its scope note).
 export default function InlineRenameInput({

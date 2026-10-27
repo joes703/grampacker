@@ -94,7 +94,7 @@ function classifyWriteError(
 ): 'cap_exceeded' | 'gear_cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isListItemCapError(err)) return 'cap_exceeded'
   if (isGearCapError(err)) return 'gear_cap_exceeded'
-  // 0019's range trigger: the cohort's rank space is exhausted, so the
+  // The pack rank range trigger: the cohort's rank space is exhausted, so the
   // `max + 1` an arrival or a move computes would step past PACK_RANK_MAX.
   // A known condition, so it gets a status rather than a 500.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
@@ -227,8 +227,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       }
     },
 
-    // Quick-Add: gear row + membership row in ONE transaction - the old
-    // add_gear_item_with_list_item RPC. Either cap trigger aborts the whole
+    // Quick-Add: gear row + membership row in ONE transaction. Either cap trigger aborts the whole
     // thing; zero partial rows.
     async quickAdd(
       listId: string,
@@ -396,16 +395,14 @@ export function createListItemsRepo(db: Db, userId: string) {
     if (patch.isReady !== undefined) set.isReady = patch.isReady
     if (patch.packingLocationId !== undefined) {
       set.packingLocationId = patch.packingLocationId
-      // A move rebases the PACK rank and nothing else. It used to rebase
-      // sortOrder, which is the bug this column exists to kill: sortOrder is
-      // the document order, read by List view and by the anonymous share, so
-      // dropping an item into a bag walked it to the bottom of the list you
-      // had written AND to the bottom of the link you had shared. Moving
-      // something inside your pack is not an edit to your document.
+      // A move rebases the PACK rank and nothing else. sortOrder is the
+      // document order, read by List view and by the anonymous share, so
+      // rebasing it would walk an item dropped into a bag to the bottom of
+      // the list you wrote AND of the link you shared. Moving something
+      // inside your pack is not an edit to your document.
       //
-      // The row still lands LAST in its destination, exactly like a newly
-      // added one - the outcome stays statable in one sentence, it is just
-      // scoped to the bag now instead of the whole list. A re-assignment to
+      // The row lands LAST in its destination bag, exactly like a newly
+      // added one. A re-assignment to
       // the location the item is ALREADY in keeps its rank, so it does not
       // walk to the bottom of its own bag. `IS` rather than `=` because the
       // target may be null (Unassigned), and `=` is never true against null.

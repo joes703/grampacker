@@ -40,8 +40,8 @@ type Props = {
 //
 // Math comes in already finished, from computeListWeightBreakdown in
 // lib/weight-breakdown.ts; this component owns presentation only. It does NOT
-// compute a fallback - that fallback was gear-only, so forgetting to pass a
-// breakdown used to render a total quietly missing food.
+// compute a fallback: a local fallback could quietly drop food from the
+// total.
 //
 export default function WeightSummary({
   items,

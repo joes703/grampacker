@@ -4,12 +4,10 @@ import RowIconButton from '../components/RowIconButton'
 import { ROW_HOVER_REVEAL } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
 
-// This lived inside ItemRow.tsx, which meant every module that rendered a row
-// imported @dnd-kit - including SharePage, the PUBLIC, READ-ONLY share view,
-// which cannot drag anything. A read-only page was downloading a
-// drag-and-drop library. Splitting it into its own module is what lets the
-// bundler see that: nothing on the anonymous path imports this file, so
-// @dnd-kit stays out of the anonymous graph entirely.
+// Drag lives in its own module so that SharePage, the PUBLIC, READ-ONLY
+// share view, does not download a drag-and-drop library it cannot use.
+// Nothing on the anonymous path imports this file, so @dnd-kit stays out of
+// the anonymous graph entirely.
 //
 // Keep it that way. The rule is one line long: no VALUE import from @dnd-kit in
 // ItemRow.tsx or CategoryTable.tsx, because both are on the share view's
@@ -22,13 +20,10 @@ import ItemRow, { type ItemRowProps } from './ItemRow'
 // Drag is disabled while a previous reorder mutation is in flight (prevents
 // the rollback-clobber race when two reorders overlap).
 //
-// Pack mode USED to disable drag entirely, on the reasoning that structural
-// changes were inert while checking items off - true only because arranging
-// happened in a separate Organize view. Pack is that view now, so pack rows
-// drag like any other. Note there were two independent pack gates here (the
-// `disabled` flag AND the handle being withheld); both are gone, because
-// removing one without the other leaves rows registered as sortable with no
-// activator to start a drag from.
+// Pack rows drag like any other: Pack is where rows are arranged. Do not
+// gate drag in pack by only one of the `disabled` flag or the handle: a row
+// registered as sortable with no handle has no activator to start a drag
+// from.
 //
 // `dndKind` picks the id namespace. Category grouping keeps `item:`, whose
 // planner reorders within a category. Location grouping uses `packing-item:`,
@@ -47,9 +42,9 @@ export default function SortableItemRow({
     disabled: props.reorderPending,
   })
 
-  // Every viewport drives reorder from a dedicated in-row grip. This used to sit in
-  // the outside-left gutter, but flat table surfaces intentionally use
-  // overflow-hidden for rounded corners, which clips out-of-surface handles.
+  // Every viewport drives reorder from a dedicated in-row grip. It sits inside
+  // the row because flat table surfaces use overflow-hidden for rounded
+  // corners, which clips handles outside the surface.
   // On touch, keeping listeners on the grip preserves ordinary row scrolling;
   // the page-level TouchSensor still supplies delayed activation.
   //

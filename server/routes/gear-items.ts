@@ -117,8 +117,8 @@ gearItemRoutes.post('/import', async (c) => {
   // the relational refinements - with no array maxima, so anything malformed
   // (including a malformed OVERSIZED body) stays the uniform 400. Stage 2
   // answers the caps in the trigger's own 422 dialect, which matters because
-  // an over-cap gear CSV is user-reachable (the parser accepts 2000 rows)
-  // and used to burn 500+ executed statements before failing. Categories
+  // an over-cap gear CSV is user-reachable (the parser accepts 2000 rows),
+  // and without this stage it would run 500+ statements before failing. Categories
   // are checked first on purpose: every declared category must be
   // referenced, so 501 valid categories force >=501 items - when both caps
   // are blown, the category message is the actionable one.

@@ -232,7 +232,7 @@ describe('buildTakeoutFiles', () => {
       .toHaveLength(2)
     expect(packing.lists[0]?.locations.find((location) => location.id === 'loc-a'))
       .toMatchObject({ containerListItemId: 'i-2' })
-    // The food half of the union (0022): organization only (bag + rank),
+    // The food half of the union: organization only (bag + rank),
     // emitted in pack order. Authoring data stays in food.json.
     expect(packing.lists[0]?.foodItems).toEqual([
       { foodItemId: 'food-1', name: 'Tortillas', packingLocationId: 'loc-b', packSortOrder: 3 },
@@ -255,7 +255,7 @@ describe('buildTakeoutFiles', () => {
     // new field were silently dropped, which would make this file a LOSSY
     // snapshot while claiming to be a lossless one - the export exists so a
     // reimport can rebuild how a list was organized, and "which bag" without
-    // "where in the bag" no longer rebuilds it.
+    // "where in the bag" does not rebuild it.
     for (const item of packing.lists[0]?.items ?? []) {
       expect(typeof item.packSortOrder).toBe('number')
       expect(item.packSortOrder).toBeGreaterThanOrEqual(0)

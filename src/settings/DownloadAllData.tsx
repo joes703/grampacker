@@ -27,7 +27,7 @@ export default function DownloadAllData() {
       // staleTime: 0 on every takeout read: an export is a snapshot claim,
       // so it must hit the server rather than reuse anything the app's
       // 30-second staleTime still considers fresh - another tab or device
-      // may have written since this tab's cache filled (Codex finding).
+      // may have written since this tab's cache filled.
       // Successful results still land in the cache for the app to reuse.
       const [fflate, categories, gearItems, lists] =
         await Promise.all([

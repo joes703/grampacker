@@ -14,10 +14,10 @@ import { deferred } from '../test/deferred'
 // the state machine that decides WHICH outcome lands on WHICH dialog.
 //
 // It is worth a page-level harness because the dialog is shared with GearLibraryPage
-// and its two mutations are shared with the inline row writes behind it. Both of
-// those sharings have already produced bugs: the mutations' `isPending` reported an
-// unrelated row edit as this dialog saving, and unguarded completions could resurrect
-// a dismissed dialog or close one the user opened since.
+// and its two mutations are shared with the inline row writes behind it. Both
+// sharings can cause bugs: the mutations' `isPending` can report an unrelated
+// row edit as this dialog saving, and unguarded completions can resurrect a
+// dismissed dialog or close one the user opened since.
 
 const listId = 'list-1'
 
@@ -135,10 +135,9 @@ afterEach(() => {
 })
 
 describe('the phone row tap editor', () => {
-  // Tapping a row on a phone used to open the full inventory form - cost,
-  // purchase date, status, a delete button - to change one weight (UX audit
-  // 2026-10). Below lg the tap opens the compact editor; the full form stays
-  // one tap further, behind More details.
+  // The full inventory form (cost, purchase date, status, a delete button) is
+  // too much to change one weight on a phone. Below lg the tap opens the
+  // compact editor; the full form stays one tap further, behind More details.
   it('opens the compact editor, not the inventory form, and More details reaches the full form', async () => {
     stubViewport(390)
     await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])

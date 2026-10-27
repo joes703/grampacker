@@ -43,13 +43,13 @@ function listResolves(rows: unknown[]) {
 }
 
 // The server's refusal when the session is too old to change the credential set.
-// Our own gate answers REAUTH_REQUIRED (delete-passkey); better-auth's
-// freshSessionMiddleware answers SESSION_NOT_FRESH (the register endpoints).
-// Both mean "re-authenticate", and the component must handle both.
+// The server answers SESSION_NOT_FRESH; REAUTH_REQUIRED is an older code the
+// component still accepts (see isReauthRequired). Both mean
+// "re-authenticate", and the component must handle both.
 const STALE = { status: 403, code: 'REAUTH_REQUIRED', message: 'stale' }
 const STALE_BETTER_AUTH = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
 
-// Re-authentication is a CEREMONY now, not a typed secret: signing in again
+// Re-authentication is a CEREMONY, not a typed secret: signing in again
 // mints a new session, and a new session is a fresh one.
 async function confirmWithPasskey() {
   fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))

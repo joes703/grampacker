@@ -77,7 +77,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
       qc,
       queryKey,
       id: (id) => id,
-      // listFood too (0022): the server returns the deleted bag's FOOD to
+      // listFood too: the server returns the deleted bag's FOOD to
       // Unassigned with fresh ranks, and a stale food cache would keep the
       // old bag assignment and order until an incidental refetch.
       invalidateKeys: [queryKeys.listItems(listId), queryKeys.listFood(listId)],

@@ -7,14 +7,13 @@ import type { AppDeps } from '../env'
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET /api/me - session - self row only - MeResponse
 //
-// GET-only: the former PUT existed solely to update the display name, and
-// grampacker no longer collects or stores one (data-minimization call,
-// 2026-07-09). The cross-cutting CSRF tests that rode on that PUT live in
-// server/middleware/csrf.test.ts now.
+// GET-only: grampacker does not collect or store a display name, so there is
+// nothing to update. The cross-cutting CSRF tests live in
+// server/middleware/csrf.test.ts.
 //
-// There is no POST /api/me/reauth any more. Proving "it is really you" was a
-// password check; passwordless, it is a fresh session, which only a sign-in
-// ceremony can mint (enforced by the hooks.before gate in server/auth.ts).
+// There is no reauth route. Proving "it is really you" is a fresh session,
+// which only a sign-in ceremony can mint (enforced by the hooks.before gate
+// in server/auth.ts).
 export const meRoutes = new Hono<{ Bindings: AppDeps; Variables: SessionVars }>()
 
 meRoutes.use('*', requireSession)

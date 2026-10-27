@@ -4,13 +4,9 @@ import type { PackingLocation } from '../lib/types'
 
 // When does removing gear from a list need to ask first?
 //
-// The old rule was a DIRTY-STATE confirm: a dialog appeared only when the
-// membership row carried state the user had entered - a quantity, a worn or
-// consumable flag, a pack tick. Defensible on paper, unreadable in practice.
-// From the outside it confirmed at random, which is what got it replaced.
-//
-// The rule now turns on WHAT is being removed, not on how much had been typed
-// into it:
+// The rule turns on WHAT is being removed, not on how much had been typed
+// into it. A DIRTY-STATE confirm (ask only when the row carries a quantity, a
+// worn or consumable flag, a pack tick) looks random from the outside.
 //
 //   An ordinary item -> remove it, no dialog. The gear stays in the library,
 //     so the row is one tap to re-add.

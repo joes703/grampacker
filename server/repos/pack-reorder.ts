@@ -23,11 +23,8 @@ import { listFoodItems, listItems } from '../db/schema'
 //
 // The whole read, validation and write sequence runs in ONE immediate SQLite
 // transaction on the process's only connection, so no other write can land
-// between the read and the writes. That is why the D1-era defenses are gone:
-// the guard-table census and the NULL-on-drift rank assertions existed only
-// because a D1 batch could not read and could not branch, and a concurrent
-// request could move rows between the pre-read and the batch. Neither can
-// happen here, so the 409 they produced for a lost race cannot occur.
+// between the read and the writes. So there is no lost-race case to detect
+// and no 409 for one.
 
 export type PackReorderResult =
   | { ok: true }
@@ -41,8 +38,8 @@ export type PackReorderResult =
     }
 
 // The next rank an ARRIVAL takes in a cohort: one past the UNION maximum.
-// Cohort-scoped for the 0018 reasons; union-scoped because a bag's contents
-// are the union, and a per-table maximum would land a new gear row visually
+// Cohort-scoped because ranks are unique per cohort; union-scoped because a
+// bag's contents are the union, and a per-table maximum would land a new gear row visually
 // ABOVE food already sitting at higher ranks in the same bag.
 //
 // Worn rows are counted. They render outside the packing tree but keep their
@@ -239,16 +236,16 @@ function reorderInTransaction(
   }
 
   // INDEX-SAFETY validation, which is what the unique indexes actually
-  // demand. An exact multiset-permutation rule was both stricter and weaker
-  // than needed:
+  // demand. An exact multiset-permutation rule would be both stricter and
+  // weaker than needed:
   //
   //   * stricter: a permutation PRESERVES cross-table rank ties, so a
-  //     cohort holding one (a degraded old interval, or 0023's dense
-  //     fallback) could never be healed by reordering - and some
-  //     otherwise-valid drags deterministically failed when both tied
-  //     rows landed in one table.
-  //   * weaker than it looked: its real job was only ever to keep the
-  //     settle writes off ranks that live rows outside the payload hold.
+  //     cohort holding one (for example from the packing-location delete's
+  //     dense fallback) could never be healed by reordering - and some
+  //     otherwise-valid drags would fail when both tied rows landed in one
+  //     table.
+  //   * weaker than it looks: its real job is only to keep the settle
+  //     writes off ranks that live rows outside the payload hold.
   //
   // So check THAT directly, per table: payload ranks must be unique
   // within their table's half, and must not equal the CURRENT rank of
@@ -289,7 +286,8 @@ function reorderInTransaction(
   // statement: moving row A onto the rank row B still holds would fail even
   // though B is about to move. So every payload row first PARKS on its own
   // negative scratch rank (-1, -2, ... - each table's band is its per-list
-  // cap wide, within migration 0019's range), then SETTLES on its target.
+  // cap wide, within the pack rank range triggers' bounds), then SETTLES on
+  // its target.
   const scratch = (i: number) => -1 - i
   const common = { userId, listId, from: cohort }
   payload.items.forEach((u, i) =>

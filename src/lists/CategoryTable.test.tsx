@@ -254,7 +254,7 @@ describe('CategoryTable footer subtotal', () => {
     expect(footer!.textContent).not.toMatch(/\d+(\.\d+)?\s*g/)
   })
 
-  // The plain "(N)" category count is gone: the rows are right there to be
+  // No plain "(N)" category count: the rows are right there to be
   // counted. Pack's completion mark is a different metric and stays (see
   // PackSection.test.tsx).
   it('renders no membership count', () => {

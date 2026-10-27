@@ -5,10 +5,9 @@ import userEvent from '@testing-library/user-event'
 import AddCategoryControl from './AddCategoryControl'
 import type { Category } from '../lib/types'
 
-// Creating a category used to require leaving the list for the Gear page -
-// the first stumble every 2026-10 UX audit hit when building a list from
-// scratch. This control creates the same shared category the Gear page
-// manages; only the entry point is new.
+// Creating a category must not require leaving the list for the Gear page.
+// This control creates the same shared category the Gear page manages; only
+// the entry point is different.
 
 const created: Category = { id: 'c-new', name: 'Shelter', sortOrder: 0, createdAt: '2026-01-01' }
 

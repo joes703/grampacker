@@ -2,8 +2,8 @@ import { type ReactNode } from 'react'
 // This module is on the public share view's critical path
 // (SharePage -> CategoryTable -> ItemRow), and a share view is read-only: it
 // can never drag anything. A VALUE import from @dnd-kit here would pull the
-// whole drag-and-drop library into the anonymous bundle. That is exactly what
-// SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
+// whole drag-and-drop library into the anonymous bundle, which is why
+// SortableItemRow lives in its own file.
 import { CircleMinus, Pencil, Shirt, UtensilsCrossed } from 'lucide-react'
 import type { ListItemWithGear } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
@@ -44,9 +44,9 @@ import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 //   kebab) when `!isBelowLg`, or the mobile subtree (compact row that opens
 //   the edit dialog on tap) when `isBelowLg`. The two layouts diverge
 //   enough (column counts, icon-button affordances vs. modal-on-tap) that
-//   branching is clearer than converging them with CSS alone. The JS gate
-//   replaces a previous `hidden lg:contents` / `lg:hidden` CSS-only split,
-//   which mounted both subtrees on every render even when invisible.
+//   branching is clearer than converging them with CSS alone. A JS gate, not
+//   a CSS-only `hidden lg:contents` / `lg:hidden` split, because CSS would
+//   mount both subtrees on every render even when one is invisible.
 //
 // Editing affordances are gated on whether the corresponding handler is passed:
 //   - `onUpdate` enables Worn / Consumable toggle buttons (and the qty edit
@@ -60,9 +60,8 @@ import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 //     deliberately absent here - see RowKebab below.
 //   - `dragHandle` injects a drag handle button as the row's first in-flow
 //     child. Provided by the SortableItemRow wrapper, omitted by share view.
-//     (It used to sit in an absolutely-positioned outside-left gutter; that
-//     was moved into the row because the flat table surface clips
-//     out-of-surface children. See SortableItemRow.tsx.)
+//     It is in the row because the flat table surface clips children
+//     outside it. See SortableItemRow.tsx.
 //   - `outerRef` / `outerStyle` are the dnd-kit ref + transform style passed
 //     by the sortable wrapper. Share view omits both.
 //
@@ -123,9 +122,7 @@ export default function ItemRow({
   const itemWeight = item.gearItem.weightGrams
   // Weight editing lives in InlineWeight, quantity in InlineQuantity - one
   // control each, shared with the gear library row and (quantity) the food
-  // carrying row. This used to hold quantity's own state machine, on the
-  // grounds that it "has no second home"; food items got an editable quantity
-  // and that stopped being true.
+  // carrying row.
 
   const name = item.gearItem.name
   const description = item.gearItem.description ?? ''
@@ -145,10 +142,8 @@ export default function ItemRow({
         onUpdate={onUpdate}
         outerRef={outerRef}
         outerStyle={outerStyle}
-        // Drag grip leads the row, matching the organizer row this replaced.
-        // Pack mode used to render none: structural changes were considered
-        // inert while checking items off, so reordering and moving between
-        // locations lived in a separate Organize view. Pack IS that view now.
+        // Drag grip leads the row: Pack is where rows are reordered and
+        // moved between locations.
         dragHandle={dragHandle}
         // Status sits between the packed checkbox and the name. Badge
         // returns null for 'active' so the common case takes no space.
@@ -209,9 +204,7 @@ export default function ItemRow({
         {/* Packing menu (move to location / use as container). Not print-hidden
             here: the injected control is a RowIconButton, which carries
             print:hidden on its own base, and its portaled menu is hidden by
-            POPOVER_SURFACE. This comment used to claim the same thing while
-            NEITHER was true - an adversarial review caught it - so name the
-            two places rather than asserting it happens somewhere. */}
+            POPOVER_SURFACE. */}
         {rowAction}
       </PackRowFrame>
     )
@@ -378,8 +371,8 @@ function ListMobileRowBody({
 //
 // Deliberately NO "Delete from inventory" here. The list view shows "this
 // item is on this trip"; deleting the gear item destroys it in every list,
-// and the entry sat one row under the near-identical, harmless "Remove from
-// list" (UX audits 2026-10). Deleting gear happens on the Gear page.
+// and the entry would sit one row under the near-identical, harmless "Remove
+// from list". Deleting gear happens on the Gear page.
 function RowKebab({
   currentStatus,
   onRemoveFromList,

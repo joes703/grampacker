@@ -23,7 +23,7 @@ const ORIGIN = TEST_ORIGIN
 
 // The passkey endpoints that CHANGE WHICH CREDENTIALS CAN SIGN IN, with the
 // method each is registered under - the gate lives in better-auth's
-// hooks.before now (server/auth.ts), which only runs for RESOLVED endpoints,
+// hooks.before (server/auth.ts), which only runs for RESOLVED endpoints,
 // so a wrong-method request is a router 404, not a gate 403. The gate is
 // deny-by-default across /passkey/*: anything NOT in auth.ts's
 // PASSKEY_UNGATED allowlist - including endpoints a future plugin version

@@ -5,9 +5,8 @@ import { idSchema, nonEmptyPatch, uniqueIds } from './schema-primitives'
 
 // Food estimate DTOs and limits, shared by client and server.
 //
-// This is NOT the old food domain. That was deleted in migration 0016 - ten
-// tables, nutrition, targets, reusable plans, a library. This is a food WEIGHT
-// ESTIMATE attached to one list, and it should stay this small.
+// This is a food WEIGHT ESTIMATE attached to one list, and it should stay this
+// small: no nutrition, no targets, no reusable plans, no library.
 
 // Trip length ceiling. Enforced by the day_number CHECK on list_food_slots
 // rather than a row-count trigger: that table holds three rows per day, so a
@@ -15,7 +14,8 @@ import { idSchema, nonEmptyPatch, uniqueIds } from './schema-primitives'
 // copies are checked by scripts/quantity-bounds.test.ts.
 export const FOOD_DAY_CAP = 30
 
-// Carried food entries per list. Trigger-enforced in migration 0017, mirroring
+// Carried food entries per list. Enforced by the list_food_items_list_cap
+// trigger, mirroring
 // the LIST_ITEM_CAP convention - keep in lockstep with the RAISE text.
 export const FOOD_ITEM_CAP = 200
 
@@ -40,16 +40,16 @@ export const foodItemResponseSchema = z.object({
   // How many you eat AT ONE MEAL when isPerMeal, or the total when it is a
   // shared stash. Meaningless without isPerMeal beside it.
   quantity: z.number().int(),
-  // 0024. Per-meal (the default) or a shared total. See foodUnitCount.
+  // Per-meal (the default) or a shared total. See foodUnitCount.
   isPerMeal: z.boolean(),
   // What you actually CARRY, computed by the server from quantity, isPerMeal
   // and the schedule. Sent rather than left to each caller because the public
   // share needs it and must never receive the schedule it derives from - and
-  // because three surfaces computing it independently is how the share came
-  // to report a lighter pack than the owner's own page once before.
+  // because surfaces computing it independently can disagree, so the share
+  // would report a different pack weight than the owner's own page.
   unitCount: z.number().int(),
   sortOrder: z.number().int(),
-  // Pack state (0022): food is a full peer of gear in Pack mode. The rank is
+  // Pack state: food is a full peer of gear in Pack mode. The rank is
   // a per-cohort rank in the UNION rank space shared with gear - see
   // server/repos/pack-reorder.ts.
   isPacked: z.boolean(),
@@ -90,8 +90,8 @@ const foodNameSchema = z.string().trim().min(1).max(MAX_FOOD_NAME)
 const foodWeightSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GRAMS, decimals: 1 })
 // The ceiling in ONE place for everything TypeScript can reach: the request
 // schema below, the add form's validation and max attribute, and the carrying
-// row's inline clamp. The DATABASE holds its own copy as a CHECK literal in
-// shipped migration 0017 - SQL cannot import a constant - and
+// row's inline clamp. The DATABASE holds its own copy as a CHECK literal -
+// SQL cannot import a constant - and
 // scripts/quantity-bounds.test.ts is what keeps the two honest.
 export const FOOD_QUANTITY_MAX = 9999
 const foodQuantitySchema = z.number().int().min(1).max(FOOD_QUANTITY_MAX)

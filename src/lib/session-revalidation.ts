@@ -10,7 +10,7 @@ import { authClient } from './auth-client'
 // full-document teardown, and RequireSession sends null on to /sign-in. This module
 // is only the missing trigger: without it nothing ever asks, so a session revoked or
 // expired mid-use leaves the authenticated chrome up while every query fails and
-// every mutation rolls back (finding P1.5).
+// every mutation rolls back.
 //
 // SCOPE. This is an app-owned-routes policy, not a global one. `rawFetch` never sees
 // /api/auth/* - better-auth's own client owns that traffic - and inside the routes it
@@ -54,8 +54,9 @@ function refetchSession(): Promise<void> {
 // Not a policy knob and not a debounce - a liveness bound. `fetch` has no default
 // timeout and better-auth passes an AbortSignal with no deadline on it, so a response
 // whose body never finishes would otherwise pin `inFlight` forever: every later 401
-// would set `trailing` and nothing would ever start the run that consumes it. That is
-// P1.5 rebuilt inside the fix, which is exactly the trap the first design fell into.
+// would set `trailing` and nothing would ever start the run that consumes it. The
+// session would then never be re-checked, which is the failure this module exists
+// to prevent.
 //
 // When this fires we stop AWAITING the stuck check; we do not cancel it here. The
 // trailing run's own refetch aborts it (better-auth aborts the previous controller on

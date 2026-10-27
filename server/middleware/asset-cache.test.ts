@@ -59,12 +59,12 @@ describe('asset caching', () => {
   it('a MISSING hashed asset is a 404, never the shell, and never frozen', async () => {
     // THE TRAP, and the reason the guard checks content-type and status rather
     // than just the path: if a miss under /assets/ were answered with the SPA
-    // shell (200 HTML, as Cloudflare's assets binding did), a path-only rule
+    // shell (200 HTML), a path-only rule
     // would stamp `immutable, max-age=1y` onto an HTML body served at a .js
     // URL. Any browser that cached it would be wedged for a year, on a URL we
     // can never change, with no way to bust it: a self-inflicted outage, cached.
     //
-    // The Node handler refuses that shape at the source: a miss under /assets/
+    // The static handler refuses that shape at the source: a miss under /assets/
     // is a 404. Pinned, so a change to the fallback that starts serving the
     // shell here fails this test, and the type allowlist in spa.ts stays the
     // second line of defense.

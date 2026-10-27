@@ -54,12 +54,12 @@ describe('makeOptimisticInsert', () => {
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  // The two halves of the absent-vs-empty distinction. This helper used to
-  // seed an absent cache with the placeholder, which fabricated a collection
-  // the user never loaded: `data` flipping from undefined to defined is the
-  // signal every page reads as "the fetch resolved", so creating while the
-  // library had failed to load replaced the failure state with a one-row
-  // library and hid every real row.
+  // The two halves of the absent-vs-empty distinction. Seeding an absent
+  // cache with the placeholder would fabricate a collection the user never
+  // loaded: `data` flipping from undefined to defined is the signal every
+  // page reads as "the fetch resolved", so creating while the library had
+  // failed to load would replace the failure state with a one-row library
+  // and hide every real row.
   it('leaves an ABSENT cache absent rather than seeding one', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const

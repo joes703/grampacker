@@ -8,15 +8,13 @@ import type { ListFoodResponse } from '../../../shared/food'
 // compute five times the weight for a bag of trail mix eaten across five
 // lunches, which is the same trap the database schema is built to avoid.
 //
-// v2 (0024) added isPerMeal and unitCount to each item. Additive, but the
-// version moves anyway: in v1 `quantity` WAS the carried count, and in v2 it
-// is per-meal for most items. A reader that kept treating it as the total
-// would under-report exactly the way the app itself did.
-//
-// v3 DROPS `needed` from each slot. The Skip feature it belonged to is gone -
-// a meal you are not eating is simply a meal with nothing scheduled - so there
-// is no longer a distinction for the export to carry. Removal, not addition,
-// which is exactly why the version has to move.
+// Readers of older files need these version differences:
+// - v2 added isPerMeal and unitCount to each item. In v1 `quantity` WAS the
+//   carried count; from v2 it is per-meal for most items. A reader that
+//   treats it as the total under-reports the weight.
+// - v3 DROPS `needed` from each slot. A meal you are not eating is simply a
+//   meal with nothing scheduled, so there is no such distinction to carry. A
+//   removed field is why the version had to move.
 export const FOOD_JSON_VERSION = 3
 
 export type FoodJson = {

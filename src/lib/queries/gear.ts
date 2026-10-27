@@ -43,7 +43,7 @@ export async function deleteGearItem(id: string): Promise<void> {
 }
 
 // Bulk ops are all-or-nothing on the server: one non-owned id means zero
-// writes (stricter than the old app's RLS silent-skip).
+// writes, rather than silently skipping the foreign ids.
 export async function bulkDeleteGearItems(ids: string[]): Promise<void> {
   await apiFetchVoid('/gear-items/bulk-delete', {
     method: 'POST',
@@ -66,8 +66,8 @@ export async function reorderGearItems(entries: ReorderRequest): Promise<void> {
 }
 
 // Atomic CSV import: new categories + new gear land in one server-side
-// transaction (the old app orphaned categories when the gear insert
-// failed). The request is the client-built plan (see src/lib/csv/
+// transaction, so a failed gear insert cannot leave orphan categories.
+// The request is the client-built plan (see src/lib/csv/
 // import-plan.ts); the server mints real ids for `new` category refs.
 export async function importGearItems(
   request: ImportGearRequestInput,

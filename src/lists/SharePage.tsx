@@ -159,10 +159,10 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  // The share's own totals used to call the gear-only reducer, so a shared
-  // list reported a lighter pack than the same list did to its owner. The
-  // compositor cannot be called without a food figure, and the DTO carries
-  // the rows to compute one.
+  // The share's totals must include food, or a shared list reports a lighter
+  // pack than the same list does to its owner. The compositor cannot be
+  // called without a food figure, and the DTO carries the rows to compute
+  // one.
   //
   // Summed here with the same helper the owner's page uses, rather than read
   // off a number the server computed. That is the point of publishing rows:
@@ -195,10 +195,10 @@ export default function SharePage() {
 
             It drives a SHARE-SCOPED preference, never the authenticated app's.
             This page is anonymous and may be opened by anyone, including on a
-            borrowed browser; it used to write the same key the signed-in app
-            reads, so a stranger picking oz here silently reconfigured that
-            device's own gear and lists views. The choice still persists on
-            this device - it just no longer reaches into the app. */}
+            borrowed browser. If it wrote the key the signed-in app reads, a
+            stranger picking oz here would silently reconfigure that device's
+            own gear and lists views. The choice still persists on this
+            device; it just does not reach into the app. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
           <UnitSegmentedControlView
@@ -264,7 +264,7 @@ export default function SharePage() {
                 category with the worn icon, matching the owner's Category
                 arrangement (section-rows.ts owns the rule; pack mode is the
                 one view that extracts worn). This also means a category whose
-                items are all worn no longer renders as an empty section. */}
+                items are all worn does not render as an empty section. */}
             {/* Food, as its own trailing section rather than mixed into the
                 gear categories: it is not filed under one, and grouping it
                 with gear would need a category it does not have.
@@ -287,8 +287,7 @@ export default function SharePage() {
         )}
 
 
-        {/* The old repo linked to /about here; that page doesn't exist on
-            this stack (yet), so the footer credit points home instead. */}
+        {/* There is no /about page, so the footer credit points home. */}
         <div className="mt-8 text-center">
           <Link to="/" className="text-xs text-gray-500 hover:text-gray-600">
             Made with grampacker

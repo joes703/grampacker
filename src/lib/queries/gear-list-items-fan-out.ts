@@ -47,13 +47,11 @@ function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
 //   3. snapshot
 //   4. write
 //
-// Awaiting the cancels is the canonical TanStack pattern, and the same hardening the
-// CRUD helpers in optimistic.ts got. Read the note there for what it does and does
-// NOT buy: cancellation is synchronous, so a still-pending refetch was already
-// handled unawaited; the awaited version additionally covers the sliver where a
-// fetch has resolved but not yet written, which is only reachable when a mutation is
-// fired from a promise continuation rather than an event handler. Cheap insurance,
-// not a bug anyone has hit.
+// Awaiting the cancels follows the CRUD helpers in optimistic.ts; see "When
+// cancelQueries is awaited" there. Cancellation is synchronous, so a still-pending
+// refetch is dropped either way. Awaiting also covers the gap where a fetch has
+// resolved but not yet written, which a mutation reaches only when it is called
+// from a promise continuation rather than an event handler.
 //
 // Untouched caches are neither canceled nor snapshotted. Deliberate: do not cancel
 // a list cache this change cannot affect, or you abort a legitimate in-flight fetch

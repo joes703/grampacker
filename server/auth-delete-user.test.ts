@@ -181,7 +181,7 @@ describe('POST /api/auth/delete-user', () => {
   let otherId: string
 
   beforeEach(async () => {
-    // /api/auth/delete-user now has its own tight 5/10min rate bucket
+    // /api/auth/delete-user has its own tight 5/10min rate bucket
     // (server/middleware/rate-limit.ts). apiRequest sends no x-forwarded-for,
     // so every delete-user call here shares the 'local' bucket; across this
     // file's tests that exceeds 5 and a later test would see 429 instead of the
@@ -233,12 +233,12 @@ describe('POST /api/auth/delete-user', () => {
   })
 
   it('deletes an account whose list has a bagged item colliding on pack rank (P0.1)', async () => {
-    // The account-delete arm of P0.1, one cascade level deeper than the list
-    // arm: user -> lists -> packing_locations, whose SET NULL then drops bagged
-    // items into Unassigned carrying their old ranks. Before migration 0020
-    // this failed with
+    // One cascade level deeper than the list-delete case: user -> lists ->
+    // packing_locations, whose SET NULL then drops bagged items into
+    // Unassigned carrying their old ranks. Without the
+    // packing_locations_rerank_orphans trigger this fails with
     //   UNIQUE constraint failed: list_items.list_id, list_items.pack_sort_order
-    // and the account could not be deleted at all.
+    // and the account cannot be deleted at all.
     const listRes = await apiRequest(cookie, 'POST', '/api/lists', { name: 'Trip' })
     expect(listRes.status).toBe(201)
     const listId = ((await listRes.json()) as { id: string }).id

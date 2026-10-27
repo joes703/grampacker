@@ -407,9 +407,8 @@ describe('/api/gear-items authorization matrix', () => {
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
-    // 499 existing + 2 imported = 501: the trigger aborts the batch. The
-    // old app created categories before gear non-atomically and orphaned
-    // them on exactly this failure; here the category rolls back too.
+    // 499 existing + 2 imported = 501: the trigger aborts the batch, and the
+    // new category must roll back too rather than be orphaned.
     const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
       categories: [{ tempId: 'new-0', name: 'Doomed' }],
       items: [
@@ -565,11 +564,10 @@ describe('/api/gear-items authorization matrix', () => {
   })
 })
 
-// The import maxima (review P2.7): the DTO used to allow 2000 while the
-// triggers abort at 500, so any oversized import was a GUARANTEED late
-// failure after 500+ inserts had run. The bound is now the real cap,
-// and the route answers it as the trigger's own 422 dialect through a
-// two-stage parse - malformedness (structural OR relational) stays the
+// The import maxima. The triggers abort at 500, so a larger DTO bound would
+// make any oversized import a GUARANTEED late failure after 500+ inserts had
+// run. The bound is the real cap, and the route answers it as the trigger's
+// own 422 dialect through a two-stage parse - malformedness (structural OR relational) stays the
 // uniform 400 even when the body is also oversized.
 describe('gear import maxima match the real caps', () => {
   const item = (i: number, category: unknown = null) => ({

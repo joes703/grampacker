@@ -190,9 +190,8 @@ describe('SharePage read-only public sharing', () => {
     expect(screen.queryByText('Worn', { selector: 'span.truncate' })).toBeNull()
   })
 
-  // Food used to cross this boundary as a single number: the share showed a
-  // total that counted food while showing nothing that accounted for it.
-  // Rows now cross, and this is the surface where that decision is visible.
+  // Food crosses this boundary as rows, not a single number: a total that
+  // counts food must show the rows that account for it.
   it('renders shared food as its own trailing section of rows', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(
       share({
@@ -306,7 +305,7 @@ describe('SharePage error and not-found states', () => {
   it('keeps loading, not "List not found", while the fetch is paused offline', async () => {
     // v5's isLoading is isPending && isFetching. A fetch paused by
     // onlineManager has fetchStatus 'paused', so isLoading is false with no
-    // data - which used to fall through to the not-found claim.
+    // data - which must not fall through to the not-found claim.
     vi.mocked(fetchSharedList).mockResolvedValue(share())
     onlineManager.setOnline(false)
     renderShareView()
@@ -416,10 +415,8 @@ describe('SharePage category subtotals', () => {
   })
 })
 
-// The unit control on the public page. SharePage.test previously did not
-// exercise the switcher at all, which is how it went unnoticed that the public
-// page was writing the authenticated app's preference key - and that it was the
-// only unit switcher in the entire product.
+// The unit control on the public page. It must not write the authenticated
+// app's preference key.
 describe('SharePage unit control isolation', () => {
   beforeEach(() => {
     localStorage.clear()

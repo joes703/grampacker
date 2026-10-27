@@ -50,8 +50,7 @@ export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 // evaluates print media queries against the PAGE BOX, not the screen. US
 // Letter portrait is ~816 CSS px wide, so `lg:` NEVER matches while printing
 // and every sheet would otherwise go out in the 44px touch tier - the phone
-// layout, on paper. That is not a hypothetical: it is what printing a list
-// did before this tier existed.
+// layout, on paper.
 //
 // Paper needs no touch targets and resolves far finer than a screen, so this
 // tier is denser than either screen tier: no minimum height (a row is as tall
@@ -91,16 +90,14 @@ export const PRINT_UNTRUNCATE =
 const PRINT_KEEP_TOGETHER = 'print:break-inside-avoid'
 const PRINT_KEEP_WITH_NEXT = 'print:break-after-avoid'
 
-// Row height. Mobile 44px touch target; desktop 28px scanline. Lowered from
-// the previous lg:min-h-8 (32px) so the row reads at the Lighterpack-ish
-// density tier where the eye scans columns more than it reads sentences.
+// Row height. Mobile 44px touch target; desktop 28px scanline, a dense tier
+// (like Lighterpack) where the eye scans columns more than it reads sentences.
 export const MOBILE_ROW_HEIGHT = 'min-h-11'
 export const DESKTOP_ROW_HEIGHT = 'lg:min-h-7'
 
 // Header height. Mobile matches the row floor; desktop 32px, intentionally
 // 4px taller than the desktop row so the section divider still reads as a
-// distinct strip without bulking up to a card-like band. Tightened from
-// the prior 36px header in tandem with the row drop.
+// distinct strip without bulking up to a card-like band.
 const MOBILE_HEADER_HEIGHT = 'min-h-11'
 const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 
@@ -118,11 +115,9 @@ const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 // these controls still lean on the spacing exception the same way the
 // narrower leading column below does. What 24 buys is margin: the smaller the
 // nominal box, the more of the argument rests on gaps that move whenever the
-// surrounding layout is touched.
-//
-// It was 28, which spent 4px on that margin without reaching independence
-// either, and left a 14px glyph visibly rattling around inside its target on
-// every row.
+// surrounding layout is touched. A wider box (28) would not reach
+// independence from the spacing exception either, and leaves a 14px glyph
+// loose inside its target on every row.
 //
 // Height is free here: 28px is the desktop row height, so filling it costs no
 // vertical space. Only the width comes in, which is the axis wasting room.
@@ -150,21 +145,19 @@ export const DESKTOP_ROW_CONTROL_MIN_TARGET = 'lg:min-h-7 lg:min-w-6'
 // Two controls share this slot and must stay the same width: a section
 // header's collapse chevron and a row's drag grip. They sit in the same
 // column, ahead of the same gap, so the header title and the item names line
-// up only while the two boxes agree. They have drifted before (see the
-// comment in gear/CategorySection.tsx about the grip that used to lead the
-// header), which is why this is ONE token rather than two that happen to
-// match - a single width cannot fall out of sync with itself.
+// up only while the two boxes agree. That is why this is ONE token rather
+// than two that happen to match - a single width cannot fall out of sync
+// with itself.
 //
-// 28px was right when the slot held a chevron alone, but GripVertical draws
-// two thin columns of dots about 6px wide, so a 28px box leaves ~11px of
-// visible dead space either side and the row gains a wide empty gutter before
-// its first real content. 20px still clears WCAG 2.5.8 via the spacing
+// Why 20px wide: GripVertical draws two thin columns of dots about 6px
+// wide, so a 28px box would leave ~11px of visible dead space either side
+// and the row would gain a wide empty gutter before its first real content. 20px still clears WCAG 2.5.8 via the spacing
 // exception (the gap to the next control exceeds the 24px circle overlap),
 // and a 14px chevron keeps 3px of breathing room inside it. Height stays 28px
 // (it is the desktop row height, so vertical size is free); only the width
 // comes in, which is the axis actually wasting space.
 //
-// Mobile is untouched at 40x40 - the density doc's standing rule is that
+// Mobile stays at 40x40 - the density doc's standing rule is that
 // tuning desktop must never move touch sizing, and a grip is exactly the kind
 // of control a thumb needs room for.
 const DESKTOP_ROW_LEADING_TARGET = 'lg:h-7 lg:w-5'
@@ -287,7 +280,7 @@ export const ROW_HOVER_REVEAL =
 // raises some compact text-xs surfaces (META / NUMERIC / COMPACT_PANEL_BODY)
 // up to 13px on desktop AND brings text-sm body surfaces down to 13px, so
 // the row body and its numeric chips read at the same size — a single
-// desktop body tier instead of the previous 12 / 14 split.
+// desktop body tier.
 //
 // Mobile stays at text-sm (14px) / text-xs (12px) unchanged. The shared
 // 13px tier is desktop-only because pointer scans tolerate denser body
@@ -439,10 +432,8 @@ export const PANEL_EMPTY_TEXT = 'text-sm lg:text-[13px] italic text-gray-500'
 // Form field tokens
 // ---------------------------------------------------------------------------
 // The canonical text/number/select field: rounded-lg shell, gray hairline,
-// comfortable py-2 target, blue focus ring. This exact string was repeated
-// as a literal across every dialog form (GearItemDialog, QuickAddItemModal,
-// ListsEmptyState, ...) before it was hoisted here; new forms should compose
-// this token instead of re-typing it. Call sites add width (`w-full`),
+// comfortable py-2 target, blue focus ring. Every form field composes this
+// token instead of re-typing it. Call sites add width (`w-full`),
 // alignment (`text-right tabular-nums`), and shape extras (`resize-none`,
 // `appearance-none`) around it. Fields with asymmetric padding (e.g. the
 // price input's `pl-6` currency inset) stay inline as documented variants.

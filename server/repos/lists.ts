@@ -158,8 +158,7 @@ function withFreshSlugCapped<R>(
 }
 
 // Suffix used when duplicating a list. Truncates so the " (copy)" suffix
-// cannot push the name past the column's 256 CHECK (the old Postgres RPC had
-// that latent overflow).
+// cannot push the name past the column's 256 CHECK.
 function copyName(name: string): string {
   return `${name.slice(0, 249)} (copy)`
 }
@@ -259,8 +258,8 @@ export function createListsRepo(db: Db, userId: string) {
       return rows.length > 0
     },
 
-    // sortOrder ONLY - a reorder must not bump updatedAt (product rule
-    // ported from the old repo's sort_order_no_op_preserves_updated_at).
+    // sortOrder ONLY - a reorder must not bump updatedAt (product rule: a
+    // reorder is not an edit).
     async reorder(
       updates: { id: string; sortOrder: number }[],
     ): Promise<boolean> {
@@ -278,7 +277,7 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     // Deep copy: name gets "(copy)", every membership row is copied
-    // (including packed/ready state - old duplicate_list behavior), and
+    // (including packed/ready state), and
     // isShared/isDraft deliberately reset to false/true so a copy is
     // never silently public.
     //
@@ -296,9 +295,8 @@ export function createListsRepo(db: Db, userId: string) {
     },
 
     // Atomic CSV list import: the ownership checks, new categories, new
-    // gear, the list row and its items run in ONE transaction (parity with
-    // the old app's create_list_with_imported_items RPC - a late failure
-    // leaves no orphans). Every referenced existing category/gear id must be
+    // gear, the list row and its items run in ONE transaction, so a late
+    // failure leaves no orphans. Every referenced existing category/gear id must be
     // the caller's, checked by owned-set membership before any write. Cap
     // triggers stay the single enforcement points: any abort rolls back the
     // whole import. Order is list -> categories -> gear -> items so FK
@@ -350,15 +348,14 @@ export function createListsRepo(db: Db, userId: string) {
       //
       // `importListItemSchema` allows a sortOrder up to PACK_RANK_MAX, so
       // copying it could plant a row at exactly the maximum. Every later
-      // arrival into that cohort computes `max + 1`, which migration 0019's
-      // range trigger now refuses - so a single imported row at the top of
+      // arrival into that cohort computes `max + 1`, which the pack rank
+      // range trigger refuses - so a single imported row at the top of
       // the range would leave a list unable to accept items, accept moves, or
       // delete a location, forever. Dense ranks bound the maximum at
       // items.length - 1, which LIST_ITEM_CAP holds at 299, so exhaustion
       // stops being reachable at all rather than being reported nicely.
       //
-      // sortOrder keeps the file's gaps (dropped empty-name rows, old-repo
-      // parity); pack rank has never had a reason to preserve them, since it
+      // sortOrder keeps the file's gaps (dropped empty-name rows); pack rank has never had a reason to preserve them, since it
       // only has to be unique and ordered within its cohort.
       const packRanks = new Map(
         [...input.items]

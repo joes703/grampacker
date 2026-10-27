@@ -14,7 +14,7 @@ import { ApiError, apiFetch, apiFetchVoid } from '../api'
 
 // The SPA-side list type IS the shared DTO (see categories.ts for the
 // camelCase rationale). slug is server-minted; the client never invents
-// one (the old repo's generateSlug/withSlugRetry died with the port).
+// one.
 export type List = ListResponse
 
 export async function fetchLists(): Promise<List[]> {
@@ -93,20 +93,17 @@ export async function importListFromCsv(
 // slug and sharing-turned-off are the same response by design - and maps
 // to null so SharePage renders its friendly "List not found" copy. Every
 // OTHER error (network, 5xx) propagates so TanStack Query exposes the
-// failure and the page distinguishes a real outage from a bad link
-// (ported convention: the old fetchSharedList treated PGRST116 this way).
+// failure and the page distinguishes a real outage from a bad link.
 export async function fetchSharedList(
   slug: string,
 ): Promise<SharedListResponse | null> {
   try {
-    // /v2 is a cache-busting rename, not a versioned API. Share responses
-    // used to carry no Cache-Control, so a browser that loaded a list before
-    // it was unshared could keep serving it from its own cache; adding
-    // no-store cannot reach an entry already stored under the old policy, but
-    // a new URL is a new cache key. The public /r/:slug link people actually
-    // hold is unchanged - only this internal path moved. A tab on the old
-    // bundle asks the removed path and renders "List not found" until it
-    // navigates; stale tabs are explicitly not supported.
+    // /v2 is a cache-busting rename, not a versioned API. Older share
+    // responses carried no Cache-Control, so a browser may still hold one
+    // for a list that is no longer shared. no-store cannot reach an entry
+    // that is already stored, but a new URL is a new cache key, so do not
+    // move this path back. The public /r/:slug link is unaffected. Stale
+    // tabs that still ask an older path are not supported.
     return await apiFetch(`/shares/v2/${slug}`, sharedListResponseSchema)
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null

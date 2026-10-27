@@ -2,17 +2,16 @@ import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ApiErrorBody } from '../../shared/api'
 
-// The server's single incident handler. Before this existed the whole server
-// held one `console.` call (the dev email sender) and no `onError`, so every
-// unhandled throw became Hono's bare `Internal Server Error`: no correlation id,
-// no route, no way to tell a database failure from a programmer mistake.
+// The server's single incident handler. Without it, every unhandled throw
+// becomes Hono's bare `Internal Server Error`: no correlation id, no route, no
+// way to tell a database failure from a programmer mistake.
 //
 // What it covers, stated narrowly because the boundary is not obvious: errors
 // thrown in the Hono dispatch pipeline before the response is finalized. It does
 // NOT cover /api/auth/*, because better-call catches every throw inside its own
 // router and returns a Response (see the wrapper in server/index.ts). It does
 // not cover detached async work either - the app has no streaming responses and
-// no waitUntil call sites, and if either is ever added it owns its own error
+// no background tasks. If either is ever added, it owns its own error
 // reporting, because a response-level handler cannot reach into a task that
 // outlives the response.
 
@@ -57,7 +56,7 @@ const CAUSE_DEPTH_LIMIT = 5
 // Stacks: the header is removed by exact match against `${name}: ${message}`
 // and the frames kept only if that match succeeds. Searching for the first
 // `    at ` line instead would be fooled by a parameter containing a fake
-// frame (Codex finding); an unrecognized layout logs no stack at all.
+// frame; an unrecognized layout logs no stack at all.
 export type LoggedError = {
   name: string
   message: string
@@ -153,18 +152,16 @@ export function describeError(err: unknown): LoggedError {
 // writes - and a database failure makes every one of those requests fail at
 // once, which is exactly when the logs need to be readable.
 //
-// Two shapes were tried and rejected before this one, recorded so they are not
-// re-proposed: leaning on the rate limits (database-backed, so they fail in
-// the same outage they were invoked for), and shrinking each over-budget
-// entry (bounds bytes, not entries - the count still tracks request count).
+// Two other shapes do not work: leaning on the rate limits (database-backed,
+// so they fail in the same outage they were invoked for), and shrinking each
+// over-budget entry (bounds bytes, not entries - the count still tracks
+// request count).
 //
-// The ceiling is 21 entries per window per isolate: 20 detailed, plus one line
-// announcing that suppression started. There is deliberately NO end-of-window
-// summary. Nothing could fire it - this state is request-driven, so if traffic
-// stops after suppression begins no request performs the rollover, an evicted
-// isolate loses the count outright, and waitUntil caps at 30s so it cannot carry
-// a 60s deferral. A count that arrives only when convenient reads as
-// authoritative and is not.
+// The ceiling is 21 entries per window: 20 detailed, plus one line announcing
+// that suppression started. There is deliberately NO end-of-window summary.
+// This state is request-driven, so if traffic stops after suppression begins,
+// no request performs the rollover and the summary would never be written. A
+// count that arrives only when convenient reads as authoritative and is not.
 //
 // Per process. Restarting the process resets the counter; that costs log
 // fidelity, never correctness.

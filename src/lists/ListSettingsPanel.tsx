@@ -25,19 +25,15 @@ type Props = {
 // Current-list management panel: list lifecycle actions (Rename inline,
 // Duplicate, Export CSV, Delete list).
 //
-// Sharing is deliberately NOT here: buried between Rename and Delete, the
-// 2026-10 UX audits each took three clicks to find it. It has its own
-// toolbar button (ListShareButton), its one home on this page. The Draft
-// flag went with it, because a draft only changes what a share's visitors
-// see. Do not add a second entry point for either back here.
+// Sharing is deliberately NOT here: buried between Rename and Delete, it is
+// hard to find. It has its own toolbar button (ListShareButton), its one
+// home on this page. The Draft flag lives there too, because a draft only
+// changes what a share's visitors see. Do not add a second entry point for
+// either here.
 //
-// "Add ready checks" used to live here as a toggle. It moved to
-// PackingProgress and was then retired entirely: ready checks are
-// unconditional, so there is nothing left to toggle. What survives of the
-// original reasoning is why it did not belong here - this panel is
-// list-admin, so a control that only matters in one view belongs inline in
-// that view's document (as pack's filters do in PackingProgress). Apply the
-// same test to the next mode-specific control someone wants to put here.
+// This panel is list-admin. A control that only matters in one view belongs
+// inline in that view's document (as pack's filters do in PackingProgress),
+// not here.
 //
 // Actions reuse the shared useCurrentListActions hook so the /lists
 // card kebab and this panel call the same renameMut/duplicateMut/

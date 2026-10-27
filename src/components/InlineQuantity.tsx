@@ -8,15 +8,10 @@ import {
 } from './flat-table-styles'
 import { clampQuantity } from '../../shared/lists'
 
-// Click-to-edit quantity, the sibling of InlineWeight and extracted for the
-// same reason: a second surface now needs it.
-//
-// It used to live inline in ItemRow, whose comment said quantity "is
-// list-membership data, not gear data, and has no second home". That reason
-// expired when food items got a quantity you can change - so rather than let a
-// second copy of the draft/prop-sync/clamp/commit-once state machine grow
-// (which is exactly how the three weight controls drifted apart), there is one
-// control and both rows use it.
+// Click-to-edit quantity, the sibling of InlineWeight. It is shared so that
+// any row needing an editable quantity reuses this
+// draft/prop-sync/clamp/commit-once state machine instead of growing a
+// second copy that drifts apart from it.
 //
 // Read-only when `onSave` is absent, matching InlineWeight.
 type Props = {

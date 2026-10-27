@@ -20,7 +20,7 @@ import {
 // semantics are absent = unchanged, null = clear. The public share DTOs live
 // in shared/shares.ts; the CSV list import in shared/list-import.ts.
 
-// Caps mirror the 0004 triggers and CHECKs; the DB is authoritative.
+// Caps mirror the cap triggers and CHECKs; the DB is authoritative.
 export const LIST_CAP = 100
 export const LIST_ITEM_CAP = 300
 export const PACKING_LOCATION_CAP = 30
@@ -37,10 +37,9 @@ export const PACK_RANK_MAX = 1_000_000_000
 // Exported for the list import, which creates the list row.
 export const listNameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH)
 // NOT sortOrderSchema (shared/schema-primitives.ts). That one permits
-// negatives, so a client could submit a negative packSortOrder; the
-// permutation check happens to reject it today, but once 0019's enforcement
-// trigger exists any path past that check would RAISE(ABORT) and surface as
-// a 500 where a 400 is correct.
+// negatives, so a client could submit a negative packSortOrder. Any path
+// past the reorder check would then hit the pack rank range trigger's
+// RAISE(ABORT) and surface as a 500 where a 400 is correct.
 const packRankSchema = z.number().int().min(0).max(PACK_RANK_MAX)
 // Exported for the list import, whose items carry the same quantity bound.
 export const quantitySchema = z.number().int().min(1).max(MAX_LIST_ITEM_QUANTITY)
@@ -121,10 +120,8 @@ export type CreateListFromSelectionRequest = z.infer<
 
 // ---------------------------------------------------------------- list items
 
-// Embedded gear_item response shape: the old
-// SPA's ListItemWithGear carried the joined gear row, so cache keys and
-// invalidation port unchanged. gearItemId is kept alongside gearItem.id
-// for parity with the old row shape.
+// Embedded gear_item response shape: each list item carries its joined gear
+// row. gearItemId is kept alongside gearItem.id.
 export const listItemResponseSchema = z.object({
   id: z.string(),
   listId: z.string(),
@@ -153,8 +150,7 @@ export const addListItemRequestSchema = z
 export type AddListItemRequest = z.infer<typeof addListItemRequestSchema>
 
 // Quick-Add: creates a gear item AND its membership row in one atomic
-// call (the old add_gear_item_with_list_item RPC). cost/purchaseDate/
-// status are deliberately absent - the old RPC forced them null/default;
+// call. cost/purchaseDate/status are deliberately absent (null/default);
 // the full gear dialog is the place to set them. The name is gearNameSchema
 // because the row lands in the gear library.
 export const quickAddListItemRequestSchema = wornConsumableExclusive(

@@ -10,9 +10,7 @@ import {
 } from '../components/flat-table-styles'
 
 type Props = {
-  // Totals over the list's gear items. The second half of this comment used to
-  // read "is 0 until a plan is attached" - a dangling fragment about the food
-  // PLAN object that migration 0016 deleted, left behind when its subject went.
+  // Totals over the list's gear items.
   total: number
   packed: number
   onReset: () => void
@@ -22,9 +20,7 @@ type Props = {
   onToggleShowUnreadyOnly: () => void
   // Ready Checks block. Ready checks are ALWAYS on: there is no per-list
   // opt-in, so the second progress bar and the Reset ready button render
-  // unconditionally. The `ready_checks_enabled` COLUMN is gone entirely,
-  // dropped by migration 0027 once the contract-step rule made a column drop
-  // possible; this comment used to say it had to stay.
+  // unconditionally.
   // Prop is required because PackingProgress only renders for the owner
   // in pack mode — the share view (which never wires reset) does not
   // render this component.
@@ -37,11 +33,9 @@ type Props = {
 
 // One progress metric: its filter switch, its count, its reset, its bar.
 //
-// The two metrics used to be laid out as a shared cluster of switches at the
-// top of the panel and then two bars below, which left neither switch visibly
-// attached to the thing it filtered. Each switch now sits on the same line as
-// its own bar, immediately left of it, so "this control hides rows from THIS
-// metric" is readable without inference.
+// Each switch sits on the same line as its own bar, immediately left of it,
+// so "this control hides rows from THIS metric" is readable without
+// inference.
 //
 // The visible label IS the accessible name (not a shortened caption beside a
 // differently-worded aria-label): a mismatch there breaks speech control, and

@@ -12,7 +12,7 @@ import {
   updateListItem,
 } from './list-items'
 
-// URL/method contract tests (review P2.2). The two reorder endpoints are the
+// URL/method contract tests. The two reorder endpoints are the
 // headline case: /items/order writes DOCUMENT order and /items/pack-order
 // writes PACK order, one path segment apart - swapping them would corrupt
 // the other view's ordering while every mocked-out component test stayed

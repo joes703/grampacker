@@ -146,7 +146,6 @@ export function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]
  * divergence from `groupGearItemsByCategory`, which retains them.)
  *
  * Implementation: single-pass bucket map keyed by categoryId (O(N+C)).
- * The old repo's prior implementation used N filter passes (O(N×C)).
  */
 export function groupListItemsByCategory(
   items: ListItemWithGear[],

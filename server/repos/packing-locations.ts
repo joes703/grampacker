@@ -255,7 +255,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
           { behavior: 'immediate' },
         )
       } catch (err) {
-        // 0019's range triggers. The dense fallback below keeps the append
+        // The pack rank range triggers. The dense fallback below keeps the append
         // inside the rank space, so this should be unreachable; it stays
         // classified because a 500 on an ordinary delete would be a poor way
         // to find out otherwise.
@@ -286,7 +286,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
 
   // Returns whether the location existed (and is now deleted).
   function removeInTransaction(tx: Tx, listId: string, id: string): boolean {
-    // Both halves of the bag - the cohort is a union since 0022 - in display
+    // Both halves of the bag - the cohort is a union of gear and food - in display
     // order, which is what makes "keep their relative order" true.
     const gearOrphans = tx
       .select({ id: listItems.id, packSortOrder: listItems.packSortOrder })
@@ -349,8 +349,8 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     const now = Date.now()
 
     if (base + orphans.length - 1 > PACK_RANK_MAX && orphans.length > 0) {
-      // DENSE FALLBACK. Appending would step past PACK_RANK_MAX (a legacy
-      // Unassigned cohort may legally sit that high), so renumber the WHOLE
+      // DENSE FALLBACK. Appending would step past PACK_RANK_MAX (a pack-order
+      // PUT may legally set an Unassigned rank that high), so renumber the WHOLE
       // merged cohort densely from 0 instead: Unassigned first, then the
       // bag's contents, both in union display order. Two phases, because the
       // unique index is checked after each statement: every row parks on its

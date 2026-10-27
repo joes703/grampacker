@@ -276,10 +276,10 @@ describe('useListItemActions', () => {
   })
 
   describe('moveItem', () => {
-    // Field-scoped, like updateItem: the gear move used to go through
-    // makeOptimisticUpdate, whose rollback restores the whole array as it was
-    // when the move started - erasing a Packed tick that saved while the move
-    // was in flight. These run against a REAL cache for that reason.
+    // Field-scoped, like updateItem: a whole-array rollback (as
+    // makeOptimisticUpdate does) would restore the array as it was when the
+    // move started, erasing a Packed tick that saved while the move was in
+    // flight. These run against a REAL cache for that reason.
     const rows = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
     const row = (qc: QueryClient, id: string) => rows(qc).find((i) => i.id === id)!
 
@@ -368,9 +368,9 @@ describe('useListItemActions', () => {
     it('also invalidates packing locations and food, which the delete can cascade', async () => {
       // A list item can BACK a packing location, and that FK is ON DELETE
       // CASCADE, so this delete can remove a location row the client never
-      // touched - and since 0022 that location's SET NULL + rerank cascade
-      // moves FOOD rows too. Without these keys the pack view kept
-      // rendering stale sections and stale food placement.
+      // touched - and that location's SET NULL + rerank cascade moves FOOD
+      // rows too. Without these keys the pack view renders stale sections
+      // and stale food placement.
       const { qc, result } = setup([item({ id: 'a' })])
       qc.setQueryData(['packing-locations', LIST_ID], [])
       qc.setQueryData(['list-food', LIST_ID], { dayCount: 1, slots: [], items: [] })

@@ -11,9 +11,8 @@ import PackModeCheckbox from './PackModeCheckbox'
 // The pack-mode row skeleton shared by the gear row (ItemRow's pack branch)
 // and SortableFoodRow: shell, grip slot, Ready checkbox, the wrapping label
 // that hosts Packed + name/description, and the print-only checkbox squares.
-// The two used to carry this verbatim (same composed className, same two
-// print spans, same label structure), so any pack-row density or print
-// change had to be made twice and re-verified for checkbox-column alignment.
+// Sharing it keeps a pack-row density or print change in one place, and
+// keeps the checkbox column aligned across both rows.
 // The trailing cells (worn/consumable slots, quantity, weight, row action)
 // genuinely differ per surface and stay with each caller, passed as
 // children so a cell on one and not the other still misaligns VISIBLY in

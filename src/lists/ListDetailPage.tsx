@@ -382,8 +382,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // cancel/snapshot/optimistic-clear/rollback/invalidate lifecycle on the
   // ['list-items', listId] cache (resetPacked and resetReady each restore only
   // their own field on failure, so they compose) and the failure toasts. The
-  // page keeps the PackingProgress wiring, the per-item toggles, and the
-  // ready-checks-enabled toggle.
+  // page keeps the PackingProgress wiring and the per-item toggles.
   const { resetPacked, resetReady } = useListResetActions(listId)
 
 
@@ -509,8 +508,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     (li: ListItemWithGear, returnDialog?: DialogState) => {
       // Awaiting a lookup leaves the row on screen and clickable, so the same
       // item can be queued for removal twice - two DELETEs, the second a 404.
-      // The synchronous path this replaced was self-limiting because the
-      // optimistic delete removed the row before a second click could land.
+      // A synchronous path would be self-limiting, because the optimistic
+      // delete removes the row before a second click can land.
       if (removalPreflightRef.current.has(li.id)) return
       removalPreflightRef.current.add(li.id)
       void (async () => {
@@ -669,7 +668,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // neutral skeleton instead of "List not found" — the latter is reserved
   // for the genuinely-missing case (deleted list, stale deep link, another
   // account's list). Without this gate, every cold load on /lists/:id
-  // flashed "List not found" for ~1 paint before the query resolved.
+  // would flash "List not found" for ~1 paint before the query resolved.
   // All three branches below are guarded on `!list`, so a resolved list is
   // never replaced by a status screen. That is what keeps a failed background
   // refetch (which in v5 sets status to 'error' while retaining the cached

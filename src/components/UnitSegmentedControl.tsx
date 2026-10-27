@@ -21,8 +21,8 @@ type ViewProps = CommonProps & {
 // This is split out from the store-bound default export on purpose. The public
 // share view drives its own isolated preference (see SHARE_WEIGHT_UNIT_KEY),
 // and a control that unconditionally subscribed to the authenticated store
-// would both do useless work on an anonymous page and make it far too easy to
-// reintroduce the bug where the public page wrote the app-wide key.
+// would both do useless work on an anonymous page and make it far too easy for
+// the public page to write the app-wide key.
 //
 // We render real radio inputs (sr-only) and label them visually so keyboard
 // arrow navigation works for free and the control still feels like a

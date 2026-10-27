@@ -1,14 +1,13 @@
 import { z } from 'zod'
 
 // GET /api/shares/v2/:slug response - the ONE anonymous read surface. These
-// schemas ARE the public allowlist (the port of the old app's curated
-// public_gear_* views; see SECURITY.md "Public read paths" there): strictly
+// schemas ARE the public allowlist (see SECURITY.md "Public read paths"): strictly
 // narrower than the authed DTOs in shared/lists.ts and shared/gear.ts, and
 // every widening is a security decision, not a convenience. Deliberately
 // absent, and asserted absent in server/routes/shares.test.ts:
 //   - list:  id, slug, userId, isShared, sortOrder, timestamps (the client
 //            already knows the slug; the list id is an internal join handle
-//            the single-endpoint shape no longer needs to expose)
+//            the single-endpoint shape does not need to expose)
 //   - items: userId, listId, isPacked / isReady (the owner's private
 //            packing workflow), timestamps, packSortOrder (how someone
 //            arranged their bags is not part of what a share link publishes)
@@ -17,10 +16,8 @@ import { z } from 'zod'
 //            the row identity)
 //   - categories: userId, timestamps
 // isDraft is deliberately public: the share view shows the work-in-progress
-// banner. groupWorn was published on the same footing and honored by
-// SharePage until #110 made worn grouping unconditional (2026-07-21). From
-// then on nothing read it, on either surface - it was retired from the DTO
-// rather than revived, because there is no preference left to express.
+// banner. There is no groupWorn: worn grouping is unconditional, so there is
+// no preference to publish.
 const publicListSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
@@ -58,17 +55,14 @@ const publicListItemSchema = z.object({
 // "2 x 85 g ramen" is a thing in a pack, "Tuesday dinner: leftover curry" is
 // a fact about someone's week.
 //
-// This started as a single aggregate on 2026-08-10 and became rows on
-// 2026-08-11. Food you carry is part of the pack you are showing someone,
-// which is how comparable lists work; hiding it was never a privacy decision,
-// it was a leftover from food being a late arrival. Publishing rows also let
-// the aggregate query that existed only for this surface go away - the share
-// now sums the rows exactly as the owner's own view does, so there is ONE
-// definition of food weight instead of two that could drift apart.
+// Food you carry is part of the pack you are showing someone, which is how
+// comparable lists work. Publishing rows means the share sums them exactly as
+// the owner's own view does, so there is ONE definition of food weight
+// instead of two that could drift apart.
 const publicFoodItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-  // What you CARRY, resolved server-side (0024). NOT the raw quantity: that
+  // What you CARRY, resolved server-side. NOT the raw quantity: that
   // is per-meal for most items and means nothing without the schedule, which
   // a share must never receive.
   unitCount: z.number().int(),

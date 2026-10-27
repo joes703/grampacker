@@ -118,7 +118,7 @@ describe('food: day grid', () => {
 describe('food: quantity is what you typed, unitCount is what you carry', () => {
   it('counts one SHARED bag associated with five slots exactly once', async () => {
     // One 500 g bag of trail mix picked at across five lunches weighs 500 g.
-    // Since 0024 that is a MODE (isPerMeal: false), not the only reading: a
+    // That is a MODE (isPerMeal: false), not the only reading: a
     // shared stash is ONE row with five associations, and its published
     // carry count ignores the schedule. Summing per placement, or multiplying
     // a shared stash by its meals, would say 2500.
@@ -486,13 +486,10 @@ describe('food: list duplication', () => {
 
 describe('food crosses the public share boundary as rows, and the plan does not', () => {
   it('publishes each food item once, and no trace of when it is eaten', async () => {
-    // The contract has changed twice. It began as "no food whatsoever", which
-    // contradicted the owner's own view - their total counted food, so a share
-    // of the same list reported a lighter pack. 2026-08-10 published one
-    // aggregate. 2026-08-11 published the rows: food you carry is part of the
-    // pack you are showing someone.
+    // Food you carry is part of the pack you are showing someone, and the
+    // owner's own total counts it, so the share publishes food rows.
     //
-    // The line that did NOT move is the one this test defends. What crosses is
+    // This test defends the line between item and plan. What crosses is
     // the ITEM - what it is, how many, how heavy. What does not is the PLAN -
     // which day, which meal, whether it is packed. Everything after the setup
     // below exists to prove that second half.
@@ -522,7 +519,7 @@ describe('food crosses the public share boundary as rows, and the plan does not'
       weightGrams: 500,
       quantity: 2,
       // THREE slots for one item, created WITHOUT isPerMeal so it takes the
-      // per-meal default (0024). It must appear on the wire ONCE - a join to
+      // per-meal default. It must appear on the wire ONCE - a join to
       // the associations would put it there three times over, which is still
       // the most dangerous mistake available in this feature.
       //
@@ -641,8 +638,8 @@ describe('the food item cap (200 per list)', () => {
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
 
-    // Distinct pack ranks per row: DEFAULT 0 would collide on the 0022
-    // Unassigned cohort unique index by the second row.
+    // Distinct pack ranks per row: DEFAULT 0 would collide on the
+    // list_food_items_pack_unassigned_uq index by the second row.
     const values = Array.from(
       { length: 199 },
       (_, i) =>
@@ -682,9 +679,9 @@ describe('the food item cap (200 per list)', () => {
 
 
 describe('food counts derive from the plan (0024)', () => {
-  // The defect this closes: a five-day trip with a peanut butter packet in
-  // each lunch reported ONE packet. The plan was right and the pack weight was
-  // wrong, silently, which is the worst failure this app has.
+  // The failure this prevents: a five-day trip with a peanut butter packet in
+  // each lunch reporting ONE packet. The plan would be right and the pack
+  // weight wrong, silently, which is the worst failure this app has.
   it('a per-meal item counts once for every meal it is scheduled into', async () => {
     const { cookie } = await signUpVerifiedUser('food-permeal@example.com', 'PM')
     const listId = await createListId(cookie, 'Trip')

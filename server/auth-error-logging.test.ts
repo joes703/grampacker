@@ -6,16 +6,17 @@ import { signUpVerifiedUser } from './test/auth-helpers'
 import type { Sqlite } from './db'
 
 // What better-auth's failures write to the log, end to end through the real
-// app. Two leaks are closed here and both are proven against the installed
-// libraries rather than a mock of them:
+// app. Two leaks are proven closed against the installed libraries rather
+// than a mock of them. With the libraries' defaults:
 //
-//   - a failed SESSION LOOKUP used to log the session token, because
-//     better-auth's default logger handed the raw Drizzle error (bound params
-//     included) to console.error, outside our budget;
-//   - a plain Error escaping an endpoint used to be logged raw by better-call
-//     itself (`# SERVER_ERROR: `), outside our budget, and a missing mail key
-//     used to be no error at all - the console sender printed the redeemable
-//     link and reported success.
+//   - a failed SESSION LOOKUP logs the session token, because better-auth's
+//     default logger hands the raw Drizzle error (bound params included) to
+//     console.error, outside our budget;
+//   - a plain Error escaping an endpoint is logged raw by better-call itself
+//     (`# SERVER_ERROR: `), outside our budget.
+//
+// A missing mail key must also be an error, never a console sender that
+// prints the redeemable link and reports success.
 
 const ORIGIN = TEST_ORIGIN
 const PROD_ORIGIN = 'https://grampacker.app'
@@ -188,9 +189,9 @@ describe('auth failures in the log', () => {
   it('logs a non-APIError through the budget, never through better-call', async () => {
     // magic-link/verify consumes the verification row with no try/catch of
     // its own (plugins/magic-link/index.mjs), so the Drizzle error escapes
-    // the endpoint - the path on which better-call used to console.error the
-    // raw object (params included) and better-auth used to log err.message
-    // alone whenever it mentioned a table.
+    // the endpoint - the path on which, by default, better-call would
+    // console.error the raw object (params included) and better-auth would log
+    // err.message alone whenever it mentioned a table.
     const seen: unknown[] = []
     const res = await createApp({ ...env, DB: sabotagedConnection(seen) }).request(
       '/api/auth/magic-link/verify?token=not-a-real-token',

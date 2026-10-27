@@ -172,9 +172,8 @@ describe('GearItemRow inline description clearing', () => {
 })
 
 // POLICY: in select mode the row's affordances belong to the selection -
-// everything is read-only. The weight cell and the hidden kebab already
-// followed this rule; name and description used to stay editable, giving
-// three different answers to "is this row editable during selection".
+// everything is read-only, including name and description, so there is
+// one answer to "is this row editable during selection".
 describe('GearItemRow select mode', () => {
   it('name and description are read-only during selection', () => {
     const props = baseProps()

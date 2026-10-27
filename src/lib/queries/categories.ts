@@ -6,8 +6,7 @@ import {
 import { apiFetch, apiFetchVoid } from '../api'
 
 // The SPA-side category type IS the shared DTO - one source of truth, no
-// mapping layer to drift. (The old repo's snake_case row types came from
-// Postgres via Supabase; the port goes camelCase end-to-end.)
+// mapping layer to drift. camelCase end-to-end.
 export type Category = CategoryResponse
 
 export async function fetchCategories(): Promise<Category[]> {

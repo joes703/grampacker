@@ -12,9 +12,9 @@
 //
 
 // The list caps are defined once in shared/lists.ts (the server's
-// enforcement lives next to its request schemas; the 0004 triggers
-// mirror them) and re-exported here so UI call sites keep the single
-// lib/caps import the old repo established.
+// enforcement lives next to its request schemas; the row-cap SQL triggers
+// mirror them) and re-exported here so UI call sites have a single
+// lib/caps import.
 export {
   LIST_CAP,
   LIST_ITEM_CAP,

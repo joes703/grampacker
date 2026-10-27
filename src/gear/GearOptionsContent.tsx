@@ -2,7 +2,7 @@ import { ChevronsDownUp, ChevronsUpDown, Download, FolderPlus, Upload } from 'lu
 
 // The one options prop bundle. GearLibraryPage builds it once and passes it
 // through GearOptionsButton and MobileGearActionBar as a single `gearOptions`
-// object - these used to be three hand-copied 8-prop lists in lockstep.
+// object, so the surfaces cannot drift apart.
 export type GearOptionsHandlers = {
   onNewCategory: () => void
   onImport: () => void

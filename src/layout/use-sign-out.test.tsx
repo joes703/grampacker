@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Sign-out used to be a client-side navigate('/sign-in'). That leaves the SPA
+// Sign-out must not be a client-side navigate('/sign-in'). That leaves the SPA
 // running, and the QueryClient is a module singleton, so every row the
-// signed-out account had loaded stayed in memory - and the last-list path
-// stayed in localStorage, pointing RootRedirect's fast path at that account's
-// list. The next person to sign in on the same browser saw both.
+// signed-out account had loaded would stay in memory - and the last-list path
+// would stay in localStorage, pointing RootRedirect's fast path at that
+// account's list. The next person to sign in on the same browser would see both.
 //
 // jsdom cannot actually unload a document, so these tests assert the MECHANISM
 // that does the teardown - a full-document navigation - rather than an empty
@@ -39,13 +39,13 @@ const listPath = '/lists/11111111-2222-4333-8444-555555555555'
 // so this just makes a real, readable pointer exist before the teardown.
 const OWNER = 'signed-in-user'
 
-// The hook under test no longer touches the router, so this wrapper looks
-// redundant. It is not: AppShell renders the hook inside a router, and more to
-// the point, the version being fixed here called useNavigate(). Without the
-// wrapper every test below fails against that version with "useNavigate() may
-// be used only in the context of a <Router>" - which proves nothing about the
-// cache teardown. Rendering in a router makes the old implementation RUN, so
-// these tests fail on the assertion they actually make.
+// The hook under test does not touch the router, so this wrapper looks
+// redundant. It is not: AppShell renders the hook inside a router, and a
+// navigate-based implementation would call useNavigate(). Without the wrapper
+// such an implementation fails with "useNavigate() may be used only in the
+// context of a <Router>" - which proves nothing about the cache teardown.
+// Rendering in a router lets it RUN, so these tests fail on the assertion
+// they actually make.
 function withRouter({ children }: { children: ReactNode }) {
   return <MemoryRouter initialEntries={['/lists']}>{children}</MemoryRouter>
 }

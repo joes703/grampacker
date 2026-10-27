@@ -26,9 +26,9 @@ type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
 //   - 403 SESSION_NOT_FRESH - the current dialect: the auth.ts gate and
 //     better-auth's own freshSessionMiddleware (which the passkey plugin
 //     mounts on the two REGISTER endpoints) both speak it.
-//   - 403 REAUTH_REQUIRED   - legacy compatibility: the retired Hono
-//     middleware's word, kept so an old bundle against a new server (or
-//     vice versa) still prompts instead of stranding.
+//   - 403 REAUTH_REQUIRED   - an older server code. The server no longer
+//     sends it; it is still accepted so a tab and a server on different
+//     versions still prompt instead of stranding.
 // Missing the second would strand "Add a passkey" on a raw error message with
 // no way forward. The status alone is not enough to key on: better-auth answers
 // 403 for other reasons (a failed origin check), and those must not masquerade

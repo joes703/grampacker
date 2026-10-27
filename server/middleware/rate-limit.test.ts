@@ -113,13 +113,11 @@ function sendMagicLink(ip: string, email: string) {
 }
 
 describe('auth rate limiting', () => {
-  // THE REGRESSION THIS BUDGET EXISTS FOR (production, 2026-09-12: the app
-  // owner locked himself out of his own app).
-  //
-  // The ceremony costs TWO requests, and a user with several passkeys picks the
-  // wrong one and retries - that is ordinary use, not an attack. On the old
-  // shared SIGN_IN budget (10 per 10 minutes) this capped out at five attempts
-  // and then refused the front door for ten minutes.
+  // The case the passkey budget exists for: the ceremony costs TWO requests,
+  // and a user with several passkeys picks the wrong one and retries - that is
+  // ordinary use, not an attack. On SIGN_IN's budget (10 per 10 minutes) this
+  // would cap out at five attempts and then refuse the front door for ten
+  // minutes.
   //
   // Ten fumbled attempts is a realistic bad day, not abuse. It must not 429.
   it('ten fumbled passkey attempts do not lock a legitimate user out', async () => {
@@ -269,15 +267,9 @@ describe('auth rate limiting', () => {
   })
 
   it('an INVALID address does not spend global mail budget', async () => {
-    // REGRESSION (code review, 2026-07-12). The global bucket used to be charged
-    // in the middleware, which runs BEFORE better-auth parses the body - so it
-    // could not tell a deliverable address from junk. better-auth validates with
-    // z.email() and 400s a bad one, but the slot was already gone. ~90 requests
-    // carrying garbage addresses, from rotating IPs, drained a full day of the
-    // ONLY recovery path in a passwordless app while sending zero mail.
-    //
-    // The fix moves the charge into sendMagicLink, which better-auth only calls
-    // once the address is real. So: rejected input must move the counter by zero.
+    // The global bucket is charged in sendMagicLink, which better-auth calls
+    // only once the address is valid (MAGIC_LINK_SEND_GLOBAL in rate-limit.ts
+    // says why). Rejected input must move the counter by zero.
     const before = await globalCount()
     const attempts = 12
     for (let i = 0; i < attempts; i++) {
@@ -289,8 +281,8 @@ describe('auth rate limiting', () => {
   })
 
   it('a malformed body does not spend global mail budget', async () => {
-    // The other half of the same hole: a body the limiter cannot parse used to
-    // land in the 'malformed' email bucket AND still charge the global quota.
+    // A body the limiter cannot parse lands in the 'malformed' email bucket,
+    // and must not also charge the global quota.
     const before = await globalCount()
     for (let i = 0; i < 5; i++) {
       await app.request(
@@ -556,7 +548,7 @@ describe('auth rate limiting', () => {
     )
     expect(blocked.status).toBe(429)
     // Still on SIGN_IN's own 10-minute window, not the passkey bucket's 5.
-    // The two budgets diverged on 2026-09-12 and this is what pins the split.
+    // This pins the split between the two budgets.
     const retryAfter = Number(blocked.headers.get('Retry-After'))
     expect(retryAfter).toBeGreaterThan(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
     expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
@@ -628,7 +620,7 @@ describe('auth rate limiting', () => {
 
     // Query strings do not split the bucket: exhaust with a query
     // string, then the plain path is already over budget. Asserted on the
-    // SAME path, because the passkey ceremony now has its own bucket - a
+    // SAME path, because the passkey ceremony has its own bucket - a
     // cross-path assertion here would be testing bucket sharing, not the
     // query-string question this test is about.
     const ip = '203.0.113.9'

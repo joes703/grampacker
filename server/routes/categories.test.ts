@@ -155,11 +155,11 @@ describe('/api/categories authorization matrix', () => {
   })
 })
 
-// The 0021 cap. Same three-sided shape as the other cap suites: friendly 422
-// through the API, the trigger as backstop on raw writes, and the matcher
-// pinned against wrapper forgery. Categories were the one user-owned table
-// without a cap; growth is reachable through three doors (direct create,
-// gear import, list import), so each door gets its own 422 test.
+// The categories_user_cap trigger. Same three-sided shape as the other cap
+// suites: friendly 422 through the API, the trigger as backstop on raw
+// writes, and the matcher pinned against wrapper forgery. Growth is reachable
+// through three doors (direct create, gear import, list import), so each door
+// gets its own 422 test.
 describe('the category cap (500 per user)', () => {
   // Seed the product-cap fixture in one statement with inline literals.
   async function seedRawCategories(userId: string, count: number) {

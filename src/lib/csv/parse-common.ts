@@ -6,7 +6,7 @@ import { MAX_NAME_LENGTH } from '../caps'
 // The parse preamble and base fields both importers (gear library and list)
 // share. Each accepts our own export format AND the Lighterpack format; the
 // columns they resolve identically live here so the two parsers cannot
-// drift - they used to carry this block as a 30-line clone.
+// drift.
 
 type CsvRecord = ReturnType<typeof parseCsv>[number]
 

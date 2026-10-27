@@ -129,11 +129,8 @@ describe('GET /api/shares/v2/:slug', () => {
     await createCategory(cookie, 'Unreferenced')
 
     // REAL food on this list, so the per-row key assertion below actually
-    // executes. It used to carry a note saying the loop was vacuous "here"
-    // and to see food.test.ts for the populated case - and then the key set
-    // it could not check went stale (it still named `quantity` after 0024
-    // replaced that with `unitCount`). An assertion that cannot fail is not
-    // coverage; it is a comment that looks like a test.
+    // executes. On an empty array the loop is vacuous, and an assertion that
+    // cannot fail is not coverage.
     //
     // Per-meal and scheduled into two of the three lunches, so unitCount is
     // DERIVED (2) rather than equal to quantity (1). A fixture where the two
@@ -217,13 +214,9 @@ describe('GET /api/shares/v2/:slug', () => {
     // DOCUMENT order, and Tarp is FIRST because it was added first - even
     // though the PATCH above assigned it a packing location.
     //
-    // This assertion is INVERTED from what it used to say, deliberately. It
-    // used to require Tarp LAST, because a move rebased sort_order and
-    // sort_order was the single list-wide sequence every surface read. That
-    // made arranging your pack silently rewrite the link you had already sent
-    // someone. The assertion documented the bug rather than a decision.
-    //
-    // A move now writes pack_sort_order, which the share projection does not
+    // A move writes pack_sort_order, never sort_order, so arranging your pack
+    // cannot silently rewrite the link you already sent someone.
+    // pack_sort_order is a column the share projection does not
     // select and this DTO does not carry. Organizing is private; the published
     // document is the one you wrote.
     expect(body.items.map((i) => i.gear.name)).toEqual([

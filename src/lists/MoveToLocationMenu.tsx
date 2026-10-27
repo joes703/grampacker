@@ -29,28 +29,19 @@ type BaseProps = {
   isContainer: boolean
   excludedLocationIds?: ReadonlySet<string>
   onMove: (locationId: string | null) => void
-  /** Drops the item from the list entirely. Pack could previously only
-   *  rearrange what was already there, so noticing "I am not taking this"
-   *  while packing meant leaving for List view and finding the row again.
+  /** Drops the item from the list entirely, so noticing "I am not taking
+   *  this" while packing does not mean leaving for List view.
    *
    *  This is a MEMBERSHIP operation: it removes the row from this list and
-   *  never touches the gear item in the library. That distinction is still
-   *  real - it is why this sits behind its own rule at the foot of the menu,
-   *  away from the destinations - but it no longer implies that authoring is
-   *  out of scope here. See onEdit.
+   *  never touches the gear item in the library. That is why it sits behind
+   *  its own rule at the foot of the menu, away from the destinations.
    *
    *  Optional because the caller owns the consequences - removing an item that
    *  backs a container also destroys the container, and the page confirms that
    *  case before it happens. */
   onRemoveFromList?: () => void
-  /** Opens the gear editor for this row.
-   *
-   *  This menu was written under the rule "authoring gear belongs to the
-   *  library, not to a packing checklist". That rule is deliberately
-   *  overturned: a real trip showed that noticing a wrong weight while
-   *  packing meant leaving the view, fixing it elsewhere and finding your
-   *  place again - which is exactly the shuffle the one-page work (PR #200)
-   *  exists to end.
+  /** Opens the gear editor for this row, so a wrong weight noticed while
+   *  packing can be fixed without leaving the view and losing your place.
    *
    *  Optional, and food rows pass none: food is authored in the Food view,
    *  the same reason they pass no onRemoveFromList. */

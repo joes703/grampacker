@@ -11,9 +11,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { ReactNode } from 'react'
 import type { Category, GearItem } from '../lib/types'
 
-// TRANSPLANT NOTE: the old repo's suite also covered the CSV import
-// explainer routing and export failure toast (return at phase 2 step 4).
-
 const h = vi.hoisted(() => ({
   bulkDeleteMutate: vi.fn<(ids: string[], options?: { onSuccess?: () => void }) => void>(),
   bulkMoveMutate: vi.fn<(

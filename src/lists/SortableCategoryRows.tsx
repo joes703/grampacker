@@ -18,7 +18,7 @@ import type { RenderRows } from './section-parts'
 //   sortableRows        - `item:` ids. Category grouping. Rows reorder within
 //                         their own category and nowhere else.
 //   packingSortableRows - `packing-item:` ids for gear plus
-//                         `packing-food-item:` ids for food (0022: a bag's
+//                         `packing-food-item:` ids for food (a bag's
 //                         contents are the UNION of both). Rows reorder within
 //                         their location AND drop onto other locations, so
 //                         they share an id space with the `packing-location:`

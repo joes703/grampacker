@@ -33,7 +33,7 @@ export default tseslint.config(
   {
     // src/lib/api.ts is the SPA's single door to /api/*: it owns the
     // anti-CSRF header, error normalization, and DTO validation. A raw
-    // fetch() call site silently skips all three (Codex finding, PR #15).
+    // fetch() call site silently skips all three.
     // better-auth traffic goes through authClient, never a hand-rolled
     // fetch, so banning the identifier outright costs nothing.
     files: ['src/**'],
@@ -54,13 +54,12 @@ export default tseslint.config(
         },
         // Every useMutation carries a mutationKey from src/lib/queries/keys.ts.
         // Without one, mutation-error-handler logs `[mutation] failed` with an
-        // empty payload - which was true of 38 of the app's 39 mutations before
-        // PR 4.4.
+        // empty payload.
         //
-        // Three selectors, because one has holes. A textual scan was tried first
-        // and rejected: src/lib/queries/optimistic.ts contains `useMutation({`
-        // inside COMMENTS, so prose can satisfy a grep while an executable call
-        // goes unkeyed. Comments are not AST nodes, so this cannot happen here.
+        // Three selectors, because one has holes. An AST rule, not a textual
+        // scan: src/lib/queries/optimistic.ts contains `useMutation({` inside
+        // COMMENTS, so prose could satisfy a grep while an executable call goes
+        // unkeyed. Comments are not AST nodes, so this cannot happen here.
         {
           // Also catches `useMutation(opts)` - options hoisted into a variable
           // hide the key from review as effectively as omitting it.

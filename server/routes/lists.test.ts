@@ -212,9 +212,8 @@ describe('lists CRUD', () => {
     })
     expect(((await clear.json()) as ListBody).description).toBeNull()
 
-    // Strictness: empty patch and unknown fields are 400s. (isShared used
-    // to be in this list; the share slice made it patchable - positive
-    // coverage lives in shares.test.ts.)
+    // Strictness: empty patch and unknown fields are 400s. (isShared is
+    // patchable; its coverage lives in shares.test.ts.)
     for (const bad of [{}, { slug: 'newslug' }, { name: '' }]) {
       const res = await apiRequest(
         cookie,
@@ -270,7 +269,7 @@ describe('lists CRUD', () => {
 
     const after = await getLists(cookie)
     expect(after.map((l) => l.name)).toEqual(['Two', 'One'])
-    // The product rule ported from the old repo: a reorder is not an edit.
+    // Product rule: a reorder is not an edit.
     expect(after.find((l) => l.id === one.id)?.updatedAt).toBe(one.updatedAt)
     expect(after.find((l) => l.id === two.id)?.updatedAt).toBe(two.updatedAt)
   })
@@ -969,7 +968,7 @@ describe('caps and slug integrity', () => {
     ).run()
 
     // 499 existing + 2 new = 501: the gear cap trigger aborts mid-batch.
-    // The old app's RPC was atomic and this must stay atomic: the list
+    // The import is atomic: the list
     // row, the new category, AND the first gear row all roll back.
     const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
       name: 'Doomed',

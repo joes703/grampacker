@@ -6,7 +6,7 @@ import type { List } from '../lib/types'
 
 // Mock ONLY the network call; queryKeys and makeOptimisticUpdate stay
 // real, so these tests exercise the actual synchronous cache flip the
-// races come from (the Codex PR #29 probe shape).
+// races come from.
 vi.mock('../lib/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/queries')>()),
   updateList: vi.fn(),

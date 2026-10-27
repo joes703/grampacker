@@ -20,9 +20,7 @@ import type { AppDeps } from '../env'
 // Session-scoped throughout: nothing on THESE routes is ever served
 // anonymously. That is a statement about this module, not about food.
 //
-// It used to read "food ... does not appear in the public share projection",
-// which stopped being true when the share began publishing food rows and was
-// left standing. What the share publishes is a narrow projection built in
+// The share does publish food: what it publishes is a narrow projection built in
 // server/routes/shares.ts - name, carried count, weight, order. What never
 // leaves this module is the PLAN: the day grid, the meal slots, and every
 // item's slot ids and pack state.

@@ -125,8 +125,7 @@ describe('add mode', () => {
   })
 
   it('typed fields survive changing the meal selection', async () => {
-    // Replaces the retired slot-union regression test: the hazard is the same
-    // (selection churn must never eat the typed name and weight).
+    // Selection churn must never eat the typed name and weight.
     const user = userEvent.setup()
     renderAdd()
     await user.type(screen.getByLabelText('Name'), 'Oatmeal')

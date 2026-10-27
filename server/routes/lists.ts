@@ -67,8 +67,7 @@ import type { AppDeps } from '../env'
 //                                                on a payload spanning two
 //                                                cohorts, not a permutation of
 //                                                current ranks, or naming a
-//                                                worn row; 409 when a
-//                                                concurrent reorder won
+//                                                worn row
 //   POST   /api/lists/:id/items/reset-packed   - session - own list or 404
 //   POST   /api/lists/:id/items/reset-ready    - session - own list or 404
 //   PATCH  /api/lists/:id/items/:itemId        - session - item must belong
@@ -116,9 +115,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
 }
 
 // One place for the item-write failure map so every route agrees on
-// statuses and wording. Exported for a direct unit test: the conflict branch
-// exists for a race that cannot be staged through the HTTP surface, so the
-// mapping is pinned here and the repo's conversion is pinned in its own test.
+// statuses and wording. Exported for a direct unit test.
 export function listItemFailure(
   result: Extract<ListItemWriteResult, { ok: false }>,
 ): {
@@ -150,8 +147,7 @@ export function listItemFailure(
       // anything - it would write the same exhausted values back. (The
       // client's dense renumber runs only when it detects a cross-table tie,
       // not on exhaustion.)
-      // Migration 0019 normalizes existing dirty cohorts, so reaching this
-      // needs roughly a billion arrivals; there is no self-service fix and
+      // Reaching this needs roughly a billion arrivals into one cohort; there is no self-service fix and
       // pretending otherwise would send people in circles.
       return {
         status: 422,
@@ -161,8 +157,8 @@ export function listItemFailure(
 }
 
 
-// The list-write counterpart of listItemFailure above: the four list writes
-// used to re-type near-identical if-chains. Exhaustive on purpose - a new
+// The list-write counterpart of listItemFailure above, shared by the four
+// list writes. Exhaustive on purpose - a new
 // repo reason fails the build here instead of falling through to a wrong
 // default status.
 function listWriteFailure(

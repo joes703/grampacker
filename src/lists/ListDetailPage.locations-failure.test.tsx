@@ -251,10 +251,9 @@ describe('a packing-locations query that failed to load', () => {
     expect(h.reorderPackListItems).not.toHaveBeenCalled()
   })
 
-  // The notice used to render only inside the non-empty-items branch, so a list
-  // with no items yet showed a disabled Add with no reason given and nothing to
-  // retry - the worst version of the gate, since that is exactly the list a
-  // user is most likely to be adding a first location to.
+  // A list with no items yet must still show the notice and a retry, not a
+  // disabled Add with no reason given. That is exactly the list a user is
+  // most likely to be adding a first location to.
   it('explains itself and offers a retry on a list with no items', async () => {
     h.fetchListItems.mockResolvedValue([])
     await renderDetail(`/lists/${listId}/pack`)
@@ -279,14 +278,13 @@ describe('a packing-locations query that failed to load', () => {
   })
 })
 
-// Regression (review P2.1): every reorder-pending guard on this page read
-// reorderItemsMut.isPending - the DOCUMENT-order mutation - which never fires
-// in Pack view. So while a pack reorder was in flight, nothing locked: the
-// packing menus stayed live and a second reorder could start against ranks the
-// first was still rewriting. The guards now read anyItemReorderPending, which
-// watches both mutations. This lives here rather than in the pack suite
-// because firing a pack reorder in jsdom needs this file's DndContext
-// passthrough.
+// The reorder-pending guards must watch the PACK reorder too, not only the
+// document-order mutation, which never fires in Pack view. Otherwise the
+// packing menus stay live during a pack reorder and a second reorder can start
+// against ranks the first is still rewriting. The guards read
+// anyItemReorderPending, which watches both mutations. This lives here
+// rather than in the pack suite because firing a pack reorder in jsdom needs
+// this file's DndContext passthrough.
 describe('a pack reorder in flight', () => {
   beforeEach(() => {
     h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])

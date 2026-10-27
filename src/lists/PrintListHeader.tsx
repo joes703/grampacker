@@ -25,9 +25,8 @@ function LegendSquare({ children }: { children: string }) {
 // The printed document's header, and the only thing on paper that is not also
 // on screen. `hidden print:block`.
 //
-// Deliberately one line of small type, not a title block: this replaces an app
-// header that was eating the top of every sheet, and a checklist's value is
-// rows per page. The list name is set at body weight rather than as a display
+// Deliberately one line of small type, not a title block: a checklist's
+// value is rows per page, and a tall header eats the top of every sheet. The list name is set at body weight rather than as a display
 // heading for the same reason.
 //
 // The legend is not decoration. The two checkbox squares in every row are

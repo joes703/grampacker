@@ -336,9 +336,8 @@ describe('creating a new item while packing', () => {
   })
 })
 
-// Pack used to hide the gear picker so packing got the focus. A real trip
-// showed that costs more than it buys: adding or reweighing one item meant
-// leaving the view. The picker now sits beside Pack too - but at xl, not lg,
+// The gear picker sits beside Pack so that adding or reweighing one item
+// does not mean leaving the view. It shows at xl, not lg,
 // because at 1024px a 320px aside leaves 656px for a row dense enough to
 // truncate item names to ~113px rather than overflow.
 describe('the gear picker beside Pack', () => {

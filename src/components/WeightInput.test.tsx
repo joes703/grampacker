@@ -46,8 +46,8 @@ describe('WeightInput', () => {
   })
 
   it('accepts a typed tenth of a gram', async () => {
-    // The reported bug: typing 12.4 in the add-item dialog was rounded away
-    // to 12 before it ever reached the server.
+    // Typing 12.4 in the add-item dialog must not be rounded to 12 before
+    // it reaches the server.
     const user = userEvent.setup()
     const onChange = vi.fn()
     const { getByLabelText } = render(<ControlledWeightInput onChangeSpy={onChange} />)
@@ -103,15 +103,14 @@ describe('WeightInput', () => {
     await user.type(input, '10.5')
 
     expect((input as HTMLInputElement).value).toBe('10.5')
-    // 10.5 oz = 297.669... g. Previously rounded to a whole 298.
+    // 10.5 oz = 297.669... g, kept to a tenth, not rounded to a whole 298.
     expect(onChange).toHaveBeenLastCalledWith(297.7)
   })
 
-  // A zero weight renders blank. New gear starts at 0 g, and the field used to
-  // open pre-filled with a literal "0": putting the caret at the start and
-  // typing a weight silently appended the zero, so 500 became 5000. Nothing
-  // downstream can catch a 10x weight - it is a plausible number - so the fix
-  // has to be at the input.
+  // A zero weight renders blank. New gear starts at 0 g. With a literal "0"
+  // in the field, putting the caret at the start and typing a weight silently
+  // appends the zero, so 500 becomes 5000. Nothing downstream can catch a 10x
+  // weight - it is a plausible number - so the guard has to be at the input.
   it('renders a zero weight as an empty field in grams', () => {
     const { getByLabelText } = render(<ControlledWeightInput initialGrams={0} />)
 
@@ -128,8 +127,8 @@ describe('WeightInput', () => {
   })
 
   it('takes a weight typed into an untouched zero field at face value', async () => {
-    // The reported bug, pinned end to end: no clear() first, because the whole
-    // point is that the user should not have to clear anything.
+    // End to end: no clear() first, because the user should not have to
+    // clear anything.
     const user = userEvent.setup()
     const onChange = vi.fn()
     const { getByLabelText } = render(

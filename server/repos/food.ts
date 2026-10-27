@@ -89,7 +89,7 @@ function classifyWriteError(
   err: unknown,
 ): 'cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isFoodItemCapError(err)) return 'cap_exceeded'
-  // 0022's range trigger: the destination cohort's rank space is exhausted,
+  // The food pack rank range trigger: the destination cohort's rank space is exhausted,
   // so the union max + 1 stepped past PACK_RANK_MAX.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
   return null
@@ -387,8 +387,8 @@ export function createFoodRepo(db: Db, userId: string) {
 
             // A real assignment is accepted only when the target location
             // belongs to this same list and user. Null (Unassigned) skips the
-            // check. 0022's BEFORE UPDATE trigger enforces the same rule in the
-            // database; inside this transaction it can only fire on a defect.
+            // check. The list_food_items_location_same_list_update trigger
+            // enforces the same rule in the database; inside this transaction it can only fire on a defect.
             // Food cannot back a container, so there is no cycle to check,
             // unlike the gear move.
             if (patch.packingLocationId !== undefined && patch.packingLocationId !== null) {

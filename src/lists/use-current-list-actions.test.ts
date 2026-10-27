@@ -239,7 +239,7 @@ describe('useCurrentListActions - createListMut', () => {
     // optimistic-insert lifecycle (not a stub), so it exercises that ordering:
     // the placeholder for a [0,1] cache must be built with sortOrder 2,
     // never 3. (The server assigns the persisted slot from its own max+1;
-    // only the placeholder consumes this value in the rewrite.)
+    // only the placeholder consumes this value.)
     let finish: (row: List) => void = () => {}
     q.createList.mockReturnValueOnce(new Promise<List>((resolve) => { finish = resolve }))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })

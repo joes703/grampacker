@@ -38,10 +38,9 @@ type Props = {
   ) => void
 }
 
-// The phone editor for a list row. Tapping a row used to open the full
-// inventory form - name, description, weight, category, cost, purchase
-// date, status and a red "Delete from inventory" - to change one weight
-// (UX audit 2026-10). While planning a trip you touch name, weight,
+// The phone editor for a list row. The full inventory form (cost, purchase
+// date, status, "Delete from inventory") is too much to change one weight.
+// While planning a trip you touch name, weight,
 // quantity and the two flags; everything else is inventory administration
 // and sits behind "More details", which opens the full form.
 //

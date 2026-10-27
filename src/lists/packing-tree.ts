@@ -145,9 +145,9 @@ function deriveContainerItemIds(locations: PackingLocation[]): Set<string> {
 // worn items, which live in their own trailing section. A reorder that counted
 // either would compute slots against rows the user cannot see.
 //
-// ListDetailPage and planListItemReorder both read this one derivation. The
-// page used to assemble its own from confirmed locations only, so a drag
-// during a pending promotion planned against the hidden header.
+// useListDnd and planListItemReorder both read this one derivation. A
+// separate copy built from confirmed locations only would let a drag during
+// a pending promotion plan against the hidden header.
 export function derivePackReorderExclusions(
   items: ListItemWithGear[],
   locations: PackingLocation[],

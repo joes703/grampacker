@@ -42,10 +42,9 @@ type Props = {
 }
 
 // A zero weight renders as an EMPTY draft, not "0" (or "0.0" in oz), in both
-// units. New gear starts at 0 grams, so the field used to open pre-filled with
-// a literal zero the user had to notice and clear: clicking at the start of the
-// field and typing 500 produced "5000", a silent 10x weight that nothing
-// downstream can catch. Blank + placeholder says "no weight yet" without
+// units. New gear starts at 0 grams. A field pre-filled with a literal zero
+// must be noticed and cleared: clicking at the start of the field and typing
+// 500 produces "5000", a silent 10x weight that nothing downstream can catch. Blank + placeholder says "no weight yet" without
 // putting a digit in the way.
 //
 // Nothing else needs to change to support it. emitFromDraft('') already parses
@@ -131,7 +130,7 @@ export default function WeightInput({
         min={0}
         step={0.1}
         value={draft}
-        // Carries the "0" a zero weight no longer prints, so an empty field
+        // Carries the "0" a zero weight does not print, so an empty field
         // still reads as a weight rather than an unfilled unknown.
         placeholder="0"
         onChange={handleChange}

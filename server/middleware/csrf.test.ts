@@ -5,10 +5,8 @@ import { signUpVerifiedUser } from '../test/auth-helpers'
 
 // Cross-cutting CSRF posture (docs/authz-matrix.md): unsafe methods on
 // non-auth routes require the custom x-grampacker-request header AND a
-// matching Origin. These tests used to ride on PUT /api/me; that route is
-// gone (grampacker stores no display name), so POST /api/lists is the
-// vehicle now - any session-gated unsafe route exercises the same
-// middleware, mounted app-wide ahead of the routers.
+// matching Origin. POST /api/lists is the vehicle - any session-gated unsafe
+// route exercises the same middleware, mounted app-wide ahead of the routers.
 
 const ORIGIN = TEST_ORIGIN
 

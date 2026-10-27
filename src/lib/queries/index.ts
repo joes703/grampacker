@@ -1,6 +1,4 @@
-// Barrel for the SPA data layer. Transplanted components import from
-// '../lib/queries'; keeping the barrel stable means transplant diffs stay
-// import-path-free. Grows one module per slice.
+// Barrel for the SPA data layer. Components import from '../lib/queries'.
 export * from './keys'
 export * from './categories'
 export * from './gear'

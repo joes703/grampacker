@@ -23,10 +23,9 @@ type Props = {
 // shape (Gear / Lists / Add / Options) shared with every other mobile
 // bar so users see consistent geography across the app.
 //
-// The Select toggle used to live here as a fifth slot, but that broke
-// the uniform shape and was the gear-only outlier on the bar. Select is
-// now a pill on the gear page header instead — same visibility, better
-// discovery on every viewport, no bar inconsistency. Rare/utility
+// Select is a pill on the gear page header, not a fifth slot here: a
+// fifth slot would break the uniform shape, and the header pill is
+// visible on every viewport. Rare/utility
 // actions (New category, Collapse/Expand all) stay behind Options. The
 // Options body is GearOptionsContent — shared with GearOptionsButton's
 // desktop popover so both surfaces stay in lockstep without duplicated

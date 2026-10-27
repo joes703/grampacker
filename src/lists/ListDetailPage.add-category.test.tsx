@@ -7,9 +7,8 @@ import type { Category } from '../lib/types'
 import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
 
 // In-list category creation (AddCategoryControl + the starter section).
-// Building a list from scratch used to dead-end: an empty list pointed at
-// the gear picker, and making a category meant leaving for the Gear page -
-// the first stumble in every 2026-10 UX audit run. The page-level piece
+// Building a list from scratch must not mean leaving for the Gear page to
+// make a category. The page-level piece
 // worth testing here is the starter-section bridge: the list view hides
 // empty categories by design, so a category created here must render its
 // (empty) section anyway, with the add-item row already open.
@@ -83,8 +82,7 @@ describe('in-list category creation', () => {
 
   it('a starter category does not blank Pack’s empty state', async () => {
     // Pack never renders starter sections, so counting them as content there
-    // would hide the "Add gear" guidance and show nothing in its place
-    // (Codex review finding).
+    // would hide the "Add gear" guidance and show nothing in its place.
     await renderListDetailPage(`/lists/${listId}`, ['/lists/:id', '/lists/:id/pack'])
     await screen.findByText('Add gear to this list')
     fireEvent.click(screen.getByRole('button', { name: 'Add category' }))

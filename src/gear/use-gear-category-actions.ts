@@ -18,8 +18,7 @@ import type { Category } from '../lib/types'
 // handler layer.
 //
 // `removeCategory` deletes only the category row; the server uncategorizes
-// the category's gear in the same transaction (the SQLite port of the old
-// ON DELETE SET NULL cascade), so the optimistic delete invalidates the
+// the category's gear in the same transaction, so the optimistic delete invalidates the
 // gear-items cache for open gear views to re-render the now-uncategorized
 // items once the round-trip settles. Every per-list cache embeds the full
 // gear DTO through list_items.gearItem, so those copies go stale for the

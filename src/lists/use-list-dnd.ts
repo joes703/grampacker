@@ -108,8 +108,7 @@ export function useListDnd({
   }
   // Page-level composite (location creation or an optimistic bag delete in
   // flight): a pending optimistic bag delete makes cached locations lie
-  // about what is rendered, so structural writes wait for it to settle
-  // (round-7).
+  // about what is rendered, so structural writes wait for it to settle.
   structuralWritePending: boolean
 }) {
   const qc = useQueryClient()
@@ -123,14 +122,13 @@ export function useListDnd({
   })
 
   // PACK order. Every reorder that happens in Pack view goes here instead,
-  // which is the whole point of the
-  // split: arranging your pack no longer rewrites the list you wrote or the
-  // share link you sent someone.
+  // so arranging your pack does not rewrite the list you wrote or the share
+  // link you sent someone.
   const reorderPackItemsMut = useMutation({
     mutationKey: mutationKeys.reorderPackItems(listId),
     mutationFn: (updates: UnionRankUpdates) =>
       reorderPackListItems(listId, updates),
-    // The union helper spans both caches (0022: one drag can permute gear and
+    // The union helper spans both caches (one drag can permute gear and
     // food ranks together, and the server applies both halves in one batch).
     ...makeOptimisticUnionPackReorder<ListItemWithGear, ListFoodResponse>(
       qc,
@@ -197,7 +195,7 @@ export function useListDnd({
   }
 
   // ── Packing drag derivations ───────────────────────────────────────────────
-  // All lifted from the retired OrganizePackPanel. Read by handleDragEnd and
+  // Read by handleDragEnd and
   // the collision filter, both of which run after commit, so declaring them
   // ahead of the handlers that read them is a readability choice, not a
   // correctness one.
@@ -255,7 +253,7 @@ export function useListDnd({
     ...packFilteredItemIds,
   ])
 
-  // ── Food in Pack mode (0022: a bag's contents are the gear+food union) ──
+  // ── Food in Pack mode (a bag's contents are the gear+food union) ──
   // useListFood already holds the food rows for the weight total; Pack renders
   // the same rows. Everything below is a function of PAGE state - the mode,
   // the two row filters, which locations are on screen.
@@ -300,13 +298,12 @@ export function useListDnd({
   // differ only in where the name is looked up and which mutation moves
   // them. Both are reachable only in pack mode - the row menus and the drag
   // plans that call them are pack-gated - where packFoodItems is exactly
-  // listFoodItems, so ONE rank source serves both (they used to differ by
-  // name only, and a reader had to prove the equivalence).
+  // listFoodItems, so ONE rank source serves both.
   //
   // nextPackSortOrder is the DESTINATION cohort's next UNION rank (gear and
-  // food - 0022), mirroring the server. A gear-only maximum here would park
+  // food), mirroring the server. A gear-only maximum here would park
   // the row visually above food already in the bag until the refetch
-  // corrected it (GATE 2 finding). A move never touches sortOrder, so the
+  // corrected it. A move never touches sortOrder, so the
   // row keeps its place in List view and on the share link.
   //
   // The write fires even when `name` is undefined (a row the caches no

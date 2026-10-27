@@ -36,12 +36,9 @@ export function passkeyRpId(baseUrl: string): string {
 // The passkey endpoints that may run WITHOUT a fresh session. Everything
 // else under /passkey/* - including any endpoint a future plugin version
 // adds - gets the freshness gate below, so a new credential-mutating
-// endpoint fails CLOSED instead of shipping ungated. (The gate used to be a
-// Hono middleware allow-listing three exact strings against c.req.path -
-// paths a different router resolved - and allow-by-default for anything
-// new. Review P2.11 inverted it and moved it HERE, where ctx.path is the
-// RESOLVED endpoint's registered path: there is no second parser left to
-// disagree.)
+// endpoint fails CLOSED instead of shipping ungated. The gate lives inside
+// better-auth because ctx.path is the RESOLVED endpoint's registered path, so
+// no second URL parser can disagree with the router.
 //
 // Why each entry is open:
 //   - generate-authenticate-options, verify-authentication
@@ -105,8 +102,8 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
     // reset tokens or credential rows; SECURITY.md records that invariant.
 
     // Data minimization: grampacker never collects or stores a display
-    // name (2026-07-09). better-auth's user model requires the column, and the
-    // magic-link plugin - now the only route by which a user is created -
+    // name. better-auth's user model requires the column, and the
+    // magic-link plugin - the only route by which a user is created -
     // accepts an optional `name` in its request body and writes it straight
     // onto the new row. Our client never sends one, but the endpoint is public,
     // so blank it at this single choke point rather than trusting the caller.
@@ -200,7 +197,7 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
       },
     },
     session: {
-      // Generous on purpose: no sensitive data (decision 13.2).
+      // Generous on purpose: no sensitive data.
       expiresIn: 60 * 60 * 24 * 30, // 30 days
       updateAge: 60 * 60 * 24, // sliding: refresh the expiry at most daily
       // "Sudo mode". A session is FRESH for this long after it was CREATED
@@ -210,12 +207,6 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
       // session, and the only way to get one is to run a sign-in ceremony
       // again. In a passwordless app that IS the re-authentication: a passkey
       // assertion (or a magic link) mints a brand-new session.
-      //
-      // This replaces the bespoke fresh_auth table + POST /api/me/reauth from
-      // PR #43, which proved freshness by re-typing a PASSWORD. With no
-      // password to type, that mechanism could not work - its query inner-joins
-      // the `credential` account, so it would fail CLOSED and lock the owner
-      // out of managing their own passkeys.
       //
       // 24h is better-auth's default, chosen deliberately and set explicitly so
       // an upstream default change cannot move it silently. Sessions are 30-day
@@ -268,8 +259,8 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
       // does NOT protect, and the reason this hook exists.
       //
       // Position note: before-hooks run BEFORE the endpoint's zod body
-      // validation (see the magic-link quota comment below for where that
-      // bites). This check reads only the session, never the body, so the
+      // validation (MAGIC_LINK_SEND_GLOBAL in rate-limit.ts says where that
+      // matters). This check reads only the session, never the body, so the
       // trap does not apply. Unknown /passkey/* paths never reach here -
       // dispatch only runs hooks for RESOLVED endpoints - so a 404 stays a
       // 404 (pinned by a test).
@@ -311,9 +302,7 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
         // you get back in on a device that has none.
         //
         // It is therefore the root of trust: whoever controls the mailbox
-        // controls the account. That was ALREADY true when a password could be
-        // reset by email - this makes it explicit instead of a side door, so it
-        // has to be hardened rather than assumed.
+        // controls the account, so it has to be hardened rather than assumed.
         expiresIn: 60 * 5, // 5 minutes (the default, pinned so it is auditable)
         // The plugin default is 'plain': it writes the emailed token into the
         // `verification` table in CLEARTEXT. That token mints a session for any
@@ -321,48 +310,11 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
         // compromise. Hashed, the stored copy is useless to an attacker.
         storeToken: 'hashed',
         sendMagicLink: async ({ email: to, token }) => {
-          // THE GLOBAL MAIL QUOTA IS CHARGED HERE, not in the rate-limit
-          // middleware, and this is the only place it may be charged.
-          //
-          // The middleware runs before better-auth parses the body, so it cannot
-          // tell a deliverable address from junk: it used to charge this bucket
-          // on any string, and better-auth would then 400 the request having
-          // already spent one of the 90 daily slots. Rotating IPs plus garbage
-          // addresses could therefore drain a day of the ONLY account-recovery
-          // path in a passwordless app without sending a single email.
-          //
-          // By the time this callback runs, better-auth has validated `to`
-          // (z.email(); it does NOT fold case - the address is stored and sent
-          // as submitted), so a charge here means mail is genuinely about to
-          // be sent. The IP and per-address buckets are still charged upstream in
-          // the middleware; only the shared quota moved.
-          //
-          // Charged BEFORE email.send, not after: two concurrent sends must not
-          // both see a free slot. The cost of that ordering is that a provider
-          // failure still spends a slot, so the counter means VALIDATED SEND
-          // ATTEMPTS, not mail delivered. Reserve-then-refund would fix that and
-          // introduce a worse bug (an isolate dying mid-send leaks the
-          // reservation until the window rolls), so it is not worth it at 90
-          // slots against a 100/day provider cap.
-          //
-          // Why not earlier, in a better-auth `hooks.before`? Because that would
-          // be the same bug in a new place: dispatch.mjs runs the before-hooks
-          // BEFORE it invokes the endpoint, and the endpoint is where the zod body
-          // schema actually runs - so a before-hook sees an UNVALIDATED body, just
-          // like the middleware does. Re-validating the address ourselves to charge
-          // earlier would couple us to better-auth's exact email semantics, and
-          // drifting the other way (we accept what it rejects) would be a quota
-          // BYPASS, which is worse than what it buys. This callback is genuinely
-          // the first point at which the address is known to be good.
-          //
-          // The cost of being this late: better-auth writes the `verification` row
-          // before calling us, so a charge refused HERE leaves an orphan token row
-          // (hashed, never emailed, expires in 5 minutes). The middleware's peek
-          // keeps that near zero - a spent bucket is refused before better-auth
-          // runs at all - so the orphans are confined to the quota BOUNDARY, where
-          // a concurrent burst can have several requests pass the peek and then
-          // lose the charge. Bounded by burst concurrency, not unbounded; the
-          // per-IP and per-address buckets are what bound the burst.
+          // THE GLOBAL MAIL QUOTA IS CHARGED HERE, before email.send, and only
+          // here: this is the first point where better-auth has validated the
+          // address. The IP and per-address buckets are charged in the
+          // middleware. Why, and what the counter means: the comment on
+          // MAGIC_LINK_SEND_GLOBAL in server/middleware/rate-limit.ts.
           const quota = chargeMagicLinkGlobalQuota(db, Date.now())
           if (!quota.ok) {
             // Must be an APIError, not a Response: we are inside better-auth's

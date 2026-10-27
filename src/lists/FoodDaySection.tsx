@@ -33,10 +33,9 @@ import type { WeightUnit } from '../lib/weight'
 // separation. Every food line is a button opening the editor dialog: the
 // plan is the app's one food editing surface.
 //
-// A meal with nothing in it is just empty. It used to carry a "Nothing
-// planned" warning and a Skip button whose only job was to silence that
-// warning, which made the view an audit of whether you had FINISHED planning -
-// a different job from working out what you carry and what it weighs.
+// A meal with nothing in it is just empty, with no "Nothing planned"
+// warning. The view works out what you carry and what it weighs; it does not
+// check whether you have FINISHED planning.
 
 // The plan tables' two value columns (day sections and the Not-scheduled
 // section compose the same stubs, which is what keeps their rails aligned).
@@ -122,13 +121,11 @@ export default function FoodDaySection({
   onAddToSlots,
   onEditItem,
 }: Props) {
-  // The day total, and the dedupe is conditional - 0024 split the two cases
-  // that used to be one.
+  // The day total. The dedupe is conditional on the item's kind.
   //
   // A PER-MEAL item at both breakfast and lunch is two units: you eat one at
-  // each, and the day weighs both. Deduping it (which this did, for every
-  // item) is precisely the under-report that made a five-lunch plan look like
-  // one packet.
+  // each, and the day weighs both. Deduping it would under-report, making a
+  // five-lunch plan look like one packet.
   //
   // A SHARED stash at both meals is still ONE stash - a 500 g bag picked at
   // twice weighs 500 g for the day, not 1000. That case keeps the dedupe, and
@@ -146,8 +143,8 @@ export default function FoodDaySection({
   }
 
   // A day with nothing planned collapses to a header-only card, with no meal
-  // lines and no "total 0 g": an unplanned trip used to be a wall of
-  // identical "+ Add" rows that drowned out the planned days. Its add
+  // lines and no "total 0 g", so an unplanned trip is not a wall of
+  // identical "+ Add" rows that drowns out the planned days. Its add
   // preselects the whole day; the dialog's grid is where the user narrows
   // that down. border-b-0 because the header is the card's only child, so
   // its divider would double with the card's own bottom border.

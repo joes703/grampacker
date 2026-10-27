@@ -226,8 +226,7 @@ export default function GearLibraryPage() {
   // The whole import flow (explainer, file input, preview, POST, error
   // dialog) lives in the hook; onBeforeOpen clears this page's dialog union
   // whenever the flow opens one of ITS dialogs, so the two state machines
-  // never both hold a surface - the same coordination the shared union used
-  // to provide when the import dialogs were variants of it.
+  // never both hold a surface.
   const { openImportExplainer, importUi } = useGearImportFlow({
     categories,
     allItems,
@@ -276,9 +275,8 @@ export default function GearLibraryPage() {
   const navigate = useNavigate()
   // No meta.errorToast, deliberately, even though this is a NON-optimistic mutation
   // - the case the toast mechanism exists for. Its dialog stays open on failure and
-  // is a modal, so the error goes inline, beside the form. (The toast this used to
-  // raise expired behind the backdrop, before toasts rendered over modals, and the
-  // create failed silently.) See the rule in src/lib/mutation-error-handler.ts.
+  // is a modal, so the error goes inline, beside the form. See the rule in
+  // src/lib/mutation-error-handler.ts.
   const createListFromSelectionMut = useMutation({
     mutationKey: mutationKeys.createListFromSelection(),
     mutationFn: createListFromSelection,
@@ -743,9 +741,9 @@ export default function GearLibraryPage() {
               },
             })
           }}
-          // Mobile-only Delete from inventory action inside the dialog.
-          // Replaces the trash icon that used to sit in the row on desktop
-          // (still present on lg+ via the inline RowIconButton). Hands off
+          // Mobile-only Delete from inventory action inside the dialog. The
+          // row has no trash icon on mobile (lg+ has the inline
+          // RowIconButton). Hands off
           // to the same delete-item ConfirmDialog flow as the desktop
           // trash button by transitioning dialog state.
           onDeleteFromInventory={
@@ -769,9 +767,7 @@ export default function GearLibraryPage() {
           // Close first, then mutate - the same order every delete confirm in the
           // lists code already uses. The delete is optimistic, so the row is gone
           // the instant this runs and a modal sitting over a list that already
-          // reflects the deletion is just in the way. (It also used to be what kept
-          // the rollback's failure toast from expiring unseen behind the confirm,
-          // before toasts rendered over modals.)
+          // reflects the deletion is just in the way.
           onConfirm={() => {
             const target = dialog.item
             setDialog(null)

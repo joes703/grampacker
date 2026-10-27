@@ -14,7 +14,7 @@ import {
 import PackRowFrame from './PackRowFrame'
 import { ConsumableIcon } from './list-item-flags'
 
-// A food row in Pack mode - the food half of the 0022 union cohort. Mirrors
+// A food row in Pack mode - the food half of the gear+food union cohort. Mirrors
 // the pack-mode branch of ItemRow (same tokens, same column skeleton: grip,
 // checkboxes, name, worn/consumable slots, qty, row action) so gear and food
 // read as one checklist, and wraps its own useSortable under the
