@@ -270,9 +270,9 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // sits, never what it contains - so without this the edit-mode removal path
   // is blind to the cascade it is about to trigger. Capped at 30 rows/list.
   //
-  // useReorderable rather than a bare useQuery because THIS component renders
-  // the location SortableContext, and the hook's own useQuery subscription is
-  // what keeps the optimistic reorder write and the drop animation in one
+  // useReorderable rather than a bare useQuery because this page's tree
+  // renders the location sections (PackingLocationTree), and the hook's own
+  // useQuery subscription is what keeps the optimistic reorder write and the drop animation in one
   // commit - see the hook's file comment for the race it structurally
   // prevents. It self-gates on dndKind, so its handleDragEnd can sit
   // alongside the item handler under one DndContext without cross-fire.
@@ -669,7 +669,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         openEditor(isBelowLg ? 'quick-edit-item' : 'edit-gear', gearId),
       // No onDeleteGearItem: the row menu deliberately offers no inventory
       // delete (ItemRow's RowKebab says why). GearItemDialog's own delete
-      // path below still works from Edit.
+      // path (ListDialogs) still works from Edit.
       // Quick status - same updateGearItem path the dialog uses, so the
       // existing list-items fan-out (gearItem.status is in the embedded
       // projection) keeps open list views consistent.
