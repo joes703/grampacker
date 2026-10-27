@@ -58,4 +58,20 @@ describe('AppShell', () => {
     const lists = screen.getAllByRole('link', { name: 'Lists' })
     expect(lists.map((link) => link.getAttribute('href'))).toEqual(['/lists', '/lists'])
   })
+
+  // Lists is the destination for the whole lists workspace, so it stays lit on
+  // every list page and view, in the header and in the bottom bar.
+  it('marks Lists current on a list detail page, in both navs', () => {
+    render(
+      <MemoryRouter initialEntries={['/lists/0b9f2c4e/pack']}>
+        <AppShell />
+      </MemoryRouter>,
+    )
+    for (const link of screen.getAllByRole('link', { name: 'Lists' })) {
+      expect(link.getAttribute('aria-current')).toBe('page')
+    }
+    for (const link of screen.getAllByRole('link', { name: 'Gear' })) {
+      expect(link.getAttribute('aria-current')).toBeNull()
+    }
+  })
 })

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useState } from 'react'
-import { Link, Outlet, useLocation } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
 import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
 import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
@@ -16,9 +16,11 @@ const SettingsModal = lazy(() => import('../settings/SettingsModal'))
 // settings, sign out) plus the mobile primary nav. Route components own their
 // page headings and actions; this shared shell intentionally stays independent
 // of route-specific state.
+const headerLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `text-sm font-medium ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`
+
 export default function AppShell() {
   const { data: session } = authClient.useSession()
-  const { pathname } = useLocation()
   const { signingOut, signOut } = useSignOut()
   // Settings is a modal, not a route: four small sections you touch a few
   // times a year do not justify leaving the list you are working on.
@@ -39,24 +41,14 @@ export default function AppShell() {
                 grampacker
               </Link>
               <nav className="hidden lg:flex items-center gap-4" aria-label="Primary">
-                <Link
-                  to="/gear"
-                  className={`text-sm font-medium ${
-                    pathname === '/gear' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
+                <NavLink to="/gear" className={headerLinkClass}>
                   Gear
-                </Link>
-                <Link
-                  to="/lists"
-                  className={`text-sm font-medium ${
-                    pathname === '/lists' || pathname.startsWith('/lists/')
-                      ? 'text-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
+                </NavLink>
+                {/* NavLink matches child paths, so Lists stays lit on every
+                    list page and view. */}
+                <NavLink to="/lists" className={headerLinkClass}>
                   Lists
-                </Link>
+                </NavLink>
               </nav>
             </div>
             <div className="flex items-center gap-3">

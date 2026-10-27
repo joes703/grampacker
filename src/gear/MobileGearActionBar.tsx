@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router'
 import { Plus, Settings2 } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
@@ -42,7 +41,6 @@ export default function MobileGearActionBar({
   libraryReady,
 }: Props) {
   useSuppressMobilePrimaryNav()
-  const { pathname } = useLocation()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (
@@ -50,7 +48,7 @@ export default function MobileGearActionBar({
       <MobileBottomBar
         label="Gear navigation and actions"
         items={[
-          ...buildMobileDestinationItems(pathname),
+          ...buildMobileDestinationItems(),
           {
             type: 'button',
             label: 'Add',

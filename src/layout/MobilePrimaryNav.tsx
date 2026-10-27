@@ -1,4 +1,3 @@
-import { useLocation } from 'react-router'
 import MobileBottomBar from '../components/MobileBottomBar'
 import { useIsMobilePrimaryNavSuppressed } from './mobile-primary-nav-context'
 import { buildMobileDestinationItems } from './mobile-nav-destinations'
@@ -15,7 +14,6 @@ import { buildMobileDestinationItems } from './mobile-nav-destinations'
 // Routes without contextual actions show destinations only. Empty future
 // slots are not user-facing controls.
 export default function MobilePrimaryNav() {
-  const { pathname } = useLocation()
   const suppressed = useIsMobilePrimaryNavSuppressed()
 
   if (suppressed) return null
@@ -23,7 +21,7 @@ export default function MobilePrimaryNav() {
   return (
     <MobileBottomBar
       label="Primary navigation"
-      items={buildMobileDestinationItems(pathname)}
+      items={buildMobileDestinationItems()}
     />
   )
 }

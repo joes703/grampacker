@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router'
 import { Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
@@ -41,11 +40,10 @@ type Props = {
 // Help, and the public /r/:slug share view.
 export default function MobileListActionBar({ list, mode }: Props) {
   useSuppressMobilePrimaryNav()
-  const { pathname } = useLocation()
   const drawer = useSidebarDrawer()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const items: MobileBottomBarItem[] = buildMobileDestinationItems(pathname)
+  const items: MobileBottomBarItem[] = buildMobileDestinationItems()
   // Add is available in Edit and Pack. It used to be suppressed in Organize,
   // where adding gear was outside that view's one job; Pack absorbed Organize
   // and Pack has always kept Add, so the "I forgot the water filter" flow
