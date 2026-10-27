@@ -9,6 +9,7 @@ import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../lib/caps'
 import { clampQuantity } from '../../shared/lists'
+import { useWornConsumableFlags } from './use-worn-consumable-flags'
 
 export type QuickEditGearPatch = { name: string; weightGrams: number }
 export type QuickEditListPatch = {
@@ -60,8 +61,10 @@ export default function QuickEditItemModal({
   const [name, setName] = useState(gear.name)
   const [weightGrams, setWeightGrams] = useState(gear.weightGrams)
   const [quantity, setQuantity] = useState(String(listItem?.quantity ?? 1))
-  const [worn, setWorn] = useState(listItem?.isWorn ?? false)
-  const [consumable, setConsumable] = useState(listItem?.isConsumable ?? false)
+  const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
+    isWorn: listItem?.isWorn ?? false,
+    isConsumable: listItem?.isConsumable ?? false,
+  })
 
   const qtyNum = clampQuantity(quantity)
   const canSubmit = name.trim().length > 0 && !saving
@@ -183,7 +186,7 @@ export default function QuickEditItemModal({
                 <input
                   type="checkbox"
                   checked={worn}
-                  onChange={() => { setWorn(!worn); if (!worn) setConsumable(false) }}
+                  onChange={toggleWorn}
                   disabled={saving}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600"
                 />
@@ -194,7 +197,7 @@ export default function QuickEditItemModal({
                 <input
                   type="checkbox"
                   checked={consumable}
-                  onChange={() => { setConsumable(!consumable); if (!consumable) setWorn(false) }}
+                  onChange={toggleConsumable}
                   disabled={saving}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600"
                 />

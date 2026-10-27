@@ -11,6 +11,7 @@ import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
 import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../../lib/caps'
 import { clampQuantity } from '../../../shared/lists'
+import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
 
 export type GearPatch = {
   name: string
@@ -81,8 +82,10 @@ export default function GearItemDialog({
   const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? '')
   const [status, setStatus] = useState<GearStatus>(item?.status ?? DEFAULT_GEAR_STATUS)
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
-  const [worn, setWorn] = useState(listContext?.isWorn ?? false)
-  const [consumable, setConsumable] = useState(listContext?.isConsumable ?? false)
+  const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
+    isWorn: listContext?.isWorn ?? false,
+    isConsumable: listContext?.isConsumable ?? false,
+  })
   // Visibility only: the editor itself (draft, pending, error, late-answer
   // protection) is the shared InlineCreateCategory, remounted fresh each open.
   const [newCategoryOpen, setNewCategoryOpen] = useState(false)
@@ -120,20 +123,6 @@ export default function GearItemDialog({
         }
       : null
     onSave(gearPatch, listPatch)
-  }
-
-  // Worn/consumable XOR: ticking one unticks the other. Reflects the DB
-  // CHECK constraint (worn_xor_consumable) and matches the in-row toggle
-  // semantics on desktop.
-  function toggleWorn() {
-    const next = !worn
-    setWorn(next)
-    if (next) setConsumable(false)
-  }
-  function toggleConsumable() {
-    const next = !consumable
-    setConsumable(next)
-    if (next) setWorn(false)
   }
 
   const isEdit = Boolean(item)
