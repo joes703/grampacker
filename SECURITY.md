@@ -691,14 +691,6 @@ session; every statement gates itself on the slug and `is_shared`.
   (a reusable workflow): the first gate that silently missed one of the two
   files, or the next CI restructuring.
 
-- **A list cache can show a deleted gear row.** The gear delete fan-out
-  (`src/lib/queries/gear-list-items-fan-out.ts`) only touches list caches
-  that hold the gear when it starts. A list fetch already in flight that
-  returns the gear afterward is never invalidated, so the row shows until
-  the next refetch. Display only; the server is correct. The fix is to
-  invalidate the `['list-items']` prefix on settle. Trigger: anyone seeing a
-  deleted item reappear in a list.
-
 ## Not applicable by construction
 
 Recorded so they are not re-litigated:

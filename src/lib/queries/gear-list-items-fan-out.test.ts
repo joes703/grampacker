@@ -135,7 +135,7 @@ describe('makeOptimisticGearItemUpdate', async () => {
     expect(showToast).not.toHaveBeenCalled()
   })
 
-  it('onSettled invalidates the gear cache and exactly the touched lists', async () => {
+  it('onSettled invalidates the gear cache and every list', async () => {
     const { qc } = seed()
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
     const { onMutate, onSettled } = makeOptimisticGearItemUpdate({ qc })
@@ -145,9 +145,24 @@ describe('makeOptimisticGearItemUpdate', async () => {
 
     const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey)
     expect(keys).toContainEqual(queryKeys.gearItems())
-    expect(keys).toContainEqual(queryKeys.listItems('l1'))
-    expect(keys).toContainEqual(queryKeys.listItems('l2'))
-    expect(keys).not.toContainEqual(queryKeys.listItems('l3'))
+    expect(keys).toContainEqual(queryKeys.listItemsAll())
+  })
+})
+
+describe('settling a gear write', () => {
+  // A list opened while the save is running fetches the gear's old values and
+  // was never snapshotted, so only a prefix invalidation reaches it.
+  it('invalidates a list cache that appeared while the write was in flight', async () => {
+    const { qc } = seed()
+    const { onMutate, onSettled } = makeOptimisticGearItemUpdate({ qc })
+
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    qc.setQueryData(queryKeys.listItems('l4'), [
+      listItem({ id: 'li-5', listId: 'l4', gearItemId: 'g1', gearItem: gear({ id: 'g1' }) }),
+    ])
+    onSettled(undefined, null, { id: 'g1', patch: { name: 'Mid' } }, ctx)
+
+    expect(qc.getQueryState(queryKeys.listItems('l4'))?.isInvalidated).toBe(true)
   })
 })
 

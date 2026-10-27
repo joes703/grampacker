@@ -11,17 +11,11 @@ import type { ListItemWithGear } from './list-items'
 // cross-cache plumbing the generic optimistic.ts helpers deliberately
 // don't (its doc marks multi-cache fan-out out of scope): find the
 // affected per-list caches, cancel + snapshot each, apply the same
-// logical change, and roll back / invalidate ALL of them together.
+// logical change, and roll back all of them together.
 //
-// Re-derived from the old repo's module against the new shapes, not
-// copy-pasted (run-level accounting rule). One deliberate drop: the old
-// patchAffectsListItemsView() short-circuit skipped the fan-out for
-// patches that touched no embedded field - in the old stack the
-// embedded projection was 7 columns and gear reorders patched
-// sort_order through this path. In this stack the embedded gearItem is
-// the FULL gear DTO and every field of UpdateGearItemRequest is
-// list-visible, so the filter could never skip anything; reorders go
-// through makeOptimisticReorder, never through here.
+// The embedded gearItem is the full gear DTO, so every field of
+// UpdateGearItemRequest is list-visible; gear reorders go through
+// makeOptimisticReorder, never through here.
 
 type ListItemsSnapshot = {
   key: QueryKey
@@ -69,18 +63,8 @@ function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
 //
 // Untouched caches are neither canceled nor snapshotted. Deliberate: do not cancel
 // a list cache this change cannot affect, or you abort a legitimate in-flight fetch
-// for a list the user is looking at right now.
-//
-// KNOWN GAP, and it is a real one rather than a rhetorical "residual": the affected
-// set is computed at step 1, before the await. A list cache that becomes affected
-// during the await gets no optimistic write - and, worse, makeSettled invalidates
-// only the caches in listSnapshots, so it is never invalidated either. It would sit
-// stale until some unrelated refetch, NOT until the settle. (The gap does not bite
-// today: the await spans microtasks only, and a fetch cannot COMPLETE inside a
-// microtask checkpoint, so no cache can newly acquire the gear in that window. It
-// would bite the moment anything awaited here does real async work.) If that ever
-// changes, invalidate the ['list-items'] prefix on settle, or recompute the affected
-// set after the cancels.
+// for a list the user is looking at right now. A list fetched while the write is in
+// flight gets no optimistic write; makeSettled's prefix invalidation corrects it.
 async function beginGearFanOut(
   qc: QueryClient,
   gearItemIds: ReadonlySet<string>,
@@ -151,9 +135,9 @@ function makeSettled(opts: FanOutOpts, { cascades }: { cascades: boolean }) {
     ctx: GearFanOutContext | undefined,
   ) => {
     void opts.qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-    for (const { key } of ctx?.listSnapshots ?? []) {
-      void opts.qc.invalidateQueries({ queryKey: key })
-    }
+    // The whole prefix, not only the snapshots: a list first fetched while the
+    // write was in flight may hold the gear's old values.
+    void opts.qc.invalidateQueries({ queryKey: queryKeys.listItemsAll() })
     if (cascades) {
       void opts.qc.invalidateQueries({ queryKey: queryKeys.packingLocationsAll() })
       void opts.qc.invalidateQueries({ queryKey: queryKeys.listFoodAll() })
