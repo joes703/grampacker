@@ -70,17 +70,9 @@ export const weightGramsSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GR
 export const MAX_COST = 99_999_999.99
 export const costSchema = decimalNumber({ min: 0, max: MAX_COST, decimals: 2 })
 
-// Real calendar date, ISO YYYY-MM-DD (rejects 2026-02-30).
-const isoDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine(
-    (v) => {
-      const d = new Date(`${v}T00:00:00Z`)
-      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
-    },
-    { message: 'not a real calendar date' },
-  )
+// Real calendar date, ISO YYYY-MM-DD (rejects 2026-02-30). zod's own check
+// knows leap years.
+export const isoDateSchema = z.iso.date()
 
 // ---------------------------------------------------------------- categories
 

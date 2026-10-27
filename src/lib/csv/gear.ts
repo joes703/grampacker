@@ -1,6 +1,7 @@
 import type { GearItem, Category } from '../types'
 import { toCsv } from './core'
 import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
+import { isoDateSchema } from '../../../shared/gear'
 
 // Parse output. The CSV column HEADERS stay snake_case (Lighterpack-shaped;
 // no longer byte-identical to the old repo's export, which carried a second
@@ -87,8 +88,5 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
 function parseIsoDate(raw: string | undefined): string | null {
   const s = (raw ?? '').trim()
   if (!s) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
-  const d = new Date(`${s}T00:00:00Z`)
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return null
-  return s
+  return isoDateSchema.safeParse(s).success ? s : null
 }
