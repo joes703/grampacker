@@ -149,15 +149,7 @@ export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<n
     return 1
   }
 
-  const env: AppEnv = {
-    DB: sqlite,
-    BETTER_AUTH_URL: config.BETTER_AUTH_URL,
-    BETTER_AUTH_SECRET: config.BETTER_AUTH_SECRET,
-    RESEND_API_KEY: config.RESEND_API_KEY,
-    EMAIL_FROM: config.EMAIL_FROM,
-    STATIC_DIR: config.STATIC_DIR,
-  }
-  const running = await startServer(env, { port: config.PORT, hostname: config.HOST })
+  const running = await startServer({ ...config, DB: sqlite }, { port: config.PORT, hostname: config.HOST })
   console.log(`listening on http://${config.HOST}:${running.port}`)
   shutdownOnSignals(running, sqlite)
   return 0
