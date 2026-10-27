@@ -19,7 +19,6 @@ import { authClient } from '../lib/auth-client'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import { useIsBelowLg, useIsBelowXl } from '../lib/use-breakpoint'
 import { useReorderable } from '../lib/use-reorderable'
-import { useLatestRef } from '../lib/use-latest-ref'
 import {
   writeLastListPath,
   readLastListPath,
@@ -596,22 +595,12 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // Worn rows are always extracted into one trailing section in Edit and Pack.
   const wornItems = wornItemsInDocumentOrder(grouped)
 
-  // gearItems / listItems are read by handlers in sharedGroupProps and the
-  // LibraryPanel onAdd / onRemove callbacks, but only at call time (never
-  // synchronously during memo computation). Stashing them in refs lets the
-  // closures see the latest data without forcing the memo to invalidate on
-  // every list-items mutation. Pre-fix, every mutation invalidated
-  // `['list-items']` → busted the memo → minted fresh prop references →
-  // re-rendered every CategoryGroup + dnd-kit's useSortable per row.
-  // Pack-mode checkbox ticks were the dominant render cost.
-  //
-  // useLatestRef updates the ref in useEffect, not synchronously during
-  // render. The handlers below all run after commit (user gestures), so
-  // they observe the freshest committed value. Render-time ref writes were
-  // banned by react-hooks/refs in React 19 because they tear under
-  // concurrent rendering.
-  const gearItemsRef = useLatestRef(gearItems)
-  const listItemsRef = useLatestRef(listItems)
+  // Handlers that run on a user gesture read gear and list items from the
+  // query cache at that moment, so the callbacks below never depend on the
+  // data and stay stable (rebuilding them would re-render every section on
+  // each checkbox tick). The cache can be empty before the first load.
+  const readGearItems = () => qc.getQueryData(queries.gearItems().queryKey) ?? EMPTY_GEAR_ITEMS
+  const readListItems = () => qc.getQueryData(queries.listItems(listId).queryKey) ?? EMPTY_LIST_ITEMS
 
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
@@ -692,10 +681,10 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
 
   const onLibraryRemove = useCallback(
     (item: GearItem) => {
-      const li = listItemsRef.current.find((l) => l.gearItemId === item.id)
+      const li = readListItems().find((l) => l.gearItemId === item.id)
       if (li) requestRemoveListItem(li)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- listItemsRef is a ref (always-stable); requestRemoveListItem is stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the query cache at call time; requestRemoveListItem is stable
     [],
   )
 
@@ -757,28 +746,25 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // row's own button - and duplicating the ref lookups at each would be four
   // copies of one rule about which dialog to open.
   //
-  // Refs, not state, so this is stable for the life of the page: rebuilding
-  // it would rebuild sharedGroupProps and re-render every section on each
-  // checkbox tick.
+  // Reads the cache at call time, so this is stable for the life of the page:
+  // rebuilding it would rebuild sharedGroupProps and re-render every section.
   const openGearEditor = useCallback((gearId: string) => {
-    const g = gearItemsRef.current.find((x) => x.id === gearId)
-    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    const g = readGearItems().find((x) => x.id === gearId)
+    const li = readListItems().find((l) => l.gearItem.id === gearId)
     if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
-    // The refs and the useState setter are all stable for the life of the
-    // page, so this never rebuilds. All three are listed because the two
-    // hook lint rules track different subsets: exhaustive-deps wants the
-    // refs, the compiler rule wants the setter.
-  }, [gearItemsRef, listItemsRef, setDialog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the read helpers use only qc and listId, both fixed for this instance
+  }, [setDialog])
 
   // The phone row tap's editor: the compact form instead of the full
   // inventory dialog (UX audit 2026-10 - tapping a row to change one weight
   // opened cost, purchase date, status and a delete button). Same stability
   // story as openGearEditor above.
   const openQuickEditor = useCallback((gearId: string) => {
-    const g = gearItemsRef.current.find((x) => x.id === gearId)
-    const li = listItemsRef.current.find((l) => l.gearItem.id === gearId)
+    const g = readGearItems().find((x) => x.id === gearId)
+    const li = readListItems().find((l) => l.gearItem.id === gearId)
     if (g) setDialog({ type: 'quick-edit-item', gear: g, listItem: li ?? null, saveError: null })
-  }, [gearItemsRef, listItemsRef, setDialog])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as openGearEditor
+  }, [setDialog])
 
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
@@ -823,7 +809,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       onUpdateFood: (foodId: string, patch: { isPacked?: boolean; isReady?: boolean }) =>
         foodPackPatchMut.mutate({ foodId, patch }),
       onDelete: (itemId: string) => {
-        const li = listItemsRef.current.find((item) => item.id === itemId)
+        const li = readListItems().find((item) => item.id === itemId)
         if (li) requestRemoveListItem(li)
       },
       onSaveGearName: (gearId: string, n: string) =>
