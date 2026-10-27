@@ -1,6 +1,6 @@
 import { openSqlite, type Sqlite } from '../db'
 import { applyMigrations } from '../db/migrate'
-import type { AppEnv } from '../env'
+import { DEFAULT_EMAIL_FROM, type AppEnv } from '../env'
 import { createApp } from '../index'
 
 // The API tests' environment: the real app against a real SQLite database
@@ -14,11 +14,14 @@ import { createApp } from '../index'
 const sqlite = openSqlite(':memory:')
 applyMigrations(sqlite)
 
+// The origin every API test sends; also the test BETTER_AUTH_URL.
+export const TEST_ORIGIN = 'http://localhost:5173'
+
 export const env: AppEnv = {
   DB: sqlite,
   BETTER_AUTH_SECRET: 'test-only-secret-at-least-32-chars-long!',
-  BETTER_AUTH_URL: 'http://localhost:5173',
-  EMAIL_FROM: 'grampacker <no-reply@grampacker.app>',
+  BETTER_AUTH_URL: TEST_ORIGIN,
+  EMAIL_FROM: DEFAULT_EMAIL_FROM,
   // The real build output only exists after `vite build`; tests get a small
   // fixture so static serving (and the security headers in front of it) is
   // exercisable.

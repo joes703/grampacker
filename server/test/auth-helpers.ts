@@ -1,8 +1,8 @@
-import { app, testDb } from './node-env'
+import { app, testDb, TEST_ORIGIN } from './node-env'
 import { lastEmailTo } from '../email/console'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // Each helper-created user signs in from its own synthetic IP. Without this
 // every sign-in in a test file shares the limiter's 'local' fallback bucket and

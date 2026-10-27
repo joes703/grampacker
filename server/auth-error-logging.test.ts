@@ -1,5 +1,5 @@
 import { createApp } from './index'
-import { env } from './test/node-env'
+import { env, TEST_ORIGIN } from './test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetLogBudget } from './middleware/error-handler'
 import { signUpVerifiedUser } from './test/auth-helpers'
@@ -17,7 +17,7 @@ import type { Sqlite } from './db'
 //     used to be no error at all - the console sender printed the redeemable
 //     link and reported success.
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 const PROD_ORIGIN = 'https://grampacker.app'
 const MARKER = 'SABOTAGE_MARKER_db_is_down'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

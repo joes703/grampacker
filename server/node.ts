@@ -58,7 +58,7 @@ export function startServer(
 // close() began would otherwise stay open until Node's keep-alive timeout.
 // Sweeping idle connections until the server is closed lets shutdown finish
 // as soon as the last request does.
-function closeServer(server: Server, graceMs: number): Promise<void> {
+export function closeServer(server: Server, graceMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const sweep = setInterval(() => server.closeIdleConnections(), 50)
     const force = setTimeout(() => server.closeAllConnections(), graceMs)

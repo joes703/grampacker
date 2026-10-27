@@ -1,12 +1,12 @@
 import { createApp } from '../index'
-import { app, env, testDb } from '../test/node-env'
+import { app, env, testDb, TEST_ORIGIN } from '../test/node-env'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAuth } from '../auth'
 import { createDb } from '../db'
 import { chargeMagicLinkGlobalQuota, emailBucketKey, peekMagicLinkGlobalQuota } from './rate-limit'
 import { lastEmailTo } from '../email/console'
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // Budgets under test (mirrors server/middleware/rate-limit.ts).
 const SIGN_IN_LIMIT = 10

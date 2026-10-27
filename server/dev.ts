@@ -6,7 +6,8 @@ import { createServer as createViteServer } from 'vite'
 import { createApp } from './index'
 import { openSqlite } from './db'
 import { applyMigrations } from './db/migrate'
-import type { AppEnv } from './env'
+import { DEFAULT_EMAIL_FROM, type AppEnv } from './env'
+import { closeServer } from './node'
 
 // Local development: `npm run dev`.
 //
@@ -40,7 +41,7 @@ const env: AppEnv = {
   BETTER_AUTH_SECRET:
     process.env.BETTER_AUTH_SECRET || 'local-dev-only-secret-not-for-any-deployment',
   RESEND_API_KEY: process.env.RESEND_API_KEY || undefined,
-  EMAIL_FROM: 'grampacker <no-reply@grampacker.app>',
+  EMAIL_FROM: DEFAULT_EMAIL_FROM,
   STATIC_DIR: 'dist/client',
 }
 
@@ -71,11 +72,7 @@ let stopping = false
 const stop = () => {
   if (stopping) process.exit(1)
   stopping = true
-  const drained = new Promise<void>((resolve) => {
-    httpServer.close(() => resolve())
-    httpServer.closeIdleConnections()
-  })
-  Promise.all([drained, vite.close()])
+  Promise.all([closeServer(httpServer, 10_000), vite.close()])
     .catch((err: unknown) => console.error('dev shutdown:', err))
     .finally(() => {
       sqlite.close()

@@ -1,4 +1,4 @@
-import { app } from '../test/node-env'
+import { app, TEST_ORIGIN } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import { CSRF_HEADER } from './csrf'
 import { signUpVerifiedUser } from '../test/auth-helpers'
@@ -10,7 +10,7 @@ import { signUpVerifiedUser } from '../test/auth-helpers'
 // vehicle now - any session-gated unsafe route exercises the same
 // middleware, mounted app-wide ahead of the routers.
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 function postLists(headers: Record<string, string>) {
   return app.request(

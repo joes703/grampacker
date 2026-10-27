@@ -1,7 +1,7 @@
-import { app } from './node-env'
+import { app, TEST_ORIGIN } from './node-env'
 import { CSRF_HEADER } from '../middleware/csrf'
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // Authenticated (or anon, cookie=null) JSON request through the real app,
 // with the CSRF header the SPA's fetch wrapper always sends.

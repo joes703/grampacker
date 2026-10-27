@@ -1,4 +1,4 @@
-import { app, testDb } from './test/node-env'
+import { app, testDb, TEST_ORIGIN } from './test/node-env'
 import { describe, it, expect } from 'vitest'
 import { makeSessionStale, signInAgain, signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from '../shared/api'
@@ -22,7 +22,7 @@ async function passkeyRow(id: string): Promise<{ name: string } | null> {
   return testDb.prepare('select name from passkey where id = ?').bind(id).first<{ name: string }>()
 }
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // The passkey endpoints that CHANGE WHICH CREDENTIALS CAN SIGN IN, with the
 // method each is registered under - the gate lives in better-auth's
