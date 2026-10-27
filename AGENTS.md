@@ -107,7 +107,7 @@ dated.
 
 ## Migrations
 
-Before writing one, read these rules and `docs/testing-and-ci.md` section 7,
+Before writing one, read these rules and `docs/testing-and-ci.md` section 5,
 which states what `npm run test:migrations` proves and does not prove.
 
 - Create every migration with `drizzle-kit generate` (schema change) or
@@ -209,6 +209,12 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
 
 ## Git, dependencies, security
 
+- **Library first.** Before writing code, use what the platform and the
+  existing dependencies already provide (Hono middleware, TanStack Query,
+  better-auth, zod, the browser and Node). Hand-written code must name the
+  gap the library leaves; a similar line count is not a gap. Reason: every
+  hand-written copy is code we must test and keep correct alone, and it
+  misses the fixes the library gets.
 - **Never commit or install something you did not look at.** Feature branches,
   one logical change per commit, no unrelated cleanups folded in. Stage exact
   paths, never `git add -A`.

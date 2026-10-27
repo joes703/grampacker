@@ -141,9 +141,8 @@ those files merges, run:
 - the empty-database rehearsal in `docs/vps-runbook.md`, "Change or test
   deployment files".
 
-Merging does not deploy. The owner dispatches `image.yml` from `main` with
-`deploy=true` after reviewing the exact commit and green checks. Routine
-deploy, failure and rollback procedures are in `docs/vps-runbook.md`.
+Who merges and deploys, and when: AGENTS.md "Shipping". Deploy, failure and
+rollback procedures: `docs/vps-runbook.md`.
 
 ## 10. GitHub access from agent sandboxes
 
