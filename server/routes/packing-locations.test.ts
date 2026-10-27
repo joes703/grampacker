@@ -1123,8 +1123,7 @@ describe('pack ordering is independent of document ordering', () => {
     const slug = ((await share.json()) as { slug: string }).slug
     const documentOrder = (await getItems(cookie, list.id)).map((i) => i.id)
 
-    // Reverse the bag. The payload is a permutation of the ranks those rows
-    // already hold, which is the contract the route enforces.
+    // Reverse the bag, reusing the ranks those rows already hold.
     const inBag = (await getItems(cookie, list.id))
       .filter((i) => i.packingLocationId === location.id)
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
@@ -1134,7 +1133,7 @@ describe('pack ordering is independent of document ordering', () => {
       cookie,
       'PUT',
       `/api/lists/${list.id}/items/pack-order`,
-      reversed.map((item, i) => ({ id: item.id, packSortOrder: ranks[i]! })),
+      { items: reversed.map((item, i) => ({ id: item.id, packSortOrder: ranks[i]! })), foodItems: [] },
     )
     expect(reorder.status).toBe(204)
 
@@ -1203,16 +1202,30 @@ describe('pack-order route contract', () => {
     return { cookie, list, location, inBag }
   }
 
+  // The bare-array body (gear only) was accepted for browser tabs running a
+  // bundle from before the gear+food union. Only the object form is valid now.
+  it('rejects the old bare-array body, with zero writes', async () => {
+    const { cookie, list, inBag } = await bagOfTwo('pack-legacy@example.com')
+    const before = await getItems(cookie, list.id)
+
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+      { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
+      { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
+    ])
+    expect(res.status).toBe(400)
+    expect(await getItems(cookie, list.id)).toEqual(before)
+  })
+
   it('rejects a payload spanning two cohorts, with zero writes', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-cohort@example.com')
     // This one stays Unassigned, so it is a different cohort.
     const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
     const before = await getItems(cookie, list.id)
 
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 1 },
       { id: loose.id, packSortOrder: 0 },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
@@ -1224,18 +1237,18 @@ describe('pack-order route contract', () => {
     // equal to an UNTOUCHED same-table cohort row's rank is still the write
     // the unique index would reject, and still 400s with zero writes.
     const { cookie, list, inBag } = await bagOfTwo('pack-perm@example.com')
-    const minted = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const minted = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 7 },
       { id: inBag[1]!.id, packSortOrder: 8 },
-    ])
+    ], foodItems: [] })
     expect(minted.status).toBe(204)
 
     const before = await getItems(cookie, list.id)
     // inBag[1] now holds 8; moving inBag[0] onto it without touching it
     // must be refused.
-    const collision = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const collision = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 8 },
-    ])
+    ], foodItems: [] })
     expect(collision.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
@@ -1248,10 +1261,10 @@ describe('pack-order route contract', () => {
     })
     const before = await getItems(cookie, list.id)
 
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: worn.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: worn.packSortOrder },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
@@ -1261,10 +1274,10 @@ describe('pack-order route contract', () => {
     const b = await signUpVerifiedUser('pack-foreign-b@example.com', 'B')
     const before = await getItems(cookie, list.id)
 
-    const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 1 },
       { id: inBag[1]!.id, packSortOrder: 0 },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(404)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
@@ -1280,12 +1293,12 @@ describe('pack-order route contract', () => {
     const b2 = await addItem(cookie, listB.id, await createGear(cookie, 'B2'))
     const before = { a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }
 
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listB.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${listB.id}/items/pack-order`, { items: [
       { id: b1.id, packSortOrder: b2.packSortOrder },
       { id: b2.id, packSortOrder: b1.packSortOrder },
       { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(404)
     expect({ a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }).toEqual(before)
   })
@@ -1293,10 +1306,10 @@ describe('pack-order route contract', () => {
   it('does not bump updatedAt', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-updated@example.com')
     const before = await getItems(cookie, list.id)
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(204)
     const after = await getItems(cookie, list.id)
     for (const item of after) {
@@ -1311,10 +1324,10 @@ describe('pack-order route contract', () => {
   it('applies a permutation whose intermediate state would collide', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-twophase@example.com')
     const [first, second] = inBag
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: first!.id, packSortOrder: second!.packSortOrder },
       { id: second!.id, packSortOrder: first!.packSortOrder },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(204)
     const after = await getItems(cookie, list.id)
     expect(after.find((i) => i.id === first!.id)?.packSortOrder).toBe(second!.packSortOrder)
@@ -1394,9 +1407,9 @@ describe('pack-order rank bounds and scratch band', () => {
     // surface as a 500, so the DTO is the thing that has to say no.
     const { cookie, list, inBag } = await bagOfThree('pack-negative@example.com')
     const before = await getItems(cookie, list.id)
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: -1 },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })
@@ -1404,9 +1417,9 @@ describe('pack-order rank bounds and scratch band', () => {
   it('rejects a rank above PACK_RANK_MAX with 400', async () => {
     const { cookie, list, inBag } = await bagOfThree('pack-overmax@example.com')
     const before = await getItems(cookie, list.id)
-    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
+    const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: PACK_RANK_MAX + 1 },
-    ])
+    ], foodItems: [] })
     expect(res.status).toBe(400)
     expect(await getItems(cookie, list.id)).toEqual(before)
   })

@@ -264,28 +264,19 @@ const packRankEntriesSchema = (cap: number) =>
       message: 'duplicate ids',
     })
 
-// Since 0022 a bag's contents are the UNION of gear rows and food rows, and a
-// reorder permutes ranks across that union - so the payload carries both
-// halves and the server writes them in one batch. The legacy bare-array shape
-// (gear only) is still accepted: a browser holding the previous SPA bundle
-// keeps working across the deploy, and a gear-only reorder is a legitimate
-// union reorder with an empty food half. parseReorderPackRequest normalizes
-// both shapes to the object form.
-export const reorderPackListItemsRequestSchema = z.union([
-  packRankEntriesSchema(LIST_ITEM_CAP).refine((e) => e.length >= 1, {
-    message: 'at least one entry is required',
-  }),
-  z
-    .object({
-      items: packRankEntriesSchema(LIST_ITEM_CAP).optional(),
-      foodItems: packRankEntriesSchema(FOOD_ITEM_CAP).optional(),
-    })
-    .strict()
-    .refine(
-      (body) => (body.items?.length ?? 0) + (body.foodItems?.length ?? 0) >= 1,
-      { message: 'at least one entry is required' },
-    ),
-])
+// A bag's contents are the UNION of gear rows and food rows, and a reorder
+// ranks across that union - so the payload carries both halves and the server
+// writes them in one transaction. Either half may be empty or absent.
+export const reorderPackListItemsRequestSchema = z
+  .object({
+    items: packRankEntriesSchema(LIST_ITEM_CAP).optional(),
+    foodItems: packRankEntriesSchema(FOOD_ITEM_CAP).optional(),
+  })
+  .strict()
+  .refine(
+    (body) => (body.items?.length ?? 0) + (body.foodItems?.length ?? 0) >= 1,
+    { message: 'at least one entry is required' },
+  )
 export type ReorderPackListItemsRequest = z.infer<
   typeof reorderPackListItemsRequestSchema
 >
@@ -295,12 +286,6 @@ export type ReorderPackPayload = {
   foodItems: { id: string; packSortOrder: number }[]
 }
 
-export function normalizeReorderPackRequest(
-  parsed: ReorderPackListItemsRequest,
-): ReorderPackPayload {
-  if (Array.isArray(parsed)) return { items: parsed, foodItems: [] }
-  return { items: parsed.items ?? [], foodItems: parsed.foodItems ?? [] }
-}
 
 export const reorderPackingLocationsRequestSchema = reorderSchema(
   PACKING_LOCATION_CAP,

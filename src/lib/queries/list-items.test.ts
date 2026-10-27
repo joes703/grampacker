@@ -145,11 +145,11 @@ describe('list-item queries hit the documented endpoints', () => {
 
   it('reorderPackListItems: PUT /api/lists/:id/items/pack-order - PACK order', async () => {
     const fn = mockFetch(204)
-    await reorderPackListItems('l1', [{ id: 'li1', packSortOrder: 3 }])
+    await reorderPackListItems('l1', { items: [{ id: 'li1', packSortOrder: 3 }], foodItems: [] })
     expect(requestOf(fn)).toMatchObject({
       url: '/api/lists/l1/items/pack-order',
       method: 'PUT',
-      body: [{ id: 'li1', packSortOrder: 3 }],
+      body: { items: [{ id: 'li1', packSortOrder: 3 }], foodItems: [] },
       csrf: '1',
     })
   })

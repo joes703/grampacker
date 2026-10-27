@@ -491,7 +491,7 @@ describe('index-safety validation heals degraded rank states', () => {
       cookie,
       'PUT',
       `/api/lists/${list.id}/items/pack-order`,
-      [{ id: a.id, packSortOrder: a.packSortOrder + 1 }],
+      { items: [{ id: a.id, packSortOrder: a.packSortOrder + 1 }], foodItems: [] },
     )
     expect(res.status).toBe(400)
   })

@@ -8,7 +8,6 @@ import {
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
-  normalizeReorderPackRequest,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
   reorderPackListItemsRequestSchema,
@@ -339,15 +338,11 @@ listRoutes.put('/:id/items/order', async (c) => {
 listRoutes.put('/:id/items/pack-order', async (c) => {
   const parsed = await parseBody(c, reorderPackListItemsRequestSchema)
   if (!parsed.ok) return parsed.response
-  // Union reorder since 0022: gear and food halves written in one transaction.
-  // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
-  // onto the same payload.
-  const result = await c
-    .get('repos')
-    .packReorder.reorder(
-      c.req.param('id'),
-      normalizeReorderPackRequest(parsed.data),
-    )
+  // Gear and food halves are written in one transaction.
+  const result = await c.get('repos').packReorder.reorder(c.req.param('id'), {
+    items: parsed.data.items ?? [],
+    foodItems: parsed.data.foodItems ?? [],
+  })
   if (result.ok) return c.body(null, 204)
   // An id that is not on this list (or not this user's) is indistinguishable
   // from a list that does not exist, deliberately - the same 404 either way,
