@@ -11,9 +11,8 @@ import PackModeCheckbox from './PackModeCheckbox'
 // The pack-mode row skeleton shared by the gear row (ItemRow's pack branch)
 // and SortableFoodRow: shell, grip slot, Ready checkbox, the wrapping label
 // that hosts Packed + name/description, and the print-only checkbox squares.
-// The two used to carry this verbatim (same composed className, same two
-// print spans, same label structure), so any pack-row density or print
-// change had to be made twice and re-verified for checkbox-column alignment.
+// Sharing it keeps a pack-row density or print change in one place, and
+// keeps the checkbox column aligned across both rows.
 // The trailing cells (worn/consumable slots, quantity, weight, row action)
 // genuinely differ per surface and stay with each caller, passed as
 // children so a cell on one and not the other still misaligns VISIBLY in
@@ -41,10 +40,9 @@ import PackModeCheckbox from './PackModeCheckbox'
 //   row action menu) belongs in `children`, which render as SIBLINGS of the
 //   label, never inside it.
 
-// Shared with the container-header squares in CategoryGroup, so the state
-// mirroring cannot drift between rows and headers. size 11 fits the square's
-// 12px interior (14px minus its borders); an unsized lucide icon is 24px.
-export function PrintCheckboxSquare({
+// size 11 fits the square's 12px interior (14px minus its borders); an
+// unsized lucide icon is 24px.
+function PrintCheckboxSquare({
   variant,
   checked,
 }: {
@@ -62,10 +60,51 @@ export function PrintCheckboxSquare({
   )
 }
 
+// The Ready checkbox, then the wrapping label with the Packed checkbox and
+// whatever names the row (`children`). Shared by every pack row and by a
+// container section's header row, so the checkbox columns and the print
+// squares cannot drift between rows and headers.
+export function PackChecks({
+  name,
+  isPacked,
+  isReady,
+  onUpdate,
+  children,
+}: {
+  name: string
+  isPacked: boolean
+  isReady: boolean
+  onUpdate?: (patch: { isPacked?: boolean; isReady?: boolean }) => void
+  children: ReactNode
+}) {
+  return (
+    <>
+      <PackModeCheckbox
+        variant="ready"
+        checked={isReady}
+        onChange={(checked) => onUpdate?.({ isReady: checked })}
+        ariaLabel={`Mark ${name} ready`}
+        title="Ready"
+        standaloneLabel
+      />
+      <PrintCheckboxSquare variant="ready" checked={isReady} />
+      <label className="flex flex-1 min-w-0 items-center gap-1.5 cursor-pointer">
+        <PackModeCheckbox
+          variant="packed"
+          checked={isPacked}
+          onChange={(checked) => onUpdate?.({ isPacked: checked })}
+        />
+        <PrintCheckboxSquare variant="packed" checked={isPacked} />
+        {children}
+      </label>
+    </>
+  )
+}
+
 // The packed-name treatment: calmer than a green tint - gray-500 +
 // line-through pairs with the shell's bg-gray-50 to read as completed
 // without celebrating; print restores plain black on the blank checklist.
-export function packedNameClass(isPacked: boolean): string {
+function packedNameClass(isPacked: boolean): string {
   return `block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
     isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
   }`
@@ -115,22 +154,7 @@ export default function PackRowFrame({
       }`}
     >
       {dragHandle}
-      <PackModeCheckbox
-        variant="ready"
-        checked={isReady}
-        onChange={(checked) => onUpdate?.({ isReady: checked })}
-        ariaLabel={`Mark ${name} ready`}
-        title="Ready"
-        standaloneLabel
-      />
-      <PrintCheckboxSquare variant="ready" checked={isReady} />
-      <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
-        <PackModeCheckbox
-          variant="packed"
-          checked={isPacked}
-          onChange={(checked) => onUpdate?.({ isPacked: checked })}
-        />
-        <PrintCheckboxSquare variant="packed" checked={isPacked} />
+      <PackChecks name={name} isPacked={isPacked} isReady={isReady} onUpdate={onUpdate}>
         {statusBadge}
         {/* Name + description at lg+ in the same 2:3 proportion as edit
             mode. <lg keeps the single-column name-only layout. */}
@@ -140,7 +164,7 @@ export default function PackRowFrame({
           </div>
           <div className="hidden lg:block lg:flex-[3] min-w-0">{description}</div>
         </div>
-      </label>
+      </PackChecks>
       {children}
     </div>
   )

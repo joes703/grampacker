@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 // Shared row/popover menu action. Keep row menus visually consistent across
 // list rows, gear rows, category headers, and the Lists page.
-export type RowMenuTone = 'neutral' | 'removal' | 'danger'
+type RowMenuTone = 'neutral' | 'removal' | 'danger'
 
 const ROW_MENU_TONE_CLASS: Record<RowMenuTone, string> = {
   neutral: 'text-gray-700 hover:bg-gray-100',

@@ -12,7 +12,7 @@ describe('primary navigation order', () => {
     // The label order is pinned on the rendered bar (mobile-action-bars.test.tsx).
     // A reorder that swapped labels but not targets would still pass that, so
     // pin the pairing too.
-    const items = buildMobileDestinationItems('/gear')
+    const items = buildMobileDestinationItems()
     expect(items.map((i) => i.label)).toEqual(EXPECTED)
     expect(items.map((i) => (i.type === 'link' ? i.to : null))).toEqual([
       '/gear',

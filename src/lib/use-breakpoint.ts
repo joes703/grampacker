@@ -30,36 +30,23 @@ const QUERIES = {
   mobile: '(width < 48rem)',
 } as const
 
-// useSyncExternalStore + a single subscribe factory per query keep React
-// updates batched and the call site simple. Note: each subscriber still
-// registers its own matchMedia 'change' listener on the underlying
-// MediaQueryList — this does NOT dedupe listeners at the DOM level. The
-// real protection against listener-per-row blowup is page-level prop
-// drilling: ListDetailPage / GearLibraryPage call useIsBelowLg() once and
-// pass `isBelowLg` down to rows, so a 300-item list registers ~3
-// listeners total, not 300.
-function makeSubscribe(query: string) {
-  return (onChange: () => void) => {
-    if (typeof window === 'undefined') return () => {}
-    const mq = window.matchMedia(query)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+// One store per query. Each subscriber registers its own matchMedia listener,
+// so pages call these once and pass the result down to rows (a 300-item list
+// registers about 3 listeners, not 300).
+function mediaQueryStore(query: string) {
+  return {
+    subscribe(onChange: () => void) {
+      const list = window.matchMedia(query)
+      list.addEventListener('change', onChange)
+      return () => list.removeEventListener('change', onChange)
+    },
+    getSnapshot: () => window.matchMedia(query).matches,
   }
 }
-function makeGetSnapshot(query: string) {
-  return () =>
-    typeof window !== 'undefined' && window.matchMedia(query).matches
-}
-function getServerSnapshot(): boolean {
-  return false
-}
 
-const belowXlSubscribe = makeSubscribe(QUERIES.belowXl)
-const belowXlGetSnapshot = makeGetSnapshot(QUERIES.belowXl)
-const belowLgSubscribe = makeSubscribe(QUERIES.belowLg)
-const belowLgGetSnapshot = makeGetSnapshot(QUERIES.belowLg)
-const mobileSubscribe = makeSubscribe(QUERIES.mobile)
-const mobileGetSnapshot = makeGetSnapshot(QUERIES.mobile)
+const belowXl = mediaQueryStore(QUERIES.belowXl)
+const belowLg = mediaQueryStore(QUERIES.belowLg)
+const mobile = mediaQueryStore(QUERIES.mobile)
 
 // True below Tailwind's `xl:` (80rem — 1280px at a default root font). Use
 // where a control must exist only in the band the Pack picker aside does not
@@ -67,18 +54,18 @@ const mobileGetSnapshot = makeGetSnapshot(QUERIES.mobile)
 // honest between `lg:` and `xl:` rather than leaving an element
 // mounted-but-CSS-hidden that tests would read as present.
 export function useIsBelowXl(): boolean {
-  return useSyncExternalStore(belowXlSubscribe, belowXlGetSnapshot, getServerSnapshot)
+  return useSyncExternalStore(belowXl.subscribe, belowXl.getSnapshot)
 }
 
 // True below Tailwind's `lg:` (64rem — 1024px at a default root font). Use for
 // sites that swap behavior at that boundary (rows with desktop+mobile bodies,
 // the sidebar drawer, etc.).
 export function useIsBelowLg(): boolean {
-  return useSyncExternalStore(belowLgSubscribe, belowLgGetSnapshot, getServerSnapshot)
+  return useSyncExternalStore(belowLg.subscribe, belowLg.getSnapshot)
 }
 
 // True below Tailwind's `md:` (48rem — 768px at a default root font). Use for
 // sites that swap behavior at that boundary (the bottom-sheet list selector).
 export function useIsMobile(): boolean {
-  return useSyncExternalStore(mobileSubscribe, mobileGetSnapshot, getServerSnapshot)
+  return useSyncExternalStore(mobile.subscribe, mobile.getSnapshot)
 }

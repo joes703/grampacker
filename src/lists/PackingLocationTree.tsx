@@ -12,10 +12,9 @@ import { EMPTY_FOOD_ITEMS } from './use-list-dnd'
 // genuinely varies on; the rename and delete callbacks take the location so
 // one set serves the whole tree.
 //
-// This file imports @dnd-kit and is authenticated-only. CategoryGroup (under
-// PackLocationSection) renders on the public share view; the dependency
-// direction here must stay tree -> PackLocationSection -> CategoryGroup, so
-// nothing on the share path gains a dnd-kit import.
+// This file imports @dnd-kit and is authenticated-only. The dependency
+// direction must stay tree -> PackLocationSection -> PackSection, so the
+// section components never gain a dnd-kit import.
 type PackingLocationTreeProps = {
   roots: PackingTreeLocation[]
   groupProps: PackSectionProps['groupProps']

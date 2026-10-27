@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Copy, Download, Pencil, Trash2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
-import { useCommitOnce } from '../lib/use-commit-once'
+import InlineRenameInput from '../components/InlineRenameInput'
 import { reportFailure } from '../lib/report-failure'
 import { MAX_NAME_LENGTH } from '../lib/caps'
 import { useCurrentListActions } from './use-current-list-actions'
@@ -25,19 +25,15 @@ type Props = {
 // Current-list management panel: list lifecycle actions (Rename inline,
 // Duplicate, Export CSV, Delete list).
 //
-// Sharing is deliberately NOT here: buried between Rename and Delete, the
-// 2026-10 UX audits each took three clicks to find it. It has its own
-// toolbar button (ListShareButton), its one home on this page. The Draft
-// flag went with it, because a draft only changes what a share's visitors
-// see. Do not add a second entry point for either back here.
+// Sharing is deliberately NOT here: buried between Rename and Delete, it is
+// hard to find. It has its own toolbar button (ListShareButton), its one
+// home on this page. The Draft flag lives there too, because a draft only
+// changes what a share's visitors see. Do not add a second entry point for
+// either here.
 //
-// "Add ready checks" used to live here as a toggle. It moved to
-// PackingProgress and was then retired entirely: ready checks are
-// unconditional, so there is nothing left to toggle. What survives of the
-// original reasoning is why it did not belong here - this panel is
-// list-admin, so a control that only matters in one view belongs inline in
-// that view's document (as pack's filters do in PackingProgress). Apply the
-// same test to the next mode-specific control someone wants to put here.
+// This panel is list-admin. A control that only matters in one view belongs
+// inline in that view's document (as pack's filters do in PackingProgress),
+// not here.
 //
 // Actions reuse the shared useCurrentListActions hook so the /lists
 // card kebab and this panel call the same renameMut/duplicateMut/
@@ -86,16 +82,6 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
   const [draft, setDraft] = useState('')
   const [renameError, setRenameError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (renaming) {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
-  }, [renaming])
-
-  const commitOnce = useCommitOnce()
-
   function startRename() {
     setRenameError(null)
     setDraft(list.name)
@@ -139,18 +125,13 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
         <div className="space-y-0.5">
           {renaming ? (
             <div className="px-3 py-0.5">
-              <input
-                ref={inputRef}
-                type="text"
+              <InlineRenameInput
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitOnce(commitRename)
-                  if (e.key === 'Escape') commitOnce(cancelRename)
-                }}
-                onBlur={() => commitOnce(commitRename)}
+                onChange={setDraft}
+                onSubmit={commitRename}
+                onCancel={cancelRename}
                 maxLength={MAX_NAME_LENGTH}
-                aria-label="List name"
+                ariaLabel="List name"
                 className={`w-full rounded border border-blue-400 px-2 py-1 text-sm ${INLINE_EDIT_FOCUS_RING}`}
               />
             </div>

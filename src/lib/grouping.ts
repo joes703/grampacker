@@ -14,15 +14,17 @@ type GroupOptions<R, T> = {
   }
 }
 
-function groupByCore<G extends { id: string }, T, R>(
+// Buckets items by group id and emits the groups in the order given, then a
+// trailing null group for items with no group (or, with route-to-ungrouped,
+// an unknown one). With `stability`, a group whose object and items are
+// unchanged from the prior result reuses the prior entry, and an unchanged
+// result returns the prior array itself, so memoized children skip work.
+export function groupBy<G extends { id: string }, T>(
   items: T[],
   groups: G[],
   getGroupId: (item: T) => string | null,
-  options: GroupOptions<R, T>,
-  getGroup: (result: R) => G | null,
-  getItems: (result: R) => T[],
-  makeGroup: (group: G | null, groupItems: T[]) => R,
-): R[] {
+  options: GroupOptions<Group<G, T>, T>,
+): Group<G, T>[] {
   const { keepEmpty, orphanPolicy, stability } = options
   const buckets = new Map<string | null, T[]>()
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -46,22 +48,17 @@ function groupByCore<G extends { id: string }, T, R>(
   }
 
   const priorByKey = stability
-    ? new Map(stability.prior.map((result) => [getGroup(result)?.id ?? null, result] as const))
+    ? new Map(stability.prior.map((entry) => [entry.group?.id ?? null, entry] as const))
     : null
-  const result: R[] = []
+  const result: Group<G, T>[] = []
 
   function pushGroup(group: G | null, groupItems: T[]) {
-    const priorGroup = priorByKey?.get(group?.id ?? null)
-    if (
-      stability &&
-      priorGroup &&
-      getGroup(priorGroup) === group &&
-      stability.itemsEqual(getItems(priorGroup), groupItems)
-    ) {
-      result.push(priorGroup)
+    const prior = priorByKey?.get(group?.id ?? null)
+    if (stability && prior && prior.group === group && stability.itemsEqual(prior.items, groupItems)) {
+      result.push(prior)
       return
     }
-    result.push(makeGroup(group, groupItems))
+    result.push({ group, items: groupItems })
   }
 
   for (const group of groups) {
@@ -83,49 +80,17 @@ function groupByCore<G extends { id: string }, T, R>(
   return result
 }
 
-export function groupBy<G extends { id: string }, T>(
-  items: T[],
-  groups: G[],
-  getGroupId: (item: T) => string | null,
-  options: GroupOptions<Group<G, T>, T>,
-): Group<G, T>[] {
-  return groupByCore(
-    items,
-    groups,
-    getGroupId,
-    options,
-    (entry) => entry.group,
-    (entry) => entry.items,
-    (group, groupItems) => ({ group, items: groupItems }),
-  )
-}
-
-type GroupByCategoryOptions = {
-  keepEmpty: boolean
-  orphanPolicy: 'route-to-uncategorized' | 'drop'
-}
-
+// groupBy with the result field named `category`, for the category views.
 export function groupByCategory<T>(
   items: T[],
   categories: Category[],
   getCategoryId: (item: T) => string | null,
-  options: GroupByCategoryOptions,
+  options: { keepEmpty: boolean; orphanPolicy: OrphanPolicy },
 ): CategoryGroup<T>[] {
-  return groupByCore(
-    items,
-    categories,
-    getCategoryId,
-    {
-      keepEmpty: options.keepEmpty,
-      orphanPolicy:
-        options.orphanPolicy === 'route-to-uncategorized'
-          ? 'route-to-ungrouped'
-          : 'drop',
-    },
-    (entry) => entry.category,
-    (entry) => entry.items,
-    (category, groupItems) => ({ category, items: groupItems }),
-  )
+  return groupBy(items, categories, getCategoryId, options).map(({ group, items: groupItems }) => ({
+    category: group,
+    items: groupItems,
+  }))
 }
 
 // What "structurally identical" means for stability: same length AND for
@@ -181,7 +146,6 @@ export function listItemsArrayEqual(a: ListItemWithGear[], b: ListItemWithGear[]
  * divergence from `groupGearItemsByCategory`, which retains them.)
  *
  * Implementation: single-pass bucket map keyed by categoryId (O(N+C)).
- * The old repo's prior implementation used N filter passes (O(N×C)).
  */
 export function groupListItemsByCategory(
   items: ListItemWithGear[],
@@ -190,7 +154,7 @@ export function groupListItemsByCategory(
   const sortedCats = categories.toSorted((a, b) => a.sortOrder - b.sortOrder)
   return groupByCategory(items, sortedCats, (item) => item.gearItem.categoryId, {
     keepEmpty: false,
-    orphanPolicy: 'route-to-uncategorized',
+    orphanPolicy: 'route-to-ungrouped',
   })
 }
 

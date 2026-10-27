@@ -1,9 +1,9 @@
 import { Plus } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
-import { PACKING_LOCATION_CAP } from '../lib/caps'
+import { MAX_PACKING_LOCATION_NAME, PACKING_LOCATION_CAP } from '../lib/caps'
 
-// Create a packing location, plus the first-run nudge. Lifted from the
-// retired OrganizePackPanel: a list with no locations groups by gear category
+// Create a packing location, plus the first-run nudge. A list with no
+// locations groups by gear category
 // (selectPackGrouping), which is a fine checklist but not a packing plan, so
 // this is the on-ramp from one to the other.
 export default function PackLocationControls({
@@ -44,9 +44,9 @@ export default function PackLocationControls({
 
   return (
     <div className="space-y-3 print:hidden">
-      {/* Sits with the control it explains, and OUTSIDE the items branch this
-          notice used to live in - an empty list whose locations failed showed a
-          disabled Add with no reason given and no way to recover. */}
+      {/* Sits with the control it explains, and OUTSIDE any items branch: an
+          empty list whose locations failed must still show why Add is
+          disabled and offer a way to recover. */}
       {loadFailed && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <span>Couldn&apos;t load packing locations. Showing the last available grouping.</span>
@@ -72,7 +72,7 @@ export default function PackLocationControls({
         <input
           id="new-packing-location"
           value={draft}
-          maxLength={60}
+          maxLength={MAX_PACKING_LOCATION_NAME}
           onChange={(event) => onDraftChange(event.target.value)}
           placeholder="Add a location, e.g. Main pack"
           className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"

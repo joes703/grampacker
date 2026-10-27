@@ -15,9 +15,8 @@ const CHECKBOX = 'h-4 w-4 rounded border-gray-300 text-blue-600'
 const CELL = 'flex min-h-10 lg:min-h-7 cursor-pointer items-center justify-center'
 
 // The food editor's schedule picker: days down, meals across, one native
-// checkbox per slot, plus an "Every day" row of per-meal check-alls. Replaces
-// the retired FoodSlotPicker's pill chips - a 30-day trip is a column scan
-// here instead of ninety pills.
+// checkbox per slot, plus an "Every day" row of per-meal check-alls. A
+// 30-day trip is a column scan here, not ninety separate chips.
 export default function FoodMealGrid({
   slots,
   selected,

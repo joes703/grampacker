@@ -35,34 +35,27 @@ export function useCsvFileInput<T>(
       return
     }
     const filename = file.name
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      // FileReader.result is `string | ArrayBuffer | null`. We invoked
-      // readAsText(), so a string is the expected shape — but narrow it
-      // explicitly rather than casting so a future caller switching to
-      // readAsArrayBuffer() doesn't silently feed bytes to a text parser.
-      const result = ev.target?.result
-      if (typeof result !== 'string') return
-      const parsed = parser(result)
-      if (typeof parsed === 'string') handlers.onError(parsed)
-      else handlers.onParsed(parsed, filename)
-    }
-    reader.onerror = () => {
-      // FileReader.error fires for I/O failures: corrupt file, OS-level
-      // permission denial, removable media yanked mid-read, etc. Without
-      // this handler the consumer's onError is never called and the
-      // import surface waits forever — the user sees nothing happen.
-      handlers.onError(
-        "Couldn't read this file. It may be corrupt or your browser may have blocked file access. Try a different file.",
+    // The promise is owned here: a read failure (corrupt file, permission
+    // denied, removed media) is reported, or the import surface would wait
+    // forever with nothing shown; a throw from the parser or the caller's
+    // handler is reported too, never left unhandled.
+    file
+      .text()
+      .then(
+        (text) => {
+          const parsed = parser(text)
+          if (typeof parsed === 'string') handlers.onError(parsed)
+          else handlers.onParsed(parsed, filename)
+        },
+        () =>
+          handlers.onError(
+            "Couldn't read this file. It may be corrupt or your browser may have blocked file access. Try a different file.",
+          ),
       )
-    }
-    reader.onabort = () => {
-      // Programmatic .abort() or browser-internal cancellations. NOT
-      // user-cancel via the OS picker (that produces no file at all and
-      // is handled by the `if (!file) return` guard above).
-      handlers.onError('File read was canceled.')
-    }
-    reader.readAsText(file)
+      .catch((error: unknown) => {
+        console.error('CSV import failed', error)
+        handlers.onError("Couldn't import this file. Please try again.")
+      })
   }
 
   const openPicker = useCallback(() => {

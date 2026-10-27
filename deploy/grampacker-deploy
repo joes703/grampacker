@@ -100,28 +100,16 @@ maintenance_is_on() {
   [ -e "$ROOT/maintenance/on" ] && [ "$(site_status)" = 503 ]
 }
 
-# Waits for Docker's health check, then checks the two things a person
-# would: the health endpoint and the homepage. The app's CI covers the API.
-check_app() {
-  local port id state=""
+# Starts the app and waits for the image's health check (which requires
+# /api/health to answer {"ok":true}); Compose fails if the container exits or
+# turns unhealthy, or is not healthy within 120 seconds. Then checks what the
+# health check cannot: the homepage answers through the published host port.
+start_app() {
+  local port
   port="$(env_get APP_PORT)"
   port="${port:-3000}"
-  id="$(compose ps -q app)"
-  [ -n "$id" ] || die "the app container is not running"
-  for _ in $(seq 1 60); do
-    [ "$(docker inspect -f '{{.State.Running}}' "$id")" = true ] ||
-      die "the app container stopped; see: docker compose logs app"
-    state="$(docker inspect -f '{{.State.Health.Status}}' "$id")"
-    [ "$state" = healthy ] && break
-    [ "$state" = unhealthy ] && die "the app container is unhealthy"
-    sleep 2
-  done
-  [ "$state" = healthy ] || die "the app did not become healthy within 120 seconds"
-
-  local body
-  body="$(curl -sS -m 10 -f "http://127.0.0.1:$port/api/health")" ||
-    die "/api/health did not answer 200"
-  [ "$body" = '{"ok":true}' ] || die "/api/health answered $body"
+  compose up -d --wait --wait-timeout 120 --no-deps --force-recreate app ||
+    die "the app did not become healthy; see: docker compose logs app"
   curl -sS -m 10 -f -o /dev/null -w '%{content_type}' "http://127.0.0.1:$port/" |
     grep -q '^text/html' || die "the homepage did not answer 200 text/html"
   say "app is healthy"
@@ -185,8 +173,7 @@ cmd_deploy() {
   APP_IMAGE="$image" compose run --rm --no-deps app migrate
 
   set_app_image "$image"
-  compose up -d --no-deps --force-recreate app
-  check_app
+  start_app
   maintenance_off
   trap - EXIT
   say "deployed $image"
@@ -219,8 +206,7 @@ cmd_rollback() {
   cp -a "$dir/data" "$ROOT/data"
 
   set_app_image "$previous"
-  compose up -d --no-deps --force-recreate app
-  check_app
+  start_app
   say "rolled back to $previous with the data from $dir"
   say "maintenance is still on. Check the site, then: grampacker-deploy maintenance off"
 }

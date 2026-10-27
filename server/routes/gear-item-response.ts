@@ -1,4 +1,4 @@
-import { gearStatusSchema, type GearItemResponse } from '../../shared/gear'
+import type { GearItemResponse } from '../../shared/gear'
 import type { GearItemRow } from '../repos/gear-items'
 
 // The one gear row -> DTO mapper, used by the gear routes and by the list
@@ -14,7 +14,7 @@ export function toGearItemResponse(row: GearItemRow): GearItemResponse {
     weightGrams: row.weightGrams,
     cost: row.costCents === null ? null : row.costCents / 100,
     purchaseDate: row.purchaseDate,
-    status: gearStatusSchema.parse(row.status),
+    status: row.status,
     sortOrder: row.sortOrder,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),

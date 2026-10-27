@@ -5,14 +5,13 @@
 // Internal cross-module imports inside src/lib/csv/ go directly to the
 // source module (./core, ./units, ./gear), never through this barrel, to
 // avoid circular module resolution and to keep dependency direction
-// one-way. toGrams (./units) stays internal by design, as it did in the
-// old repo's barrel.
+// one-way. toGrams (./units) stays internal by design.
 //
 // The import planner (./import-plan) and its dedup helper (./sort-keys)
 // are not re-exported here; consumers import them directly from
 // '../lib/csv/import-plan' to keep this barrel to the format adapters.
 
-export { toCsv, downloadCsv, parseCsv, MAX_CSV_ROWS } from './core'
+export { downloadBlob, downloadCsv, slugifyFilename, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'

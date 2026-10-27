@@ -12,7 +12,9 @@ const ONEPASSWORD_AAGUID = 'bada5566-a7aa-401f-bd96-45619a55120d'
 const ZERO_AAGUID = '00000000-0000-0000-0000-000000000000'
 
 const h = vi.hoisted(() => ({
-  listUserPasskeys: vi.fn<() => Promise<{ data: unknown; error: unknown }>>(),
+  // What better-auth's useListPasskeys returns; it refetches by itself after
+  // add, delete and rename, so the tests set the list they want shown.
+  list: { data: null as unknown, error: null as unknown, isPending: true },
   updatePasskey: vi.fn<
     (input: { id: string; name: string }) => Promise<{ error: unknown }>
   >(),
@@ -24,8 +26,8 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../lib/auth-client', () => ({
   authClient: {
+    useListPasskeys: () => h.list,
     passkey: {
-      listUserPasskeys: h.listUserPasskeys,
       updatePasskey: h.updatePasskey,
       deletePasskey: h.deletePasskey,
       addPasskey: h.addPasskey,
@@ -37,17 +39,13 @@ vi.mock('../lib/auth-client', () => ({
 }))
 
 function listResolves(rows: unknown[]) {
-  h.listUserPasskeys.mockResolvedValue({ data: rows, error: null })
+  h.list = { data: rows, error: null, isPending: false }
 }
 
 // The server's refusal when the session is too old to change the credential set.
-// Our own gate answers REAUTH_REQUIRED (delete-passkey); better-auth's
-// freshSessionMiddleware answers SESSION_NOT_FRESH (the register endpoints).
-// Both mean "re-authenticate", and the component must handle both.
-const STALE = { status: 403, code: 'REAUTH_REQUIRED', message: 'stale' }
-const STALE_BETTER_AUTH = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
+const STALE = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
 
-// Re-authentication is a CEREMONY now, not a typed secret: signing in again
+// Re-authentication is a CEREMONY, not a typed secret: signing in again
 // mints a new session, and a new session is a fresh one.
 async function confirmWithPasskey() {
   fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
@@ -93,8 +91,21 @@ describe('PasskeySection labels', () => {
   })
 })
 
+describe('PasskeySection loading', () => {
+  it('shows loading, then a load failure', () => {
+    h.list = { data: null, error: null, isPending: true }
+    const { rerender } = render(<PasskeySection />)
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+
+    h.list = { data: null, error: { status: 500 }, isPending: false }
+    rerender(<PasskeySection />)
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load your passkeys.")
+  })
+})
+
 describe('PasskeySection rename', () => {
-  it('renames via updatePasskey and refetches the list', async () => {
+  it('renames via updatePasskey', async () => {
     listResolves([{ id: 'pk1', name: null, aaguid: ONEPASSWORD_AAGUID }])
     h.updatePasskey.mockResolvedValue({ error: null })
     render(<PasskeySection />)
@@ -108,8 +119,6 @@ describe('PasskeySection rename', () => {
         name: 'travel key',
       }),
     )
-    // reloadKey bump: initial load + post-rename refetch.
-    await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
     // A rename is not gated: no re-auth prompt, no ceremony. Renaming changes a
     // label, never which credentials can sign in.
     expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
@@ -138,7 +147,6 @@ describe('PasskeySection rename', () => {
         name: 'travel key',
       }),
     )
-    await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(2))
     // The point of the test: the double delivery still yields ONE write.
     expect(h.updatePasskey).toHaveBeenCalledTimes(1)
   })
@@ -180,8 +188,6 @@ describe('PasskeySection rename', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(await screen.findByText('nope')).toBeInTheDocument()
     expect(screen.getByText('work laptop')).toBeInTheDocument()
-    // No refetch on failure: only the initial load.
-    expect(h.listUserPasskeys).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -201,12 +207,12 @@ describe('PasskeySection fresh-auth gate', () => {
 
   it('re-authenticates and replays the ADD when better-auth says the session is stale', async () => {
     // The register endpoints are gated by better-auth's own middleware, which
-    // answers SESSION_NOT_FRESH - a different code from our delete gate. Missing
-    // it would strand "Add a passkey" on a raw error with no way forward.
+    // answers SESSION_NOT_FRESH like our delete gate. Missing it would strand
+    // "Add a passkey" on a raw error with no way forward.
     // (One passkey already enrolled, so re-asserting one is possible here - the
     // zero-passkey case is its own test below.)
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
-    h.addPasskey.mockResolvedValueOnce({ error: STALE_BETTER_AUTH })
+    h.addPasskey.mockResolvedValueOnce({ error: STALE })
     h.addPasskey.mockResolvedValueOnce({ error: null })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
@@ -235,7 +241,7 @@ describe('PasskeySection fresh-auth gate', () => {
     // who signed in by email days ago and never enrolled a passkey now wants to.
     // Their session is stale, and "use a passkey" would be a door with no key.
     listResolves([])
-    h.addPasskey.mockResolvedValue({ error: STALE_BETTER_AUTH })
+    h.addPasskey.mockResolvedValue({ error: STALE })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
 

@@ -13,6 +13,8 @@ import FoodMealGrid, { MEAL_LABELS } from './FoodMealGrid'
 import { foodItemPatch, foodItemSummary, type FoodItemDraft } from './food-item-form'
 import {
   FOOD_QUANTITY_MAX,
+  MAX_FOOD_NAME,
+  createFoodItemRequestSchema,
   type CreateFoodItemRequest,
   type FoodItemResponse,
   type FoodSlotResponse,
@@ -95,20 +97,15 @@ export default function FoodItemDialog({
   const effectiveSelected = selected.filter((id) => liveIds.has(id))
 
   const quantityValue = Number(quantity)
-  // Mirrors the server bounds (shared/food.ts) so a rejection is not the
-  // first the user hears of them. Weight needs no bound here: WeightInput
-  // clamps to MAX_ITEM_WEIGHT_GRAMS, which equals foodWeightSchema's max
-  // (pinned by FoodItemDialog.test.tsx).
+  // The server's own schema, so a rejection is not the first the user hears
+  // of a bound. Weight needs no check here: WeightInput clamps to
+  // MAX_ITEM_WEIGHT_GRAMS, which is the food weight schema's max.
   //
   // Quantity validity stands on its own: the summary reads it, and judging
   // it by whole-form validity made clearing the NAME change the carried
   // count mid-rename.
-  const quantityValid =
-    Number.isInteger(quantityValue) &&
-    quantityValue >= 1 &&
-    quantityValue <= FOOD_QUANTITY_MAX
-  const valid =
-    name.trim().length > 0 && name.trim().length <= 128 && quantityValid
+  const quantityValid = createFoodItemRequestSchema.shape.quantity.safeParse(quantityValue).success
+  const valid = createFoodItemRequestSchema.shape.name.safeParse(name).success && quantityValid
 
   const draft: FoodItemDraft = {
     name,
@@ -192,7 +189,7 @@ export default function FoodItemDialog({
               id="fi-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              maxLength={128}
+              maxLength={MAX_FOOD_NAME}
               className={`w-full ${FORM_INPUT}`}
             />
           </div>

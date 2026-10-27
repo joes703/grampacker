@@ -4,11 +4,11 @@ import { waitFor } from '@testing-library/react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import {
   clearToasts,
-  deferred,
   renderHookWithClient,
   testQueryClient,
   shownToasts,
 } from '../test/mutation-hook-harness'
+import { deferred } from '../test/deferred'
 
 // The bulk delete/move mutations were inline in GearLibraryPage (which has no
 // component test), so this locks what the extraction exposed. Only the

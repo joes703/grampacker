@@ -8,9 +8,8 @@ import { MAX_DESC_LENGTH } from '../lib/caps'
 
 // The one CSV import preview: header with title + notes + close, sticky-
 // header Name/Weight/Category table, Cancel / "Import N item(s)" footer.
-// The gear-library import and the list import used to carry near-identical
-// copies of this whole dialog (and had already drifted: the gear copy lost
-// its close button's ml-4). What genuinely differs comes in as props: the
+// The gear-library import and the list import share it. What genuinely
+// differs comes in as props: the
 // title suffix, the caller's note lines around the shared long-description
 // warning, and the list import's extra Flags column.
 

@@ -3,8 +3,7 @@ import { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './index'
 import type { Category, GearItem, ListItemWithGear } from '../types'
 import { MAX_LIST_ITEM_QUANTITY } from '../caps'
 
-// camelCase DTO builders (the new repo speaks camelCase end-to-end; unlike
-// the old repo these ARE the API response shapes, with no user_id).
+// camelCase DTO builders. These ARE the API response shapes, with no user_id.
 function makeCategory(over: Partial<Category> & { id: string; name: string }): Category {
   return {
     id: over.id,

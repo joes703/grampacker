@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { Category, ListItemWithGear } from '../lib/types'
 import { type WeightBreakdown } from '../lib/weight-breakdown'
 import { useWeightUnit } from '../lib/use-weight-unit'
@@ -41,16 +40,14 @@ type Props = {
 //
 // Math comes in already finished, from computeListWeightBreakdown in
 // lib/weight-breakdown.ts; this component owns presentation only. It does NOT
-// compute a fallback - that fallback was gear-only, so forgetting to pass a
-// breakdown used to render a total quietly missing food.
+// compute a fallback: a local fallback could quietly drop food from the
+// total.
 //
 export default function WeightSummary({
   items,
   categories,
   breakdown,
 }: Props) {
-  const [breakdownOpen, setBreakdownOpen] = useState(false)
-
   if (items.length === 0 && breakdown.totalPackGrams === 0) return null
 
   return (
@@ -58,10 +55,7 @@ export default function WeightSummary({
       {/* Mobile / tablet portrait — compact strip + collapsible table. */}
       <div className="lg:hidden flex flex-col gap-2">
         <SummaryStrip breakdown={breakdown} />
-        <BreakdownDisclosure
-          open={breakdownOpen}
-          onToggle={() => setBreakdownOpen((v) => !v)}
-        >
+        <BreakdownDisclosure>
           <WeightTable items={items} categories={categories} breakdown={breakdown} />
         </BreakdownDisclosure>
       </div>
@@ -112,29 +106,18 @@ function Stat({
   )
 }
 
-function BreakdownDisclosure({
-  open,
-  onToggle,
-  children,
-}: {
-  open: boolean
-  onToggle: () => void
-  children: React.ReactNode
-}) {
+// A native <details>: closed by default, toggled by its summary, with the
+// browser's own disclosure semantics and keyboard support.
+function BreakdownDisclosure({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} overflow-hidden`}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className={`flex w-full items-center gap-1.5 px-3 py-2 text-left ${FLAT_TABLE_EYEBROW} ${TABLE_HEADER_BG} hover:bg-gray-100`}
+    <details className={`group ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} overflow-hidden`}>
+      <summary
+        className={`flex w-full cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-left [&::-webkit-details-marker]:hidden ${FLAT_TABLE_EYEBROW} ${TABLE_HEADER_BG} hover:bg-gray-100`}
       >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <ChevronRight size={14} className="group-open:rotate-90" />
         <span>Weight breakdown</span>
-      </button>
-      {open && (
-        <div className={`border-t ${TABLE_DIVIDER} py-1`}>{children}</div>
-      )}
-    </div>
+      </summary>
+      <div className={`border-t ${TABLE_DIVIDER} py-1`}>{children}</div>
+    </details>
   )
 }

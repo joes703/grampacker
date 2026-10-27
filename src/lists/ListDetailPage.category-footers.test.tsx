@@ -86,25 +86,16 @@ const h = vi.hoisted(() => ({
 // The session atom must not mount in jsdom (test/list-detail-harness.tsx
 // explains why). dnd-kit cannot be driven here; the contexts are
 // pass-throughs because nothing is dragged.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
   return { ...actual, ...h }
 })
 
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore())
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')

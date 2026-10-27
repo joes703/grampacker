@@ -1,20 +1,17 @@
 import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { isDevEnvironment, securityHeaderMap } from './security-headers'
 import type { ApiErrorBody } from '../../shared/api'
-import type { AppEnv } from '../env'
 
-// The server's single incident handler. Before this existed the whole server
-// held one `console.` call (the dev email sender) and no `onError`, so every
-// unhandled throw became Hono's bare `Internal Server Error`: no correlation id,
-// no route, no way to tell a database failure from a programmer mistake.
+// The server's single incident handler. Without it, every unhandled throw
+// becomes Hono's bare `Internal Server Error`: no correlation id, no route, no
+// way to tell a database failure from a programmer mistake.
 //
 // What it covers, stated narrowly because the boundary is not obvious: errors
 // thrown in the Hono dispatch pipeline before the response is finalized. It does
 // NOT cover /api/auth/*, because better-call catches every throw inside its own
 // router and returns a Response (see the wrapper in server/index.ts). It does
 // not cover detached async work either - the app has no streaming responses and
-// no waitUntil call sites, and if either is ever added it owns its own error
+// no background tasks. If either is ever added, it owns its own error
 // reporting, because a response-level handler cannot reach into a task that
 // outlives the response.
 
@@ -59,7 +56,7 @@ const CAUSE_DEPTH_LIMIT = 5
 // Stacks: the header is removed by exact match against `${name}: ${message}`
 // and the frames kept only if that match succeeds. Searching for the first
 // `    at ` line instead would be fooled by a parameter containing a fake
-// frame (Codex finding); an unrecognized layout logs no stack at all.
+// frame; an unrecognized layout logs no stack at all.
 export type LoggedError = {
   name: string
   message: string
@@ -155,18 +152,16 @@ export function describeError(err: unknown): LoggedError {
 // writes - and a database failure makes every one of those requests fail at
 // once, which is exactly when the logs need to be readable.
 //
-// Two shapes were tried and rejected before this one, recorded so they are not
-// re-proposed: leaning on the rate limits (database-backed, so they fail in
-// the same outage they were invoked for), and shrinking each over-budget
-// entry (bounds bytes, not entries - the count still tracks request count).
+// Two other shapes do not work: leaning on the rate limits (database-backed,
+// so they fail in the same outage they were invoked for), and shrinking each
+// over-budget entry (bounds bytes, not entries - the count still tracks
+// request count).
 //
-// The ceiling is 21 entries per window per isolate: 20 detailed, plus one line
-// announcing that suppression started. There is deliberately NO end-of-window
-// summary. Nothing could fire it - this state is request-driven, so if traffic
-// stops after suppression begins no request performs the rollover, an evicted
-// isolate loses the count outright, and waitUntil caps at 30s so it cannot carry
-// a 60s deferral. A count that arrives only when convenient reads as
-// authoritative and is not.
+// The ceiling is 21 entries per window: 20 detailed, plus one line announcing
+// that suppression started. There is deliberately NO end-of-window summary.
+// This state is request-driven, so if traffic stops after suppression begins,
+// no request performs the rollover and the summary would never be written. A
+// count that arrives only when convenient reads as authoritative and is not.
 //
 // Per process. Restarting the process resets the counter; that costs log
 // fidelity, never correctness.
@@ -299,96 +294,27 @@ export function recordAuthLog(
 }
 
 // The `logger` option handed to better-auth (server/auth.ts).
-export const authLogger = {
-  log: (
-    level: 'debug' | 'info' | 'warn' | 'error',
-    message: string,
-    ...args: unknown[]
-  ) => recordAuthLog(level, message, ...args),
-}
+export const authLogger = { log: recordAuthLog }
 
-// /api/auth/* failures never reach the handler below: better-call answers an
+// /api/auth/* failures never reach errorHandler below: better-call answers an
 // APIError with a Response, and the /api/auth/* route in server/index.ts
-// catches any other error. This brings both into the same scheme.
-//
-// The id has to ride in the BODY: @better-fetch/fetch returns
-// {...parsedJsonBody, status, statusText} to callers and drops response headers
-// entirely, so a header would be invisible to every auth caller in the SPA.
-//
-// Rewriting that body is only safe with care, and NOT because the body is always
-// empty - an earlier draft assumed that and was wrong. better-auth throws
-// APIError-derived 500s with real bodies (api/routes/session.mjs:257 ->
-// {message, code}), and the same route calls deleteSessionCookie, so these
-// responses can carry Set-Cookie. Losing that header would leave a dead session
-// cookie in the browser - the bug PR 4.3 just fixed, reintroduced from the
-// server side.
-export async function withAuthErrorCorrelation(
+// catches any other error. This logs both as correlated incidents. The
+// response goes back exactly as better-auth wrote it (body, status, every
+// Set-Cookie): the SPA's auth client does not read a correlation id.
+export function logAuthFailure(
   res: Response,
   req: { method: string; path: string },
-  // The error behind the response, when one escaped better-auth's handler
-  // (the /api/auth/* route in server/index.ts). Absent for a 5xx better-auth
-  // answered itself, such as an APIError.
+  // The error behind the response, when one escaped better-auth's handler.
+  // Absent for a 5xx better-auth answered itself, such as an APIError.
   err?: unknown,
-): Promise<Response> {
-  if (res.status < 500) return res
-
-  const correlationId = recordIncident({
-    source: 'auth-response',
-    method: req.method,
-    path: req.path,
-    status: res.status,
-    err,
-  })
-  if (correlationId === undefined) return res
-
-  // Read the CLONE, never the original. Deciding whether a body is JSON means
-  // reading it, and reading the original locks its stream - so every "return it
-  // untouched" path below would hand back an unusable response. The original is
-  // returnable precisely because it was never read.
-  const raw = await res
-    .clone()
-    .text()
-    .catch(() => null)
-  if (raw === null) return res
-
-  let body: unknown
-  if (raw === '') {
-    // better-call's generic 500 is `new Response(null, {status: 500})`. Nothing
-    // is overwritten because there is nothing there.
-    body = {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Internal Server Error',
-      correlationId,
-    }
-  } else {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      // Malformed or non-JSON: hand back the original byte-for-byte rather than
-      // guessing at a shape.
-      return res
-    }
-    // Only a non-null, non-array OBJECT can gain a field without changing shape.
-    // An array, string, number or null cannot, so they take the untouched path.
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return res
-    }
-    body = { ...parsed, correlationId }
+): Response {
+  if (res.status >= 500) {
+    recordIncident({ source: 'auth-response', method: req.method, path: req.path, status: res.status, err })
   }
-
-  // The original Headers OBJECT is passed through, not a copied plain map:
-  // multiple Set-Cookie values do not survive a round trip through an object.
-  // better-call strips content-length from its responses, so the new body length
-  // cannot contradict a stale header.
-  return new Response(JSON.stringify(body), {
-    status: res.status,
-    statusText: res.statusText,
-    headers: res.headers,
-  })
+  return res
 }
 
-export const errorHandler: ErrorHandler<{ Bindings: AppEnv }> = (err, c) => {
+export const errorHandler: ErrorHandler = (err, c) => {
   const httpException = err instanceof HTTPException ? err : null
 
   // A sub-500 HTTPException is a deliberate answer from a middleware, not an
@@ -413,17 +339,9 @@ export const errorHandler: ErrorHandler<{ Bindings: AppEnv }> = (err, c) => {
     err,
   })
 
+  // Security headers are added by the root app's securityHeaders middleware,
+  // which sets them after `await next()` on this response too.
   const headers = new Headers()
-  // The handler applies the header map ITSELF rather than relying on
-  // securityHeaders above it. That middleware sets headers after `await next()`,
-  // which does run when onError produces a response - but if securityHeaders is
-  // the thing that threw, it never gets there. Failing closed here costs one
-  // redundant assignment on the normal path.
-  for (const [key, value] of Object.entries(
-    securityHeaderMap({ dev: isDevEnvironment(c.env) }),
-  )) {
-    headers.set(key, value)
-  }
   if (httpException) {
     const original = httpException.getResponse()
     for (const name of PRESERVED_HEADERS) {

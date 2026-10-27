@@ -34,11 +34,11 @@ export function isPackingCollisionTarget(
 
 // ── The union planner ──────────────────────────────────────────────────────
 //
-// Since 0022 a Pack-mode cohort is the UNION of gear rows (`packing-item:`
-// ids) and food rows (`packing-food-item:` ids). One drag gesture still means
-// one of two things - reorder within the cohort, or move to another location
-// - but the reorder now permutes ranks across both tables and the move may
-// target either kind of row.
+// A Pack-mode cohort is the UNION of gear rows (`packing-item:` ids) and
+// food rows (`packing-food-item:` ids). One drag gesture means one of two
+// things - reorder within the cohort, or move to another location. The
+// reorder permutes ranks across both tables, and the move may target either
+// kind of row.
 
 export type PackingRowDragPlan =
   | { kind: 'reorder'; updates: UnionRankUpdates }
@@ -61,7 +61,7 @@ function parsePackRowId(raw: string): ParsedPackRowId {
 // same lens buildPackingTree and the sections use: during an optimistic bag
 // delete the cache still carries the dead bag's id while its rows render
 // under Unassigned, and planning against the raw id would misclassify a
-// within-Unassigned reorder as a cross-location move (round-7 finding).
+// within-Unassigned reorder as a cross-location move.
 // Returns undefined when the ref names a row that is not there (stale drag).
 function locateRow(
   ref: NonNullable<ParsedPackRowId>,

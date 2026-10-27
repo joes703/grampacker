@@ -6,22 +6,20 @@
 // (./sort-keys, ../random-temp-id, ../caps) and the GearCsvRow type; it must
 // never import anything that performs I/O.
 //
-// Dedup semantics (reproduced from the old repo's import path):
+// Dedup semantics:
 //   - categories dedup by lowercased name, against BOTH the existing
 //     library and other new categories in the same CSV;
 //   - gear dedups against the EXISTING library only, by
 //     gearKey(category, NFC-lowercased name, weight), so within-CSV
 //     duplicates create separate gear items.
 //
-// TRANSPLANT NOTES (adapted from the old buildListImportPlan path):
+// What the plan does NOT carry:
 //   - The server assigns sortOrder (max+1) and the gear id, so the plan
 //     carries neither. Only NEW categories get a client-minted tempId,
 //     used purely to link an item to its not-yet-created category in the
 //     request body.
 //   - status is server-assigned (defaults to 'active'), so planned items
 //     do not carry it.
-//   - The old planner also built list_items; that belongs to the list
-//     slice and is not ported here.
 //
 // PLAN / ENDPOINT SHAPE
 // ---------------------
@@ -183,11 +181,11 @@ export function planGearImport(
 // client-minted tempId so items can reference not-yet-created gear, same
 // as gear entries reference not-yet-created categories.
 
-export type GearRef =
+type GearRef =
   | { kind: 'existing'; id: string }
   | { kind: 'new'; tempId: string }
 
-export type PlannedListGear = {
+type PlannedListGear = {
   tempId: string
   name: string
   description: string | null
@@ -199,7 +197,7 @@ export type PlannedListGear = {
   cost: number | null
 }
 
-export type PlannedListItem = {
+type PlannedListItem = {
   gear: GearRef
   quantity: number
   isWorn: boolean
@@ -335,7 +333,7 @@ export function assertListImportWithinCaps(
       `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${plan.items.length}. Split it across multiple lists.`,
     )
   }
-  // A list import creates gear and categories too, and the 0021 trigger caps
+  // A list import creates gear and categories too, and the categories row-cap trigger caps
   // categories per USER, not per list - so the schema's per-file bound
   // (LIST_ITEM_CAP categories) is not enough once the existing library is
   // large.

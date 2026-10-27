@@ -42,7 +42,7 @@ repositories are the authorization boundary.
 | Build | `npm run build` | Typecheck + lint + bundle; tests are separate. A bare `tsc --noEmit` misses project-reference errors. |
 | Unit tests | `npm run test:unit` | Node tier: `scripts/`, `shared/`, `src/`, `server/**/*.node.test.ts`. |
 | API tests | `npm run test:api` | Every other `server/**/*.test.ts`: the real app on Node against a fresh SQLite database per file. A few tests open a local port; if the sandbox cannot bind one, say so and rely on CI. |
-| Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
+| Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no snapshot parent collision (`drizzle-kit check`), no destructive statement in a new migration. Fetch origin/main first. |
 | Other checks | `npm run check:action-pins` | Every action pinned to a full SHA with a tag comment. |
 | Dev server | `npm run dev` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. |
 | Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
@@ -107,7 +107,7 @@ dated.
 
 ## Migrations
 
-Before writing one, read these rules and `docs/testing-and-ci.md` section 7,
+Before writing one, read these rules and `docs/testing-and-ci.md` section 5,
 which states what `npm run test:migrations` proves and does not prove.
 
 - Create every migration with `drizzle-kit generate` (schema change) or
@@ -209,6 +209,12 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
 
 ## Git, dependencies, security
 
+- **Library first.** Before writing code, use what the platform and the
+  existing dependencies already provide (Hono middleware, TanStack Query,
+  better-auth, zod, the browser and Node). Hand-written code must name the
+  gap the library leaves; a similar line count is not a gap. Reason: every
+  hand-written copy is code we must test and keep correct alone, and it
+  misses the fixes the library gets.
 - **Never commit or install something you did not look at.** Feature branches,
   one logical change per commit, no unrelated cleanups folded in. Stage exact
   paths, never `git add -A`.
@@ -258,9 +264,7 @@ read `docs/ui-density.md` (the density tiers, token index and form rules).
   cannot see it, so it rots silently. Exception: request-contract types
   that `docs/authz-matrix.md` names (e.g. `QuickAddListItemRequest`,
   `ImportGearRequest`) stay exported even with no code importer - the
-  binding matrix references them. The other in-file-only exports left
-  after the 2026-10 cleanup are accepted on a touched-file basis; do not
-  add new ones.
+  binding matrix references them.
 - Finish what the change implies (all five call sites, not one), but do not
   expand scope beyond the task.
 

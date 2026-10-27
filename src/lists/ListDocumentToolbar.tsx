@@ -6,6 +6,7 @@ import ListSettingsButton from './ListSettingsButton'
 import ListShareButton from './ListShareButton'
 import ListViewNav from './ListViewNav'
 import UnitSegmentedControl from '../components/UnitSegmentedControl'
+import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
 
 type Props = {
   list: List
@@ -53,7 +54,7 @@ export default function ListDocumentToolbar({
               onClick={() => window.print()}
               aria-label="Print"
               title="Print"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`inline-flex items-center gap-1.5 ${TOOLBAR_BUTTON}`}
             >
               <Printer size={14} />
               {/* Icon-only below sm, like List options: at phone width this
@@ -61,14 +62,14 @@ export default function ListDocumentToolbar({
               <span className="hidden sm:inline">Print</span>
             </button>
           )}
-          <UnitSegmentedControl idPrefix="list-toolbar" />
+          <UnitSegmentedControl />
         </div>
 
         <div className="flex items-center gap-2">
           {/* Share sits beside List options rather than inside it: it is the
               end goal of building a list for this audience, and buried between
-              Rename and Delete it took UX audits three clicks to find. One
-              home - ListSettingsPanel no longer hosts it. */}
+              Rename and Delete it is hard to find. One home - ListSettingsPanel
+              does not host it. */}
           <ListShareButton list={list} />
           <ListSettingsButton list={list} />
         </div>

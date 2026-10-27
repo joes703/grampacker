@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatItemWeight, type WeightUnit } from '../lib/weight'
-import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { FLAT_TABLE_NUMERIC_TEXT, INLINE_EDIT_FOCUS_RING } from './flat-table-styles'
 import ItemWeightValue from './ItemWeightValue'
 import WeightInput from './WeightInput'
+import { clampWeightGrams } from '../../shared/gear'
 
 // Click-to-edit weight, the one inline control shared by every surface that
 // shows a weight: the Category row, the Pack row, and the gear library row.
@@ -62,7 +62,7 @@ export default function InlineWeight({
   }, [editing])
 
   function commit() {
-    const clamped = Math.max(0, Math.min(draftGrams, MAX_ITEM_WEIGHT_GRAMS))
+    const clamped = clampWeightGrams(draftGrams)
     if (clamped !== grams && onSave) onSave(clamped)
     setEditing(false)
   }

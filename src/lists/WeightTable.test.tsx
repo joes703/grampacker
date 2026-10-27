@@ -62,7 +62,7 @@ function rowFor(label: string): HTMLElement {
   return row
 }
 
-// The component no longer computes anything: a breakdown is required and can
+// The component computes nothing: a breakdown is required and can
 // only come from computeListWeightBreakdown. These tests therefore build one
 // the same way production does, which is also the only way to state what food
 // contributes.
@@ -141,11 +141,9 @@ describe('WeightTable', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  // Replaces a test that asserted a provided breakdown beat the component's
-  // own gear-only recomputation. That fallback is gone - a breakdown is now
-  // required and branded, so this file can no longer even construct one by
-  // hand - and what is actually worth pinning is that food reaches the
-  // rendered rows, which is the bug the share shipped with.
+  // A breakdown is required and branded, so this file cannot construct one
+  // by hand. What is worth pinning is that food reaches the rendered rows:
+  // a total that drops food under-reports the pack.
   it('renders food into consumables and the total, not into a category row', () => {
     const items = [listItem({ id: '1', categoryId: shelter.id, weightGrams: 200 })]
     render(

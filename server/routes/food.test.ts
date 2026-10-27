@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import app from '../index'
-import { env, testDb } from '../test/node-env'
-import { apiRequest } from '../test/api-helpers'
+import { app, env } from '../test/node-env'
+import { apiRequest, getListFood } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
 
@@ -11,16 +10,10 @@ import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
 
 type ListBody = { id: string }
 
-async function createList(cookie: string, name: string): Promise<string> {
+async function createListId(cookie: string, name: string): Promise<string> {
   const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
   expect(res.status).toBe(201)
   return ((await res.json()) as ListBody).id
-}
-
-async function getFood(cookie: string, listId: string): Promise<ListFoodResponse> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/food`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ListFoodResponse
 }
 
 async function setDays(cookie: string, listId: string, days: number) {
@@ -50,10 +43,10 @@ describe('food: day grid', () => {
     // part: delete-and-reinsert would take every association with it, so a
     // stray edit to the days box would silently unschedule the whole trip.
     const { cookie } = await signUpVerifiedUser('food-2@example.com', 'F2')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 5)
 
-    const before = await getFood(cookie, listId)
+    const before = await getListFood(cookie, listId)
     const day1Breakfast = slotOf(before, 1, 'breakfast')
     await addItem(cookie, listId, {
       name: 'Oatmeal',
@@ -64,7 +57,7 @@ describe('food: day grid', () => {
 
     await setDays(cookie, listId, 5)
 
-    const after = await getFood(cookie, listId)
+    const after = await getListFood(cookie, listId)
     expect(slotOf(after, 1, 'breakfast').id).toBe(day1Breakfast.id)
     expect(after.items).toHaveLength(1)
     expect(after.items[0]!.slotIds).toEqual([day1Breakfast.id])
@@ -75,16 +68,14 @@ describe('food: day grid', () => {
     // hole: a grow racing a shrink could leave middle days missing. Cut one
     // directly: day 3 goes, days 4 and 5 stay.
     const { cookie } = await signUpVerifiedUser('food-3@example.com', 'F3')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 5)
-    await testDb.prepare('delete from list_food_slots where list_id = ? and day_number = 3')
-      .bind(listId)
-      .run()
-    expect((await getFood(cookie, listId)).slots).toHaveLength(12)
+    env.DB.prepare('delete from list_food_slots where list_id = ? and day_number = 3').run(listId)
+    expect((await getListFood(cookie, listId)).slots).toHaveLength(12)
 
     expect((await setDays(cookie, listId, 5)).status).toBe(200)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.slots).toHaveLength(15)
     for (const meal of ['breakfast', 'lunch', 'dinner']) {
       expect(slotOf(food, 3, meal), meal).toBeDefined()
@@ -93,11 +84,11 @@ describe('food: day grid', () => {
 
   it('trims beyond the new count', async () => {
     const { cookie } = await signUpVerifiedUser('food-4@example.com', 'F4')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 5)
     await setDays(cookie, listId, 3)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.dayCount).toBe(3)
     expect(food.slots).toHaveLength(9)
   })
@@ -106,10 +97,10 @@ describe('food: day grid', () => {
     // 90 slots in one INSERT, about 630 bound parameters. SQLite allows
     // 32766 (server/repos/food.ts says why that is enough).
     const { cookie } = await signUpVerifiedUser('food-5@example.com', 'F5')
-    const listId = await createList(cookie, 'Thru hike')
+    const listId = await createListId(cookie, 'Thru hike')
 
     expect((await setDays(cookie, listId, 30)).status).toBe(200)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.dayCount).toBe(30)
     expect(food.slots).toHaveLength(90)
     for (const meal of ['breakfast', 'lunch', 'dinner']) {
@@ -119,7 +110,7 @@ describe('food: day grid', () => {
 
   it('rejects a trip longer than the cap', async () => {
     const { cookie } = await signUpVerifiedUser('food-6@example.com', 'F6')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 31)).status).toBe(400)
   })
 })
@@ -127,14 +118,14 @@ describe('food: day grid', () => {
 describe('food: quantity is what you typed, unitCount is what you carry', () => {
   it('counts one SHARED bag associated with five slots exactly once', async () => {
     // One 500 g bag of trail mix picked at across five lunches weighs 500 g.
-    // Since 0024 that is a MODE (isPerMeal: false), not the only reading: a
+    // That is a MODE (isPerMeal: false), not the only reading: a
     // shared stash is ONE row with five associations, and its published
     // carry count ignores the schedule. Summing per placement, or multiplying
     // a shared stash by its meals, would say 2500.
     const { cookie } = await signUpVerifiedUser('food-7@example.com', 'F7')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 5)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const lunches = food.slots.filter((s) => s.meal === 'lunch').map((s) => s.id)
     expect(lunches).toHaveLength(5)
 
@@ -147,7 +138,7 @@ describe('food: quantity is what you typed, unitCount is what you carry', () => 
     })
     expect(res.status).toBe(201)
 
-    const after = await getFood(cookie, listId)
+    const after = await getListFood(cookie, listId)
     expect(after.items).toHaveLength(1)
     expect(after.items[0]!.isPerMeal).toBe(false)
     expect(after.items[0]!.quantity).toBe(1)
@@ -160,7 +151,7 @@ describe('food: quantity is what you typed, unitCount is what you carry', () => 
 
   it('rejects a fractional quantity at the boundary', async () => {
     const { cookie } = await signUpVerifiedUser('food-9@example.com', 'F9')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     const res = await addItem(cookie, listId, {
       name: 'Half a bag',
       weightGrams: 500,
@@ -175,7 +166,7 @@ describe('food: ownership and list scoping', () => {
   it('404s another user\'s list', async () => {
     const owner = await signUpVerifiedUser('food-12@example.com', 'F12')
     const other = await signUpVerifiedUser('food-13@example.com', 'F13')
-    const listId = await createList(owner.cookie, 'Mine')
+    const listId = await createListId(owner.cookie, 'Mine')
     await setDays(owner.cookie, listId, 2)
 
     const res = await apiRequest(other.cookie, 'GET', `/api/lists/${listId}/food`)
@@ -187,11 +178,11 @@ describe('food: ownership and list scoping', () => {
     // Same owner, two lists. The slot id is real and belongs to this user - only
     // the LIST is wrong, which is exactly the case a same-owner check misses.
     const { cookie } = await signUpVerifiedUser('food-14@example.com', 'F14')
-    const listA = await createList(cookie, 'A')
-    const listB = await createList(cookie, 'B')
+    const listA = await createListId(cookie, 'A')
+    const listB = await createListId(cookie, 'B')
     await setDays(cookie, listA, 2)
     await setDays(cookie, listB, 2)
-    const foodB = await getFood(cookie, listB)
+    const foodB = await getListFood(cookie, listB)
 
     const res = await addItem(cookie, listA, {
       name: 'Smuggled',
@@ -211,22 +202,18 @@ describe('food: ownership and list scoping', () => {
 // byte-for-byte after the request.
 describe('food: the matrix cells a status alone would not prove', () => {
   async function foodRows(listId: string) {
-    const items = await testDb.prepare(
+    const items = (env.DB.prepare(
       'select * from list_food_items where list_id = ? order by id',
-    )
-      .bind(listId)
-      .all()
-    const links = await testDb.prepare(
+    ).all(listId) as Record<string, unknown>[])
+    const links = (env.DB.prepare(
       'select * from list_food_item_slots where list_id = ? order by food_item_id, slot_id',
-    )
-      .bind(listId)
-      .all()
-    return { items: items.results, links: links.results }
+    ).all(listId) as Record<string, unknown>[])
+    return { items, links }
   }
 
   async function scheduledItem(cookie: string, listId: string) {
     await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const res = await addItem(cookie, listId, {
       name: 'Oats',
       weightGrams: 90,
@@ -240,7 +227,7 @@ describe('food: the matrix cells a status alone would not prove', () => {
   it('a: a non-owner cannot create an item on the victim list (404, no row)', async () => {
     const owner = await signUpVerifiedUser('food-m1@example.com', 'M1')
     const other = await signUpVerifiedUser('food-m2@example.com', 'M2')
-    const listId = await createList(owner.cookie, 'Mine')
+    const listId = await createListId(owner.cookie, 'Mine')
     await scheduledItem(owner.cookie, listId)
     const before = await foodRows(listId)
 
@@ -257,7 +244,7 @@ describe('food: the matrix cells a status alone would not prove', () => {
   it('b: a non-owner cannot delete the victim item (404, row and placements intact)', async () => {
     const owner = await signUpVerifiedUser('food-m3@example.com', 'M3')
     const other = await signUpVerifiedUser('food-m4@example.com', 'M4')
-    const listId = await createList(owner.cookie, 'Mine')
+    const listId = await createListId(owner.cookie, 'Mine')
     const { item } = await scheduledItem(owner.cookie, listId)
     const before = await foodRows(listId)
     expect(before.links).toHaveLength(1)
@@ -273,8 +260,8 @@ describe('food: the matrix cells a status alone would not prove', () => {
 
   it("c: an item cannot be patched or deleted through another of the SAME user's lists", async () => {
     const { cookie } = await signUpVerifiedUser('food-m5@example.com', 'M5')
-    const listA = await createList(cookie, 'A')
-    const listB = await createList(cookie, 'B')
+    const listA = await createListId(cookie, 'A')
+    const listB = await createListId(cookie, 'B')
     const { item } = await scheduledItem(cookie, listA)
     await setDays(cookie, listB, 1)
     const before = { a: await foodRows(listA), b: await foodRows(listB) }
@@ -303,17 +290,17 @@ describe('food: the matrix cells a status alone would not prove', () => {
     // change and a VALID local slot, so a partial application would show.
     const owner = await signUpVerifiedUser('food-m6@example.com', 'M6')
     const other = await signUpVerifiedUser('food-m7@example.com', 'M7')
-    const listId = await createList(owner.cookie, 'Mine')
+    const listId = await createListId(owner.cookie, 'Mine')
     const { item, food } = await scheduledItem(owner.cookie, listId)
     const localLunch = slotOf(food, 1, 'lunch').id
 
-    const otherList = await createList(other.cookie, 'Theirs')
+    const otherList = await createListId(other.cookie, 'Theirs')
     await setDays(other.cookie, otherList, 1)
-    const foreignSlot = slotOf(await getFood(other.cookie, otherList), 1, 'dinner').id
+    const foreignSlot = slotOf(await getListFood(other.cookie, otherList), 1, 'dinner').id
 
-    const ownOtherList = await createList(owner.cookie, 'Mine too')
+    const ownOtherList = await createListId(owner.cookie, 'Mine too')
     await setDays(owner.cookie, ownOtherList, 1)
-    const crossListSlot = slotOf(await getFood(owner.cookie, ownOtherList), 1, 'dinner').id
+    const crossListSlot = slotOf(await getListFood(owner.cookie, ownOtherList), 1, 'dinner').id
 
     const before = await foodRows(listId)
     expect(before.links).toHaveLength(1)
@@ -339,7 +326,7 @@ describe('/api/lists/:id/food authorization', () => {
     // run WITH a valid session and still 403 - proving the hoisted session
     // gate sits behind the CSRF layer, not in front of it.
     const { cookie } = await signUpVerifiedUser('food-csrf@example.com', 'FC')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
 
     const requestWithoutCsrf = (method: string, path: string, body?: unknown) => {
       const headers: Record<string, string> = {
@@ -354,7 +341,6 @@ describe('/api/lists/:id/food authorization', () => {
           headers,
           body: body === undefined ? undefined : JSON.stringify(body),
         },
-        env,
       )
     }
 
@@ -367,7 +353,6 @@ describe('/api/lists/:id/food authorization', () => {
         headers: { Origin: 'http://localhost:5173', 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 2 }),
       },
-      env,
     )
     expect(anonNoHeader.status).toBe(403)
 
@@ -389,9 +374,9 @@ describe('/api/lists/:id/food authorization', () => {
 describe('food: item updates', () => {
   it('treats omitted slotIds as unchanged and [] as unscheduled', async () => {
     const { cookie } = await signUpVerifiedUser('food-17@example.com', 'F17')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const breakfast = slotOf(food, 1, 'breakfast')
 
     const created = (await (
@@ -423,9 +408,9 @@ describe('food: item updates', () => {
 
   it('deletes an item and its associations', async () => {
     const { cookie } = await signUpVerifiedUser('food-18@example.com', 'F18')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
 
     const created = (await (
       await addItem(cookie, listId, {
@@ -439,11 +424,9 @@ describe('food: item updates', () => {
     // orphaned link would never show in the response: count the rows.
     const linkCount = async () =>
       (
-        await testDb.prepare(
+        (env.DB.prepare(
           'select count(*) as n from list_food_item_slots where food_item_id = ?',
-        )
-          .bind(created.id)
-          .first<{ n: number }>()
+        ).get(created.id) as { n: number } | undefined)
       )?.n
     expect(await linkCount()).toBe(1)
 
@@ -453,7 +436,7 @@ describe('food: item updates', () => {
       `/api/lists/${listId}/food/items/${created.id}`,
     )
     expect(res.status).toBe(204)
-    expect((await getFood(cookie, listId)).items).toHaveLength(0)
+    expect((await getListFood(cookie, listId)).items).toHaveLength(0)
     expect(await linkCount()).toBe(0)
   })
 })
@@ -463,9 +446,9 @@ describe('food: list duplication', () => {
     // duplicate() calls itself a deep copy. Omitting food would make that a
     // lie; copying per ASSOCIATION would make the duplicate weigh 5x.
     const { cookie } = await signUpVerifiedUser('food-dup@example.com', 'FD')
-    const listId = await createList(cookie, 'Original')
+    const listId = await createListId(cookie, 'Original')
     await setDays(cookie, listId, 5)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const lunches = food.slots.filter((s) => s.meal === 'lunch').map((s) => s.id)
     // SHARED, and that is the point of this fixture: one bag across five
     // lunches. A duplicate that dropped isPerMeal would take the column
@@ -482,7 +465,7 @@ describe('food: list duplication', () => {
     expect(dup.status).toBe(201)
     const copyId = ((await dup.json()) as ListBody).id
 
-    const copied = await getFood(cookie, copyId)
+    const copied = await getListFood(cookie, copyId)
     expect(copied.slots).toHaveLength(15)
     // ONE item, five associations, 500 g - not five items and not 2500 g.
     expect(copied.items).toHaveLength(1)
@@ -495,7 +478,7 @@ describe('food: list duplication', () => {
     // ORIGINAL again rather than reusing the pre-add snapshot - `food` was
     // fetched before the item existed, so comparing against it asserted only
     // that an id is not undefined.
-    const original = await getFood(cookie, listId)
+    const original = await getListFood(cookie, listId)
     expect(original.items).toHaveLength(1)
     expect(copied.items[0]!.id).not.toBe(original.items[0]!.id)
   })
@@ -503,13 +486,10 @@ describe('food: list duplication', () => {
 
 describe('food crosses the public share boundary as rows, and the plan does not', () => {
   it('publishes each food item once, and no trace of when it is eaten', async () => {
-    // The contract has changed twice. It began as "no food whatsoever", which
-    // contradicted the owner's own view - their total counted food, so a share
-    // of the same list reported a lighter pack. 2026-08-10 published one
-    // aggregate. 2026-08-11 published the rows: food you carry is part of the
-    // pack you are showing someone.
+    // Food you carry is part of the pack you are showing someone, and the
+    // owner's own total counts it, so the share publishes food rows.
     //
-    // The line that did NOT move is the one this test defends. What crosses is
+    // This test defends the line between item and plan. What crosses is
     // the ITEM - what it is, how many, how heavy. What does not is the PLAN -
     // which day, which meal, whether it is packed. Everything after the setup
     // below exists to prove that second half.
@@ -518,7 +498,7 @@ describe('food crosses the public share boundary as rows, and the plan does not'
     // the raw JSON rather than banning names someone thought of: a `slotIds`
     // array would slip past a deny-list.
     const { cookie } = await signUpVerifiedUser('food-share@example.com', 'FS')
-    const listId = await createList(cookie, 'Shared trip')
+    const listId = await createListId(cookie, 'Shared trip')
 
     // A real gear row, so the items loop below actually runs. Without one
     // raw.items is empty and the per-item assertion passes vacuously.
@@ -533,13 +513,13 @@ describe('food crosses the public share boundary as rows, and the plan does not'
     await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, { gearItemId })
 
     await setDays(cookie, listId, 3)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     await addItem(cookie, listId, {
       name: 'Trail mix',
       weightGrams: 500,
       quantity: 2,
       // THREE slots for one item, created WITHOUT isPerMeal so it takes the
-      // per-meal default (0024). It must appear on the wire ONCE - a join to
+      // per-meal default. It must appear on the wire ONCE - a join to
       // the associations would put it there three times over, which is still
       // the most dangerous mistake available in this feature.
       //
@@ -654,18 +634,18 @@ describe('food crosses the public share boundary as rows, and the plan does not'
 describe('the food item cap (200 per list)', () => {
   it('friendly 422 from the API, trigger backstop on raw inserts', async () => {
     const { cookie } = await signUpVerifiedUser('food-cap@example.com', 'FCap')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
 
-    // Distinct pack ranks per row: DEFAULT 0 would collide on the 0022
-    // Unassigned cohort unique index by the second row.
+    // Distinct pack ranks per row: DEFAULT 0 would collide on the
+    // list_food_items_pack_unassigned_uq index by the second row.
     const values = Array.from(
       { length: 199 },
       (_, i) =>
         `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, ${i}, 0, 0)`,
     ).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, pack_sort_order, created_at, updated_at) values ' +
         values,
     ).run()
@@ -689,24 +669,24 @@ describe('the food item cap (200 per list)', () => {
       error: 'Food item limit reached (200 per list)',
     })
 
-    await expect(
-      testDb.prepare(
+    expect(() =>
+      env.DB.prepare(
         `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ('${userId}-bypass', '${userId}', '${listId}', 'Bypass', 1, 1, 999, 0, 0)`,
       ).run(),
-    ).rejects.toThrow(/cap/)
+    ).toThrow(/cap/)
   })
 })
 
 
-describe('food counts derive from the plan (0024)', () => {
-  // The defect this closes: a five-day trip with a peanut butter packet in
-  // each lunch reported ONE packet. The plan was right and the pack weight was
-  // wrong, silently, which is the worst failure this app has.
+describe('food counts derive from the plan', () => {
+  // The failure this prevents: a five-day trip with a peanut butter packet in
+  // each lunch reporting ONE packet. The plan would be right and the pack
+  // weight wrong, silently, which is the worst failure this app has.
   it('a per-meal item counts once for every meal it is scheduled into', async () => {
     const { cookie } = await signUpVerifiedUser('food-permeal@example.com', 'PM')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 5)).status).toBe(200)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
 
     // No isPerMeal in the body: the DEFAULT is what the common case gets, and
     // a client that has never heard of the flag must still get this right.
@@ -718,7 +698,7 @@ describe('food counts derive from the plan (0024)', () => {
     })
     expect(res.status).toBe(201)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const item = food.items[0]!
     expect(item.isPerMeal).toBe(true)
     // One per lunch, five lunches. quantity stays what the user typed: a
@@ -730,9 +710,9 @@ describe('food counts derive from the plan (0024)', () => {
 
   it('multiplies the per-meal count by the meals', async () => {
     const { cookie } = await signUpVerifiedUser('food-permeal2@example.com', 'PM')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 3)).status).toBe(200)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
 
     expect(
       (
@@ -745,15 +725,15 @@ describe('food counts derive from the plan (0024)', () => {
       ).status,
     ).toBe(201)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.items[0]!.unitCount).toBe(6)
   })
 
   it('recomputes when the schedule changes, without touching quantity', async () => {
     const { cookie } = await signUpVerifiedUser('food-resched@example.com', 'RS')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 4)).status).toBe(200)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
 
     const created = await addItem(cookie, listId, {
       name: 'Smoothie',
@@ -763,7 +743,7 @@ describe('food counts derive from the plan (0024)', () => {
     })
     expect(created.status).toBe(201)
     const itemId = ((await created.json()) as { id: string }).id
-    expect((await getFood(cookie, listId)).items[0]!.unitCount).toBe(1)
+    expect((await getListFood(cookie, listId)).items[0]!.unitCount).toBe(1)
 
     // Add it to three more breakfasts. Nothing writes a count anywhere; the
     // count is a function of the plan, so it moves on its own.
@@ -776,16 +756,16 @@ describe('food counts derive from the plan (0024)', () => {
     expect(res.status).toBe(200)
     expect((await res.json()) as { unitCount: number }).toMatchObject({ unitCount: 4 })
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.items[0]!.quantity).toBe(1)
     expect(food.items[0]!.unitCount).toBe(4)
   })
 
   it('switching a scheduled item to shared collapses it to its quantity', async () => {
     const { cookie } = await signUpVerifiedUser('food-toggle@example.com', 'TG')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 5)).status).toBe(200)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
 
     const created = await addItem(cookie, listId, {
       name: 'Coffee',
@@ -795,7 +775,7 @@ describe('food counts derive from the plan (0024)', () => {
     })
     expect(created.status).toBe(201)
     const itemId = ((await created.json()) as { id: string }).id
-    expect((await getFood(cookie, listId)).items[0]!.unitCount).toBe(5)
+    expect((await getListFood(cookie, listId)).items[0]!.unitCount).toBe(5)
 
     const res = await apiRequest(
       cookie,
@@ -805,7 +785,7 @@ describe('food counts derive from the plan (0024)', () => {
     )
     expect(res.status).toBe(200)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.items[0]!.isPerMeal).toBe(false)
     // The SCHEDULE is untouched - it still says which breakfasts. Only what it
     // means for the count changed.
@@ -815,7 +795,7 @@ describe('food counts derive from the plan (0024)', () => {
 
   it('an unscheduled per-meal item still counts one meal\'s worth', async () => {
     const { cookie } = await signUpVerifiedUser('food-unsched@example.com', 'US')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     expect((await setDays(cookie, listId, 3)).status).toBe(200)
 
     expect(
@@ -829,7 +809,7 @@ describe('food counts derive from the plan (0024)', () => {
       ).status,
     ).toBe(201)
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     // Not zero: it is in the pack whether or not you have planned it.
     expect(food.items[0]!.unitCount).toBe(2)
   })
@@ -841,9 +821,9 @@ describe('food: duplication carries the counting mode', () => {
     // isPerMeal turns shared into per-meal (weight jumps), and hardcoding it
     // the other way turns per-meal into shared (weight collapses).
     const { cookie } = await signUpVerifiedUser('food-dup-pm@example.com', 'DP')
-    const listId = await createList(cookie, 'Original')
+    const listId = await createListId(cookie, 'Original')
     await setDays(cookie, listId, 4)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
 
     await addItem(cookie, listId, {
       name: 'Smoothie',
@@ -856,7 +836,7 @@ describe('food: duplication carries the counting mode', () => {
     expect(dup.status).toBe(201)
     const copyId = ((await dup.json()) as ListBody).id
 
-    const copied = await getFood(cookie, copyId)
+    const copied = await getListFood(cookie, copyId)
     expect(copied.items[0]!.isPerMeal).toBe(true)
     expect(copied.items[0]!.unitCount).toBe(4)
   })
@@ -867,16 +847,16 @@ describe('food: an unparseable body answers 400 with the shared copy', () => {
   // 'Invalid request' until the shared parseBody helper ended the drift.
   it('uses the same wording as every sibling route on all three write paths', async () => {
     const { cookie } = await signUpVerifiedUser('food-copy@example.com', 'FC')
-    const listId = await createList(cookie, 'Trip')
+    const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 1)
-    const plan = await getFood(cookie, listId)
+    const plan = await getListFood(cookie, listId)
     await addItem(cookie, listId, {
       name: 'Oats',
       weightGrams: 80,
       quantity: 1,
       slotIds: [slotOf(plan, 1, 'breakfast').id],
     })
-    const itemId = (await getFood(cookie, listId)).items[0]!.id
+    const itemId = (await getListFood(cookie, listId)).items[0]!.id
 
     const bad: Array<[string, string]> = [
       ['PUT', `/api/lists/${listId}/food/days`],

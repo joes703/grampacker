@@ -17,8 +17,7 @@ import { healthResponseSchema } from '../../shared/health'
 import { apiRequest } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
-// The CI half of the response-shape contract (review P2.13, owner decision
-// 2026-08-05): the browser's runtime schemas stay tolerant so deploy-window
+// The CI half of the response-shape contract: the browser's runtime schemas stay tolerant so deploy-window
 // skew cannot fail a committed write, and THIS file is what makes additive
 // drift fail loudly instead - every response schema gets one representative
 // endpoint whose RAW json must parse against the deep-strict variant. A new

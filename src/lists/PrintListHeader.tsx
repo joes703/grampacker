@@ -1,3 +1,5 @@
+import { localTimestampParts } from '../lib/dates'
+
 type Props = {
   name: string
 }
@@ -6,11 +8,8 @@ type Props = {
 // printed, so wall-clock time; ISO date order so the sheet dates itself the
 // same way whatever the browser locale is.
 function formatPrintTimestamp(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    ` ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  )
+  const t = localTimestampParts(d)
+  return `${t.date} ${t.hh}:${t.mm}`
 }
 
 // One legend entry: a small square drawn like the row squares, then its name.
@@ -26,9 +25,8 @@ function LegendSquare({ children }: { children: string }) {
 // The printed document's header, and the only thing on paper that is not also
 // on screen. `hidden print:block`.
 //
-// Deliberately one line of small type, not a title block: this replaces an app
-// header that was eating the top of every sheet, and a checklist's value is
-// rows per page. The list name is set at body weight rather than as a display
+// Deliberately one line of small type, not a title block: a checklist's
+// value is rows per page, and a tall header eats the top of every sheet. The list name is set at body weight rather than as a display
 // heading for the same reason.
 //
 // The legend is not decoration. The two checkbox squares in every row are

@@ -1,6 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import type { UpdateGearItemRequest } from '../../../shared/gear'
-import { showToast } from '../toast'
 import type { GearItem } from './gear'
 import { queryKeys } from './keys'
 import type { ListItemWithGear } from './list-items'
@@ -11,17 +10,11 @@ import type { ListItemWithGear } from './list-items'
 // cross-cache plumbing the generic optimistic.ts helpers deliberately
 // don't (its doc marks multi-cache fan-out out of scope): find the
 // affected per-list caches, cancel + snapshot each, apply the same
-// logical change, and roll back / invalidate ALL of them together.
+// logical change, and roll back all of them together.
 //
-// Re-derived from the old repo's module against the new shapes, not
-// copy-pasted (run-level accounting rule). One deliberate drop: the old
-// patchAffectsListItemsView() short-circuit skipped the fan-out for
-// patches that touched no embedded field - in the old stack the
-// embedded projection was 7 columns and gear reorders patched
-// sort_order through this path. In this stack the embedded gearItem is
-// the FULL gear DTO and every field of UpdateGearItemRequest is
-// list-visible, so the filter could never skip anything; reorders go
-// through makeOptimisticReorder, never through here.
+// The embedded gearItem is the full gear DTO, so every field of
+// UpdateGearItemRequest is list-visible; gear reorders go through
+// makeOptimisticReorder, never through here.
 
 type ListItemsSnapshot = {
   key: QueryKey
@@ -35,11 +28,6 @@ export type GearFanOutContext = {
 
 type FanOutOpts = {
   qc: QueryClient
-  // Set on the rollbacks the user would otherwise not notice - bulk surfaces and
-  // single-item DELETES alike. Same rule as the generic helpers, stated once in
-  // src/lib/mutation-error-handler.ts; an in-place gear EDIT stays silent because
-  // its snap-back happens under the user's cursor.
-  errorToast?: string
 }
 
 // findAll matches by prefix, so it would also return a bare ['list-items'] query
@@ -59,28 +47,16 @@ function isPerListItemsQuery(key: QueryKey, data: unknown): boolean {
 //   3. snapshot
 //   4. write
 //
-// Awaiting the cancels is the canonical TanStack pattern, and the same hardening the
-// CRUD helpers in optimistic.ts got. Read the note there for what it does and does
-// NOT buy: cancellation is synchronous, so a still-pending refetch was already
-// handled unawaited; the awaited version additionally covers the sliver where a
-// fetch has resolved but not yet written, which is only reachable when a mutation is
-// fired from a promise continuation rather than an event handler. Cheap insurance,
-// not a bug anyone has hit.
+// Awaiting the cancels follows the CRUD helpers in optimistic.ts; see "When
+// cancelQueries is awaited" there. Cancellation is synchronous, so a still-pending
+// refetch is dropped either way. Awaiting also covers the gap where a fetch has
+// resolved but not yet written, which a mutation reaches only when it is called
+// from a promise continuation rather than an event handler.
 //
 // Untouched caches are neither canceled nor snapshotted. Deliberate: do not cancel
 // a list cache this change cannot affect, or you abort a legitimate in-flight fetch
-// for a list the user is looking at right now.
-//
-// KNOWN GAP, and it is a real one rather than a rhetorical "residual": the affected
-// set is computed at step 1, before the await. A list cache that becomes affected
-// during the await gets no optimistic write - and, worse, makeSettled invalidates
-// only the caches in listSnapshots, so it is never invalidated either. It would sit
-// stale until some unrelated refetch, NOT until the settle. (The gap does not bite
-// today: the await spans microtasks only, and a fetch cannot COMPLETE inside a
-// microtask checkpoint, so no cache can newly acquire the gear in that window. It
-// would bite the moment anything awaited here does real async work.) If that ever
-// changes, invalidate the ['list-items'] prefix on settle, or recompute the affected
-// set after the cancels.
+// for a list the user is looking at right now. A list fetched while the write is in
+// flight gets no optimistic write; makeSettled's prefix invalidation corrects it.
 async function beginGearFanOut(
   qc: QueryClient,
   gearItemIds: ReadonlySet<string>,
@@ -130,7 +106,6 @@ function makeRollback(opts: FanOutOpts) {
     for (const { key, data } of ctx?.listSnapshots ?? []) {
       opts.qc.setQueryData(key, data)
     }
-    if (opts.errorToast) showToast(opts.errorToast, { type: 'error' })
   }
 }
 
@@ -143,17 +118,17 @@ function makeRollback(opts: FanOutOpts) {
 // food cached while its list-items query is failed or pending, and then it
 // has no snapshot here to be discovered through. An update or a category
 // move cascades nothing and leaves them alone.
-function makeSettled(opts: FanOutOpts, { cascades }: { cascades: boolean }) {
-  return (
-    _data: unknown,
-    _err: unknown,
-    _vars: unknown,
-    ctx: GearFanOutContext | undefined,
-  ) => {
+// The return type keeps TanStack's onSettled shape for callers; the body
+// needs none of its arguments.
+function makeSettled(
+  opts: FanOutOpts,
+  { cascades }: { cascades: boolean },
+): (data: unknown, err: unknown, vars: unknown, ctx: GearFanOutContext | undefined) => void {
+  return () => {
     void opts.qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
-    for (const { key } of ctx?.listSnapshots ?? []) {
-      void opts.qc.invalidateQueries({ queryKey: key })
-    }
+    // The whole prefix, not only the snapshots: a list first fetched while the
+    // write was in flight may hold the gear's old values.
+    void opts.qc.invalidateQueries({ queryKey: queryKeys.listItemsAll() })
     if (cascades) {
       void opts.qc.invalidateQueries({ queryKey: queryKeys.packingLocationsAll() })
       void opts.qc.invalidateQueries({ queryKey: queryKeys.listFoodAll() })

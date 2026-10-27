@@ -10,10 +10,8 @@ import { randomTempId } from './random-temp-id'
 // "temp-" prefix) so the row survives strict consumers like
 // last-list-path's uuid regex if it is briefly on screen. `slug` is
 // empty: the server mints slugs and there is no client write path that
-// could ever persist this row (createList sends only {name}), so the
-// old repo's generateSlug DB-validity guardrail has nothing to guard.
-// Nothing in this slice renders slug; the share slice consumes it from
-// server rows only.
+// could ever persist this row (createList sends only {name}), so it
+// needs no valid slug. Share links read slug from server rows only.
 //
 // Usage:
 //   qc.setQueryData<List[]>(['lists'], (prev) => [

@@ -6,11 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ListShareButton from './ListShareButton'
 import type { List } from '../lib/types'
 
-// Sharing used to live only inside List options, between Rename and Delete.
-// Both 2026-10 UX audits took three clicks to find it, and sharing is the end
-// goal of building a list for this audience - so it gets its own toolbar
-// button. ONE home, moved rather than copied: List options no longer hosts it
-// (ListSettingsPanel.test pins that side).
+// Sharing is the end goal of building a list for this audience, so it gets
+// its own toolbar button where people can find it. It has ONE home: List
+// options does not host it (ListSettingsPanel.test pins that side).
 
 const list: List = {
   id: 'l1',

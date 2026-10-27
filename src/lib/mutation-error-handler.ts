@@ -37,11 +37,10 @@ import { showToast } from './toast'
 // A toast raised while a modal is open IS seen: src/components/Modal.tsx opens a
 // native <dialog> with showModal(), which puts it in the browser's TOP LAYER and
 // makes the rest of the page inert, so ToastViewport renders inside the topmost open
-// Modal (src/lib/toast-host.ts). Until that existed a toast under a modal sat behind
-// the backdrop and expired unseen, and this rule was stated as "a toast there is
-// nothing at all"; the inline preference now rests on being next to the form. The
-// remaining hazard: a <dialog> opened with showModal() anywhere but Modal.tsx
-// registers no host and hides toasts again, so go through Modal.
+// Modal (src/lib/toast-host.ts). The inline preference rests on being next to the
+// form. The hazard: a <dialog> opened with showModal() anywhere but Modal.tsx
+// registers no host, so its toasts sit behind the backdrop and expire unseen. Go
+// through Modal.
 //
 // A non-modal surface that stays put - the trip-length and meal controls on the list
 // page, say - can perfectly well be answered by a toast, and an in-place edit still
@@ -49,9 +48,7 @@ import { showToast } from './toast'
 //
 // The delete confirms, the gear library's bulk "Move to category" dialog, and mobile
 // List options' Duplicate, Export CSV and Delete list close on the CLICK rather than
-// on success. That was required while a modal still standing when the failure
-// landed hid the toast explaining it; it is kept as their behavior, not re-decided
-// here.
+// on success, so their failures are reported by toast.
 declare module '@tanstack/react-query' {
   interface Register {
     mutationMeta: { errorToast?: string }
@@ -83,9 +80,8 @@ declare module '@tanstack/react-query' {
 // than a per-site judgment call precisely so the answer does not drift
 // between two surfaces doing the same thing.
 //
-// Extracted from the App.tsx inline arrow so the same function is
-// consumed by both the production QueryClient and the unit test -
-// duplicating the handler in the test would only test the copy.
+// It lives in its own module so the production QueryClient and the unit
+// test use the same function: a copy in the test would only test the copy.
 export function mutationErrorHandler(
   error: unknown,
   _vars: unknown,

@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core'
+import { GEAR_STATUSES } from '../../shared/gear'
 import { user } from './auth-schema'
 
 // App-owned tables. Auth tables live in auth-schema.ts (CLI-generated,
@@ -21,8 +22,8 @@ import { user } from './auth-schema'
 // CASCADE from user; child references are composite same-owner FKs anchored
 // on UNIQUE(id, user_id), so a child can never point at another user's row;
 // timestamps are epoch-ms integers (repos convert to ISO at the DTO edge);
-// CHECKs mirror the old Postgres schema's bounds as the backstop against
-// programmer error - friendly validation lives in the shared zod DTOs.
+// CHECKs are the backstop against programmer error - friendly validation
+// lives in the shared zod DTOs.
 
 // Fixed-window rate limit counters, one row per scope+client key
 // (e.g. "sign-in:203.0.113.10"). Plain SQLite, written through a single
@@ -34,8 +35,7 @@ export const rateLimits = sqliteTable('rate_limits', {
 })
 
 // Gear categories. No seeding: "Uncategorized" is the UI rendering of a
-// null gear_items.category_id, not a row. The old schema's is_default
-// column was dropped in the port (always false, never read).
+// null gear_items.category_id, not a row.
 export const categories = sqliteTable(
   'categories',
   {
@@ -63,11 +63,11 @@ export const categories = sqliteTable(
 // belongs to the SAME user. SQLite has no column-list ON DELETE SET NULL
 // (setting user_id null would violate NOT NULL), so the FK is NO ACTION
 // and category deletion is a repo-owned atomic batch: [uncategorize gear,
-// delete category]. The 500-per-user cap trigger lives in migration 0003
-// (drizzle has no trigger DSL) and is the single enforcement point; the
-// repo maps its error to a friendly 422. CAUTION: the drizzle snapshot
-// does not know the trigger exists - any future migration that rebuilds
-// gear_items (SQLite ALTERs via table recreate) must recreate it by hand.
+// delete category]. The 500-per-user cap trigger gear_items_user_cap is
+// hand-written SQL (drizzle has no trigger DSL) and is the single
+// enforcement point; the repo maps its error to a friendly 422. CAUTION: the
+// drizzle snapshot does not know the trigger exists - a table rebuild drops
+// it silently (AGENTS.md "Migrations" forbids rebuilds).
 export const gearItems = sqliteTable(
   'gear_items',
   {
@@ -89,7 +89,8 @@ export const gearItems = sqliteTable(
     // exist in SQLite and REAL is the wrong tool for money.
     costCents: integer('cost_cents'),
     purchaseDate: text('purchase_date'), // ISO YYYY-MM-DD
-    status: text('status').notNull().default('active'),
+    // The enum types the column in TypeScript only; the CHECK below enforces it.
+    status: text('status', { enum: GEAR_STATUSES }).notNull().default('active'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(), // epoch ms
     updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained
@@ -129,15 +130,9 @@ export const gearItems = sqliteTable(
 )
 
 // Pack lists. slug is minted server-side at insert (6-char base62,
-// crypto-random) and lives in the schema from day one even though the
-// public share routes are a later slice - adding a NOT NULL UNIQUE
-// column later would force a table rebuild, and rebuilds silently drop
-// the hand-written cap trigger (see the 0003 caveat above). is_shared
-// stays false until the share slice ships its routes. is_draft defaults
-// true (the old app's final behavior): a label only, never a lock.
-// The 100-per-user cap trigger lives in migration 0004; same caveats as
-// the gear cap trigger. Migration 0009 recreated lists_user_cap by hand after
-// a table rebuild, and any future rebuild must do the same.
+// crypto-random). is_draft defaults true: a label only, never a lock.
+// The 100-per-user cap trigger lists_user_cap is hand-written SQL; same
+// caveats as the gear cap trigger.
 export const lists = sqliteTable(
   'lists',
   {
@@ -172,7 +167,8 @@ export const lists = sqliteTable(
 // list and owner; list_items may point at one location through the nullable
 // packing_location_id column below. The single-column FK is intentional so
 // ON DELETE SET NULL can clear only the assignment. Same-list/same-owner
-// integrity is restored by the triggers in migration 0014.
+// integrity is enforced by the hand-written *_location_same_list_* and
+// packing_locations_* triggers.
 export const packingLocations = sqliteTable(
   'packing_locations',
   {
@@ -220,16 +216,15 @@ export const packingLocations = sqliteTable(
 )
 
 // List membership rows. Weight/cost/etc. live only on gear_items - the
-// list reads them through the join (the old repo dropped its duplicated
-// weight_grams column for exactly this reason). Both parent FKs are
-// composite same-owner AND cascading: deleting a list removes its rows,
-// deleting a gear item removes it from every list (old-app behavior).
-// Cascade is safe where gear->categories' SET NULL was not - a cascade
+// list reads them through the join, so there is one copy to keep correct.
+// Both parent FKs are composite same-owner AND cascading: deleting a list
+// removes its rows, deleting a gear item removes it from every list.
+// Cascade is safe where gear->categories' SET NULL is not - a cascade
 // deletes the whole row, so the "can't null one column of a composite
-// FK" problem never arises. No UNIQUE(list_id, gear_item_id): the old
-// schema allowed the same gear twice in a list, and quantity is not a
-// substitute for that in every workflow. The 300-per-list cap trigger
-// lives in migration 0004.
+// FK" problem never arises. No UNIQUE(list_id, gear_item_id): the same
+// gear may appear twice in a list, and quantity is not a substitute for
+// that in every workflow. The 300-per-list cap trigger is
+// list_items_list_cap.
 export const listItems = sqliteTable(
   'list_items',
   {
@@ -251,9 +246,9 @@ export const listItems = sqliteTable(
       { onDelete: 'set null' },
     ),
     // DOCUMENT order. List view, the public share and CSV read this, and only
-    // a List-view reorder writes it. It used to be the ONLY order, which meant
-    // arranging your pack rewrote the list you had written - and rewrote the
-    // public share link, because the anonymous read orders by this column.
+    // a List-view reorder writes it. Packing must not write it: arranging
+    // your pack would then rewrite the list you wrote - and the public share
+    // link, because the anonymous read orders by this column.
     sortOrder: integer('sort_order').notNull().default(0),
     // PACKING order, and it is NOT a second list-wide sequence. It is a rank
     // within this row's packing COHORT - the set of rows sharing
@@ -277,8 +272,8 @@ export const listItems = sqliteTable(
   },
   (t) => [
     index('list_items_user_list_sort_idx').on(t.userId, t.listId, t.sortOrder),
-    // Leading list_id: the cap trigger's count and (later) the share
-    // fetch both filter by list alone.
+    // Leading list_id: the cap trigger's count and the share fetch both
+    // filter by list alone.
     index('list_items_list_sort_idx').on(t.listId, t.sortOrder),
     index('list_items_gear_item_user_idx').on(t.gearItemId, t.userId),
     index('list_items_packing_location_idx').on(t.packingLocationId),
@@ -325,11 +320,9 @@ export const listItems = sqliteTable(
 
 // ── Food ──────────────────────────────────────────────────────────────────
 //
-// A food WEIGHT ESTIMATE, not a meal planner. The previous food domain (10
-// tables, nutrition, targets, reusable plans, a library) was deleted in
-// migration 0016 for being far more machinery than the job needed. This is the
-// small replacement, and the boundary is deliberate: no calories, no macros,
-// no targets, no library, no plans reusable across lists.
+// A food WEIGHT ESTIMATE, not a meal planner. The boundary is deliberate: no
+// calories, no macros, no targets, no library, no plans reusable across
+// lists. A full meal planner is far more machinery than the job needs.
 //
 // The model is three tables because of ONE fact that cannot be compressed: a
 // food entry is a THING YOU CARRY, not a placement. One 500 g bag of trail mix
@@ -404,28 +397,23 @@ export const listFoodItems = sqliteTable(
     weightGrams: real('weight_grams').notNull(),
     // How many you eat AT ONE MEAL when isPerMeal, or the total when it is a
     // shared stash. See isPerMeal below - the pair is meaningless apart.
-    //
-    // This used to read "UNITS CARRIED, and nothing derives it", on the
-    // grounds that the app could not tell five packets from one shared bag.
-    // It could not, and the cost was that the common case under-reported the
-    // pack on every list. 0024 asks instead of guessing.
     quantity: integer('quantity').notNull().default(1),
-    // 0024. Whether `quantity` is per-meal (the default) or a total.
+    // Whether `quantity` is per-meal (the default) or a total. The app cannot
+    // tell five packets from one shared bag, so it asks.
     //
     // Per-meal means what you CARRY is quantity x the meals it is scheduled
     // into: a PB packet in each of five lunches is five packets. A shared
     // stash is the other case - one 500 g bag picked at across five lunches
-    // is still one bag - and it is what the "scheduling never multiplies
-    // weight" contract was written to protect. That contract now means "the
-    // SHARED case never multiplies"; deriving nothing at all made the common
-    // case silently under-report the pack.
+    // is still one bag, and scheduling it never multiplies its weight.
+    // Treating every item as shared would make the common case silently
+    // under-report the pack.
     isPerMeal: integer('is_per_meal', { mode: 'boolean' }).notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
-    // Pack state, added by 0022. Food is a full peer of gear in Pack mode:
-    // packable, bag-assignable, rank-ordered. The columns and their indexes
-    // mirror list_items exactly; the semantics (cohort ranks, the negative
-    // scratch band, the union rank space shared with gear at read time) are
-    // documented on list_items.packSortOrder and in migration 0022's header.
+    // Pack state. Food is a full peer of gear in Pack mode: packable,
+    // bag-assignable, rank-ordered. The columns and their indexes mirror
+    // list_items exactly; the semantics (cohort ranks, the negative scratch
+    // band) are documented on list_items.packSortOrder, and the union rank
+    // space shared with gear in server/repos/pack-reorder.ts.
     isPacked: integer('is_packed', { mode: 'boolean' }).notNull().default(false),
     isReady: integer('is_ready', { mode: 'boolean' }).notNull().default(false),
     packingLocationId: text('packing_location_id').references(
@@ -477,14 +465,13 @@ export const listFoodItems = sqliteTable(
 
 // Which slots a carried item is intended for.
 //
-// Never JOINED into a weight sum, and that has not changed. The obvious query
-// (join items to slots, sum weight x quantity) returns 2500 g for one 500 g
-// SHARED bag on five lunches, and is still the single most dangerous
-// statement anyone could write here - it fans one row into five and the
-// duplicate is invisible in the total.
+// Never JOINED into a weight sum. The obvious query (join items to slots, sum
+// weight x quantity) returns 2500 g for one 500 g SHARED bag on five lunches,
+// and is the single most dangerous statement anyone could write here - it
+// fans one row into five and the duplicate is invisible in the total.
 //
-// What 0024 changed is that the slot COUNT is now an input to the carried
-// count for a per-meal item (foodUnitCount, shared/food.ts). Counting rows
+// The slot COUNT is an input to the carried count for a per-meal item
+// (foodUnitCount, shared/food.ts). Counting rows
 // per item is not joining and summing: every caller reads the links
 // separately and counts them, so an item stays one row throughout.
 export const listFoodItemSlots = sqliteTable(
@@ -522,10 +509,9 @@ export const listFoodItemSlots = sqliteTable(
   ],
 )
 
-// UNUSED, and correct only when EMPTY. Pack reorders once wrote here between
-// their park and settle statements, to abort when a park did not land; they
-// now check that in code inside one transaction (server/repos/pack-reorder.ts),
-// and nothing writes the table. It stays declared so drizzle-kit's snapshot
+// UNUSED, and correct only when EMPTY. Nothing writes the table: pack
+// reorders check their writes in code inside one transaction
+// (server/repos/pack-reorder.ts). It stays declared so drizzle-kit's snapshot
 // matches the deployed schema, until a migration drops it.
 export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
@@ -541,9 +527,9 @@ export const packReorderGuard = sqliteTable('_pack_reorder_guard', {
 // inside the UPDATE would be self-referencing, because rows already updated
 // have had their packing_location_id set to NULL and drop out of the count.
 //
-// No repo writes to it - the trigger owns it entirely. It is declared here so
-// drizzle-kit's snapshot matches the deployed schema. Created by migration
-// 0020.
+// No repo writes to it - the packing_locations_rerank_orphans trigger owns it
+// entirely. It is declared here so drizzle-kit's snapshot matches the
+// deployed schema.
 export const packingLocationDeleteState = sqliteTable(
   '_packing_location_delete_state',
   {
@@ -556,17 +542,14 @@ export const packingLocationDeleteState = sqliteTable(
   },
 )
 
-// UNUSED, like _pack_reorder_guard above: the food half of the same old
-// check. It stays declared until a migration drops it. Created by migration
-// 0022.
+// UNUSED, like _pack_reorder_guard above: its food half. It stays declared until a migration drops it.
 export const foodPackReorderGuard = sqliteTable('_food_pack_reorder_guard', {
   listId: text('list_id').primaryKey(),
   ok: integer('ok').notNull(),
 })
 
 // TRANSIENT, same contract as _packing_location_delete_state, owned entirely
-// by the packing_locations_rerank_food_orphans trigger. Created by migration
-// 0022.
+// by the packing_locations_rerank_food_orphans trigger.
 export const foodLocationDeleteState = sqliteTable(
   '_food_location_delete_state',
   {

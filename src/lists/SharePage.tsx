@@ -1,9 +1,9 @@
 import { Suspense, lazy, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchSharedList, queryKeys } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { groupListItemsByCategory } from '../lib/grouping'
-import type { Category, ListItemWithGear, SharedListResponse } from '../lib/types'
+import type { Category, ListItemWithGear } from '../lib/types'
 import {
   getShareWeightUnit,
   setShareWeightUnit,
@@ -20,7 +20,7 @@ import {
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
-import CategoryGroup from './CategoryGroup'
+import CategoryTable from './CategoryTable'
 import DraftBanner from './DraftBanner'
 import { UnitSegmentedControlView } from '../components/UnitSegmentedControl'
 import {
@@ -35,7 +35,7 @@ import {
 const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
 // Module-level constant: the Food section holds no gear, and a fresh []
-// literal on every render would defeat CategoryGroup's memo.
+// literal on every render would defeat CategoryTable's memo.
 const EMPTY_GEAR_ITEMS: ListItemWithGear[] = []
 
 // The public /r/:slug read-only view. One anonymous GET returns the whole
@@ -68,11 +68,7 @@ export default function SharePage() {
   // data is undefined while loading, null for "not a shared list" (the
   // fetcher maps ONLY the 404 to null), and the share otherwise. Real
   // outages (network, 5xx) reject and land in isLoadingError below.
-  const { data: share, isPending, isLoadingError } = useQuery<SharedListResponse | null>({
-    queryKey: queryKeys.sharedList(slug),
-    queryFn: () => fetchSharedList(slug!),
-    enabled: Boolean(slug),
-  })
+  const { data: share, isPending, isLoadingError } = useQuery(queries.sharedList(slug))
   useDocumentTitle(share?.list.name ?? null)
 
   // Failure, then loading, then not-found (AGENTS.md), because "List not
@@ -163,10 +159,10 @@ export default function SharePage() {
     createdAt: '',
   }))
 
-  // The share's own totals used to call the gear-only reducer, so a shared
-  // list reported a lighter pack than the same list did to its owner. The
-  // compositor cannot be called without a food figure, and the DTO carries
-  // the rows to compute one.
+  // The share's totals must include food, or a shared list reports a lighter
+  // pack than the same list does to its owner. The compositor cannot be
+  // called without a food figure, and the DTO carries the rows to compute
+  // one.
   //
   // Summed here with the same helper the owner's page uses, rather than read
   // off a number the server computed. That is the point of publishing rows:
@@ -199,14 +195,13 @@ export default function SharePage() {
 
             It drives a SHARE-SCOPED preference, never the authenticated app's.
             This page is anonymous and may be opened by anyone, including on a
-            borrowed browser; it used to write the same key the signed-in app
-            reads, so a stranger picking oz here silently reconfigured that
-            device's own gear and lists views. The choice still persists on
-            this device - it just no longer reaches into the app. */}
+            borrowed browser. If it wrote the key the signed-in app reads, a
+            stranger picking oz here would silently reconfigure that device's
+            own gear and lists views. The choice still persists on this
+            device; it just does not reach into the app. */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <h1 className="flex-1 min-w-0 truncate text-xl font-semibold text-gray-900">{list.name}</h1>
           <UnitSegmentedControlView
-            idPrefix="share"
             value={weightUnit}
             onValueChange={setShareUnit}
           />
@@ -253,7 +248,7 @@ export default function SharePage() {
         {(items.length > 0 || share.food.items.length > 0) && (
           <div className="flex flex-col gap-3">
             {grouped.map((group) => (
-              <CategoryGroup
+              <CategoryTable
                 key={group.category?.id ?? '__uncategorized__'}
                 name={group.category?.name ?? 'Uncategorized'}
                 items={group.items}
@@ -269,7 +264,7 @@ export default function SharePage() {
                 category with the worn icon, matching the owner's Category
                 arrangement (section-rows.ts owns the rule; pack mode is the
                 one view that extracts worn). This also means a category whose
-                items are all worn no longer renders as an empty section. */}
+                items are all worn does not render as an empty section. */}
             {/* Food, as its own trailing section rather than mixed into the
                 gear categories: it is not filed under one, and grouping it
                 with gear would need a category it does not have.
@@ -277,7 +272,7 @@ export default function SharePage() {
                 consumable by definition, which is the bucket its grams
                 already land in upstream. */}
             {share.food.items.length > 0 && (
-              <CategoryGroup
+              <CategoryTable
                 name="Food"
                 items={EMPTY_GEAR_ITEMS}
                 regionKey="food"
@@ -292,8 +287,7 @@ export default function SharePage() {
         )}
 
 
-        {/* The old repo linked to /about here; that page doesn't exist on
-            this stack (yet), so the footer credit points home instead. */}
+        {/* There is no /about page, so the footer credit points home. */}
         <div className="mt-8 text-center">
           <Link to="/" className="text-xs text-gray-500 hover:text-gray-600">
             Made with grampacker

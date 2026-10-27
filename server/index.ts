@@ -2,14 +2,14 @@ import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
 import { createAuth } from './auth'
 import { createDb } from './db'
-import { assetCache } from './middleware/asset-cache'
+import type { AppDeps, AppEnv } from './env'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
-import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
+import { errorHandler, logAuthFailure } from './middleware/error-handler'
 import { authRateLimit } from './middleware/rate-limit'
 import { requireSession } from './middleware/session'
-import { securityHeaders } from './middleware/security-headers'
-import { serveSpa } from './middleware/spa'
+import { isDevEnvironment, securityHeaders } from './middleware/security-headers'
+import { createServeSpa } from './middleware/spa'
 import { categoryRoutes } from './routes/categories'
 import { gearItemRoutes } from './routes/gear-items'
 import { listRoutes } from './routes/lists'
@@ -18,27 +18,10 @@ import { meRoutes } from './routes/me'
 import { shareRoutes } from './routes/shares'
 import type { HealthResponse } from '../shared/health'
 import { foodRoutes } from './routes/food'
-import type { AppEnv } from './env'
 
-// AppEnv (server/env.ts) is the configuration and database connection the
-// Node entry passes to every request.
-//
-// The root app owns the security-header map and the static-asset
-// fallback; everything API-shaped lives on the /api sub-app. Every request,
-// static files included, goes through this app, so no response - HTML shell,
-// asset, or API - can skip the header map.
-const app = new Hono<{ Bindings: AppEnv }>()
-
-app.use('*', securityHeaders)
-
-// Long-lived browser caching for content-hashed assets only. Sits next to the
-// header map rather than inside it: same "own every response" reason (static
-// files are served through here too), different concern.
-// It rebuilds the response itself, so it does not depend on running before or
-// after securityHeaders.
-app.use('*', assetCache)
-
-const api = new Hono<{ Bindings: AppEnv }>()
+// Everything API-shaped lives on this sub-app; createApp below mounts it under
+// a root app that owns the security-header map and the static-asset fallback.
+const api = new Hono<{ Bindings: AppDeps }>()
 
 // Oversized bodies are refused (413) before any middleware or handler
 // can consume them - including better-auth, which reads c.req.raw
@@ -47,8 +30,8 @@ const api = new Hono<{ Bindings: AppEnv }>()
 api.use('*', apiBodyLimit)
 
 // Unsafe methods on our routes require the custom header + a matching
-// Origin. Registered first so no later route can be added in front of it;
-// it skips /api/auth/* internally (better-auth validates origins itself).
+// Origin. Registered before every route so no route can be added in front
+// of it; it skips /api/auth/* internally (better-auth validates origins itself).
 // Sub-app note: c.req.path stays the full /api/... path inside route(),
 // so the middleware's path checks are unaffected by the mount.
 api.use('*', csrfProtection)
@@ -59,13 +42,8 @@ api.use('*', csrfProtection)
 // the allowlist in the middleware.
 api.use('/auth/*', authRateLimit)
 
-// Passkey freshness is gated INSIDE better-auth now, not here: a
-// deny-by-default hooks.before in server/auth.ts covers every /passkey/*
-// endpoint (with an explicit ungated allowlist), keyed on the RESOLVED
-// endpoint path - so there is no second URL parser to diverge from the
-// router, and a future plugin endpoint fails closed instead of shipping
-// ungated. Account deletion is gated the same way by better-auth itself
-// (session.freshAge via user.deleteUser, server/auth.ts).
+// Passkey and account-delete freshness checks are not middleware here. They
+// run inside better-auth (hooks.before and user.deleteUser in server/auth.ts).
 
 // better-auth owns everything under /api/auth/* (magic-link send and verify,
 // sign-out, passkeys). It does its own origin checking against baseURL. The
@@ -75,25 +53,23 @@ api.use('/auth/*', authRateLimit)
 // Wrapped for observability: better-call answers an APIError with a Response,
 // and with `onAPIError.throw` (server/auth.ts) any other error escaping an
 // endpoint is rethrown here instead of being logged raw. Both kinds of 5xx get
-// one correlated entry, so auth is not outside the correlation scheme.
+// one correlated log entry.
 api.on(['GET', 'POST'], '/auth/*', async (c) => {
-  const req = { method: c.req.method, path: new URL(c.req.raw.url).pathname }
+  const req = { method: c.req.method, path: c.req.path }
   let res: Response
   try {
-    res = await createAuth(c.env).handler(c.req.raw)
+    res = await c.env.auth.handler(c.req.raw)
   } catch (err) {
-    // The same bare 500 better-call would have answered; the wrapper fills
-    // in the body and logs the error beside the correlation id.
-    return withAuthErrorCorrelation(new Response(null, { status: 500 }), req, err)
+    // The same bare 500 better-call would have answered.
+    return logAuthFailure(new Response(null, { status: 500 }), req, err)
   }
-  return withAuthErrorCorrelation(res, req)
+  return logAuthFailure(res, req)
 })
 
-// ONE session gate for the three sub-apps that share the /lists base. Each
-// used to gate itself with use('*', requireSession), and because a request
-// falls through every sub-app on the mount until a route matches, a food
-// request paid the better-auth session lookup (fresh instance + session +
-// user reads) up to three times. Registration order is load-bearing TWICE:
+// ONE session gate for the three sub-apps that share the /lists base: a
+// request falls through every sub-app on the mount until a route matches, so
+// a gate on each would run the session lookup up to three times.
+// Registration order is load-bearing TWICE:
 // after csrfProtection above (403 without the header must precede 401
 // without a session), and BEFORE the route() calls below - Hono copies
 // sub-app routes into the parent at route() registration time, so a
@@ -112,11 +88,10 @@ api.route('/lists', foodRoutes)
 // Anonymous by design: the public share read (see routes/shares.ts for
 // the trust model). Everything else API-shaped stays session-gated.
 //
-// Deliberately NOT metered in application code, and UNMETERED today. If a
-// budget is ever needed it belongs at the edge, where a rule refuses before
-// the app runs and before SQLite is touched - an app-level counter would add
-// a write to every anonymous view to protect a read. SECURITY.md records the
-// trigger for creating one.
+// Not rate limited. If a budget is ever needed, put it in the reverse proxy,
+// which refuses before the app runs and before SQLite is touched. An
+// app-level counter would add a write to every anonymous view to protect a
+// read. SECURITY.md records when to add one.
 api.route('/shares', shareRoutes)
 
 api.get('/health', async (c) => {
@@ -124,8 +99,7 @@ api.get('/health', async (c) => {
   // whole server stack, not just that Hono is routing. Health means HTTP 200
   // AND `ok` exactly true; a failed query
   // throws and the error handler answers 500.
-  const db = createDb(c.env.DB)
-  const row = await db.get<{ ok: number }>(sql`select 1 as ok`)
+  const row = await c.env.db.get<{ ok: number }>(sql`select 1 as ok`)
   const body: HealthResponse = { ok: row?.ok === 1 }
   return c.json(body)
 })
@@ -135,15 +109,48 @@ api.get('/health', async (c) => {
 // with HTML and mask client-side typos.
 api.all('*', (c) => c.json({ error: 'Not found' }, 404))
 
-app.route('/api', api)
+// Builds the app for one configuration. Everything a request needs that does
+// not change between requests - the Drizzle instance, the better-auth
+// instance, the dev flag, the CSRF origin, the static handlers - is built here
+// once and handed to every request as `c.env`.
+//
+// The root app owns the security-header map and the static-asset fallback.
+// Every request, static files included, goes through it, so no response -
+// HTML shell, asset, or API - can skip the header map.
+export function createApp(env: AppEnv) {
+  const db = createDb(env.DB)
+  const deps: AppDeps = {
+    ...env,
+    db,
+    auth: createAuth(env, db),
+    dev: isDevEnvironment(env),
+    origin: originOf(env.BETTER_AUTH_URL),
+  }
 
-// Everything else is the SPA: static files from STATIC_DIR, and index.html for
-// client-side routes. See server/middleware/spa.ts.
-app.all('*', serveSpa)
+  const app = new Hono<{ Bindings: AppDeps }>()
+  app.use('*', securityHeaders(deps.dev))
+  app.route('/api', api)
+  // Everything else is the SPA: static files from STATIC_DIR, and index.html
+  // for client-side routes. See server/middleware/spa.ts.
+  app.all('*', createServeSpa(env.STATIC_DIR))
+  // On the ROOT app, which catches throws from the /api sub-app too - a
+  // sub-app's own onError would win, so `api` deliberately has none.
+  app.onError(errorHandler)
 
-// Registered on the ROOT app, which catches throws from the /api sub-app too -
-// a sub-app's own onError would win, so `api` deliberately has none. Everything
-// this does and does not cover is documented in the middleware.
-app.onError(errorHandler)
+  return {
+    fetch: (request: Request) => app.fetch(request, deps),
+    request: (input: string | URL | Request, init?: RequestInit) => app.request(input, init, deps),
+    routes: app.routes,
+  }
+}
 
-export default app
+// loadConfig has already rejected an invalid URL in production. If one gets
+// here anyway, no Origin header matches and every unsafe API request is
+// refused (fail closed).
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return ''
+  }
+}

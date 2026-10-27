@@ -8,10 +8,9 @@ import {
   listFoodSlots,
   packingLocations,
 } from '../db/schema'
-import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
+import { MEALS, foodUnitCount } from '../../shared/food'
 import {
   isPackRankRangeError,
-  isPackRankUniqueViolation,
   isTriggerAbort,
 } from './db-errors'
 import { nextUnionPackRank } from './pack-reorder'
@@ -24,28 +23,25 @@ import { nextUnionPackRank } from './pack-reorder'
 // 2500 g for one 500 g bag of trail mix eaten across five lunches. There is no
 // such join anywhere in this file, and there must never be one.
 
-export type FoodSlotRow = {
-  id: string
-  dayNumber: number
-  meal: Meal
-}
+type FoodSlotRow = Pick<typeof listFoodSlots.$inferSelect, 'id' | 'dayNumber' | 'meal'>
 
-export type FoodItemRow = {
-  id: string
-  name: string
-  weightGrams: number
-  // Per MEAL when isPerMeal, a total otherwise. unitCount is what you carry.
-  quantity: number
-  isPerMeal: boolean
+// Quantity is per MEAL when isPerMeal, a total otherwise; unitCount (computed)
+// is what you carry. Weight stays summed over items alone, wherever they are
+// packed.
+export type FoodItemRow = Pick<
+  typeof listFoodItems.$inferSelect,
+  | 'id'
+  | 'name'
+  | 'weightGrams'
+  | 'quantity'
+  | 'isPerMeal'
+  | 'sortOrder'
+  | 'isPacked'
+  | 'isReady'
+  | 'packingLocationId'
+  | 'packSortOrder'
+> & {
   unitCount: number
-  sortOrder: number
-  // Pack state (0022): food is a full peer of gear in Pack mode. Rank
-  // semantics live on pack-reorder.ts; weight stays summed over items alone
-  // regardless of where they are packed.
-  isPacked: boolean
-  isReady: boolean
-  packingLocationId: string | null
-  packSortOrder: number
   slotIds: string[]
 }
 
@@ -65,7 +61,6 @@ export type FoodWriteResult<T> =
         | 'invalid_slots'
         | 'invalid_location'
         | 'pack_rank_exhausted'
-        | 'conflict'
     }
 
 function isFoodItemCapError(err: unknown): boolean {
@@ -92,16 +87,11 @@ const itemCols = {
 // trigger) is a defect and stays a 500.
 function classifyWriteError(
   err: unknown,
-): 'cap_exceeded' | 'pack_rank_exhausted' | 'conflict' | null {
+): 'cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isFoodItemCapError(err)) return 'cap_exceeded'
-  // 0022's range trigger: the destination cohort's rank space is exhausted,
+  // The food pack rank range trigger: the destination cohort's rank space is exhausted,
   // so the union max + 1 stepped past PACK_RANK_MAX.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
-  // The pack-rank unique indexes, and only those. The rank is computed inside
-  // the same transaction that writes it, so nothing should be able to take
-  // it first; this stays as the backstop should the index and the rank
-  // computation ever disagree (the same backstop as pack-reorder.ts).
-  if (isPackRankUniqueViolation(err)) return 'conflict'
   return null
 }
 
@@ -397,8 +387,8 @@ export function createFoodRepo(db: Db, userId: string) {
 
             // A real assignment is accepted only when the target location
             // belongs to this same list and user. Null (Unassigned) skips the
-            // check. 0022's BEFORE UPDATE trigger enforces the same rule in the
-            // database; inside this transaction it can only fire on a defect.
+            // check. The list_food_items_location_same_list_update trigger
+            // enforces the same rule in the database; inside this transaction it can only fire on a defect.
             // Food cannot back a container, so there is no cycle to check,
             // unlike the gear move.
             if (patch.packingLocationId !== undefined && patch.packingLocationId !== null) {

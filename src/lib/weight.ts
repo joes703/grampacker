@@ -36,9 +36,14 @@ export function ozToGrams(oz: number): number {
 
 // Individual item weight (oz only, never compound lb+oz). Pass 'g' when the
 // caller never toggles units.
+// The number of a per-row weight, without its unit: grams as formatGrams,
+// ounces to one decimal.
+export function formatItemWeightNumber(grams: number, unit: WeightUnit): string {
+  return unit === 'g' ? formatGrams(grams) : gramsToOz(grams).toFixed(1)
+}
+
 export function formatItemWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${formatGrams(grams)} g`
-  return `${gramsToOz(grams).toFixed(1)} oz`
+  return `${formatItemWeightNumber(grams, unit)} ${unit}`
 }
 
 // Aggregate weight for summary slots (base, total, consumable). Uses
@@ -69,16 +74,35 @@ export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
 export const WEIGHT_UNIT_EVENT = 'weight-unit-change'
 export const WEIGHT_UNIT_KEY = 'weightUnit'
 
+// localStorage THROWS (not just fails) in Safari private mode and with site
+// data blocked. The unit is read on every page that shows a weight, so reads
+// fall back to the default and writes are ignored.
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Storage is blocked: the unit stays at its default.
+  }
+}
+
 export function getWeightUnit(): WeightUnit {
   // localStorage is a trust boundary — anything could be in there. Validate
   // explicitly and fall back to the default for null, missing, or any
   // unexpected string.
-  const raw = localStorage.getItem(WEIGHT_UNIT_KEY)
+  const raw = readStorage(WEIGHT_UNIT_KEY)
   return raw === 'g' || raw === 'oz' ? raw : 'g'
 }
 
 export function setWeightUnit(unit: WeightUnit): void {
-  localStorage.setItem(WEIGHT_UNIT_KEY, unit)
+  writeStorage(WEIGHT_UNIT_KEY, unit)
   // Notify same-tab subscribers. Cross-tab updates ride the native `storage`
   // event automatically — no manual dispatch needed there.
   if (typeof window !== 'undefined') {
@@ -90,16 +114,14 @@ export function setWeightUnit(unit: WeightUnit): void {
 // Public share view unit — DELIBERATELY a separate key.
 // ---------------------------------------------------------------------------
 // The /r/:slug page is anonymous and may be opened by anyone, including on a
-// shared or borrowed browser. It used to drive WEIGHT_UNIT_KEY, the same key
-// the authenticated app reads, so a stranger toggling oz on someone's shared
-// list silently reconfigured that device's own gear and lists views. No
-// account data was ever at risk (the share route is GET-only and there is no
-// server-side unit preference), but reconfiguring the owner's app from a public
-// page is still wrong.
+// shared or borrowed browser. If it used WEIGHT_UNIT_KEY, the key the
+// authenticated app reads, a stranger toggling oz on someone's shared list would
+// silently reconfigure that device's own gear and lists views. No account data
+// is at risk (the share route is GET-only and there is no server-side unit
+// preference), but reconfiguring the owner's app from a public page is wrong.
 //
-// Isolating it rather than making it ephemeral preserves the behavior the share
-// view always documented: the viewer's choice persists on their device. It just
-// no longer reaches across into the authenticated app's preference.
+// A separate key rather than an ephemeral one: the viewer's choice persists on
+// their device, without reaching into the authenticated app's preference.
 //
 // These write ONLY the share key. Nothing here may ever call setWeightUnit.
 export const SHARE_WEIGHT_UNIT_KEY = 'shareWeightUnit'
@@ -113,11 +135,11 @@ export function getShareWeightUnit(): WeightUnit {
   // own key is missing or corrupt.) A signed-in owner opening their own share
   // link therefore starts in their usual units - the isolation is one-way,
   // read-through but never write-through.
-  const raw = localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)
+  const raw = readStorage(SHARE_WEIGHT_UNIT_KEY)
   if (raw === 'g' || raw === 'oz') return raw
   return getWeightUnit()
 }
 
 export function setShareWeightUnit(unit: WeightUnit): void {
-  localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, unit)
+  writeStorage(SHARE_WEIGHT_UNIT_KEY, unit)
 }

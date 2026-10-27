@@ -1,8 +1,6 @@
 import { createMiddleware } from 'hono/factory'
-import { sessionAuth } from '../auth'
-import { createDb } from '../db'
 import { reposForUser, type UserRepos } from '../repos'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 export type SessionVars = {
   userId: string
@@ -14,16 +12,16 @@ export type SessionVars = {
 // exclusively from c.get('repos') - already scoped, no user id ever taken
 // from the client.
 export const requireSession = createMiddleware<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>(async (c, next) => {
-  const session = await sessionAuth(c.env).api.getSession({
+  const session = await c.env.auth.api.getSession({
     headers: c.req.raw.headers,
   })
   if (!session) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
   c.set('userId', session.user.id)
-  c.set('repos', reposForUser(createDb(c.env.DB), session.user.id))
+  c.set('repos', reposForUser(c.env.db, session.user.id))
   return next()
 })

@@ -11,6 +11,7 @@ import {
 import { mutationKeys } from '../lib/queries/keys'
 import { randomTempId } from '../lib/random-temp-id'
 import type { PackingLocation } from '../lib/types'
+import { nextSortOrder } from '../lib/queries/sort-keys'
 
 export function promotedContainerSortOrder(locations: PackingLocation[]): number {
   return locations.length === 0
@@ -32,7 +33,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
         id: `temp-${randomTempId()}`,
         name,
         containerListItemId: null,
-        sortOrder: locations.reduce((max, location) => Math.max(max, location.sortOrder), -1) + 1,
+        sortOrder: nextSortOrder(locations),
       }),
     }),
   })
@@ -76,12 +77,12 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
       qc,
       queryKey,
       id: (id) => id,
-      // listFood too (0022): the server returns the deleted bag's FOOD to
+      // listFood too: the server returns the deleted bag's FOOD to
       // Unassigned with fresh ranks, and a stale food cache would keep the
       // old bag assignment and order until an incidental refetch.
       invalidateKeys: [queryKeys.listItems(listId), queryKeys.listFood(listId)],
-      errorToast: "Couldn't confirm that packing location was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that packing location was deleted. Refresh to check before trying again." },
   })
 
   return {

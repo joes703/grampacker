@@ -30,12 +30,10 @@ import type { Category } from '../lib/types'
 // The gear mutations use the gear-specific fan-out helpers
 // (makeOptimisticGearItem{Update,Delete}), NOT the generic makeOptimistic*
 // helpers: gear writes must propagate across both the ['gear-items'] cache and
-// every affected ['list-items', *] cache. The delete carries an explicit error
-// toast (via the helper's errorToast option) and the edit does not. That used to
-// be recorded here as an unexplained deviation "preserved, not fixed"; it is now
-// an instance of the stated rule in src/lib/mutation-error-handler.ts - a delete's
-// snap-back is a row reappearing after the confirm has closed, an edit's happens
-// in place under the cursor. The gear library's own delete
+// every affected ['list-items', *] cache. The delete has an error toast
+// (meta.errorToast) and the edit does not, per the rule in
+// src/lib/mutation-error-handler.ts: a delete's snap-back is a row reappearing
+// after the confirm has closed, an edit's happens in place under the cursor. The gear library's own delete
 // (src/gear/use-gear-item-actions.ts) carries the same copy for the same event.
 //
 // The page keeps: the edit-gear dialog's sequential gear-then-list save
@@ -64,8 +62,8 @@ export function useListGearActions(categories: Category[]) {
     mutationFn: (id: string) => deleteGearItem(id),
     ...makeOptimisticGearItemDelete({
       qc,
-      errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again." },
   })
 
   const addCategoryMut = useMutation({

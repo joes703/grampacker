@@ -8,7 +8,7 @@ import {
   updateFoodItem,
 } from './food'
 
-// URL/method contract tests (review P2.2), same style as gear.test.ts.
+// URL/method contract tests, same style as gear.test.ts.
 
 const FOOD_ITEM_ROW = {
   id: 'f1',

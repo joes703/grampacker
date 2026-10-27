@@ -95,7 +95,7 @@ async function renderDetail(seedLists?: List[]) {
       <ListsQueryProbe />
       <MemoryRouter initialEntries={[`/lists/${listId}`]}>
         <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
+          <Route path="/lists/:id" element={<ListDetailPage mode="edit" />} />
         </Routes>
       </MemoryRouter>
     </ListDetailProviders>,
@@ -112,8 +112,8 @@ async function renderDetail(seedLists?: List[]) {
 // many ticks the notification scheduler happens to take.
 // It renders status AND fetchStatus because status alone cannot express the
 // case the offline test exists for: 'success' covers both a settled collection
-// and one whose refetch is parked offline, and it is specifically the parked
-// one that used to read as a settled absence. Waiting on the pair asserts the
+// and one whose refetch is parked offline, and the parked one is the one that
+// can be misread as a settled absence. Waiting on the pair asserts the
 // state by name.
 function ListsQueryProbe() {
   const { status, fetchStatus } = useQuery({

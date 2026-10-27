@@ -14,6 +14,7 @@ import {
   renderListDetailPage,
   stubViewport,
 } from './test/list-detail-harness'
+import { deferred } from '../test/deferred'
 
 // What a FAILED packing-locations query is allowed to do to the page.
 //
@@ -76,9 +77,8 @@ const h = vi.hoisted(() => ({
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
 // owner id, which no test in this file asserts on.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -89,32 +89,11 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // guard under test lives in the page's own onDragEnd rather than in the pure
 // planner. Mocking DndContext to expose that handler is the only way to reach
 // it - the same passthrough pattern the gear bulk-actions suite uses.
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children, onDragEnd }: {
-      children: ReactNode
-      onDragEnd?: (e: unknown) => void
-    }) => (
-      <div>
-        <button
-          type="button"
-          onClick={() => onDragEnd?.({
-            active: { id: makeDnDId('item', 'li-2') },
-            over: { id: makeDnDId('item', 'li-1') },
-          })}
-        >
-          fire drag end
-        </button>
-        {children}
-      </div>
-    ),
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore(() => ({
+    active: { id: makeDnDId('item', 'li-2') },
+    over: { id: makeDnDId('item', 'li-1') },
+  })))
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')
@@ -272,10 +251,9 @@ describe('a packing-locations query that failed to load', () => {
     expect(h.reorderPackListItems).not.toHaveBeenCalled()
   })
 
-  // The notice used to render only inside the non-empty-items branch, so a list
-  // with no items yet showed a disabled Add with no reason given and nothing to
-  // retry - the worst version of the gate, since that is exactly the list a
-  // user is most likely to be adding a first location to.
+  // A list with no items yet must still show the notice and a retry, not a
+  // disabled Add with no reason given. That is exactly the list a user is
+  // most likely to be adding a first location to.
   it('explains itself and offers a retry on a list with no items', async () => {
     h.fetchListItems.mockResolvedValue([])
     await renderDetail(`/lists/${listId}/pack`)
@@ -300,24 +278,21 @@ describe('a packing-locations query that failed to load', () => {
   })
 })
 
-// Regression (review P2.1): every reorder-pending guard on this page read
-// reorderItemsMut.isPending - the DOCUMENT-order mutation - which never fires
-// in Pack view. So while a pack reorder was in flight, nothing locked: the
-// packing menus stayed live and a second reorder could start against ranks the
-// first was still rewriting. The guards now read anyItemReorderPending, which
-// watches both mutations. This lives here rather than in the pack suite
-// because firing a pack reorder in jsdom needs this file's DndContext
-// passthrough.
+// The reorder-pending guards must watch the PACK reorder too, not only the
+// document-order mutation, which never fires in Pack view. Otherwise the
+// packing menus stay live during a pack reorder and a second reorder can start
+// against ranks the first is still rewriting. The guards read
+// anyItemReorderPending, which watches both mutations. This lives here
+// rather than in the pack suite because firing a pack reorder in jsdom needs
+// this file's DndContext passthrough.
 describe('a pack reorder in flight', () => {
   beforeEach(() => {
     h.fetchPackingLocations.mockResolvedValue([] as PackingLocation[])
   })
 
   it('locks the packing menus until it settles, then re-arms', async () => {
-    let resolveReorder!: (v: undefined) => void
-    h.reorderPackListItems.mockImplementation(
-      () => new Promise<undefined>((resolve) => { resolveReorder = resolve }),
-    )
+    const reorder = deferred<undefined>()
+    h.reorderPackListItems.mockImplementation(() => reorder.promise)
     await renderDetail(`/lists/${listId}/pack`)
     // Same anchor as the drag test above: fire only once locations RESOLVED
     // empty, or the drag is refused for the unrelated still-loading reason.
@@ -334,7 +309,7 @@ describe('a pack reorder in flight', () => {
     await waitFor(() => expect(trigger).toBeDisabled())
 
     // And it is pending-scoped, not a latch: settling re-arms the menu.
-    resolveReorder(undefined)
+    reorder.resolve(undefined)
     await waitFor(() => expect(trigger).toBeEnabled())
   })
 })

@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { gearKey } from './sort-keys'
 
-// Direct tests for the CSV import planner's dedup key. These moved here from
-// src/lib/queries/sort-keys.test.ts, which was testing a byte-identical COPY of
-// this function that nothing imported - so the NFC regression below was
-// guarding the dead copy while the live one (import-plan.ts) had no direct
-// coverage of it at all.
+// Direct tests for the CSV import planner's dedup key, the function
+// import-plan.ts actually calls.
 //
 // The two spellings of "cafe" are written as \u escapes, NOT as literal
 // characters. The original test held the raw bytes, which is fragile in a way

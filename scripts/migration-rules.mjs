@@ -48,7 +48,7 @@ const JOURNAL = 'migrations/meta/_journal.json'
  * @param {string} headText
  * @returns {string | null} a reason, or null when the change is append-only
  */
-export const journalProblem = (baseText, headText) => {
+const journalProblem = (baseText, headText) => {
   /** @param {string} text @returns {{ entries: unknown[], rest: object }} */
   const load = (text) => {
     const parsed = JSON.parse(text)

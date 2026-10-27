@@ -4,14 +4,9 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  useSensor,
-  useSensors,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { Plus, Upload } from 'lucide-react'
@@ -35,6 +30,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { ListRow, NewListInline, SortableListRow, type ListRowActions } from './ListRow'
 import { pickListAfterDelete } from './pick-list-after-delete'
 import type { List } from '../lib/types'
+import { useDragSensors } from '../lib/use-drag-sensors'
 
 // Desktop-only Lists panel for /lists/:id. Sits above the gear picker in
 // the left rail so the user can switch/manage lists without leaving the
@@ -148,10 +144,7 @@ export default function DesktopListsPanel({
   // pattern today). When this panel eventually replaces the mobile cards,
   // the sensor set should match ListsPage's split (MouseSensor 5px +
   // TouchSensor 200ms delay).
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors({ touch: false })
 
   // Delete-current-list navigation. When the deleted list is the one
   // currently open, the optimistic delete strips it from the cache and the

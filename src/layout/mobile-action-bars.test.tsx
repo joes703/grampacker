@@ -48,7 +48,7 @@ describe('mobile action-bar contracts', () => {
   it('shows only working destinations on routes without page actions', () => {
     // Nothing registers a page bar here, as on a list-detail terminal state
     // (list not found) that mounts no rich bar. The labels and their order
-    // come from buildMobileDestinationItems; the pathname only marks one active.
+    // come from buildMobileDestinationItems.
     render(<MobilePrimaryNav />, { wrapper: wrapper('/lists/missing-list') })
     expect(labels('Primary navigation')).toEqual(['Gear', 'Lists'])
     expect(screen.queryByLabelText(/no action/i)).toBeNull()

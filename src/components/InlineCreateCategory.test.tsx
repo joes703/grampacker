@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Category } from '../lib/types'
 import InlineCreateCategory from './InlineCreateCategory'
+import { deferred } from '../test/deferred'
 
 // GearLibraryPage.save-errors.test.tsx pins the toolbar variant's behavior
 // through the real page (late answers against the page's dialog slot, the
@@ -17,16 +18,6 @@ const created: Category = {
   name: 'Sleep system',
   sortOrder: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
-}
-
-function deferred<T>() {
-  let resolve!: (v: T) => void
-  let reject!: (e: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
 }
 
 afterEach(cleanup)

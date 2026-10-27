@@ -1,12 +1,24 @@
 import { env } from '../test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDb } from '../db'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, getListItems, getLists } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import { PACK_RANK_MAX } from '../../shared/lists'
 import { createListItemsRepo } from './list-items'
 import { createListsRepo } from './lists'
 import { createPackingLocationsRepo } from './packing-locations'
+
+// Slugs to hand out before the real generator, so a test can force a
+// collision. Empty by default: every other test gets real random slugs.
+const forcedSlugs = vi.hoisted(() => [] as string[])
+vi.mock('better-auth/crypto', async (importOriginal) => {
+  const real = await importOriginal<typeof import('better-auth/crypto')>()
+  return {
+    ...real,
+    generateRandomString: (...args: Parameters<typeof real.generateRandomString>) =>
+      forcedSlugs.shift() ?? real.generateRandomString(...args),
+  }
+})
 
 // Lists and list items run each operation as ONE SQLite transaction
 // (server/repos/lists.ts, list-items.ts). These tests prove that through the
@@ -14,8 +26,8 @@ import { createPackingLocationsRepo } from './packing-locations'
 //
 // - a failure injected AFTER some of an operation's writes have run leaves
 //   no trace of any of them;
-// - a pack-rank collision on a move is still the route 409, and every other
-//   constraint failure is a redacted 500;
+// - a constraint failure, a pack-rank collision on a move included, is a
+//   redacted 500;
 // - a write that lands while another operation is in progress cannot split
 //   it: the operations run one after the other;
 // - a write's response is the row it committed;
@@ -73,18 +85,6 @@ const addItem = (cookie: string, listId: string, gearItemId: string) =>
   post<ItemBody>(cookie, `/api/lists/${listId}/items`, { gearItemId })
 const createLocation = (cookie: string, listId: string, name = 'Bag') =>
   post<{ id: string }>(cookie, `/api/lists/${listId}/packing-locations`, { name }).then((l) => l.id)
-
-async function getItems(cookie: string, listId: string): Promise<ItemBody[]> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ItemBody[]
-}
-
-async function getLists(cookie: string): Promise<ListBody[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/lists')
-  expect(res.status).toBe(200)
-  return (await res.json()) as ListBody[]
-}
 
 // Every row one user owns, read directly (no app code), in a stable order,
 // so a before/after comparison catches any write at all.
@@ -321,10 +321,9 @@ describe('list and list-item error classification', () => {
     return { list, bag, resident, mover }
   }
 
-  it('a pack-rank collision on a move is the route 409, with nothing written', async () => {
+  it('a pack-rank collision on a move is a 500 defect, with nothing written', async () => {
     // The destination rank is computed inside the move's own transaction, so
-    // nothing should be able to take it first; the 409 stays as the
-    // backstop. Stage the collision: just before the mover lands last in the
+    // nothing can take it first; a collision is a defect. Stage it: just before the mover lands last in the
     // bag, a trigger moves the bag's resident onto that same rank.
     const { cookie, userId } = await newUser()
     const { list, bag, resident, mover } = await moverAndResident(cookie)
@@ -341,8 +340,7 @@ describe('list and list-item error classification', () => {
       packingLocationId: bag,
       quantity: 3,
     })
-    expect(res.status).toBe(409)
-    expect(await res.json()).toEqual({ error: 'This bag changed while you were moving that item' })
+    expect(res.status).toBe(500)
     expect(snapshot(userId)).toEqual(before)
   })
 
@@ -445,20 +443,10 @@ describe('list and list-item error classification', () => {
     const { cookie, userId } = await newUser()
     const { list } = await seedFullList(cookie)
     const taken = list.slug
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-    const real = crypto.getRandomValues.bind(crypto)
-    let forced = false
-    vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
-      if (!forced && array instanceof Uint8Array && array.length === 6) {
-        forced = true
-        array.set([...taken].map((ch) => alphabet.indexOf(ch)))
-        return array
-      }
-      return real(array as never) as T
-    })
+    forcedSlugs.push(taken)
 
     const result = await createListsRepo(createDb(sqlite), userId).duplicate(list.id)
-    expect(forced).toBe(true)
+    expect(forcedSlugs).toEqual([])
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.row.slug).not.toBe(taken)
@@ -499,7 +487,7 @@ describe('overlapping list operations', () => {
       deleteRow('gear_items', gear),
     ])
     expect(added.ok).toBe(true)
-    expect(await getItems(cookie, list.id)).toEqual([])
+    expect(await getListItems(cookie, list.id)).toEqual([])
   })
 
   it('quick-add while the list is deleted: gear and item land whole, then the delete cascades the item', async () => {
@@ -534,7 +522,7 @@ describe('overlapping list operations', () => {
     expect(created.ok).toBe(true)
     if (!created.ok) return
     // The list committed with both items; the delete then cascaded B's.
-    expect((await getItems(cookie, created.row.id)).map((i) => i.gearItemId)).toEqual([gear[0]])
+    expect((await getListItems(cookie, created.row.id)).map((i) => i.gearItemId)).toEqual([gear[0]])
   })
 
   it('import while referenced gear is deleted: the import lands whole', async () => {
@@ -572,7 +560,7 @@ describe('overlapping list operations', () => {
     ])
     expect(moved).toMatchObject({ ok: true, row: { item: { packingLocationId: bag } } })
     expect(removed).toBe('deleted')
-    expect((await getItems(cookie, list.id))[0]?.packingLocationId).toBeNull()
+    expect((await getListItems(cookie, list.id))[0]?.packingLocationId).toBeNull()
   })
 
   it('five adds at once each get their own list position and pack rank', async () => {
@@ -609,7 +597,7 @@ describe('write responses are what committed', () => {
     expect(patched.status).toBe(200)
     const patchedBody = (await patched.json()) as ItemBody
 
-    const stored = await getItems(cookie, list.id)
+    const stored = await getListItems(cookie, list.id)
     expect(stored.find((i) => i.id === added.id)).toEqual(patchedBody)
     expect(stored.find((i) => i.id === quick.id)).toEqual(quick)
   })
@@ -640,7 +628,7 @@ describe('refused list writes change nothing', () => {
   it('another user and an anonymous caller: every write is refused and no row moves', async () => {
     const owner = await newUser()
     const { list, bag } = await seedFullList(owner.cookie)
-    const [item] = await getItems(owner.cookie, list.id)
+    const [item] = await getListItems(owner.cookie, list.id)
     const intruder = await newUser()
     const intruderList = await createList(intruder.cookie)
     const intruderItem = await addItem(intruder.cookie, intruderList.id, await createGear(intruder.cookie, 'X'))

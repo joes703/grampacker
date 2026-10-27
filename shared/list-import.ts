@@ -21,8 +21,7 @@ import {
 } from './schema-primitives'
 
 // POST /api/lists/import - atomic list import: new categories + new gear +
-// the list + its items land in ONE transaction (parity with the old app's
-// create_list_with_imported_items RPC). The client plans the import (CSV
+// the list + its items land in ONE transaction. The client plans the import (CSV
 // parse + dedup against its library snapshot); tempIds link the layers:
 // gear entries reference not-yet-created categories, items reference
 // not-yet-created gear. Item sortOrder is the ORIGINAL CSV row index, so

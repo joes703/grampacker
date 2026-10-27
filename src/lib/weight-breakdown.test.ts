@@ -287,9 +287,9 @@ describe('food weight', () => {
     expect(after.consumableCatRows).toEqual(before.consumableCatRows)
   })
 
-  // The regression this contract exists for: the public share reported a
-  // lighter pack than the owner saw, because its call omitted food and nothing
-  // said the result was unfinished. Food is a REQUIRED input, so the share and
+  // Why this contract exists: if a caller could omit food, the public share
+  // could report a lighter pack than the owner sees, and nothing would say
+  // the result was unfinished. Food is a REQUIRED input, so the share and
   // owner pages cannot compute different totals from the same list without
   // someone deliberately passing a different number.
   //

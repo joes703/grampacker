@@ -1,18 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import {
-  queryKeys,
-  importListFromCsv,
-  fetchGearItems,
-  fetchCategories,
-} from '../lib/queries'
+import { queryKeys, importListFromCsv } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
 import type { ListCsvRow } from '../lib/csv'
 import {
   planListImport,
   assertListImportWithinCaps,
 } from '../lib/csv/import-plan'
-import type { GearItem, Category } from '../lib/types'
 
 // CSV-import-into-a-new-list mutation, shared by the lists surfaces
 // (ListsPage card view and DesktopListsPanel). The data flow:
@@ -45,8 +40,8 @@ export function useListImportMutation() {
     mutationKey: mutationKeys.importList(),
     mutationFn: async ({ name, rows }: { name: string; rows: ListCsvRow[] }) => {
       const [gearItems, categories] = await Promise.all([
-        qc.fetchQuery<GearItem[]>({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems }),
-        qc.fetchQuery<Category[]>({ queryKey: queryKeys.categories(), queryFn: fetchCategories }),
+        qc.fetchQuery(queries.gearItems()),
+        qc.fetchQuery(queries.categories()),
       ])
       const plan = planListImport(rows, categories, gearItems)
       // Cap preflight BEFORE the POST: the server would 422 anyway, but

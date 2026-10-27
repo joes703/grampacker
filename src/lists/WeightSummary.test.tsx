@@ -84,3 +84,16 @@ describe('WeightSummary compact strip', () => {
     expect(within(strip).getAllByLabelText('0 g').length).toBeGreaterThan(0)
   })
 })
+
+// The phone breakdown is a native disclosure: closed by default, opened by
+// its summary.
+describe('WeightSummary breakdown disclosure', () => {
+  it('starts closed and opens from its summary', () => {
+    renderSummary([listItem({ id: 'tent', weightGrams: 900 })])
+    const summary = screen.getByText('Weight breakdown').closest('summary') as HTMLElement
+    const details = summary.closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+    summary.click()
+    expect(details.open).toBe(true)
+  })
+})

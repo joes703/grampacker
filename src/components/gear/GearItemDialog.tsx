@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../../lib/types'
-import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
+import { DEFAULT_GEAR_STATUS, GEAR_STATUS_MENU_OPTIONS, type GearStatus } from '../../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
 import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../flat-table-styles'
 import FormLabel from '../FormLabel'
@@ -9,9 +9,12 @@ import InlineCreateCategory from '../InlineCreateCategory'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../../lib/caps'
+import { MAX_COST, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_LIST_ITEM_QUANTITY } from '../../lib/caps'
+import { clampQuantity } from '../../../shared/lists'
+import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
+import { clampWeightGrams } from '../../../shared/gear'
 
-export type GearPatch = {
+type GearPatch = {
   name: string
   description: string | null
   weightGrams: number
@@ -21,7 +24,7 @@ export type GearPatch = {
   status: GearStatus
 }
 
-export type ListContextPatch = {
+type ListContextPatch = {
   quantity: number
   isWorn: boolean
   isConsumable: boolean
@@ -72,6 +75,7 @@ export default function GearItemDialog({
   // "89.9") without React fighting the cursor; parsed to number on
   // submit. Empty string → null. Initial value is the existing cost
   // formatted to two decimals so editing doesn't drift the display.
+  const [costError, setCostError] = useState<string | null>(null)
   const [cost, setCost] = useState(
     item?.cost != null ? item.cost.toFixed(2) : '',
   )
@@ -80,8 +84,10 @@ export default function GearItemDialog({
   const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? '')
   const [status, setStatus] = useState<GearStatus>(item?.status ?? DEFAULT_GEAR_STATUS)
   const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
-  const [worn, setWorn] = useState(listContext?.isWorn ?? false)
-  const [consumable, setConsumable] = useState(listContext?.isConsumable ?? false)
+  const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
+    isWorn: listContext?.isWorn ?? false,
+    isConsumable: listContext?.isConsumable ?? false,
+  })
   // Visibility only: the editor itself (draft, pending, error, late-answer
   // protection) is the shared InlineCreateCategory, remounted fresh each open.
   const [newCategoryOpen, setNewCategoryOpen] = useState(false)
@@ -95,14 +101,19 @@ export default function GearItemDialog({
     e.preventDefault()
     const trimmedCost = cost.trim()
     const parsedCost = trimmedCost === '' ? NaN : parseFloat(trimmedCost)
+    // The server refuses a cost above its maximum; say so here instead.
+    if (parsedCost > MAX_COST) {
+      setCostError(`Cost must be $${MAX_COST.toLocaleString('en-US')} or less.`)
+      return
+    }
+    setCostError(null)
     const trimmedDate = purchaseDate.trim()
     const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
-      weightGrams: Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS)),
+      weightGrams: clampWeightGrams(weightGrams),
       categoryId: categoryId,
-      // Blank / NaN / negative → null, never 0. Same rule as parseCost
-      // in csv.ts so manual entry and CSV import agree.
+      // Blank / NaN / negative -> null (unknown), never 0.
       cost: !isFinite(parsedCost) || parsedCost < 0
         ? null
         : Math.round(parsedCost * 100) / 100,
@@ -113,26 +124,12 @@ export default function GearItemDialog({
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
-          quantity: Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, Math.round(quantity) || 1)),
+          quantity: clampQuantity(quantity),
           isWorn: worn,
           isConsumable: consumable,
         }
       : null
     onSave(gearPatch, listPatch)
-  }
-
-  // Worn/consumable XOR: ticking one unticks the other. Reflects the DB
-  // CHECK constraint (worn_xor_consumable) and matches the in-row toggle
-  // semantics on desktop.
-  function toggleWorn() {
-    const next = !worn
-    setWorn(next)
-    if (next) setConsumable(false)
-  }
-  function toggleConsumable() {
-    const next = !consumable
-    setConsumable(next)
-    if (next) setWorn(false)
   }
 
   const isEdit = Boolean(item)
@@ -281,7 +278,10 @@ export default function GearItemDialog({
                   step="0.01"
                   placeholder=""
                   value={cost}
-                  onChange={(e) => setCost(e.target.value)}
+                  onChange={(e) => {
+                    setCost(e.target.value)
+                    setCostError(null)
+                  }}
                   className="w-full min-w-0 rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -309,10 +309,11 @@ export default function GearItemDialog({
               onChange={(e) => setStatus(e.target.value as GearStatus)}
               className={`w-full ${FORM_INPUT}`}
             >
-              <option value="active">Active</option>
-              <option value="needs_repair">Needs repair</option>
-              <option value="loaned_out">Loaned out</option>
-              <option value="need_to_buy">Need to buy</option>
+              {GEAR_STATUS_MENU_OPTIONS.map((option) => (
+                <option key={option.status} value={option.status}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -347,7 +348,7 @@ export default function GearItemDialog({
                     max={MAX_LIST_ITEM_QUANTITY}
                     value={quantity}
                     onChange={(e) =>
-                      setQuantity(Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, parseInt(e.target.value, 10) || 1)))
+                      setQuantity(clampQuantity(e.target.value))
                     }
                     className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -420,6 +421,15 @@ export default function GearItemDialog({
                 <Trash2 size={14} />
                 Delete from inventory
               </button>
+            </div>
+          )}
+
+          {costError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {costError}
             </div>
           )}
 

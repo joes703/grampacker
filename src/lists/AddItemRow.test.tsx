@@ -20,7 +20,7 @@ describe('AddItemRow commit-once', () => {
     const { onSubmit, nameInput } = renderRow()
     fireEvent.change(nameInput, { target: { value: 'Tent stakes' } })
     // Quick-add creates gear + list item server-side; a double delivery
-    // here used to mean two created rows, not a harmless duplicate PATCH.
+    // here means two created rows, not a harmless duplicate PATCH.
     act(() => {
       fireEvent.keyDown(nameInput, { key: 'Enter' })
       fireEvent.blur(nameInput)

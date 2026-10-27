@@ -23,11 +23,11 @@ function ShareTrigger({ ref, onClick, open }: Omit<KebabTriggerProps, 'disabled'
   )
 }
 
-// Sharing's one home on the list detail page. It used to live inside List
-// options, between Rename and Delete; both 2026-10 UX audits took three
-// clicks to find it, and sharing is the end goal of building a list for this
-// audience. Moved rather than copied - List options no longer hosts it - so
-// there is still exactly one share surface here. The Lists page keeps its
+// Sharing's one home on the list detail page. Sharing is the end goal of
+// building a list for this audience, so it has its own toolbar button rather
+// than sitting inside List options, between Rename and Delete. List options
+// does not host it, so there is exactly one share surface here. The Lists
+// page keeps its
 // per-row Share entry (modal + the same PrivacyPanel).
 export default function ListShareButton({ list }: { list: List }) {
   return (

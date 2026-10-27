@@ -13,14 +13,12 @@ type Props = {
 }
 
 // In-list category creation. Categories still belong to the gear inventory
-// and their order is still authored on /gear; this is only an entry point.
-// It exists because building a list from scratch used to dead-end here: the
-// list page had no way to make a category, and every 2026-10 UX audit run
-// stumbled on exactly that.
+// and their order is still authored on /gear; this is only an entry point,
+// so building a list from scratch does not mean leaving for the Gear page.
 //
 // The in-flight ref is load-bearing, not ceremony: Enter plus the late blur
-// Chrome fires when a control is disabled mid-submit created two lists
-// through an unguarded submit path once already (use-current-list-actions).
+// Chrome fires when a control is disabled mid-submit can submit twice
+// through an unguarded path (use-current-list-actions).
 // This component awaits an async create, which useCommitOnce cannot guard
 // (its window is one render), so it keeps its own ref across the await.
 export default function AddCategoryControl({ onCreate, onCreated }: Props) {

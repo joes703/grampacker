@@ -1,6 +1,5 @@
-import { env } from './test/node-env'
+import { app } from './test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from './index'
 import { lastEmailTo } from './email/console'
 
 // App writes use our CSRF header; auth uses better-auth's origin check.
@@ -24,7 +23,6 @@ function signInFrom(origin: string, ip: string) {
       },
       body: JSON.stringify({ email: 'trusted-origin@example.com' }),
     },
-    env,
   )
 }
 
@@ -54,7 +52,6 @@ describe('better-auth origin validation on /api/auth/*', () => {
         },
         body: JSON.stringify({ email: 'victim@example.com' }),
       },
-      env,
     )
     expect(res.status).toBe(403)
     // Asserted so this cannot pass for an unrelated reason - a 429 from the
@@ -81,7 +78,6 @@ describe('better-auth origin validation on /api/auth/*', () => {
         headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '198.51.100.10' },
         body: JSON.stringify({ email: to }),
       },
-      env,
     )
     expect(res.status).toBe(200)
     // Proves the request reached sendMagicLink - i.e. that this shape really

@@ -1,8 +1,7 @@
 # Testing and CI/CD
 
-**Binding, maintained against the code.** `vitest.config.ts`,
-`vitest.api.config.ts` and `.github/workflows/` are the executable sources of
-truth.
+**Binding, maintained against the code.** `vitest.config.ts` (its `unit` and
+`api` projects) and `.github/workflows/` are the executable sources of truth.
 
 ## 1. Test tiers
 
@@ -53,6 +52,8 @@ check proves:
 
 - every journal entry has SQL and every SQL file has a journal entry;
 - the newest snapshot matches `server/db/schema.ts`;
+- no two snapshots claim the same parent (`drizzle-kit check`: two branches
+  that each generated a migration from the same snapshot);
 - migrations absent from the merge base do not rebuild or rename tables,
   drop tables, change `PRAGMA foreign_keys`, touch the migration ledger, or
   write the SQLite schema table;
@@ -140,9 +141,8 @@ those files merges, run:
 - the empty-database rehearsal in `docs/vps-runbook.md`, "Change or test
   deployment files".
 
-Merging does not deploy. The owner dispatches `image.yml` from `main` with
-`deploy=true` after reviewing the exact commit and green checks. Routine
-deploy, failure and rollback procedures are in `docs/vps-runbook.md`.
+Who merges and deploys, and when: AGENTS.md "Shipping". Deploy, failure and
+rollback procedures: `docs/vps-runbook.md`.
 
 ## 10. GitHub access from agent sandboxes
 

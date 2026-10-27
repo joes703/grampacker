@@ -70,9 +70,8 @@ const h = vi.hoisted(() => ({
 
 // Keeps better-auth's nanostores session atom from outliving this file's
 // jsdom environment (test/list-detail-harness.tsx explains why).
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()

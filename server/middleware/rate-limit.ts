@@ -1,9 +1,10 @@
+import { createHmac } from 'node:crypto'
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
-import { createDb, type Db } from '../db'
+import type { Db } from '../db'
 import { rateLimits, verification } from '../db/schema'
 import { clientIpFromForwardedFor, rateLimitIpKey } from './client-ip'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 type Rule = { scope: string; limit: number; windowMs: number }
 
@@ -18,10 +19,10 @@ const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
 
 // Fixed-window counters per scope+key in the rate_limits table, for semantic
-// budgets only (things only the app can see). Volumetric limits belong at the
-// edge (SECURITY.md, "Abuse and rate limiting").
+// budgets only (things only the app can see). Volumetric limits belong in the
+// reverse proxy (SECURITY.md, "Abuse and rate limiting").
 //
-// This is now the ONLY rate limiting in the app, and that is easy to get wrong:
+// This is the ONLY rate limiting in the app, and that is easy to get wrong:
 // better-auth's own limiter is disabled (authOptions), and the magic-link plugin
 // ships a rate-limit rule that therefore NEVER FIRES. Anyone reading the plugin
 // source would reasonably assume magic links are covered. They are not. They are
@@ -30,26 +31,22 @@ const SIGN_IN: Rule = { scope: 'sign-in', limit: 10, windowMs: 10 * MINUTE }
 const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 
 // The passkey SIGN-IN ceremony, on its own budget rather than SIGN_IN's.
+// SIGN_IN (10 per 10 minutes) is sized for a PASSWORD threat model, and is
+// far too tight here:
 //
-// It used to share SIGN_IN (10 per 10 minutes) on the reasoning that the front
-// door deserves the tight bucket. That reasoning imported a PASSWORD threat
-// model into a flow that has no password in it, and nobody did the arithmetic:
-//
-//   - One ceremony costs TWO requests, not one. The client calls
+//   - One ceremony costs TWO requests. The client calls
 //     generate-authenticate-options, the browser prompts, then it calls
-//     verify-authentication. Both are metered, so 10 requests was FIVE
+//     verify-authentication. Both are metered, so 10 requests is FIVE
 //     attempts.
 //   - A ceremony the user ABANDONS still costs one. Cancelling the browser's
-//     passkey picker - or picking the wrong credential and backing out - burns
+//     passkey picker - or picking the wrong credential and backing out - uses
 //     budget without ever reaching verification.
 //
-// So the real budget was roughly five to ten fumbles before a ten-minute
-// lockout, and a user with several passkeys hits that just by choosing wrong a
-// few times. That is exactly what happened to the app owner on 2026-09-12, on
-// production, and it is a bad trade: we were rationing the one action a
-// legitimate user has a genuine reason to repeat.
+// On SIGN_IN, a user with several passkeys is locked out for ten minutes just
+// by choosing the wrong one a few times. A legitimate user has a real reason
+// to repeat this action, so it must not be rationed that tightly.
 //
-// What this bucket actually defends, now that it is named honestly:
+// What this bucket defends:
 //
 //   - generate-authenticate-options WRITES a challenge row to `verification`
 //     and takes no session, so unmetered it is an anonymous write amplifier.
@@ -62,22 +59,20 @@ const AUTH_DEFAULT: Rule = { scope: 'auth', limit: 30, windowMs: 10 * MINUTE }
 // few-attempts-then-lockout shape that protects a password buys nothing and
 // costs the owner their own front door.
 //
-// 30 per 5 minutes = 15 full ceremonies. Stated precisely, because "looser" is
-// exactly the word that should not be left vague in a security control:
+// 30 per 5 minutes = 15 full ceremonies. Compared with SIGN_IN, precisely:
 //
-//   - Sustained rate rises SIX times (30/5min vs 10/10min).
-//   - Worst-case BURST rises about three times. Fixed windows have a boundary:
-//     a bucket's whole limit immediately before expiry plus a whole limit after
-//     is ~59 accepted requests close together, against ~19 before. Still well
-//     under the ~119 that 60-per-10-minutes would allow - which is why the
-//     window shortened rather than the ceiling doubling.
+//   - Sustained rate is SIX times higher (30/5min vs 10/10min).
+//   - Worst-case BURST is about three times higher. Fixed windows have a
+//     boundary: a bucket's whole limit immediately before expiry plus a whole
+//     limit after is ~59 accepted requests close together, against ~19 for
+//     SIGN_IN. Still well under the ~119 that 60-per-10-minutes would allow -
+//     which is why the window is shorter rather than the ceiling higher.
 //   - It halves the MAXIMUM REMAINING WINDOW after a rejection (up to five
 //     minutes rather than up to ten), not the wait itself: the window started
 //     on the bucket's first request, so a rejected caller may be seconds from
 //     the reset or a full window away from it.
 //
-// The cost this rate actually buys is bounded elsewhere, not hand-waved: the
-// `verification` rows these challenges write are swept in charge() below,
+// The cost of this rate is bounded elsewhere: the `verification` rows these challenges write are swept in charge() below,
 // because no passkey flow sweeps them. Read that comment before raising this.
 const PASSKEY_SIGN_IN: Rule = {
   scope: 'passkey-sign-in',
@@ -110,20 +105,32 @@ const PASSKEY_SIGN_IN: Rule = {
 // middleware does not charge. It is charged inside better-auth's `sendMagicLink`
 // callback (server/auth.ts) instead, immediately before the mail goes out.
 //
-// It used to be charged here, and that was a real hole: this middleware runs
-// BEFORE better-auth parses the body, so it cannot tell a deliverable address
-// from junk. better-auth validates with z.email() and 400s a bad one - but the
-// slot was already spent. ~90 requests carrying garbage addresses, from rotating
-// IPs, therefore drained a day of the ONLY recovery path in a passwordless app
-// while sending zero mail. Charging in the callback means better-auth has already
-// validated the address (z.email(); case is NOT folded), so nothing that cannot
-// become an email can spend the shared quota. (Found by review, 2026-07-12.)
+// This middleware runs BEFORE better-auth parses the body, so it cannot tell a
+// deliverable address from junk. better-auth validates with z.email() and 400s
+// a bad one. If the slot were charged here, ~90 requests carrying garbage
+// addresses, from rotating IPs, would use up a day of the ONLY recovery path
+// in a passwordless app while sending zero mail. In the callback, better-auth
+// has already validated the address (z.email(); case is NOT folded), so
+// nothing that cannot become an email can spend the shared quota.
 //
-// What the counter therefore means, precisely: VALIDATED SEND ATTEMPTS. It is
-// charged just before email.send, not after, so a provider failure still spends a
-// slot. That is deliberate - reserve-then-refund would leak a slot forever
-// whenever an isolate dies mid-send, which is a worse failure than losing one of
-// 90 slots to a rare Resend 5xx. Do not write "mail actually sent" here again.
+// A better-auth `hooks.before` is no better: before-hooks run BEFORE the
+// endpoint's zod body schema, so they also see an UNVALIDATED body.
+// Re-validating the address ourselves would couple us to better-auth's exact
+// email rules, and accepting something it rejects would be a quota BYPASS.
+//
+// What the counter means, precisely: VALIDATED SEND ATTEMPTS, not mail
+// delivered. It is charged just before email.send, not after, so two
+// concurrent sends cannot both see a free slot, and a provider failure still
+// spends a slot. Reserve-then-refund would leak a slot until the window rolls
+// whenever the process dies mid-send, which is worse than losing one of 90
+// slots to a rare Resend 5xx.
+//
+// Being this late has one cost: better-auth writes the `verification` row
+// before it calls sendMagicLink, so a charge refused there leaves an orphan
+// token row (hashed, never emailed, expires in 5 minutes). The peek in the
+// middleware refuses a spent bucket before better-auth runs, so orphans happen
+// only at the quota boundary, when a concurrent burst passes the peek and then
+// loses the charge. The per-IP and per-address buckets bound that burst.
 //
 // The middleware still PEEKS at this bucket (without charging it) so an already
 // spent quota is refused up front - see the middleware for why that matters.
@@ -153,7 +160,7 @@ const MAGIC_LINK_VERIFY: Rule = {
   limit: 10,
   windowMs: 10 * MINUTE,
 }
-// Irreversible, and now gated on session freshness rather than a password.
+// Irreversible, and gated on session freshness (there is no password).
 const DELETE_USER: Rule = { scope: 'delete-user', limit: 5, windowMs: 10 * MINUTE }
 
 // Longest window; rows older than this are dead and get swept.
@@ -180,9 +187,8 @@ function ruleFor(path: string): Rule {
   // dead password endpoints - it is here so that a sign-in route added later
   // lands on the tight bucket automatically rather than silently inheriting the
   // loosest one in the app. That it also meters /sign-in/email and
-  // /sign-up/email, which now 400 with no emailAndPassword config, is incidental:
-  // a dead endpoint is still a free request if nothing counts it. (The password
-  // era is over; do not read this branch as evidence of it.)
+  // /sign-up/email, which 400 with no emailAndPassword config, is incidental:
+  // a dead endpoint is still a free request if nothing counts it.
   if (path.startsWith('/api/auth/sign-in') || path.startsWith('/api/auth/sign-up')) {
     return SIGN_IN
   }
@@ -204,7 +210,7 @@ function ruleFor(path: string): Rule {
 //   letting an attacker burn the victim's 5/hour recovery budget from rotating
 //   IPs without sending a single email - a targeted lockout of the passwordless
 //   root of trust. Untrimmed, the junk address gets its own junk bucket, which
-//   is exactly where the cost belongs. (Found by review, not by me.)
+//   is exactly where the cost belongs.
 //
 // - HMAC, not a bare hash. Without it, rate_limits.key becomes a list of every
 //   address that ever requested a link, and a plain SHA-256 of an email address
@@ -219,22 +225,10 @@ function ruleFor(path: string): Rule {
 //   uses, is the shape cross-protocol confusion needs; the prefix removes it.
 const EMAIL_BUCKET_DOMAIN = 'grampacker:magic-send-email:v1:'
 
-async function emailBucketKey(secret: string, email: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const mac = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`${EMAIL_BUCKET_DOMAIN}${email.toLowerCase()}`),
-  )
-  return [...new Uint8Array(mac)]
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+export function emailBucketKey(secret: string, email: string): string {
+  return createHmac('sha256', secret)
+    .update(`${EMAIL_BUCKET_DOMAIN}${email.toLowerCase()}`)
+    .digest('hex')
     .slice(0, 32)
 }
 
@@ -334,11 +328,8 @@ function charge(db: Db, rule: Rule, keySuffix: string, now: number): RateVerdict
     // expires in five minutes and then lives until some unrelated request
     // happens to arrive. Cleanup must not depend on that traffic.
     //
-    // That leak predates this sweep, but the passkey budget (30/5min, raised
-    // from an effective 10/10min on 2026-09-12) raises its ceiling sixfold, to
-    // ~8,640 rows/day/IP of anonymous GET traffic. Accelerating an unbounded
-    // path without bounding it is not a trade worth making, so it is bounded
-    // here rather than written down as accepted risk.
+    // The passkey budget (30/5min) allows ~8,640 such rows/day/IP of anonymous
+    // GET traffic, so the leak is bounded here rather than accepted as a risk.
     //
     // Safe to delete early: a row past expiresAt is already dead. better-auth's
     // own consume treats expired rows as invalid - it deletes the row and
@@ -353,10 +344,8 @@ function charge(db: Db, rule: Rule, keySuffix: string, now: number): RateVerdict
     // expired and therefore already inert, and the next bucket to roll a window
     // sweeps them instead. Letting a database error here turn into a failed
     // SIGN-IN would be trading the thing users need for the thing the table
-    // needs.
-    // (Caught by the sabotage suite: auth-error-logging.test.ts dooms every
-    // non-limiter statement, and an unguarded sweep took the whole request down
-    // with it.)
+    // needs. auth-error-logging.test.ts fails every non-limiter statement,
+    // so an unguarded sweep there takes the whole request down.
     try {
       db.delete(verification).where(lt(verification.expiresAt, new Date(now))).run()
     } catch {
@@ -431,7 +420,7 @@ function consume(db: Db, rule: Rule, keySuffix: string, now: number): Response |
 // address Caddy saw (client-ip.ts says why only that entry is trusted). It
 // is absent in local dev and tests unless injected, where everything shares
 // one bucket ('local').
-export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
+export const authRateLimit = createMiddleware<{ Bindings: AppDeps }>(
   async (c, next) => {
     if (
       (c.req.method === 'GET' || c.req.method === 'HEAD') &&
@@ -447,7 +436,7 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     // own prefix and mint unlimited budget.
     const ip = rawIp === undefined ? 'local' : rateLimitIpKey(rawIp)
     const now = Date.now()
-    const db = createDb(c.env.DB)
+    const db = c.env.db
 
     const byIp = consume(db, rule, ip, now)
     if (byIp) return byIp
@@ -470,8 +459,8 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     // `verification` row BEFORE it calls sendMagicLink, so without an early
     // refusal every request arriving at an already-drained quota would write a DB
     // row and only then be refused - turning an exhausted quota into a free write
-    // amplifier. Peeking keeps the fail-fast behavior the charge used to give us,
-    // without spending a slot on input better-auth has not vetted yet.
+    // amplifier. Peeking refuses early without spending a slot on input
+    // better-auth has not validated yet.
     //
     // NOTE this ordering only holds for requests that come through Hono. A
     // server-side `auth.api.signInMagicLink(...)` call would skip this middleware
@@ -480,8 +469,8 @@ export const authRateLimit = createMiddleware<{ Bindings: AppEnv }>(
     // today. If something ever does, it is stepping around two of the three
     // buckets and needs to say why.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
-      const emailKey = await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
-      // Read the clock again after those awaits. Other requests may have
+      const emailKey = emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
+      // Read the clock again after the body read. Other requests may have
       // started a newer window meanwhile; Retry-After counted from the
       // earlier time would be longer than the window.
       const sendNow = Date.now()

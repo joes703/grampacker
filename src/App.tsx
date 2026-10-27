@@ -13,9 +13,8 @@ import ChunkErrorBoundary from './components/ChunkErrorBoundary'
 import AppLoading from './components/AppLoading'
 import { SessionCacheGuard } from './layout/session-cache-guard'
 
-// The two anonymous surfaces are split out of the main bundle, because until
-// now both of them shipped the whole authenticated app to people who could not
-// use a byte of it:
+// Two parts are split out of the main bundle, so that anonymous visitors do not
+// download the whole authenticated app they cannot use:
 //
 //   AuthenticatedApp - the signed-in area. It renders INSIDE RequireSession,
 //     which is the point: a signed-out visitor with no hint (see below) never
@@ -27,7 +26,7 @@ import { SessionCacheGuard } from './layout/session-cache-guard'
 //
 // "One chunk" is the intent, not quite the emitted graph: the authenticated
 // area resolves to the AuthenticatedApp chunk PLUS the shared chunk it has in
-// common with SharePage (CategoryGroup and the list-rendering subtree). Both are
+// common with SharePage (CategoryTable and the list-rendering subtree). Both are
 // fetched in the same wave - Vite emits the static deps of a dynamic import as
 // preloads alongside it - so it costs bytes, not a round-trip. What it is NOT is
 // one chunk per page: see AuthenticatedApp.tsx for that trade.
@@ -38,9 +37,8 @@ const SharePage = lazy(() => import('./lists/SharePage'))
 // Loading AuthenticatedApp inside the session gate is what keeps it away from
 // anonymous visitors, but taken alone it would make every signed-in visitor pay
 // for that: entry bundle -> ask the server who you are -> only THEN start
-// downloading the app. Three serial steps where there used to be two, so the
-// split would have been a straight trade of their latency for someone else's
-// bytes.
+// downloading the app. That is three serial steps instead of two: the split
+// would trade signed-in latency for anonymous bytes.
 //
 // So: if this browser has ever held a session, start the download NOW, in
 // parallel with the session check, and let RequireSession catch up. It is fired
@@ -48,8 +46,8 @@ const SharePage = lazy(() => import('./lists/SharePage'))
 // the whole thing we are trying to buy back.
 //
 // This is not a prefetch-on-idle (that would hand the bytes right back to the
-// visitor the split is for). A browser with no hint - a genuinely new visitor,
-// the one PERF-02 is about - never asks for this chunk. A browser that HAS the
+// visitor the split is for). A browser with no hint - a genuinely new visitor -
+// never asks for this chunk. A browser that HAS the
 // hint but is signed out (someone who signed out, or whose session expired)
 // fetches a chunk RequireSession then declines to render: a wasted download, and
 // the deliberate price of the hint.
@@ -63,7 +61,7 @@ if (hasSeenSession()) {
   void importAuthenticatedApp().catch(() => {})
 }
 
-// Query defaults ported from the old app: 30s staleTime keeps rapid
+// Query defaults: 30s staleTime keeps rapid
 // navigation off the network, a single retry smooths transient blips
 // without hammering a down server, and focus refetch stays off (the data
 // is single-user; nothing changes behind your back). Note that this last one
@@ -123,8 +121,8 @@ function RedirectIfSession({ children }: { children: ReactNode }) {
 // URL bar and cannot be pointed at a path; splitting the table out is what lets
 // a test drive it through MemoryRouter with the ACTUAL react-router matching
 // rather than a mock of it. That matters more than usual here: this table
-// carries the lazy boundary, and it moved every authenticated path from a flat
-// route list to relative paths under a splat.
+// carries the lazy boundary, and every authenticated path is a relative path
+// under a splat.
 export function AppRoutes() {
   return (
     <Routes>
@@ -136,9 +134,9 @@ export function AppRoutes() {
           </RedirectIfSession>
         }
       />
-      {/* There is no sign-up page any more: requesting a magic link for an
-          unknown address creates the account when it is redeemed, so one
-          surface serves both. Old bookmarks and any stale link land on it. */}
+      {/* There is no sign-up page: requesting a magic link for an unknown
+          address creates the account when it is redeemed, so one surface
+          serves both. Bookmarks and links to /sign-up land on it. */}
       <Route path="/sign-up" element={<Navigate to="/sign-in" replace />} />
       {/* Where magic-link emails land. NOT wrapped in RedirectIfSession: a
           user who is already signed in on this device may be redeeming a
@@ -157,8 +155,8 @@ export function AppRoutes() {
           </Suspense>
         }
       />
-      {/* Everything else is behind the session gate, including the old "*"
-          catch-all (it lives in AuthenticatedApp now). The static paths above
+      {/* Everything else is behind the session gate, including the "*"
+          catch-all (it lives in AuthenticatedApp). The static paths above
           still win: react-router ranks by specificity, not by source order, so
           a splat never shadows them.
 

@@ -108,24 +108,18 @@ function CategorySectionInner(
           matching the gear-picker reference grammar. */}
       <div className={`${FLAT_TABLE_HEADER} gap-1.5 ${FLAT_TABLE_HEADER_PADDING} ${
         // Canonical gap-1.5 + px-3, matching GearItemRow's own gap and
-        // padding. This header previously used a tighter gap-1 + px-2 to make
-        // room for an extra LEADING drag-handle column; that grip now sits
-        // after the title, so the reason for the tighter variant is gone and
-        // the header can share the row geometry exactly. Matching both values
-        // is what puts the chevron in the same column as each row's drag
-        // handle and the category title in the same column as the item names
-        // - verified in a browser, not derived on paper.
+        // padding. Matching both values is what puts the chevron in the same
+        // column as each row's drag handle and the category title in the
+        // same column as the item names (verified in a browser).
         //
         // Collapsed: header is the card's only child, so its divider border
         // would double with the card's bottom border. Drop it.
         collapsed ? 'border-b-0' : ''
       }`}>
-        {/* The category grip used to lead this header, ahead of the chevron.
-            That gave the header TWO leading controls where each GearItemRow
-            has one (its own drag handle), so the category title started 30px
-            right of the item names beneath it - measured, not inferred. The
-            chevron is the control that mirrors the row's slot, so it leads
-            now and the section-only grip moved after the title. See
+        {/* The chevron leads this header and the category grip sits after
+            the title. Each GearItemRow has ONE leading control (its drag
+            handle); a second leading control here would push the category
+            title about 30px right of the item names beneath it. See
             docs/ui-density.md "Reserved space". */}
 
         {/* Collapse toggle - sized for touch on mobile (40x40, the minimum
@@ -136,7 +130,7 @@ function CategorySectionInner(
             ROW_LEADING_CONTROL_TARGET, not ROW_CONTROL_TARGET: this box has
             to stay the same width as GearItemRow's grip or the alignment
             documented above stops holding. Glyph is 14px to match the
-            narrower desktop box (and CategoryGroup's chevron). */}
+            narrower desktop box (and CategoryTable's chevron). */}
         <button
           onClick={() => onToggleCollapse(collapseKey)}
           aria-expanded={!collapsed}
@@ -209,9 +203,8 @@ function CategorySectionInner(
             {/* Desktop column labels — each composes the same COL_* width
                token as GearItemRow's matching cell (flat-table-styles), so
                labels sit directly above row values by construction.
-               No horizontal nudge is needed any more: the header now uses the
-               row's own px-3 + gap-1.5, so the two rails share coordinates
-               outright instead of compensating for a 4px difference.
+               No horizontal nudge is needed: the header uses the row's own
+               px-3 + gap-1.5, so the two rails share coordinates.
                lg:contents
                flattens the labels into the parent flex on desktop so the
                parent's gap-1.5 applies between every column. Suppressed

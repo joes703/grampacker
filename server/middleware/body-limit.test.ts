@@ -1,6 +1,5 @@
-import { env, testDb } from '../test/node-env'
+import { app, env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { API_BODY_LIMIT_BYTES, IMPORT_BODY_LIMIT_BYTES } from './body-limit'
 
 // The limit middleware is registered before CSRF, rate limiting, and
@@ -15,7 +14,6 @@ describe('api body limit', () => {
     const res = await app.request(
       '/api/gear-items',
       { method: 'POST', body: oversized },
-      env,
     )
     expect(res.status).toBe(413)
     expect(res.headers.get('content-type') ?? '').toContain('application/json')
@@ -27,7 +25,6 @@ describe('api body limit', () => {
     const res = await app.request(
       '/api/gear-items',
       { method: 'POST', body: 'x'.repeat(API_BODY_LIMIT_BYTES) },
-      env,
     )
     expect(res.status).toBe(403)
   })
@@ -40,12 +37,11 @@ describe('api body limit', () => {
         body: oversized,
         headers: { 'x-forwarded-for': '10.98.0.1' },
       },
-      env,
     )
     expect(res.status).toBe(413)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       'select count(*) as n from rate_limits',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(row?.n).toBe(0)
   })
 
@@ -55,7 +51,7 @@ describe('api body limit', () => {
   // (403), which proves the limit let it through.
   describe.each(['/api/gear-items/import', '/api/lists/import'])('%s', (path) => {
     it('accepts a body over the standard limit', async () => {
-      const res = await app.request(path, { method: 'POST', body: oversized }, env)
+      const res = await app.request(path, { method: 'POST', body: oversized })
       expect(res.status).toBe(403)
     })
 
@@ -63,7 +59,6 @@ describe('api body limit', () => {
       const res = await app.request(
         path,
         { method: 'POST', body: 'x'.repeat(IMPORT_BODY_LIMIT_BYTES + 1) },
-        env,
       )
       expect(res.status).toBe(413)
     })
@@ -73,7 +68,6 @@ describe('api body limit', () => {
     const res = await app.request(
       '/api/gear-items/import-preview',
       { method: 'POST', body: oversized },
-      env,
     )
     expect(res.status).toBe(413)
   })

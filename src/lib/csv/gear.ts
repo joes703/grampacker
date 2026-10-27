@@ -1,11 +1,10 @@
 import type { GearItem, Category } from '../types'
 import { toCsv } from './core'
 import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
+import { isoDateSchema } from '../../../shared/gear'
 
-// Parse output. The CSV column HEADERS stay snake_case (Lighterpack-shaped;
-// no longer byte-identical to the old repo's export, which carried a second
-// money column), but the parsed TS row is camelCase because every new-repo
-// consumer speaks camelCase.
+// Parse output. The CSV column HEADERS stay snake_case (Lighterpack-shaped),
+// but the parsed TS row is camelCase because every consumer speaks camelCase.
 // categoryName is the category's display name; the import planner resolves
 // it to an existing id or a new category.
 export type GearCsvRow = {
@@ -35,12 +34,12 @@ export function gearItemsToCsv(items: GearItem[], categories: Category[]): strin
   // Lighterpack import silently - the file still loads, with wrong fields.
   // gear.test.ts pins them by position.
   //
-  // There is deliberately ONE money column. This used to emit a second,
-  // `price`, hardcoded to 0 as a "Lighterpack default" - but Lighterpack
-  // never reads a price column at all (see the positional list above), so
-  // that column carried no interoperability and only misled humans and
-  // spreadsheets reading the file. Prices cannot be carried INTO Lighterpack
-  // by any column choice; that is a limitation of its importer, not ours.
+  // There is deliberately ONE money column. Do not add a `price` column
+  // hardcoded to 0 as a "Lighterpack default": Lighterpack never reads a
+  // price column at all (see the positional list above), so it would carry
+  // no interoperability and only mislead people and spreadsheets reading the
+  // file. Prices cannot be carried INTO Lighterpack by any column choice;
+  // that is a limitation of its importer, not ours.
   const rows = items.map((item) => ({
     'Item Name': item.name,
     Category: item.categoryId ? (catMap.get(item.categoryId) ?? '') : '',
@@ -80,15 +79,12 @@ export function parseGearCsv(text: string): GearCsvRow[] | string {
 // don't accept locale formats: silent ambiguity (07/04/2024 = July 4 or
 // April 7?) is worse than rejecting. Users can re-format their CSV.
 //
-// Tightened over the old repo's regex-only check: only REAL calendar
-// dates survive (2026-02-30 drops to null). The import DTO's
-// isoDateSchema (shared/gear.ts) re-validates with the same round-trip
-// check, and one impossible date would 400 the entire atomic import.
+// A regex alone is not enough: only REAL calendar dates survive
+// (2026-02-30 drops to null). The import DTO's isoDateSchema
+// (shared/gear.ts) re-validates with the same round-trip check, and one
+// impossible date would 400 the entire atomic import.
 function parseIsoDate(raw: string | undefined): string | null {
   const s = (raw ?? '').trim()
   if (!s) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
-  const d = new Date(`${s}T00:00:00Z`)
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return null
-  return s
+  return isoDateSchema.safeParse(s).success ? s : null
 }

@@ -21,6 +21,7 @@ import {
   itemRowShell,
 } from '../components/flat-table-styles'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
+import { SHORT_DATE } from '../lib/dates'
 
 type Props = {
   item: GearItem
@@ -205,16 +206,11 @@ function formatCost(cost: number | null): string {
 // L9 cost. Locale is read once at module load — virtually no SPA
 // respects mid-session locale changes anyway and we're not localizing
 // anything else.
-const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-})
 function formatPurchaseDate(date: string | null): string {
   if (date === null) return '--'
   const d = new Date(`${date}T00:00:00`)
   if (isNaN(d.getTime())) return '--'
-  return DATE_FORMATTER.format(d)
+  return SHORT_DATE.format(d)
 }
 
 // Row kebab — Edit (opens GearItemDialog), quick status, Delete from

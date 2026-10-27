@@ -5,24 +5,24 @@ import { useSortableRow } from '../lib/use-sortable-row'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
+import { MAX_PACKING_LOCATION_NAME } from '../lib/caps'
 import { makeDnDId } from '../lib/dnd-ids'
-import { asButtonRef } from '../lib/dnd'
 import KebabMenu from '../components/KebabMenu'
+import InlineRenameInput from '../components/InlineRenameInput'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { FLAT_TABLE_HEADER_TITLE } from '../components/flat-table-styles'
 
 // The drag + admin chrome for a packing-location section in pack mode.
 //
-// Same seam as SortableCategoryRows: CategoryGroup renders on the PUBLIC share
-// view, so it must not import @dnd-kit or any authenticated component. This
-// module owns both and hands CategoryGroup opaque ReactNodes through its
-// headerLeading / headerAction props. Only ListDetailPage imports this file.
+// Same seam as SortableCategoryRows: PackSection must not import @dnd-kit or
+// any authenticated component. This module owns both and hands PackSection
+// opaque ReactNodes through its headerLeading / headerAction props. Only the
+// authenticated Pack view (PackDocument, PackLocationSection) imports this
+// file.
 //
-// This replaces OrganizePackPanel's SortableLocationSection and
-// SortableItemContainerSection, which wrapped a LocationSection. The wiring is
-// the same; the thing being wrapped is now the checklist section, because
-// arranging and packing are one view.
+// It wraps the checklist section itself, because arranging and packing are
+// one view.
 
 // A location section that is NOT backed by an item. One identity: the section
 // itself, which reorders among its siblings and accepts item drops.
@@ -122,7 +122,7 @@ export function useSortableContainerSection({
     dragHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setReorderActivatorNodeRef)}
+        ref={setReorderActivatorNodeRef}
         {...reorderListeners}
         {...reorderAttributes}
         disabled={reorderPending}
@@ -134,7 +134,7 @@ export function useSortableContainerSection({
     nestHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setNestingActivatorNodeRef)}
+        ref={setNestingActivatorNodeRef}
         {...nestingListeners}
         {...nestingAttributes}
         disabled={movePending}
@@ -147,8 +147,7 @@ export function useSortableContainerSection({
 }
 
 // Rename / Delete for a plain location, Stop-using-as-container for an
-// item-backed one. Lifted from LocationSection's header menu so the merged
-// pack section keeps the same actions in the same place.
+// item-backed one.
 export function PackSectionMenu({
   title,
   itemBacked,
@@ -192,7 +191,7 @@ export function PackSectionMenu({
   )
 }
 
-// Rename-in-place for a packing location, lifted from LocationSection's header.
+// Rename-in-place for a packing location.
 // Self-contained draft state: the page owns only WHICH section is renaming, so
 // switching sections cannot leak a half-typed name between them (the caller
 // keys this by location id).
@@ -223,17 +222,14 @@ export function PackSectionRenameInput({
       <span className={`hidden print:block min-w-0 flex-1 [overflow-wrap:anywhere] ${FLAT_TABLE_HEADER_TITLE}`}>
         {name}
       </span>
-      <input
-        autoFocus
+      <InlineRenameInput
         value={draft}
-        maxLength={60}
-        aria-label="Packing location name"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') commit()
-          if (event.key === 'Escape') onCancel()
-        }}
+        maxLength={MAX_PACKING_LOCATION_NAME}
+        selectOnOpen={false}
+        ariaLabel="Packing location name"
+        onChange={setDraft}
+        onSubmit={commit}
+        onCancel={onCancel}
         className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900 print:hidden"
       />
     </>

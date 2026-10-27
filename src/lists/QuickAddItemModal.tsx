@@ -9,15 +9,15 @@ import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
 
 type Props = {
   onSubmit: (data: AddItemData, categoryId: string | null) => void
   onClose: () => void
   /** The caller's categories, which turns on the Category selector. The gear
-   *  picker's "New item" passes them: it has no section context, and before
-   *  the selector every item it created landed in Uncategorized with nothing
-   *  saying so - the first stumble both 2026-10 UX audits hit when building a
-   *  list from scratch. A category section's "Add item" omits this prop; its
+   *  picker's "New item" passes them: it has no section context, and without
+   *  the selector every item it created would land in Uncategorized with
+   *  nothing saying so. A category section's "Add item" omits this prop; its
    *  category is implicit and the caller supplies it itself. */
   categories?: Category[]
 }
@@ -71,7 +71,7 @@ export default function QuickAddItemModal({ onSubmit, onClose, categories }: Pro
     onSubmit(data, categoryId === '' ? null : categoryId)
   }
 
-  const qtyNum = parseInt(quantity, 10) || 1
+  const qtyNum = clampQuantity(quantity)
 
   return (
     <Modal

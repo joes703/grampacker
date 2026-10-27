@@ -66,9 +66,8 @@ const h = vi.hoisted(() => ({
 
 // See test/list-detail-harness.tsx: mocking the auth client keeps
 // better-auth's session atom from outliving jsdom.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -78,32 +77,11 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // dnd-kit cannot be driven by a synthetic pointer sequence in jsdom. The
 // passthrough exposes the page's own onDragEnd, which is where the page hands
 // the planner its exclusions - the part under test.
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children, onDragEnd }: {
-      children: ReactNode
-      onDragEnd?: (e: unknown) => void
-    }) => (
-      <div>
-        <button
-          type="button"
-          onClick={() => onDragEnd?.({
-            active: { id: makeDnDId('packing-item', rowA.id) },
-            over: { id: makeDnDId('packing-item', rowB.id) },
-          })}
-        >
-          fire drag end
-        </button>
-        {children}
-      </div>
-    ),
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore(() => ({
+    active: { id: makeDnDId('packing-item', rowA.id) },
+    over: { id: makeDnDId('packing-item', rowB.id) },
+  })))
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')

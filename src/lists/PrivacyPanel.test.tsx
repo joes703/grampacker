@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import type { List } from '../lib/types'
 import { showToast } from '../lib/toast'
+import { deferred } from '../test/deferred'
 
 vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 
@@ -119,10 +120,8 @@ describe('PrivacyPanel', () => {
   // UI says private. Hence an absolute target and a disabled toggle while
   // the flip is in flight.
   it('ignores a second activation while the first flip is in flight', async () => {
-    let resolveFirst!: (v: List) => void
-    updateList.mockImplementation(
-      () => new Promise<List>((resolve) => { resolveFirst = resolve }),
-    )
+    const firstFlip = deferred<List>()
+    updateList.mockImplementation(() => firstFlip.promise)
     renderPanel()
     const user = userEvent.setup()
 
@@ -133,7 +132,7 @@ describe('PrivacyPanel', () => {
 
     expect(updateList).toHaveBeenCalledTimes(1)
     expect(updateList).toHaveBeenCalledWith('list-1', { isShared: true })
-    resolveFirst({ ...list, isShared: true })
+    firstFlip.resolve({ ...list, isShared: true })
     await waitFor(() => expect(toggle).not.toBeDisabled())
   })
 
@@ -287,14 +286,6 @@ describe('PrivacyPanel - resetting the share link', () => {
 describe('PrivacyPanel - a failed reset', () => {
   const shared: List = { ...list, isShared: true }
   const failure = /couldn't confirm the link was reset\. refresh to check before trying again\./i
-
-  function deferred() {
-    let reject: (err: unknown) => void = () => {}
-    const promise = new Promise((_resolve, rej) => {
-      reject = rej
-    })
-    return { promise, reject }
-  }
 
   async function confirmReset() {
     const user = userEvent.setup()

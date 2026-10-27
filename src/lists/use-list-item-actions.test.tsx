@@ -5,7 +5,7 @@ import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react
 import type { ReactNode } from 'react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { mutationErrorHandler } from '../lib/mutation-error-handler'
-import { deferred } from '../test/mutation-hook-harness'
+import { deferred } from '../test/deferred'
 
 // The add/update/move/delete/quick-add list-item mutations were inline in
 // ListDetailPage (which has no component test), so this locks the logic the
@@ -196,11 +196,11 @@ describe('useListItemActions', () => {
       // is what re-converges the cache with server truth when something
       // external raced the optimistic writes (e.g. the edit-gear dialog's
       // gear-save fan-out refetching this list mid-save).
-      let resolveA!: () => void
-      let resolveB!: () => void
+      const updateA = deferred()
+      const updateB = deferred()
       h.updateListItem
-        .mockImplementationOnce(() => new Promise<void>((r) => { resolveA = () => r() }))
-        .mockImplementationOnce(() => new Promise<void>((r) => { resolveB = () => r() }))
+        .mockImplementationOnce(() => updateA.promise)
+        .mockImplementationOnce(() => updateB.promise)
       const qc = makeQc()
       qc.setQueryData<ListItemWithGear[]>(
         ['list-items', LIST_ID],
@@ -219,12 +219,12 @@ describe('useListItemActions', () => {
       await waitFor(() => expect(h.updateListItem).toHaveBeenCalledTimes(2))
 
       // First settles while the second is still pending -> gate skips the refetch.
-      await act(async () => { resolveA() })
+      await act(async () => { updateA.resolve() })
       await waitFor(() => expect(a.current.updateItem.isSuccess).toBe(true))
       expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(0)
 
       // Last settles -> exactly one invalidate for the whole burst.
-      await act(async () => { resolveB() })
+      await act(async () => { updateB.resolve() })
       await waitFor(() => expect(b.current.updateItem.isSuccess).toBe(true))
       await waitFor(() =>
         expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1),
@@ -238,11 +238,11 @@ describe('useListItemActions', () => {
       // Ready mutation's successful optimistic write on the same item, with no
       // trailing invalidate to heal it. Field-scoped rollback restores ONLY
       // isPacked onto the CURRENT row, so the Ready tick survives.
-      let rejectPacked!: (e: Error) => void
-      let resolveReady!: () => void
+      const packedWrite = deferred()
+      const readyWrite = deferred()
       h.updateListItem
-        .mockImplementationOnce(() => new Promise<void>((_r, rej) => { rejectPacked = rej }))
-        .mockImplementationOnce(() => new Promise<void>((r) => { resolveReady = () => r() }))
+        .mockImplementationOnce(() => packedWrite.promise)
+        .mockImplementationOnce(() => readyWrite.promise)
       const qc = makeQc()
       qc.setQueryData<ListItemWithGear[]>(['list-items', LIST_ID], [item({ id: 'a' })])
       const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -260,13 +260,13 @@ describe('useListItemActions', () => {
       expect(read()).toMatchObject({ isPacked: true, isReady: true })
 
       // Ready succeeds first (sibling still pending -> no invalidate yet).
-      await act(async () => { resolveReady() })
+      await act(async () => { readyWrite.resolve() })
       await waitFor(() => expect(b.current.updateItem.isSuccess).toBe(true))
 
       // Packed fails last: rollback restores isPacked only; Ready's write
       // survives; and as the last one out it still fires the converging
       // invalidate.
-      await act(async () => { rejectPacked(new Error('boom')) })
+      await act(async () => { packedWrite.reject(new Error('boom')) })
       await waitFor(() => expect(a.current.updateItem.isError).toBe(true))
       expect(read()).toMatchObject({ isPacked: false, isReady: true })
       await waitFor(() =>
@@ -276,10 +276,10 @@ describe('useListItemActions', () => {
   })
 
   describe('moveItem', () => {
-    // Field-scoped, like updateItem: the gear move used to go through
-    // makeOptimisticUpdate, whose rollback restores the whole array as it was
-    // when the move started - erasing a Packed tick that saved while the move
-    // was in flight. These run against a REAL cache for that reason.
+    // Field-scoped, like updateItem: a whole-array rollback (as
+    // makeOptimisticUpdate does) would restore the array as it was when the
+    // move started, erasing a Packed tick that saved while the move was in
+    // flight. These run against a REAL cache for that reason.
     const rows = (qc: QueryClient) => qc.getQueryData<ListItemWithGear[]>(['list-items', LIST_ID])!
     const row = (qc: QueryClient, id: string) => rows(qc).find((i) => i.id === id)!
 
@@ -368,9 +368,9 @@ describe('useListItemActions', () => {
     it('also invalidates packing locations and food, which the delete can cascade', async () => {
       // A list item can BACK a packing location, and that FK is ON DELETE
       // CASCADE, so this delete can remove a location row the client never
-      // touched - and since 0022 that location's SET NULL + rerank cascade
-      // moves FOOD rows too. Without these keys the pack view kept
-      // rendering stale sections and stale food placement.
+      // touched - and that location's SET NULL + rerank cascade moves FOOD
+      // rows too. Without these keys the pack view renders stale sections
+      // and stale food placement.
       const { qc, result } = setup([item({ id: 'a' })])
       qc.setQueryData(['packing-locations', LIST_ID], [])
       qc.setQueryData(['list-food', LIST_ID], { dayCount: 1, slots: [], items: [] })
@@ -400,6 +400,33 @@ describe('useListItemActions', () => {
         "Couldn't confirm that item was removed. Refresh to check before trying again.",
         { type: 'error' },
       )
+    })
+  })
+
+  describe('addNewItemOnce', () => {
+    // Enter then blur, or two Enter presses, commit the same draft twice.
+    // Without a guard the second request creates a duplicate gear item.
+    it('sends one request for two calls while the first is pending', async () => {
+      h.quickAddListItem.mockReturnValue(new Promise<never>(() => {}))
+      const { result } = setup()
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      result.current.addNewItemOnce(null, sampleAddData)
+
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(1))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(h.quickAddListItem).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts the next add once the first has settled', async () => {
+      const { result } = setup()
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(result.current.addNewItem.isPending).toBe(false))
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(2))
     })
   })
 

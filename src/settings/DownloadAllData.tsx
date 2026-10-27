@@ -1,16 +1,9 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  queryKeys,
-  fetchCategories,
-  fetchGearItems,
-  fetchLists,
-  fetchListItems,
-  fetchListFood,
-  fetchPackingLocations,
-} from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
+import { downloadBlob } from '../lib/csv'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 
 // "Download all data" control for the settings page: builds a zip client-
@@ -34,14 +27,14 @@ export default function DownloadAllData() {
       // staleTime: 0 on every takeout read: an export is a snapshot claim,
       // so it must hit the server rather than reuse anything the app's
       // 30-second staleTime still considers fresh - another tab or device
-      // may have written since this tab's cache filled (Codex finding).
+      // may have written since this tab's cache filled.
       // Successful results still land in the cache for the app to reuse.
       const [fflate, categories, gearItems, lists] =
         await Promise.all([
           fflatePromise,
-          qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists, staleTime: 0 }),
+          qc.fetchQuery({ ...queries.categories(), staleTime: 0 }),
+          qc.fetchQuery({ ...queries.gearItems(), staleTime: 0 }),
+          qc.fetchQuery({ ...queries.lists(), staleTime: 0 }),
         ])
 
       // Items for every list, fetched per list and flattened;
@@ -52,18 +45,15 @@ export default function DownloadAllData() {
           lists.map(async (list) => {
             const [items, locations, food] = await Promise.all([
               qc.fetchQuery({
-                queryKey: queryKeys.listItems(list.id),
-                queryFn: () => fetchListItems(list.id),
+                ...queries.listItems(list.id),
                 staleTime: 0,
               }),
               qc.fetchQuery({
-                queryKey: queryKeys.packingLocations(list.id),
-                queryFn: () => fetchPackingLocations(list.id),
+                ...queries.packingLocations(list.id),
                 staleTime: 0,
               }),
               qc.fetchQuery({
-                queryKey: queryKeys.listFood(list.id),
-                queryFn: () => fetchListFood(list.id),
+                ...queries.listFood(list.id),
                 staleTime: 0,
               }),
             ])
@@ -91,13 +81,10 @@ export default function DownloadAllData() {
       }
 
       const zipped = zipSync(files)
-      const blob = new Blob([new Uint8Array(zipped)], { type: 'application/zip' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `grampacker-export-${exportTimestamp()}.zip`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(
+        `grampacker-export-${exportTimestamp()}.zip`,
+        new Blob([new Uint8Array(zipped)], { type: 'application/zip' }),
+      )
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Download failed')
     } finally {

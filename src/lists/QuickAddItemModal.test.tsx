@@ -18,9 +18,8 @@ beforeAll(() => {
 
 // The modal serves two callers. From a category section's "Add item" the
 // category is implicit and no selector renders. From the gear picker's "New
-// item" there is no section, and before the selector existed every item
-// landed in Uncategorized with nothing saying so - the first stumble both
-// 2026-10 UX audits hit when building a list from scratch.
+// item" there is no section, and without the selector every item would land
+// in Uncategorized with nothing saying so.
 
 const categories: Category[] = [
   { id: 'cat-b', name: 'Kitchen', sortOrder: 1, createdAt: '2024-01-01' },
@@ -33,8 +32,7 @@ describe('QuickAddItemModal focus', () => {
   it('focuses the Name field when it opens', () => {
     // Modal pulls focus onto the dialog itself by default (sane for
     // menu-like modals - see Modal.tsx). This is a FORM whose next action
-    // is always typing a name, so it opts into field focus. Both 2026-10
-    // UX audits flagged the unfocused open.
+    // is always typing a name, so it opts into field focus.
     render(<QuickAddItemModal onSubmit={vi.fn()} onClose={vi.fn()} />)
     expect(document.activeElement?.id).toBe('qa-name')
   })

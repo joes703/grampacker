@@ -1,14 +1,13 @@
-import { testDb } from '../test/node-env'
+import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
   gearItemResponseSchema,
   importGearResponseSchema,
-  type CategoryResponse,
   type GearItemResponse,
   importGearRequestSchema,
 } from '../../shared/gear'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, listCategories, userIdFor } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 async function createGear(
@@ -28,17 +27,6 @@ async function listGear(cookie: string): Promise<GearItemResponse[]> {
 async function createCategory(cookie: string, name: string): Promise<string> {
   const res = await apiRequest(cookie, 'POST', '/api/categories', { name })
   return categoryResponseSchema.parse(await res.json()).id
-}
-
-async function listCategories(cookie: string): Promise<CategoryResponse[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/categories')
-  return categoryResponseSchema.array().parse(await res.json())
-}
-
-async function userIdFor(cookie: string): Promise<string> {
-  const res = await apiRequest(cookie, 'GET', '/api/me')
-  const body = (await res.json()) as { id: string }
-  return body.id
 }
 
 describe('/api/gear-items authorization matrix', () => {
@@ -293,7 +281,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('seed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -311,11 +299,11 @@ describe('/api/gear-items authorization matrix', () => {
     expect(over.status).toBe(422)
 
     // ...and the DB trigger backstops writes that bypass the repo.
-    await expect(
-      testDb.prepare(
+    expect(() =>
+      env.DB.prepare(
         `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 0, 'active', 0, 0, 0)`,
       ).run(),
-    ).rejects.toThrow(/cap/)
+    ).toThrow(/cap/)
   })
 
   it('import: categories + items land atomically with appended sort orders', async () => {
@@ -415,13 +403,12 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('capseed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
-    // 499 existing + 2 imported = 501: the trigger aborts the batch. The
-    // old app created categories before gear non-atomically and orphaned
-    // them on exactly this failure; here the category rolls back too.
+    // 499 existing + 2 imported = 501: the trigger aborts the batch, and the
+    // new category must roll back too rather than be orphaned.
     const res = await apiRequest(cookie, 'POST', '/api/gear-items/import', {
       categories: [{ tempId: 'new-0', name: 'Doomed' }],
       items: [
@@ -441,7 +428,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 3 }, (_, i) => {
       return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
 
@@ -577,11 +564,10 @@ describe('/api/gear-items authorization matrix', () => {
   })
 })
 
-// The import maxima (review P2.7): the DTO used to allow 2000 while the
-// triggers abort at 500, so any oversized import was a GUARANTEED late
-// failure after 500+ inserts had run. The bound is now the real cap,
-// and the route answers it as the trigger's own 422 dialect through a
-// two-stage parse - malformedness (structural OR relational) stays the
+// The import maxima. The triggers abort at 500, so a larger DTO bound would
+// make any oversized import a GUARANTEED late failure after 500+ inserts had
+// run. The bound is the real cap, and the route answers it as the trigger's
+// own 422 dialect through a two-stage parse - malformedness (structural OR relational) stays the
 // uniform 400 even when the body is also oversized.
 describe('gear import maxima match the real caps', () => {
   const item = (i: number, category: unknown = null) => ({

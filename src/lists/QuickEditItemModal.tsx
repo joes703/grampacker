@@ -8,9 +8,11 @@ import { FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../components/
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
+import { useWornConsumableFlags } from './use-worn-consumable-flags'
 
-export type QuickEditGearPatch = { name: string; weightGrams: number }
-export type QuickEditListPatch = {
+type QuickEditGearPatch = { name: string; weightGrams: number }
+type QuickEditListPatch = {
   quantity: number
   isWorn: boolean
   isConsumable: boolean
@@ -36,10 +38,9 @@ type Props = {
   ) => void
 }
 
-// The phone editor for a list row. Tapping a row used to open the full
-// inventory form - name, description, weight, category, cost, purchase
-// date, status and a red "Delete from inventory" - to change one weight
-// (UX audit 2026-10). While planning a trip you touch name, weight,
+// The phone editor for a list row. The full inventory form (cost, purchase
+// date, status, "Delete from inventory") is too much to change one weight.
+// While planning a trip you touch name, weight,
 // quantity and the two flags; everything else is inventory administration
 // and sits behind "More details", which opens the full form.
 //
@@ -59,10 +60,12 @@ export default function QuickEditItemModal({
   const [name, setName] = useState(gear.name)
   const [weightGrams, setWeightGrams] = useState(gear.weightGrams)
   const [quantity, setQuantity] = useState(String(listItem?.quantity ?? 1))
-  const [worn, setWorn] = useState(listItem?.isWorn ?? false)
-  const [consumable, setConsumable] = useState(listItem?.isConsumable ?? false)
+  const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
+    isWorn: listItem?.isWorn ?? false,
+    isConsumable: listItem?.isConsumable ?? false,
+  })
 
-  const qtyNum = parseInt(quantity, 10) || 1
+  const qtyNum = clampQuantity(quantity)
   const canSubmit = name.trim().length > 0 && !saving
 
   function handleSubmit(e: FormEvent) {
@@ -73,7 +76,7 @@ export default function QuickEditItemModal({
       { name: trimmed, weightGrams },
       listItem
         ? {
-            quantity: Math.min(MAX_LIST_ITEM_QUANTITY, Math.max(1, qtyNum)),
+            quantity: qtyNum,
             // The DB forbids worn+consumable together; the checkboxes below
             // clear each other, same as the row toggles and Quick Add.
             isWorn: worn,
@@ -182,7 +185,7 @@ export default function QuickEditItemModal({
                 <input
                   type="checkbox"
                   checked={worn}
-                  onChange={() => { setWorn(!worn); if (!worn) setConsumable(false) }}
+                  onChange={toggleWorn}
                   disabled={saving}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600"
                 />
@@ -193,7 +196,7 @@ export default function QuickEditItemModal({
                 <input
                   type="checkbox"
                   checked={consumable}
-                  onChange={() => { setConsumable(!consumable); if (!consumable) setWorn(false) }}
+                  onChange={toggleConsumable}
                   disabled={saving}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600"
                 />
@@ -218,7 +221,7 @@ export default function QuickEditItemModal({
                   { name, weightGrams },
                   listItem
                     ? {
-                        quantity: Math.min(MAX_LIST_ITEM_QUANTITY, Math.max(1, qtyNum)),
+                        quantity: qtyNum,
                         isWorn: worn,
                         isConsumable: consumable,
                       }

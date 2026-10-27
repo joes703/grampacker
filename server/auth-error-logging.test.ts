@@ -1,23 +1,24 @@
-import { env } from './test/node-env'
+import { createApp } from './index'
+import { env, TEST_ORIGIN } from './test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import app from './index'
 import { resetLogBudget } from './middleware/error-handler'
 import { signUpVerifiedUser } from './test/auth-helpers'
 import type { Sqlite } from './db'
 
 // What better-auth's failures write to the log, end to end through the real
-// app. Two leaks are closed here and both are proven against the installed
-// libraries rather than a mock of them:
+// app. Two leaks are proven closed against the installed libraries rather
+// than a mock of them. With the libraries' defaults:
 //
-//   - a failed SESSION LOOKUP used to log the session token, because
-//     better-auth's default logger handed the raw Drizzle error (bound params
-//     included) to console.error, outside our budget;
-//   - a plain Error escaping an endpoint used to be logged raw by better-call
-//     itself (`# SERVER_ERROR: `), outside our budget, and a missing mail key
-//     used to be no error at all - the console sender printed the redeemable
-//     link and reported success.
+//   - a failed SESSION LOOKUP logs the session token, because better-auth's
+//     default logger hands the raw Drizzle error (bound params included) to
+//     console.error, outside our budget;
+//   - a plain Error escaping an endpoint is logged raw by better-call itself
+//     (`# SERVER_ERROR: `), outside our budget.
+//
+// A missing mail key must also be an error, never a console sender that
+// prints the redeemable link and reports success.
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 const PROD_ORIGIN = 'https://grampacker.app'
 const MARKER = 'SABOTAGE_MARKER_db_is_down'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -102,6 +103,16 @@ describe('auth failures in the log', () => {
       .map(String)
       .join('\n')
 
+  // The 500 is logged as one correlated incident; the response body is
+  // better-auth's own (the client does not read a correlation id).
+  const expectCorrelatedIncident = () => {
+    const incidents = consoleError.mock.calls
+      .map((call: unknown[]) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .filter((entry: Record<string, unknown>) => entry.event === 'server-error')
+    expect(incidents).toHaveLength(1)
+    expect(incidents[0]?.correlationId).toMatch(UUID_RE)
+  }
+
   // Every line the server writes is one JSON entry from the incident
   // handler. A line that does not parse is a sink outside the budget - the
   // better-call fallback this suite exists to keep closed.
@@ -124,10 +135,9 @@ describe('auth failures in the log', () => {
     consoleLog.mockClear()
 
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen) }).request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     // The failing statement really was the token lookup.
@@ -138,8 +148,7 @@ describe('auth failures in the log', () => {
     expect(out).toContain(MARKER)
     assertOnlyBudgetedLines()
 
-    const body = (await res.json()) as { correlationId?: string }
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
   })
 
   it('never logs the session token when the user read after the session read fails', async () => {
@@ -161,10 +170,9 @@ describe('auth failures in the log', () => {
     consoleLog.mockClear()
 
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen, (query) => query.includes('"user"')) }).request(
       '/api/auth/get-session',
       { headers: { Cookie: cookie, Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen, (query) => query.includes('"user"')) },
     )
     expect(res.status).toBe(500)
     // The session read succeeded (its token was never bound to a doomed
@@ -181,14 +189,13 @@ describe('auth failures in the log', () => {
   it('logs a non-APIError through the budget, never through better-call', async () => {
     // magic-link/verify consumes the verification row with no try/catch of
     // its own (plugins/magic-link/index.mjs), so the Drizzle error escapes
-    // the endpoint - the path on which better-call used to console.error the
-    // raw object (params included) and better-auth used to log err.message
-    // alone whenever it mentioned a table.
+    // the endpoint - the path on which, by default, better-call would
+    // console.error the raw object (params included) and better-auth would log
+    // err.message alone whenever it mentioned a table.
     const seen: unknown[] = []
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: sabotagedConnection(seen) }).request(
       '/api/auth/magic-link/verify?token=not-a-real-token',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': clientIp() } },
-      { ...env, DB: sabotagedConnection(seen) },
     )
     expect(res.status).toBe(500)
     expect(seen.length).toBeGreaterThan(0)
@@ -201,15 +208,13 @@ describe('auth failures in the log', () => {
     expect(out).not.toContain('SERVER_ERROR: ')
     assertOnlyBudgetedLines()
 
-    const body = (await res.json()) as { correlationId?: string; code?: string }
-    expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
   })
 
   it('fails a magic-link send closed when no mail key is set outside local dev', async () => {
     // The test bindings carry no RESEND_API_KEY; only the origin changes.
     const prodEnv = { ...env, BETTER_AUTH_URL: PROD_ORIGIN }
-    const res = await app.request(
+    const res = await createApp(prodEnv).request(
       '/api/auth/sign-in/magic-link',
       {
         method: 'POST',
@@ -220,12 +225,9 @@ describe('auth failures in the log', () => {
         },
         body: JSON.stringify({ email: `nokey-${crypto.randomUUID()}@example.com` }),
       },
-      prodEnv,
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as { correlationId?: string; code?: string }
-    expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
 
     const out = everything()
     // No link was printed anywhere - not by the console sender, not by a
@@ -239,10 +241,9 @@ describe('auth failures in the log', () => {
 
     // The rest of auth keeps working without a mail key: the failure is at
     // send time, not at construction.
-    const session = await app.request(
+    const session = await createApp(prodEnv).request(
       '/api/auth/get-session',
       { headers: { Origin: PROD_ORIGIN, 'x-forwarded-for': clientIp() } },
-      prodEnv,
     )
     expect(session.status).toBe(200)
   })
@@ -255,7 +256,7 @@ describe('auth failures in the log', () => {
     vi.stubGlobal('fetch', resend)
     const email = `refused-${crypto.randomUUID()}@example.com`
     try {
-      const res = await app.request(
+      const res = await createApp({ ...env, BETTER_AUTH_URL: PROD_ORIGIN, RESEND_API_KEY: 're_test_not_a_real_key' }).request(
         '/api/auth/sign-in/magic-link',
         {
           method: 'POST',
@@ -266,12 +267,9 @@ describe('auth failures in the log', () => {
           },
           body: JSON.stringify({ email }),
         },
-        { ...env, BETTER_AUTH_URL: PROD_ORIGIN, RESEND_API_KEY: 're_test_not_a_real_key' },
       )
       expect(res.status).toBe(500)
-      const body = (await res.json()) as { correlationId?: string; code?: string }
-      expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-      expect(body.correlationId).toMatch(UUID_RE)
+      expectCorrelatedIncident()
     } finally {
       vi.unstubAllGlobals()
     }

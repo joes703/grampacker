@@ -14,18 +14,13 @@ const cols = {
   createdAt: categories.createdAt,
 }
 
-export type CategoryRow = {
-  id: string
-  name: string
-  sortOrder: number
-  createdAt: number // epoch ms
-}
+export type CategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder' | 'createdAt'>
 
 export type CategoryCreateResult =
   | { ok: true; row: CategoryRow }
   | { ok: false; reason: 'cap_exceeded' }
 
-// The 0021 trigger is the single enforcement point; keep in lockstep with
+// The categories_user_cap trigger is the single enforcement point; keep in lockstep with
 // its RAISE message and CATEGORY_CAP in shared/gear.ts.
 export function isCategoryCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'category cap exceeded')
@@ -41,9 +36,8 @@ export function createCategoriesRepo(db: Db, userId: string) {
         .orderBy(asc(categories.sortOrder), asc(categories.name))
     },
 
-    // Server-authoritative sort order: appended at max+1 (the old app
-    // trusted a client-computed value; same benign concurrent-create tie
-    // race, one less thing for clients to get wrong).
+    // Server-authoritative sort order: appended at max+1, so clients do not
+    // compute it.
     async create(name: string): Promise<CategoryCreateResult> {
       try {
         const [row] = await db

@@ -6,7 +6,7 @@ import type { List } from '../lib/types'
 
 // Mock ONLY the network call; queryKeys and makeOptimisticUpdate stay
 // real, so these tests exercise the actual synchronous cache flip the
-// races come from (the Codex PR #29 probe shape).
+// races come from.
 vi.mock('../lib/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/queries')>()),
   updateList: vi.fn(),
@@ -32,20 +32,25 @@ const list: List = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-function Probe({ targets }: { targets: List[] }) {
-  const flag = useListFlagToggle({
-    read: (l) => l.isShared,
-    patch: (isShared) => ({ isShared }),
-  })
+function Probe({ targets, flag = 'isShared' }: { targets: List[]; flag?: 'isShared' | 'isDraft' }) {
+  const toggle = useListFlagToggle(flag)
   return (
     <>
       {targets.map((t) => (
-        <button key={t.id} onClick={() => flag.toggle(t)}>
-          flip-{t.id}
+        <button key={t.id} onClick={() => toggle.toggle(t)}>
+          {flag === 'isShared' ? 'flip' : 'draft'}-{t.id}
         </button>
       ))}
     </>
   )
+}
+
+function freshClient() {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  qc.setQueryData(queryKeys.lists(), [list])
+  return qc
 }
 
 function renderProbe(targets: List[], seedCache: List[] = targets) {
@@ -141,5 +146,75 @@ describe('useListFlagToggle', () => {
     await waitFor(() => {
       expect(updateList).toHaveBeenCalledWith('list-1', { isShared: false })
     })
+  })
+})
+
+describe('useListFlagToggle across surfaces', () => {
+  it('two mounted surfaces flipping the same flag send one PATCH', async () => {
+    vi.mocked(updateList).mockReturnValue(new Promise<never>(() => {}))
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    qc.setQueryData(queryKeys.lists(), [list])
+    render(
+      <QueryClientProvider client={qc}>
+        <Probe targets={[list]} />
+        <Probe targets={[list]} />
+      </QueryClientProvider>,
+    )
+
+    const [first, second] = screen.getAllByRole('button', { name: 'flip-list-1' })
+    fireEvent.click(first as HTMLElement)
+    fireEvent.click(second as HTMLElement)
+
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(updateList).toHaveBeenCalledTimes(1)
+  })
+
+  it('a pending share flip does not block a draft flip on the same list', async () => {
+    vi.mocked(updateList).mockReturnValue(new Promise<never>(() => {}))
+    render(
+      <QueryClientProvider client={freshClient()}>
+        <Probe targets={[list]} />
+        <Probe targets={[list]} flag="isDraft" />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'flip-list-1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'draft-list-1' }))
+
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(updateList).mock.calls.map(([, patch]) => patch)).toEqual([
+      { isShared: true },
+      { isDraft: false },
+    ])
+  })
+
+  it('a surface unmounted mid-flight does not leave the flag locked', async () => {
+    let settle!: () => void
+    vi.mocked(updateList).mockImplementationOnce(
+      () => new Promise((resolve) => { settle = () => resolve({ ...list, isShared: true }) }),
+    )
+    vi.mocked(updateList).mockResolvedValueOnce({ ...list, isShared: false })
+    const qc = freshClient()
+    const first = render(
+      <QueryClientProvider client={qc}>
+        <Probe targets={[list]} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'flip-list-1' }))
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(1))
+    first.unmount()
+    settle()
+    await waitFor(() => expect(qc.isMutating()).toBe(0))
+
+    render(
+      <QueryClientProvider client={qc}>
+        <Probe targets={[list]} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'flip-list-1' }))
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(2))
   })
 })

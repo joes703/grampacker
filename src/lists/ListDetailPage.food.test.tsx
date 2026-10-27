@@ -70,9 +70,8 @@ const h = vi.hoisted(() => ({
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
 // owner id, which no test in this file asserts on.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -83,8 +82,8 @@ async function renderDetail(path: string) {
   await renderListDetailPage(path, ['/lists/:id', '/lists/:id/pack', '/lists/:id/food'])
 }
 
-// FoodView's planning header carries no "Food" heading since the 2026-10
-// redesign (the toolbar's Food tab already names the view), so its
+// FoodView's planning header carries no "Food" heading (the toolbar's Food
+// tab already names the view), so its
 // trip-length control is the marker that the editor rendered.
 const foodEditorControl = () => screen.queryByLabelText('Trip length in days')
 // The Category arrangement's Food section, identified by its COLLAPSE
@@ -119,8 +118,7 @@ describe('food is reachable at its own route, and traced from List view', () => 
     expect(await screen.findByRole('button', { name: '+ Add food' })).toBeTruthy()
   })
 
-  // Food used to appear here as a single summary line - one number and a
-  // link - while Pack showed the items. Category shows the items now too.
+  // Category shows food as item rows, as Pack does, not as one summary line.
   it('shows food as read-only rows, with no Edit link in the section header', async () => {
     await renderDetail(`/lists/${listId}`)
     const chevron = await screen.findByRole('button', { name: 'Collapse Food' })
@@ -214,10 +212,9 @@ describe('the Food route owns its own query gates, separate from the detail-data
     expect(foodRow()).toBeNull()
   })
 
-  // A food-query failure is now FoodView's own retry state, not the page's
-  // generic detail error - the two used to be the same message because food
-  // shared the composite gate; now they diverge on purpose so a food-only
-  // outage doesn't imply a gear/categories/items outage.
+  // A food-query failure is FoodView's own retry state, not the page's
+  // generic detail error, so a food-only outage does not imply a
+  // gear/categories/items outage.
   it('shows FoodView\'s own retry state when the food query itself fails', async () => {
     h.fetchListFood.mockRejectedValue(new Error('offline'))
 

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, fetchListFood } from '../lib/queries'
+import { queryKeys } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { foodItemsShape, updateFoodItem } from '../lib/queries/food'
 import { fieldScopedCache } from '../lib/queries/field-scoped'
 import { mutationKeys } from '../lib/queries/keys'
@@ -12,9 +13,8 @@ import type { ListFoodResponse } from '../../shared/food'
 // on every render while the query is still cold.
 const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 
-// This list's food, and the two writes ListDetailPage makes against it, lifted
-// out of the page following the useListItemActions / useListGearActions
-// precedent. The page owns everything food-shaped that depends on PAGE state -
+// This list's food, and the two writes ListDetailPage makes against it, in
+// the same shape as useListItemActions / useListGearActions. The page owns everything food-shaped that depends on PAGE state -
 // the pack-mode filtering and by-location bucketing, the row menus, the drag
 // planning - and this hook owns the part that only depends on the list id:
 //   food             - the cached ListFoodResponse (never undefined)
@@ -36,14 +36,11 @@ const EMPTY_LIST_FOOD: ListFoodResponse = { dayCount: 0, slots: [], items: [] }
 // wrong. `loadFailed` is the first-fetch-failed case specifically - an error on
 // a background refetch leaves perfectly good cached food to keep rendering.
 //
-// One deliberate difference from the inline version this replaced. The page
-// composed its gate as one `||` chain with food LAST, so on renders where an
-// earlier query already answered, food's `isPending`/`isError` went unread and
-// so untracked (v5 re-renders only on properties you actually touch). Reading
-// them unconditionally here can cost an extra render or two while the page is
-// still loading. It cannot change what renders, and it converges immediately:
-// the observer's tracked-prop set only ever grows, so both were permanently
-// tracked from the first render where the other queries had resolved anyway.
+// This hook reads food's `isPending`/`isError` unconditionally, so they are
+// always tracked (v5 re-renders only on properties you actually touch). That
+// can cost an extra render or two while the page is still loading. It cannot
+// change what renders, and it converges immediately: the observer's
+// tracked-prop set only ever grows.
 export function useListFood(listId: string) {
   const qc = useQueryClient()
 
@@ -52,10 +49,7 @@ export function useListFood(listId: string) {
   // metadata every optimistic write passes through untouched.
   const foodCache = fieldScopedCache(qc, queryKeys.listFood(listId), foodItemsShape)
 
-  const query = useQuery({
-    queryKey: queryKeys.listFood(listId),
-    queryFn: () => fetchListFood(listId),
-  })
+  const query = useQuery(queries.listFood(listId))
   const food = query.data ?? EMPTY_LIST_FOOD
 
   // foodGramsFor sums items alone - never across their slot associations,

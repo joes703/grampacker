@@ -12,7 +12,7 @@ import {
   updateListItem,
 } from './list-items'
 
-// URL/method contract tests (review P2.2). The two reorder endpoints are the
+// URL/method contract tests. The two reorder endpoints are the
 // headline case: /items/order writes DOCUMENT order and /items/pack-order
 // writes PACK order, one path segment apart - swapping them would corrupt
 // the other view's ordering while every mocked-out component test stayed
@@ -145,11 +145,11 @@ describe('list-item queries hit the documented endpoints', () => {
 
   it('reorderPackListItems: PUT /api/lists/:id/items/pack-order - PACK order', async () => {
     const fn = mockFetch(204)
-    await reorderPackListItems('l1', [{ id: 'li1', packSortOrder: 3 }])
+    await reorderPackListItems('l1', { items: [{ id: 'li1', packSortOrder: 3 }], foodItems: [] })
     expect(requestOf(fn)).toMatchObject({
       url: '/api/lists/l1/items/pack-order',
       method: 'PUT',
-      body: [{ id: 'li1', packSortOrder: 3 }],
+      body: { items: [{ id: 'li1', packSortOrder: 3 }], foodItems: [] },
       csrf: '1',
     })
   })

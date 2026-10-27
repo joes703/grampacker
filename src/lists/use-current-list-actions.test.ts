@@ -8,6 +8,7 @@ import { useCurrentListActions } from './use-current-list-actions'
 import { showToast } from '../lib/toast'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
+import { deferred } from '../test/deferred'
 
 // Hoisted spies so both the mock factories and the test bodies share the same
 // fn instances. (vi.mock is hoisted above imports; vi.hoisted lets the
@@ -35,7 +36,7 @@ vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 // Keep the real optimistic and sort helpers; mock only data transport.
 vi.mock('../lib/queries', async () => {
   const optimistic = await import('../lib/queries/optimistic')
-  const { nextListSortOrder } = await import('../lib/queries/sort-keys')
+  const { nextSortOrder } = await import('../lib/queries/sort-keys')
   return {
     queryKeys: {
       lists: () => ['lists'],
@@ -51,7 +52,7 @@ vi.mock('../lib/queries', async () => {
     makeOptimisticUpdate: optimistic.makeOptimisticUpdate,
     makeOptimisticDelete: optimistic.makeOptimisticDelete,
     makeOptimisticInsert: optimistic.makeOptimisticInsert,
-    nextListSortOrder,
+    nextSortOrder,
   }
 })
 
@@ -123,13 +124,13 @@ describe('useCurrentListActions - duplicate', () => {
     // The caller can be gone by the time the copy lands (the user moved on). Only
     // hook-level callbacks survive an unmount, so the success path must live
     // there, not in a per-call onSuccess.
-    let resolve!: (row: List) => void
-    q.duplicateList.mockReturnValueOnce(new Promise<List>((r) => { resolve = r }))
+    const duplicate = deferred<List>()
+    q.duplicateList.mockReturnValueOnce(duplicate.promise)
     const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
     const invalidate = vi.spyOn(lastQc, 'invalidateQueries')
     act(() => { result.current.duplicateMut.mutate(LIST) })
     unmount()
-    await act(async () => { resolve({ ...LIST, id: 'copy-id' }) })
+    await act(async () => { duplicate.resolve({ ...LIST, id: 'copy-id' }) })
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/copy-id'))
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['lists'] })
   })
@@ -152,13 +153,13 @@ describe('useCurrentListActions - deleteListMut', () => {
     // self-heal never sees it missing; without this, RootRedirect would follow
     // the pointer into "List not found".
     writeLastListPath(`/lists/${DELETED}/pack`, 'owner-1')
-    let resolve!: () => void
-    q.deleteList.mockReturnValueOnce(new Promise<void>((r) => { resolve = r }))
+    const deletion = deferred()
+    q.deleteList.mockReturnValueOnce(deletion.promise)
     const { result, unmount } = renderHook(() => useCurrentListActions(), { wrapper })
 
     act(() => { result.current.deleteListMut.mutate(DELETED) })
     unmount()
-    await act(async () => { resolve() })
+    await act(async () => { deletion.resolve() })
 
     await waitFor(() => expect(readLastListPath('owner-1')).toBeNull())
   })
@@ -238,7 +239,7 @@ describe('useCurrentListActions - createListMut', () => {
     // optimistic-insert lifecycle (not a stub), so it exercises that ordering:
     // the placeholder for a [0,1] cache must be built with sortOrder 2,
     // never 3. (The server assigns the persisted slot from its own max+1;
-    // only the placeholder consumes this value in the rewrite.)
+    // only the placeholder consumes this value.)
     let finish: (row: List) => void = () => {}
     q.createList.mockReturnValueOnce(new Promise<List>((resolve) => { finish = resolve }))
     const { result } = renderHook(() => useCurrentListActions(), { wrapper })

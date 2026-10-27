@@ -61,9 +61,9 @@ function renderDay(overrides: {
 const mealGroup = (name: string) => screen.getByRole('group', { name })
 
 describe('FoodDaySection empty treatment', () => {
-  // An unplanned trip used to render three full-height "+ Add" rows and a
-  // "total 0 g" for every day - a wall of identical rows that drowned
-  // out the days that ARE planned.
+  // Three full-height "+ Add" rows and a "total 0 g" for every unplanned day
+  // would be a wall of identical rows that drowns out the days that ARE
+  // planned.
   it('collapses a day with nothing planned to one line, with no day total', async () => {
     const user = userEvent.setup()
     const props = renderDay({ itemsBySlot: new Map() })
@@ -164,7 +164,7 @@ describe('FoodDaySection food lines', () => {
 })
 
 describe('FoodDaySection day total', () => {
-  // The day total's dedupe is CONDITIONAL since 0024, and these two tests are
+  // The day total's dedupe is CONDITIONAL, and these two tests are
   // the whole difference. Getting this wrong in either direction is a wrong
   // pack weight: dedupe everything and a per-meal item under-reports, dedupe
   // nothing and a shared bag is counted once per meal it is picked at.
@@ -188,8 +188,8 @@ describe('FoodDaySection day total', () => {
   })
 
   it('counts a PER-MEAL item once for every meal of the day it is in', () => {
-    // One bar at breakfast and another at lunch is two bars. The old code
-    // deduped this to one, which is the under-report 0024 exists to end.
+    // One bar at breakfast and another at lunch is two bars. Deduping this
+    // to one would under-report the day.
     const perMeal = item({
       id: 'bar',
       name: 'Bar',

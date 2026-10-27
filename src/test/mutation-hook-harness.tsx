@@ -25,18 +25,6 @@ export function renderHookWithClient<T>(qc: QueryClient, hook: () => T) {
   return renderHook(hook, { wrapper }).result
 }
 
-// A network call the test settles by hand, to look at the cache while it is
-// still pending.
-export function deferred<T = void>() {
-  let resolve!: (value: T) => void
-  let reject!: (error: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
-
 // The toast store is module state and outlives a test. Call in afterEach.
 export function clearToasts(): void {
   for (const toast of getToasts()) dismissToast(toast.id)

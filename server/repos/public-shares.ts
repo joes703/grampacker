@@ -11,8 +11,7 @@ import {
 import { foodUnitCount } from '../../shared/food'
 
 // Anonymous read access for the public share surface (/api/shares/v2/:slug).
-// Deliberately NOT part of reposForUser: there is no user. This is the
-// port of the old app's curated public_gear_* views - every select below
+// Deliberately NOT part of reposForUser: there is no user. Every select below
 // names its public columns explicitly (never the full table), and every
 // statement self-gates on slug + is_shared, so nothing can be read
 // through this module that the owner didn't opt in to publishing.
@@ -22,19 +21,11 @@ import { foodUnitCount } from '../../shared/food'
 // SharedListResponse field-by-field, which keeps the response allowlist
 // enforcement visible at the handler.
 
-export type PublicListRow = {
-  name: string
-  description: string | null
-  isDraft: boolean
-}
+type PublicListRow = Pick<typeof lists.$inferSelect, 'name' | 'description' | 'isDraft'>
 
-export type PublicCategoryRow = {
-  id: string
-  name: string
-  sortOrder: number
-}
+type PublicCategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder'>
 
-export type PublicListItemRow = {
+type PublicListItemRow = {
   id: string
   gearItemId: string
   quantity: number
@@ -47,7 +38,7 @@ export type PublicListItemRow = {
   gearCategoryId: string | null
 }
 
-export type PublicFoodItemRow = {
+type PublicFoodItemRow = {
   id: string
   name: string
   // What you CARRY, already resolved. The share publishes this instead of the
@@ -68,7 +59,7 @@ export type PublicShare = {
    *
    *  What stays private is the PLAN - day count, meal slots, "not needed"
    *  marks, packing state. The one thing this module reads from that half is
-   *  the COUNT of an item's slot links (0024), because a per-meal item's
+   *  the COUNT of an item's slot links, because a per-meal item's
    *  carried count is quantity x meals and the share must publish the answer
    *  rather than the arithmetic. No day, meal or slot id crosses.
    *  "2 x 85 g ramen" is a thing in a pack; "Tuesday dinner: leftover curry"
@@ -79,9 +70,8 @@ export type PublicShare = {
 export function createPublicSharesRepo(db: Db) {
   return {
     // One read transaction, so the list row, its items, the referenced
-    // categories and the food are a consistent snapshot (the old app's three
-    // separate PostgREST fetches could interleave with an unshare; this
-    // cannot). Unknown slug and is_shared = false are indistinguishable by
+    // categories and the food are a consistent snapshot that an unshare
+    // cannot interleave with. Unknown slug and is_shared = false are indistinguishable by
     // construction - every statement carries the same gate, so both cases
     // return zero rows everywhere.
     async getBySlug(slug: string): Promise<PublicShare | null> {
@@ -137,7 +127,7 @@ export function createPublicSharesRepo(db: Db) {
       // of trail mix five times over for a bag scheduled across five lunches -
       // both as duplicate rows and, if anyone re-adds a sum, as 2500 g.
       //
-      // The slot COUNT is read separately below (0024) and combined in JS, so
+      // The slot COUNT is read separately below and combined in JS, so
       // this statement still returns exactly one row per food item.
       const foodQuery = db
         .select({
@@ -155,13 +145,12 @@ export function createPublicSharesRepo(db: Db) {
 
       // The slot LINKS, and only their item ids - never the slot rows, never
       // which day or meal. A per-meal item's carried count is quantity x the
-      // number of meals it is in (0024), so the count is the one fact about
+      // number of meals it is in, so the count is the one fact about
       // the plan a share cannot avoid touching.
       //
       // A separate statement rather than a join onto foodQuery: joining would
-      // fan each food row out once per link, which is exactly the duplicate
-      // that made a shared bag weigh five times in the first place. Counted in
-      // JS below, where a row is a row.
+      // fan each food row out once per link, so a shared bag would weigh five
+      // times over. Counted in JS below, where a row is a row.
       const foodSlotLinkQuery = db
         .select({ foodItemId: listFoodItemSlots.foodItemId })
         .from(listFoodItemSlots)

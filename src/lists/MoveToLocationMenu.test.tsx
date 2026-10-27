@@ -133,9 +133,8 @@ describe('MoveToLocationMenu container actions', () => {
   })
 })
 
-// Pack could previously only rearrange what was already on the list. Noticing
-// "I am not taking this" while packing meant leaving for List view and finding
-// the row again.
+// Noticing "I am not taking this" while packing must not mean leaving for
+// List view and finding the row again.
 describe('MoveToLocationMenu removal', () => {
   it.each([390, 1440])('offers removal and invokes it at %ipx', async (width) => {
     stubViewport(width)

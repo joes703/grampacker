@@ -20,7 +20,7 @@ import {
 // semantics are absent = unchanged, null = clear. The public share DTOs live
 // in shared/shares.ts; the CSV list import in shared/list-import.ts.
 
-// Caps mirror the 0004 triggers and CHECKs; the DB is authoritative.
+// Caps mirror the cap triggers and CHECKs; the DB is authoritative.
 export const LIST_CAP = 100
 export const LIST_ITEM_CAP = 300
 export const PACKING_LOCATION_CAP = 30
@@ -37,13 +37,20 @@ export const PACK_RANK_MAX = 1_000_000_000
 // Exported for the list import, which creates the list row.
 export const listNameSchema = z.string().trim().min(1).max(MAX_NAME_LENGTH)
 // NOT sortOrderSchema (shared/schema-primitives.ts). That one permits
-// negatives, so a client could submit a negative packSortOrder; the
-// permutation check happens to reject it today, but once 0019's enforcement
-// trigger exists any path past that check would RAISE(ABORT) and surface as
-// a 500 where a 400 is correct.
+// negatives, so a client could submit a negative packSortOrder. Any path
+// past the reorder check would then hit the pack rank range trigger's
+// RAISE(ABORT) and surface as a 500 where a 400 is correct.
 const packRankSchema = z.number().int().min(0).max(PACK_RANK_MAX)
 // Exported for the list import, whose items carry the same quantity bound.
 export const quantitySchema = z.number().int().min(1).max(MAX_LIST_ITEM_QUANTITY)
+
+// What a quantity field's text means: rounded to the nearest whole number and
+// kept between 1 and `max`; anything that is not a number is 1. Every form,
+// the inline editor and the CSV import read quantities through this.
+export function clampQuantity(raw: string | number, max: number = MAX_LIST_ITEM_QUANTITY): number {
+  const value = Math.round(Number(raw))
+  return Number.isFinite(value) ? Math.min(max, Math.max(1, value)) : 1
+}
 
 // An item is worn OR consumable, never both. The repo re-checks the MERGED
 // row for patches (a patch setting one true while the other is already true
@@ -113,10 +120,8 @@ export type CreateListFromSelectionRequest = z.infer<
 
 // ---------------------------------------------------------------- list items
 
-// Embedded gear_item response shape: the old
-// SPA's ListItemWithGear carried the joined gear row, so cache keys and
-// invalidation port unchanged. gearItemId is kept alongside gearItem.id
-// for parity with the old row shape.
+// Embedded gear_item response shape: each list item carries its joined gear
+// row. gearItemId is kept alongside gearItem.id.
 export const listItemResponseSchema = z.object({
   id: z.string(),
   listId: z.string(),
@@ -145,8 +150,7 @@ export const addListItemRequestSchema = z
 export type AddListItemRequest = z.infer<typeof addListItemRequestSchema>
 
 // Quick-Add: creates a gear item AND its membership row in one atomic
-// call (the old add_gear_item_with_list_item RPC). cost/purchaseDate/
-// status are deliberately absent - the old RPC forced them null/default;
+// call. cost/purchaseDate/status are deliberately absent (null/default);
 // the full gear dialog is the place to set them. The name is gearNameSchema
 // because the row lands in the gear library.
 export const quickAddListItemRequestSchema = wornConsumableExclusive(
@@ -192,7 +196,7 @@ export type UpdateListItemRequest = z.infer<typeof updateListItemRequestSchema>
 
 // ------------------------------------------------------- packing locations
 
-const MAX_PACKING_LOCATION_NAME = 60
+export const MAX_PACKING_LOCATION_NAME = 60
 const packingLocationNameSchema = z
   .string()
   .trim()
@@ -251,9 +255,11 @@ export type ReorderListItemsRequest = z.infer<
 // reads as interchangeable, it is not, and it makes the optimistic cache
 // mapping guess which field it is patching.
 //
-// The server additionally requires the ranks to be a permutation of what the
-// touched rows already hold, and requires them all to be in one cohort. Those
-// are relational facts this schema cannot see, so they live in the repo.
+// The server additionally requires every row to be in one cohort and the
+// ranks to be index-safe (no rank twice within a table, none landing on an
+// untouched row of the same table); a free rank is legal. Those are
+// relational facts this schema cannot see, so they live in the repo
+// (server/repos/pack-reorder.ts).
 const packRankEntriesSchema = (cap: number) =>
   z
     .array(z.object({ id: idSchema, packSortOrder: packRankSchema }).strict())
@@ -262,28 +268,19 @@ const packRankEntriesSchema = (cap: number) =>
       message: 'duplicate ids',
     })
 
-// Since 0022 a bag's contents are the UNION of gear rows and food rows, and a
-// reorder permutes ranks across that union - so the payload carries both
-// halves and the server writes them in one batch. The legacy bare-array shape
-// (gear only) is still accepted: a browser holding the previous SPA bundle
-// keeps working across the deploy, and a gear-only reorder is a legitimate
-// union reorder with an empty food half. parseReorderPackRequest normalizes
-// both shapes to the object form.
-export const reorderPackListItemsRequestSchema = z.union([
-  packRankEntriesSchema(LIST_ITEM_CAP).refine((e) => e.length >= 1, {
-    message: 'at least one entry is required',
-  }),
-  z
-    .object({
-      items: packRankEntriesSchema(LIST_ITEM_CAP).optional(),
-      foodItems: packRankEntriesSchema(FOOD_ITEM_CAP).optional(),
-    })
-    .strict()
-    .refine(
-      (body) => (body.items?.length ?? 0) + (body.foodItems?.length ?? 0) >= 1,
-      { message: 'at least one entry is required' },
-    ),
-])
+// A bag's contents are the UNION of gear rows and food rows, and a reorder
+// ranks across that union - so the payload carries both halves and the server
+// writes them in one transaction. Either half may be empty or absent.
+export const reorderPackListItemsRequestSchema = z
+  .object({
+    items: packRankEntriesSchema(LIST_ITEM_CAP).optional(),
+    foodItems: packRankEntriesSchema(FOOD_ITEM_CAP).optional(),
+  })
+  .strict()
+  .refine(
+    (body) => (body.items?.length ?? 0) + (body.foodItems?.length ?? 0) >= 1,
+    { message: 'at least one entry is required' },
+  )
 export type ReorderPackListItemsRequest = z.infer<
   typeof reorderPackListItemsRequestSchema
 >
@@ -293,12 +290,6 @@ export type ReorderPackPayload = {
   foodItems: { id: string; packSortOrder: number }[]
 }
 
-export function normalizeReorderPackRequest(
-  parsed: ReorderPackListItemsRequest,
-): ReorderPackPayload {
-  if (Array.isArray(parsed)) return { items: parsed, foodItems: [] }
-  return { items: parsed.items ?? [], foodItems: parsed.foodItems ?? [] }
-}
 
 export const reorderPackingLocationsRequestSchema = reorderSchema(
   PACKING_LOCATION_CAP,

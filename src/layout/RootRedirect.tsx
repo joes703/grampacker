@@ -1,22 +1,19 @@
 import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { authClient } from '../lib/auth-client'
-import { queryKeys, fetchLists } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { readLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 import AppLoading from '../components/AppLoading'
 
 // Authenticated landing for `/`. There is no home page: pick the most-
-// recently-touched list and redirect there. Transplanted from the old
-// app (src/layout/RootRedirect.tsx); the last-list-path helper and its
-// write/self-heal sites were ported ahead of this, so both paths below
-// have warm inputs.
+// recently-touched list and redirect there.
 //
 // Fast path: if localStorage has a cached last-visited list path, redirect
 // to it immediately without waiting for fetchLists. The path includes
 // `/pack` or `/food` when the user was last in that mode, so a cold start
 // lands them back in the same workspace. Server-side misses (deleted list,
-// or a stale value from the old app under the same domain) hit the
+// or a stale value left by an older app version on this domain) hit the
 // destination page's not-found branch, which clears the cache when the
 // failing route matches the cached id - so a poisoned cache self-heals on
 // the next visit. readLastListPath already rejects anything that isn't a
@@ -49,8 +46,7 @@ export default function RootRedirect() {
   const cachedPath = readLastListPath(session?.user.id)
 
   const { data: lists, isLoading } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    ...queries.lists(),
     enabled: !cachedPath,
   })
 

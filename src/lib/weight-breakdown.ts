@@ -5,11 +5,10 @@ import type { ListItemWithGear, Category } from './types'
 // sentinel as GearLibraryPage to avoid colliding with any real id.
 // Branded, and that brand is load-bearing rather than ceremony. Without it
 // this is a plain structural type: any caller could assemble an object with
-// the right fields and hand it to WeightTable, which is exactly the shape of
-// the bug this module was reorganized to prevent - a total that looks
-// finished and is not. The symbol is not exported, so the only way to obtain
-// one is computeListWeightBreakdown, which cannot be called without stating
-// what every contributor adds.
+// the right fields and hand it to WeightTable - a total that looks finished
+// and is not, which is the bug this module prevents. The symbol is not
+// exported, so the only way to obtain one is computeListWeightBreakdown,
+// which cannot be called without stating what every contributor adds.
 declare const COMPLETE: unique symbol
 
 export type WeightBreakdown = {
@@ -24,10 +23,9 @@ export type WeightBreakdown = {
 }
 
 // The GEAR-ONLY reducer. Deliberately NOT exported: its result is an
-// incomplete pack weight, and the wrong-number bug this module was
-// reorganized around came from treating a partial breakdown as a finished
-// one - the public share called this directly and nothing said it was
-// unfinished, so a shared list reported a lighter pack than its owner saw.
+// incomplete pack weight. A caller that treated it as finished (the public
+// share, say) would report a lighter pack than the owner sees, and nothing
+// would say it was unfinished.
 //
 // Reach it through computeListWeightBreakdown, which cannot be called without
 // deciding what every contributor adds.
@@ -124,17 +122,16 @@ function computeGearWeightBreakdown(
 // Sentinel row id for Uncategorized inside `catRows`. Exported so callers can
 // map a rendered section's `category: null` onto the right row instead of
 // re-spelling the literal.
-export const UNCATEGORIZED_ROW_ID = '__uncategorized__'
+const UNCATEGORIZED_ROW_ID = '__uncategorized__'
 
 // Per-section base subtotal, for the footer under each rendered category.
 //
-// This exists so a category section CANNOT compute its own subtotal. It used
-// to: CategoryGroup summed its own rows, which meant consumables and worn items
-// landed in the subtotal, so display details silently redefined a weight metric, and
-// the subtotals never summed to the summary's Base weight.
+// This exists so a category section CANNOT compute its own subtotal: summing
+// its own rows would put consumables and worn items in the subtotal, and the
+// subtotals would never sum to the summary's Base weight.
 //
 // Returns BASE grams only: consumable and worn weight are excluded, always and
-// regardless of any display toggle. Because that makes the number no longer the
+// regardless of any display toggle. Because that makes the number not the
 // arithmetic sum of the visible rows, the footer labels it ("Base:") rather
 // than presenting a bare figure that promises to add up.
 //
@@ -197,9 +194,8 @@ export function foodGramsAtOneMeal(
 export function foodGramsFor(
   items: readonly { weightGrams: number; unitCount: number }[],
 ): number {
-  // unitCount, never quantity. quantity is per-MEAL for most items (0024) and
-  // summing it counts one packet for a five-lunch plan - the under-report this
-  // whole model change exists to fix. The server resolves unitCount so every
+  // unitCount, never quantity. quantity is per-MEAL for most items, and
+  // summing it counts one packet for a five-lunch plan - an under-report. The server resolves unitCount so every
   // surface, including the anonymous share, sums the same number.
   return items.reduce((grams, item) => grams + item.weightGrams * item.unitCount, 0)
 }
@@ -207,10 +203,9 @@ export function foodGramsFor(
 /**
  * Every contributor to a pack's weight. One entry per kind, all REQUIRED.
  *
- * Requiredness is the whole point. `food` used to be an optional second step
- * a caller could forget, and the public share forgot it - so a shared list
- * reported a lighter pack than the same list did to its owner, silently, for
- * as long as food has existed. Adding a third contributor here breaks every
+ * Requiredness is the whole point. An optional `food` step is one a caller
+ * can forget, and then a shared list silently reports a lighter pack than
+ * the same list does to its owner. Adding a third contributor here breaks every
  * call site until each one says what it does with it, which is the behavior
  * a convention could never guarantee.
  *

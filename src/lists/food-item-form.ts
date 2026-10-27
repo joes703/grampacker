@@ -5,8 +5,7 @@ import { formatItemWeight, type WeightUnit } from '../lib/weight'
 // and the patch diff are testable without rendering. `slotIds` must already be
 // filtered to the slots that still exist - the dialog derives it from the live
 // slot list every render, so an id trimmed while the dialog is open can never
-// reach the summary or a write (the same boundary rule the old inline form's
-// activeSelectedSlotIds enforced).
+// reach the summary or a write.
 export type FoodItemDraft = {
   name: string
   weightGrams: number

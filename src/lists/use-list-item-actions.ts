@@ -5,7 +5,7 @@ import {
   quickAddListItem,
   updateListItem,
   deleteListItem,
-  nextListItemSortOrder,
+  nextSortOrder,
   makeOptimisticInsert,
   makeOptimisticDelete,
   type ListItemPatch,
@@ -25,8 +25,7 @@ type MoveItemVars = {
   nextPackSortOrder: number
 }
 
-// List-item write actions for ListDetailPage, lifted out of the page
-// following the GearLibraryPage precedent. These are the ways the user
+// List-item write actions for ListDetailPage. These are the ways the user
 // changes THIS list's contents:
 //   addItem     - add an EXISTING gear item to the list (LibraryPanel)
 //   addNewItem  - Quick Add: create a new gear_item + list_item atomically
@@ -62,7 +61,7 @@ export function useListItemActions(
   }: {
     listItems: ListItemWithGear[]
     // The placeholder pack rank is one past the Unassigned UNION maximum
-    // (0022: gear and food share the rank space), mirroring the server's
+    // (gear and food share the rank space), mirroring the server's
     // nextUnionPackRank - a gear-only maximum would park the placeholder
     // above food already sitting in Unassigned for the frame before the
     // settled refetch corrected it.
@@ -93,9 +92,8 @@ export function useListItemActions(
           id: `temp-${randomTempId()}`,
           listId,
           gearItemId: item.id,
-          // The new DTO embeds the FULL gear response (the old repo's
-          // 7-column projection grew to the whole row in the rewrite),
-          // and GearItem IS that shape - embed it as-is.
+          // The DTO embeds the FULL gear response, and GearItem IS that
+          // shape - embed it as-is.
           gearItem: item,
           quantity: 1,
           isWorn: false,
@@ -103,7 +101,7 @@ export function useListItemActions(
           isPacked: false,
           isReady: false,
           packingLocationId: null,
-          sortOrder: nextListItemSortOrder(listItems),
+          sortOrder: nextSortOrder(listItems),
           // A new item is Unassigned, so its placeholder rank comes from that
           // cohort - mirroring what the server assigns. Reusing the document
           // rank here would put the row in the wrong place in Pack for the one
@@ -201,9 +199,9 @@ export function useListItemActions(
   // can BACK a packing location, and packing_locations.container_list_item_id
   // is ON DELETE CASCADE, so deleting such a row deletes the location server-
   // side (and SET NULLs its contents' packing_location_id). Without the second
-  // invalidation the packing-locations cache kept serving a location whose
-  // backing row no longer exists, and the pack view rendered a ghost section
-  // until something else happened to refetch it.
+  // invalidation the packing-locations cache keeps serving a location whose
+  // backing row is gone, and the pack view renders a ghost section until
+  // something else refetches it.
   const deleteItem = useMutation({
     mutationKey: mutationKeys.deleteListItem(listId),
     mutationFn: (itemId: string) => deleteListItem(listId, itemId),
@@ -215,12 +213,12 @@ export function useListItemActions(
       qc,
       queryKey: queryKeys.listItems(listId),
       id: (itemId) => itemId,
-      // listFood too (0022): deleting a container-backing row deletes its
-      // location, whose SET NULL + rerank cascade now moves FOOD rows as
+      // listFood too: deleting a container-backing row deletes its
+      // location, whose SET NULL + rerank cascade moves FOOD rows as
       // well as gear.
       invalidateKeys: [queryKeys.packingLocations(listId), queryKeys.listFood(listId)],
-      errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again." },
   })
 
   // Quick Add creates a gear_item (so it also lands in the gear library) and
@@ -247,5 +245,14 @@ export function useListItemActions(
     },
   })
 
-  return { addItem, updateItem, moveItem, deleteItem, addNewItem }
+  // Enter then blur, or two Enter presses, commit the same draft twice; each
+  // would create a gear item. Ignore a new add while one for this list is
+  // pending. TanStack marks the mutation pending inside mutate(), so a second
+  // call in the same tick already sees it.
+  function addNewItemOnce(categoryId: string | null, data: AddItemData) {
+    if (qc.isMutating({ mutationKey: mutationKeys.addNewListItem(listId) }) > 0) return
+    addNewItem.mutate({ categoryId, data })
+  }
+
+  return { addItem, updateItem, moveItem, deleteItem, addNewItem, addNewItemOnce }
 }

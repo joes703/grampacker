@@ -15,8 +15,7 @@
 //   const active = parseDnDId(String(event.active.id))
 //   if (active?.kind === 'category') { ... }
 //
-// The kind tag does the work the inference used to: handlers branch on it
-// directly, the type system narrows the surrounding code, and a cross-kind
+// The kind tag is explicit: handlers branch on it directly, the type system narrows the surrounding code, and a cross-kind
 // drop (drag a gear-item over a category header) bails cleanly via
 // `active.kind !== over.kind` instead of relying on coincidence.
 //

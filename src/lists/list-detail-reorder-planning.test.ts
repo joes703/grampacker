@@ -96,9 +96,8 @@ describe('ListDetailPage reorder planning', () => {
     },
   )
 
-  // The reason hiddenItemIds is a SET rather than the old hidePackedItems
-  // boolean: there are two filters now, and the planner must not have to know
-  // which one hid a row. A row hidden by the un-ready filter has to be skipped
+  // hiddenItemIds is a SET, not a boolean, because there are two filters
+  // and the planner must not have to know which one hid a row. A row hidden by the un-ready filter has to be skipped
   // exactly like a packed one, or its invisible slot shifts the drop.
   it.each(['location', 'category'] as const)(
     'preserves rows hidden by the un-ready filter when reordering %s rows',
@@ -142,8 +141,8 @@ describe('ListDetailPage reorder planning', () => {
 
 // Worn rows are extracted into the trailing Worn section in PACK mode only
 // (section-rows.ts). In List view they render inside their category, so the
-// planner must permute over them exactly as CategoryGroup renders them - the
-// renderer and planner disagreeing is audit F1, in either direction: a plan
+// planner must permute over them exactly as CategoryTable renders them - the
+// renderer and planner disagreeing is a bug in either direction: a plan
 // over a row the user cannot see rewrites ranks invisibly, and a plan that
 // skips a visible row drops the dragged row somewhere other than where it
 // was released.

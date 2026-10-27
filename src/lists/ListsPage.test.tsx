@@ -90,7 +90,7 @@ function list(over: Partial<List> = {}): List {
 // must cross, with no dependence on the notification scheduler's tick count.
 // It renders status AND fetchStatus because status alone cannot express the
 // case these tests exist for: 'pending' covers both an in-flight cold load and
-// one parked offline, and it is specifically the parked one that used to render
+// one parked offline, and the parked one is the one that can wrongly render
 // the empty state. Waiting on the pair asserts the state by name.
 function ListsQueryProbe() {
   const { status, fetchStatus } = useQuery({
@@ -204,10 +204,10 @@ describe('ListsPage create-input placement', () => {
   })
 })
 
-// A failed lists fetch used to be indistinguishable from having no lists:
-// useReorderable defaults `items` to [], so the page fell into the
-// brand-new-user onboarding state. That copy tells an existing user their
-// lists are gone, and offers no way to retry.
+// A failed lists fetch must not look like having no lists. useReorderable
+// defaults `items` to [], so the page could fall into the brand-new-user
+// onboarding state. That copy tells an existing user their lists are gone,
+// and offers no way to retry.
 describe('ListsPage lists-fetch failure', () => {
   it('renders a retryable failure state, not the empty state', async () => {
     h.fetchLists.mockRejectedValue(new Error('offline'))

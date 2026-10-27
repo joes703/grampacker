@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { foodUnitCount } from './food'
 
-// The whole of 0024 in one function: how many of a thing you carry.
+// How many of a thing you carry, in one function.
 //
 // It lives in shared/ and is imported by the repo that publishes it, so the
-// owner's page, the pack list and the anonymous share cannot disagree. The
-// last time a food total was computed in more than one place, the share
-// reported a lighter pack than the owner's own view of the same list.
+// owner's page, the pack list and the anonymous share cannot disagree. A food
+// total computed in more than one place can make the share report a lighter
+// pack than the owner's own view of the same list.
 describe('foodUnitCount', () => {
   const slots = (n: number) => Array.from({ length: n }, (_, i) => `s${i}`)
 

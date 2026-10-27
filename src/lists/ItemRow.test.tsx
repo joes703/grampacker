@@ -59,7 +59,7 @@ describe('ItemRow', () => {
   it('offers no Delete from inventory in the row menu', async () => {
     // The list view shows "this item is on this trip"; deleting the gear
     // item destroys it in EVERY list, and that entry sat one row under the
-    // near-identical, harmless "Remove from list" (UX audits 2026-10).
+    // near-identical, harmless "Remove from list".
     // Deleting gear happens on the Gear page. Status shortcuts stay: they
     // are harmless and used mid-planning.
     render(

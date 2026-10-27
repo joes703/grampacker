@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import {
-  CATEGORY_CAP,
   createCategoryRequestSchema,
   reorderRequestSchema,
   updateCategoryRequestSchema,
@@ -9,7 +9,7 @@ import {
 } from '../../shared/gear'
 import { requireSession, type SessionVars } from '../middleware/session'
 import type { CategoryRow } from '../repos/categories'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/categories        - session - own rows only
@@ -19,7 +19,7 @@ import type { AppEnv } from '../env'
 //   DELETE /api/categories/:id    - session - own row or 404; uncategorizes
 //                                   its gear in the same transaction
 export const categoryRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 
@@ -45,7 +45,7 @@ categoryRoutes.post('/', async (c) => {
   const result = await c.get('repos').categories.create(parsed.data.name)
   if (!result.ok) {
     return c.json(
-      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      { error: LIMIT_REACHED.category },
       422,
     )
   }

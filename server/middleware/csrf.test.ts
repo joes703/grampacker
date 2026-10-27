@@ -1,17 +1,14 @@
-import { env } from '../test/node-env'
+import { app, TEST_ORIGIN } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
-import app from '../index'
 import { CSRF_HEADER } from './csrf'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 // Cross-cutting CSRF posture (docs/authz-matrix.md): unsafe methods on
 // non-auth routes require the custom x-grampacker-request header AND a
-// matching Origin. These tests used to ride on PUT /api/me; that route is
-// gone (grampacker stores no display name), so POST /api/lists is the
-// vehicle now - any session-gated unsafe route exercises the same
-// middleware, mounted app-wide ahead of the routers.
+// matching Origin. POST /api/lists is the vehicle - any session-gated unsafe
+// route exercises the same middleware, mounted app-wide ahead of the routers.
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 function postLists(headers: Record<string, string>) {
   return app.request(
@@ -21,7 +18,6 @@ function postLists(headers: Record<string, string>) {
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify({ name: 'CSRF probe' }),
     },
-    env,
   )
 }
 

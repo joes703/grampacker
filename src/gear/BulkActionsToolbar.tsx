@@ -1,5 +1,6 @@
 import { ListPlus, X } from 'lucide-react'
 import { LIST_ITEM_CAP } from '../lib/caps'
+import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
 
 type Props = {
   selectedCount: number
@@ -106,7 +107,7 @@ export default function BulkActionsToolbar({
           <button
             onClick={onMoveToCategory}
             disabled={noneSelected || busy}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+            className={TOOLBAR_BUTTON}
           >
             Move to category
           </button>
@@ -114,7 +115,7 @@ export default function BulkActionsToolbar({
             onClick={onCreateList}
             disabled={noneSelected || overListCap || busy}
             title={overListCap ? `Lists can hold at most ${LIST_ITEM_CAP} items (you've selected ${selectedCount})` : undefined}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+            className={`flex items-center gap-1.5 ${TOOLBAR_BUTTON}`}
           >
             <ListPlus size={14} /> Create list
           </button>

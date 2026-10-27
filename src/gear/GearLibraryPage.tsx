@@ -3,18 +3,12 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
@@ -23,14 +17,13 @@ import { useNavigate } from 'react-router'
 import { Plus, Search } from 'lucide-react'
 import {
   queryKeys,
-  fetchCategories,
-  fetchGearItems,
-  fetchLists,
   createListFromSelection,
   reorderCategories,
   reorderGearItems,
   makeOptimisticReorder,
+  fetchCategories,
 } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
@@ -60,6 +53,9 @@ import { useGearImportFlow } from './use-gear-import-flow'
 import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
+import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
+import { useDragSensors } from '../lib/use-drag-sensors'
+import { filterGearBySearch } from '../lib/gear-search'
 
 // `saveError` on the two GearItemDialog variants is the dialog's own failure
 // surface. It is inline rather than a toast because the dialog stays open on
@@ -87,6 +83,26 @@ type DialogState =
   | { type: 'bulk-delete' }
 
 
+// When dragging a category, the dragged wrapper carries its items along
+// (they're DOM children). closestCenter measures from the active's center,
+// and the dragged category's own item rects are physically closest - so
+// `over` would resolve to one of its own items and the drop would snap back.
+// So a category drag searches category droppables only; item drags use
+// closestCenter unchanged. The kind tag in the typed id (src/lib/dnd-ids.ts)
+// tells the two apart.
+const collisionDetection: CollisionDetection = (args) => {
+  const activeKind = parseDnDId(String(args.active.id))?.kind
+  if (activeKind === 'category') {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (c) => parseDnDId(String(c.id))?.kind === 'category',
+      ),
+    })
+  }
+  return closestCenter(args)
+}
+
 export default function GearLibraryPage() {
   useDocumentTitle('Gear')
   const qc = useQueryClient()
@@ -103,8 +119,6 @@ export default function GearLibraryPage() {
     isLoadingError: categoriesFailed,
     refetch: retryCategories,
     reorderPending: catReorderPending,
-    handleDragStart: catDragStart,
-    handleDragCancel: catDragCancel,
     handleDragEnd: catDragEnd,
   } = useReorderable<Category>({
     queryKey: queryKeys.categories(),
@@ -117,10 +131,7 @@ export default function GearLibraryPage() {
     isPending: gearItemsPending,
     isLoadingError: gearItemsFailed,
     refetch: refetchGearItems,
-  } = useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
-  })
+  } = useQuery(queries.gearItems())
 
   // Retries both halves: the failure panel does not say which one failed, so
   // the button must not either.
@@ -152,8 +163,7 @@ export default function GearLibraryPage() {
   // count changes only, instead of holding every list row for a rarely-read
   // value. Shares the ['lists'] cache with the lists pages.
   const { data: listCount = 0 } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    ...queries.lists(),
     select: (lists) => lists.length,
   })
 
@@ -169,11 +179,7 @@ export default function GearLibraryPage() {
   // The rows matching the search: what the category sections render and what
   // a within-category drag plans against. Declared up here, ahead of the drag
   // handler that reads it.
-  const searchFiltered = useMemo(() => {
-    if (!search) return allItems
-    const q = search.toLowerCase()
-    return allItems.filter((i) => i.name.toLowerCase().includes(q))
-  }, [allItems, search])
+  const searchFiltered = useMemo(() => filterGearBySearch(allItems, search), [allItems, search])
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
@@ -201,12 +207,8 @@ export default function GearLibraryPage() {
     clearSelected()
   }
 
-  function closeNewCategory() {
-    setDialog(null)
-  }
-
   // The async way out of the editor, for its success callback ONLY (the user's
-  // own Escape/X goes through closeNewCategory above, unconditionally). A
+  // own Escape/X closes it directly, unconditionally). A
   // create can settle in the same tick as a replacement update that is
   // already QUEUED but not yet committed - a CSV parse finishing closes the
   // editor through the import flow's onBeforeOpen, and the editor is inline,
@@ -224,8 +226,7 @@ export default function GearLibraryPage() {
   // The whole import flow (explainer, file input, preview, POST, error
   // dialog) lives in the hook; onBeforeOpen clears this page's dialog union
   // whenever the flow opens one of ITS dialogs, so the two state machines
-  // never both hold a surface - the same coordination the shared union used
-  // to provide when the import dialogs were variants of it.
+  // never both hold a surface.
   const { openImportExplainer, importUi } = useGearImportFlow({
     categories,
     allItems,
@@ -274,9 +275,8 @@ export default function GearLibraryPage() {
   const navigate = useNavigate()
   // No meta.errorToast, deliberately, even though this is a NON-optimistic mutation
   // - the case the toast mechanism exists for. Its dialog stays open on failure and
-  // is a modal, so the error goes inline, beside the form. (The toast this used to
-  // raise expired behind the backdrop, before toasts rendered over modals, and the
-  // create failed silently.) See the rule in src/lib/mutation-error-handler.ts.
+  // is a modal, so the error goes inline, beside the form. See the rule in
+  // src/lib/mutation-error-handler.ts.
   const createListFromSelectionMut = useMutation({
     mutationKey: mutationKeys.createListFromSelection(),
     mutationFn: createListFromSelection,
@@ -296,35 +296,8 @@ export default function GearLibraryPage() {
   // (open edit dialog) or vertical scroll. Category headers keep their
   // dedicated visible grip on mobile, so long-press on that grip reorders
   // categories; gear item rows use the row itself as the touch activator.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
-  // When dragging a category, the dragged wrapper carries its items along
-  // (they're DOM children). closestCenter measures from the active's center,
-  // and the dragged category's own item rects are physically closest — so
-  // `over` resolves to one of the dragged category's own items, the handler
-  // resolves dest to the same category, and the drop snaps back. Filter the
-  // collision search to category droppables when the active is a category;
-  // item drags use closestCenter unchanged. The kind tag in the typed id
-  // (see src/lib/dnd-ids.ts) is what tells us which case we're in.
-  const collisionDetection = useMemo<CollisionDetection>(
-    () => (args) => {
-      const activeKind = parseDnDId(String(args.active.id))?.kind
-      if (activeKind === 'category') {
-        return closestCenter({
-          ...args,
-          droppableContainers: args.droppableContainers.filter(
-            (c) => parseDnDId(String(c.id))?.kind === 'category',
-          ),
-        })
-      }
-      return closestCenter(args)
-    },
-    [],
-  )
 
   // Active drag id (item id OR category id). The DragOverlay renders an
   // item-row clone for item drags; category drag falls back to dnd-kit's
@@ -342,20 +315,15 @@ export default function GearLibraryPage() {
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
   })
 
-  // The page tracks its OWN activeId for the gear-item DragOverlay clone
-  // (the DragOverlay below only renders gear-item rows; categories don't
-  // have a clone). The categories useReorderable hook tracks an independent
-  // activeId internally for its own state machine; we forward the lifecycle
-  // events to it so it stays in sync even though its activeItem isn't
-  // consumed at this surface.
+  // The page tracks its own activeId for the gear-item DragOverlay clone
+  // (categories have no clone, so the categories hook's activeItem is unused
+  // here).
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
-    catDragStart(e)
   }
 
   function handleDragCancel() {
     setActiveId(null)
-    catDragCancel()
   }
 
   // Page-level drag handler. Two cases:
@@ -524,7 +492,7 @@ export default function GearLibraryPage() {
               variant="toolbar"
               create={(categoryName) => addCategory.mutateAsync(categoryName)}
               onCreated={() => closeCategorySession(dialog.session)}
-              onCancel={closeNewCategory}
+              onCancel={() => setDialog(null)}
             />
           )}
 
@@ -538,7 +506,7 @@ export default function GearLibraryPage() {
           {selectMode ? (
             <button
               onClick={exitSelectMode}
-              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`md:ml-auto ${TOOLBAR_BUTTON}`}
             >
               Cancel
             </button>
@@ -550,7 +518,7 @@ export default function GearLibraryPage() {
               // library snapshot. Disabling the way out of a mode the user is
               // already in would trap them.
               disabled={!libraryReady}
-              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              className={`md:ml-auto ${TOOLBAR_BUTTON}`}
             >
               Select
             </button>
@@ -562,7 +530,7 @@ export default function GearLibraryPage() {
               on the list toolbar; Settings deliberately has none). Visible
               at every viewport, never gated on libraryReady: the preference
               is device-local and the zero-data account needs it most. */}
-          <UnitSegmentedControl idPrefix="gear-toolbar" />
+          <UnitSegmentedControl />
 
           {/* Right cluster — New item + Options. Shown only at >=lg; below
               lg the MobileGearActionBar's Add slot and Options modal own
@@ -575,7 +543,7 @@ export default function GearLibraryPage() {
             <button
               onClick={() => setDialog({ type: 'create-item', saveError: null })}
               disabled={!libraryReady}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              className={`flex items-center gap-1.5 ${TOOLBAR_BUTTON}`}
             >
               <Plus size={14} />
               New item
@@ -773,9 +741,9 @@ export default function GearLibraryPage() {
               },
             })
           }}
-          // Mobile-only Delete from inventory action inside the dialog.
-          // Replaces the trash icon that used to sit in the row on desktop
-          // (still present on lg+ via the inline RowIconButton). Hands off
+          // Mobile-only Delete from inventory action inside the dialog. The
+          // row has no trash icon on mobile (lg+ has the inline
+          // RowIconButton). Hands off
           // to the same delete-item ConfirmDialog flow as the desktop
           // trash button by transitioning dialog state.
           onDeleteFromInventory={
@@ -799,9 +767,7 @@ export default function GearLibraryPage() {
           // Close first, then mutate - the same order every delete confirm in the
           // lists code already uses. The delete is optimistic, so the row is gone
           // the instant this runs and a modal sitting over a list that already
-          // reflects the deletion is just in the way. (It also used to be what kept
-          // the rollback's failure toast from expiring unseen behind the confirm,
-          // before toasts rendered over modals.)
+          // reflects the deletion is just in the way.
           onConfirm={() => {
             const target = dialog.item
             setDialog(null)

@@ -87,7 +87,3 @@ export function fieldScopedCache<TData, TRow extends { id: string }>(
     },
   }
 }
-
-export type FieldScopedCache<TData, TRow extends { id: string }> = ReturnType<
-  typeof fieldScopedCache<TData, TRow>
->

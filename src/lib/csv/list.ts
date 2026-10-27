@@ -1,11 +1,10 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv } from './core'
 import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
-import { MAX_LIST_ITEM_QUANTITY } from '../caps'
+import { clampQuantity } from '../../../shared/lists'
 
-// Parse output. The CSV column HEADERS keep the Lighterpack shape
-// (byte-identical to the old repo's export), but the parsed TS row is
-// camelCase because every new-repo consumer speaks camelCase.
+// Parse output. The CSV column HEADERS keep the Lighterpack shape, but the
+// parsed TS row is camelCase because every consumer speaks camelCase.
 // categoryName is the category's display name; the import planner
 // resolves it to an existing id or a new category.
 export type ListCsvRow = {
@@ -48,7 +47,6 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
 
   return rows
     .map((row) => {
-      const rawQty = qtyKey ? parseInt(row[qtyKey] ?? '1', 10) : 1
       const isWorn = wornKey ? toBool(row[wornKey]) : false
       const isConsumable = consumKey ? toBool(row[consumKey]) : false
       // worn/consumable exclusivity is a DB CHECK constraint; if both are
@@ -58,7 +56,7 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
       const bothSet = isWorn && isConsumable
       return {
         ...commonRowFields(row, cols),
-        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, MAX_LIST_ITEM_QUANTITY),
+        quantity:     qtyKey ? clampQuantity(row[qtyKey] ?? '1') : 1,
         isWorn:       bothSet ? false : isWorn,
         isConsumable: bothSet ? false : isConsumable,
       }
@@ -92,9 +90,9 @@ export function nameFromCsvFilename(filename: string): string {
 // fail an import - it succeeds with the wrong fields. list.test.ts pins them
 // by position.
 //
-// Column 7 carries the REAL cost of the underlying gear item. It used to be
-// `price` hardcoded to 0 - a fabricated value that made every exported list
-// look like it cost nothing. A list item has no price of its own; the gear
+// Column 7 carries the REAL cost of the underlying gear item, never a
+// hardcoded 0 (that would make every exported list look like it cost
+// nothing). A list item has no price of its own; the gear
 // item it points at does, which is the value emitted here. Blank for null,
 // never 0: "unknown" must not render as "free".
 export function listItemsToCsv(items: ListItemWithGear[], categories: Category[]): string {

@@ -1,5 +1,4 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
-import { ApiError } from '../api'
 import { showToast } from '../toast'
 
 // This module holds only the TanStack Query cache lifecycle helpers
@@ -35,38 +34,36 @@ import { showToast } from '../toast'
 // truth until the next refetch. `assignSortOrderSlots` (in grouping.ts) is
 // the canonical way to build a safe `updates` array.
 //
-// Why onMutate is sync (NOT `async` + `await qc.cancelQueries`):
-//   The TanStack Query canonical optimistic pattern awaits cancelQueries
-//   before setQueryData so an in-flight refetch can't clobber the
-//   optimistic state. We diverge: this hook fires reorder mutations from
-//   dnd-kit's onDragEnd, and dnd-kit starts a CSS drop transition on the
-//   sortable rows in the SAME synchronous tick that onDragEnd returns.
-//   That transition animates each row's transform back to identity. If
-//   the cache update happens one microtask later (which an `await` forces),
-//   the transition animates against the still-original DOM order. The
-//   dropped row visibly snaps to its starting position before a later
-//   re-render jumps it to the correct new position.
+// When cancelQueries is awaited, and when it is not:
 //
-//   Fix: fire cancelQueries without awaiting and call setQueryData in the
-//   same tick. The drop transition then animates against the correct final
-//   order from the start.
+//   cancelQueries calls query.cancel() SYNCHRONOUSLY, and cancel() rejects
+//   the retryer's thenable in the same tick. So a refetch that is still
+//   PENDING is canceled and its late response is dropped, whether or not
+//   the caller awaits. Awaiting closes only one narrower gap: the fetch's
+//   promise has already RESOLVED but the query has not yet written the
+//   result. There cancel() does nothing, and the queued write lands on top
+//   of the optimistic state.
 //
-//   The cancel still happens; it's just fire-and-forget, and that is
-//   fine. cancelQueries issues query.cancel() SYNCHRONOUSLY, and cancel()
-//   rejects the retryer's thenable in the same tick, so a still-pending
-//   refetch is canceled here and its response dropped - awaited or not.
+//   That gap is not reachable from a user gesture. The browser runs the
+//   whole microtask checkpoint (including the query's write) before the
+//   next task, and a click or a drop is a task. A caller reaches the gap
+//   only by calling the mutation from a promise continuation queued in the
+//   same checkpoint (ListDetailPage's edit dialog chains mutateAsync ->
+//   mutateAsync, which has that shape).
 //
-//   What unawaited gives up is the sliver after a fetch's promise has
-//   resolved but before the query wrote the result, where cancel() no-ops
-//   and the queued write can land on top of the optimistic order. That
-//   sliver is not reachable from a drag: the browser drains the microtask
-//   checkpoint (including the query's write) before dispatching the next
-//   task, and a drop is a task. It is also self-healing - onSettled
-//   invalidates regardless.
-//
-//   The CRUD helpers below DO await, since they have no animation to be in
-//   time for and some callers fire them from a promise chain. See the race
-//   suite in optimistic.test.ts, which pins the mechanism.
+//   - The CRUD helpers (insert / update / delete) AWAIT the cancel, as the
+//     TanStack pattern does. They are never called from a drag, so the extra
+//     microtask costs nothing, and awaiting closes the gap for promise-chain
+//     callers. The race suite in optimistic.test.ts pins this.
+//   - The reorder helpers (makeOptimisticReorder,
+//     makeOptimisticUnionPackReorder) do NOT await, and onMutate stays
+//     synchronous. dnd-kit starts its CSS drop transition in the same tick
+//     that onDragEnd returns. If the cache write came one microtask later
+//     (an `await` forces that), the transition would run against the old
+//     DOM order: the dropped row would snap back to its start, then jump to
+//     its new place. Writing the cache in the same tick avoids this. The
+//     gap above cannot happen from a drag, and onSettled invalidates anyway.
+//     Do not "make these consistent" with the CRUD helpers.
 //
 // Corollary — the same-tick rule extends to where the cache is observed,
 // not just where it is written. The component that renders the
@@ -107,37 +104,9 @@ import { showToast } from '../toast'
 //     }),
 //   })
 //
-// These helpers AWAIT `cancelQueries` before snapshotting: the canonical TanStack
-// pattern. They used to fire it unawaited, borrowing reorder's same-tick rationale
-// (below) - which was never theirs to borrow, since no CRUD helper is called from a
-// drag and there is no drop animation for the write to be in time for.
-//
-// Be precise about what awaiting buys, because the usual explanation is wrong:
-//
-//   The stock claim is "an in-flight refetch resolves after your write and clobbers
-//   it". That cannot happen the way it sounds. cancelQueries issues query.cancel()
-//   SYNCHRONOUSLY, and cancel() rejects the retryer's thenable in that same tick, so
-//   a still-PENDING fetch is canceled and its late response is dropped by an
-//   isResolved() guard. Unawaited was already safe for that case.
-//
-//   The genuine hole is narrower: the sliver after the fetch's promise has RESOLVED
-//   but before the query has written the result. cancel() finds a settled thenable,
-//   no-ops, and the queued write lands on top of the optimistic state.
-//
-//   And that sliver is NOT reachable from a user gesture. The browser drains the
-//   whole microtask checkpoint - including the query's write - before dispatching
-//   the next task, and a click is a task. To land in it, a caller must invoke the
-//   mutation from a promise continuation already queued in that same checkpoint.
-//
-// So this is a correctness-hardening change, not a user-facing bug fix: it aligns
-// with the library's documented contract and closes the hole for callers that fire
-// mutations from a promise chain rather than an event handler (ListDetailPage's
-// edit dialog chains mutateAsync -> mutateAsync, which is exactly that shape). It is
-// honest to call it cheap insurance. It would not be honest to claim it fixed a
-// clobber anyone has seen.
-//
-// Cost: onMutate returns a promise, so the optimistic write lands one microtask
-// later. Invisible to a click, and the reason reorder is exempt.
+// These helpers AWAIT `cancelQueries` before snapshotting (see "When
+// cancelQueries is awaited" at the top of this file). onMutate therefore
+// returns a promise, and the optimistic write lands one microtask later.
 //
 // Side caches (joined / cascading) take an `invalidateKeys` array. They
 // receive no optimistic write but invalidate on settled. Optimistic
@@ -153,14 +122,6 @@ type CommonOpts = {
   // also invalidates ['list-items'] so any open list view picks up the
   // change after the round-trip.
   invalidateKeys?: QueryKey[]
-  // If provided, shows a toast on error rollback. WHICH mutations set it is one
-  // rule, stated in src/lib/mutation-error-handler.ts: in-place edits stay silent
-  // because the snap-back explains itself, while deletes/removals, bulk
-  // transforms and reorders do not and need saying out loud. Omit it whenever the
-  // calling surface shows the error inline instead - a dialog with its own error
-  // state, or the gear library's inline category editor; the modal rule there
-  // makes that the default for anything reached from inside a modal.
-  errorToast?: string
 }
 
 type OptimisticContext<T> = { previous: T[] | undefined }
@@ -174,7 +135,6 @@ function makeRollback<T>(opts: CommonOpts) {
     ctx: OptimisticContext<T> | undefined,
   ) => {
     if (ctx?.previous) opts.qc.setQueryData(opts.queryKey, ctx.previous)
-    if (opts.errorToast) showToast(opts.errorToast, { type: 'error' })
   }
 }
 
@@ -330,7 +290,7 @@ function validateReorderPayload<T extends { id: string; sortOrder: number }>(
 // Tag for a thrown error from onMutate that means "payload validation
 // failed in prod — don't show the generic reorder-save toast in onError,
 // just let onSettled's invalidate refetch authoritative server truth."
-// Exported only via the `name` check; not a public API.
+// Not exported: onError recognizes it with `instanceof` in this file.
 class OptimisticReorderValidationError extends Error {
   constructor(message: string) {
     super(message)
@@ -338,7 +298,7 @@ class OptimisticReorderValidationError extends Error {
   }
 }
 
-// The pack-reorder optimistic lifecycle (0022: a bag's contents are
+// The pack-reorder optimistic lifecycle (a bag's contents are
 // gear rows AND food rows). One mutation writes both halves - the server
 // applies them in one batch - so the optimistic apply, rollback and refetch
 // must span both caches or a failed drop would roll back half a drag.
@@ -374,8 +334,8 @@ function validateUnionPackReorderPayload(
 
   // INDEX-SAFETY, mirroring the server (pack-reorder.ts): per table half,
   // payload ranks must be unique and clear of untouched same-cohort rows in
-  // the SAME table. Deliberately NOT the old multiset-permutation rule - a
-  // tied cohort heals via a dense renumber, which is not a permutation.
+  // the SAME table. Deliberately NOT a multiset-permutation rule: a tied
+  // cohort heals via a dense renumber, which is not a permutation.
   const cohortOf = (id: string): string | null | undefined => {
     const gearRow = cachedGear?.find((r) => r.id === id)
     if (gearRow) return gearRow.packingLocationId ?? null
@@ -433,8 +393,8 @@ export function makeOptimisticUnionPackReorder<
   F extends FoodCacheShape,
 >(qc: QueryClient, gearQueryKey: QueryKey, foodQueryKey: QueryKey) {
   return {
-    // Synchronous, un-awaited cancels: same drag-animation reason as
-    // makeOptimisticReorder (see the long note there).
+    // Synchronous, un-awaited cancels: the drag-animation reason in "When
+    // cancelQueries is awaited" at the top of this file.
     onMutate: (updates: UnionPackReorderUpdates) => {
       void qc.cancelQueries({ queryKey: gearQueryKey })
       void qc.cancelQueries({ queryKey: foodQueryKey })
@@ -485,7 +445,7 @@ export function makeOptimisticUnionPackReorder<
     // FIELD-SCOPED rollback: restore only the touched rows' packSortOrder
     // from the snapshots, onto the CURRENT cache. Restoring the whole
     // snapshot would also rewind any packed/ready checkbox write that
-    // succeeded while this reorder was in flight (GATE 2 finding) - the
+    // succeeded while this reorder was in flight - the
     // same composition rule use-list-item-actions and the reset actions
     // follow. onSettled's refetch remains the final authority either way.
     onError: (
@@ -527,13 +487,7 @@ export function makeOptimisticUnionPackReorder<
             : curr,
         )
       }
-      const conflict = err instanceof ApiError && err.status === 409
-      showToast(
-        conflict
-          ? 'This bag changed somewhere else. Reloading its order.'
-          : "Couldn't save the new order. Please try again.",
-        { type: 'error' },
-      )
+      showToast("Couldn't save the new order. Please try again.", { type: 'error' })
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: gearQueryKey })
@@ -547,22 +501,11 @@ export function makeOptimisticReorder<T extends { id: string; sortOrder: number 
   queryKey: QueryKey,
 ) {
   return {
-    // DELIBERATELY SYNCHRONOUS, and the cancel is DELIBERATELY not awaited.
-    // This is the one helper where the same-tick rule is real: dnd-kit starts its
-    // drop animation in the tick onDragEnd returns, so an awaited cancel would
-    // push the cache write a microtask later, the animation would run against the
-    // old DOM order, and the dropped row would visibly snap back to where it
-    // started. See the long note at the top of this file.
-    //
-    // The CRUD helpers above DO await - they are never called from a drag, so
-    // they were paying the clobber race for an animation that does not exist. Do
-    // not "make these consistent" by awaiting here: the inconsistency is the
-    // point, and the accepted race is documented below.
-    //
-    // Accepted race (unchanged): an in-flight refetch can resolve between this
-    // setQueryData and the cancel taking effect, overwriting the optimistic order
-    // with stale server truth. Rare (staleTime 30s) and self-healing (onSettled
-    // invalidates regardless). Pinned by a test.
+    // DELIBERATELY SYNCHRONOUS, and the cancel is DELIBERATELY not awaited,
+    // so the cache write lands in the same tick as dnd-kit's drop animation.
+    // Do not await here to match the CRUD helpers. See "When cancelQueries is
+    // awaited" at the top of this file; the test "onMutate is SYNCHRONOUS"
+    // pins it.
     onMutate: (updates: { id: string; sortOrder: number }[]) => {
       void qc.cancelQueries({ queryKey })
       const previous = qc.getQueryData<T[]>(queryKey)
@@ -571,9 +514,8 @@ export function makeOptimisticReorder<T extends { id: string; sortOrder: number 
       // stack trace, surfaces the bug in development and tests). PROD
       // detects, logs, and aborts with a tagged error onError recognizes:
       // no rollback toast, no cache write, just onSettled's invalidate to
-      // pull authoritative server truth. Silent corruption (the prior
-      // behavior in prod, since the assertion was DEV-only) is worse than
-      // a brief snap-to-server-truth.
+      // pull authoritative server truth. Silently corrupting the cache in
+      // prod would be worse than a brief snap to server truth.
       const validationError = validateReorderPayload(updates, previous)
       if (validationError) {
         if (import.meta.env.DEV) throw new Error(validationError)

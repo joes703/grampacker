@@ -8,7 +8,7 @@ import { z } from 'zod'
 // `abs(v*scale - round(v*scale)) < 1e-6`. The epsilon form is magnitude-
 // fragile: near the upper bound, v*scale loses so much precision that an
 // 8-decimal value can land exactly on an integer and pass as "2 decimals"
-// (Codex finding: 99999999.00999999 * 100 === 9999999901). Comparing the
+// (99999999.00999999 * 100 === 9999999901). Comparing the
 // round-tripped value back to the original catches that.
 //
 // Lives in its own leaf module so schema modules can

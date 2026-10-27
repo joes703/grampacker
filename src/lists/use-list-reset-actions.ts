@@ -25,7 +25,7 @@ import type { ListItemWithGear } from '../lib/types'
 // moment of clear, and on failure flips ONLY that field back. The other reset's
 // writes pass through untouched. No mutex needed; the operations compose.
 //
-// Since 0022 each reset clears BOTH caches: the server clears gear and food in
+// Each reset clears BOTH caches: the server clears gear and food in
 // one batch, so the optimistic clear, the rollback, and the invalidate all
 // span ['list-items', listId] AND ['list-food', listId] - a reset that left
 // the food checkboxes ticked would contradict what the server just did.

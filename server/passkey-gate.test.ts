@@ -1,6 +1,5 @@
-import { env, testDb } from './test/node-env'
+import { app, env, TEST_ORIGIN } from './test/node-env'
 import { describe, it, expect } from 'vitest'
-import app from './index'
 import { makeSessionStale, signInAgain, signUpVerifiedUser } from './test/auth-helpers'
 import { CSRF_HEADER } from '../shared/api'
 
@@ -8,26 +7,23 @@ import { CSRF_HEADER } from '../shared/api'
 // one: the WebAuthn ceremony cannot run in a test, and the ownership rule on
 // rename/delete/list is what is under test, not registration.
 async function seedPasskey(email: string, id: string, name: string): Promise<void> {
-  const user = await testDb.prepare('select id from user where email = ?')
-    .bind(email)
-    .first<{ id: string }>()
+  const user = (env.DB.prepare('select id from user where email = ?').get(email) as { id: string } | undefined)
   if (!user) throw new Error(`no user row for ${email}`)
-  await testDb.prepare(
+  env.DB.prepare(
     'insert into passkey (id, name, user_id, public_key, credential_id, counter, device_type, backed_up) values (?, ?, ?, ?, ?, 0, ?, 0)',
-  )
-    .bind(id, name, user.id, 'pub-key', `cred-${id}`, 'singleDevice')
-    .run()
+  ).run(id, name, user.id, 'pub-key', `cred-${id}`, 'singleDevice')
 }
 
-async function passkeyRow(id: string): Promise<{ name: string } | null> {
-  return testDb.prepare('select name from passkey where id = ?').bind(id).first<{ name: string }>()
+// null when the row is gone, as the assertions below expect.
+function passkeyRow(id: string): { name: string } | null {
+  return (env.DB.prepare('select name from passkey where id = ?').get(id) as { name: string } | undefined) ?? null
 }
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // The passkey endpoints that CHANGE WHICH CREDENTIALS CAN SIGN IN, with the
 // method each is registered under - the gate lives in better-auth's
-// hooks.before now (server/auth.ts), which only runs for RESOLVED endpoints,
+// hooks.before (server/auth.ts), which only runs for RESOLVED endpoints,
 // so a wrong-method request is a router 404, not a gate 403. The gate is
 // deny-by-default across /passkey/*: anything NOT in auth.ts's
 // PASSKEY_UNGATED allowlist - including endpoints a future plugin version
@@ -58,7 +54,6 @@ async function request(
       headers,
       body: method === 'GET' ? undefined : JSON.stringify({}),
     },
-    env,
   )
 }
 
@@ -73,10 +68,7 @@ describe('passkey fresh-auth gate', () => {
     for (const [method, path] of GATED) {
       const res = await request(method, path, cookie)
       expect(res.status, path).toBe(403)
-      // better-auth's native dialect now - the client accepts REAUTH_REQUIRED
-      // (the old custom middleware's word) AND SESSION_NOT_FRESH
-      // (PasskeySection.isReauthRequired), so moving to the native code is
-      // invisible to the UI.
+      // The code PasskeySection.isReauthRequired keys on.
       expect(await res.json(), path).toMatchObject({ code: 'SESSION_NOT_FRESH' })
     }
   })
@@ -90,12 +82,12 @@ describe('passkey fresh-auth gate', () => {
       method: 'POST',
       headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'application/json', 'x-forwarded-for': '10.60.1.2' },
       body: JSON.stringify({ id: 'reauth-key' }),
-    }, env)
+    })
     expect((await remove(stale)).status).toBe(403)
-    expect(await passkeyRow('reauth-key')).toEqual({ name: 'Laptop' })
+    expect(passkeyRow('reauth-key')).toEqual({ name: 'Laptop' })
     const { cookie: fresh } = await signInAgain(email)
     expect((await remove(fresh)).status).toBe(200)
-    expect(await passkeyRow('reauth-key')).toBeNull()
+    expect(passkeyRow('reauth-key')).toBeNull()
     expect((await remove(stale)).status).toBe(403)
   })
 
@@ -129,7 +121,6 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         },
         body: JSON.stringify(body),
       },
-      env,
     )
   }
 
@@ -148,7 +139,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     )
     // The exact refusal and unchanged row prove the mounted access boundary.
     expect(foreignRename.status).toBe(401)
-    expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
+    expect(passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
 
     // Non-owner delete (fresh session, so the freshness gate is not what
     // refuses it): refused, row still there.
@@ -159,7 +150,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
       '10.61.0.2',
     )
     expect(foreignDelete.status).toBe(401)
-    expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
+    expect(passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
 
     // Anonymous rename and list: the matrix's third caller, for the two
     // endpoints the freshness tests above do not cover anonymously.
@@ -175,14 +166,12 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
         },
         body: JSON.stringify({ id: 'pk-owner-1', name: 'Anonymous' }),
       },
-      env,
     )
     expect(anonRename.status).toBe(401)
-    expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
+    expect(passkeyRow('pk-owner-1')).toEqual({ name: 'Laptop' })
     const anonList = await app.request(
       '/api/auth/passkey/list-user-passkeys',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': '10.61.0.7' } },
-      env,
     )
     expect(anonList.status).toBe(401)
 
@@ -190,7 +179,6 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
     const listed = await app.request(
       '/api/auth/passkey/list-user-passkeys',
       { headers: { Origin: ORIGIN, Cookie: other.cookie, 'x-forwarded-for': '10.61.0.3' } },
-      env,
     )
     expect(listed.status).toBe(200)
     expect(((await listed.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-other-1'])
@@ -204,10 +192,10 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
       '10.61.0.4',
     )
     expect(rename.status).toBe(200)
-    expect(await passkeyRow('pk-owner-1')).toEqual({ name: 'Work laptop' })
+    expect(passkeyRow('pk-owner-1')).toEqual({ name: 'Work laptop' })
     const ownList = await app.request('/api/auth/passkey/list-user-passkeys', {
       headers: { Cookie: owner.cookie, Origin: ORIGIN, 'x-forwarded-for': '10.61.0.8' },
-    }, env)
+    })
     expect(ownList.status).toBe(200)
     expect(((await ownList.json()) as { id: string }[]).map((p) => p.id)).toEqual(['pk-owner-1'])
     const fresh = await signInAgain('pk-owner@test.dev')
@@ -218,7 +206,7 @@ describe('passkey rename / delete / list are scoped to the owner', () => {
       '10.61.0.5',
     )
     expect(del.status).toBe(200)
-    expect(await passkeyRow('pk-owner-1')).toBeNull()
-    expect(await passkeyRow('pk-other-1')).toEqual({ name: 'Phone' })
+    expect(passkeyRow('pk-owner-1')).toBeNull()
+    expect(passkeyRow('pk-other-1')).toEqual({ name: 'Phone' })
   })
 })

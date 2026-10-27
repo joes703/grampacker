@@ -3,15 +3,9 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { Plus, Upload, X } from 'lucide-react'
@@ -45,6 +39,7 @@ import ListsEmptyState from './ListsEmptyState'
 import StatusPanel from '../components/StatusPanel'
 import MobileListsActionBar from './MobileListsActionBar'
 import PrivacyPanel from './PrivacyPanel'
+import { useDragSensors } from '../lib/use-drag-sensors'
 
 // Single discriminated union for every transient dialog/modal/inline-form on
 // this page. Mirrors the pattern in ListDetailPage / GearLibraryPage — `type`
@@ -122,11 +117,7 @@ export default function ListsPage() {
   // touch a long-press on the grip starts the reorder (MouseSensor handles
   // the desktop mouse drag). Splitting mouse/touch here keeps this page on
   // the same sensor set as the item-row pages.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
   const submitCreate = () => {
     if (dialog?.type !== 'creating') return

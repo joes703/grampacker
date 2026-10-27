@@ -7,20 +7,19 @@ import {
   duplicateList,
   deleteList,
   createList,
-  fetchListItems,
-  fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
   makeOptimisticInsert,
-  nextListSortOrder,
+  nextSortOrder,
 } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
-import { listItemsToCsv, downloadCsv } from '../lib/csv'
+import { listItemsToCsv, downloadCsv, slugifyFilename } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
 import { forgetLastListPathTo } from '../lib/last-list-path'
 import { useListFlagToggle } from './use-list-flag-toggle'
-import type { Category, List } from '../lib/types'
+import type { List } from '../lib/types'
 
 // createListMut variables: the name plus the append sortOrder snapshotted at
 // submit time. Carried together so the optimistic placeholder consumes one
@@ -73,10 +72,7 @@ export function useCurrentListActions() {
   // ListSettingsPanel (the Draft toggle). Routed through useListFlagToggle
   // so rapid double-toggles can't send a stale or duplicate PATCH (see the
   // hook for the two races the naive relative flip carries).
-  const draftToggle = useListFlagToggle({
-    read: (target) => target.isDraft,
-    patch: (isDraft) => ({ isDraft }),
-  })
+  const draftToggle = useListFlagToggle('isDraft')
 
   // Create a new list. The append sortOrder is captured ONCE per invocation -
   // in submitCreateList below, from the pre-insert ['lists'] cache - and passed
@@ -121,7 +117,7 @@ export function useCurrentListActions() {
       // so ask the mutation cache, which is synchronously current.
       if (qc.isMutating({ mutationKey: mutationKeys.createList() }) > 0) return
       const currentLists = qc.getQueryData<List[]>(queryKeys.lists()) ?? []
-      createListMut.mutate({ name, sortOrder: nextListSortOrder(currentLists) }, options)
+      createListMut.mutate({ name, sortOrder: nextSortOrder(currentLists) }, options)
     },
     [qc, createListMut],
   )
@@ -162,8 +158,8 @@ export function useCurrentListActions() {
       qc,
       queryKey: queryKeys.lists(),
       id: (id) => id,
-      errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again." },
     onSuccess: (_data, id) => forgetLastListPathTo(id),
   })
 
@@ -176,20 +172,11 @@ export function useCurrentListActions() {
       setExportingListId(list.id)
       try {
         const [items, categories] = await Promise.all([
-          qc.fetchQuery({
-            queryKey: queryKeys.listItems(list.id),
-            queryFn: () => fetchListItems(list.id),
-          }),
-          qc.fetchQuery({
-            queryKey: queryKeys.categories(),
-            queryFn: fetchCategories,
-          }) as Promise<Category[]>,
+          qc.fetchQuery(queries.listItems(list.id)),
+          qc.fetchQuery(queries.categories()),
         ])
         const csv = listItemsToCsv(items, categories)
-        downloadCsv(
-          `${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`,
-          csv,
-        )
+        downloadCsv(`${slugifyFilename(list.name)}.csv`, csv)
       } catch {
         // Non-optimistic action with no snap-back: surface feedback and
         // consume so the fire-and-forget call sites cannot reject.

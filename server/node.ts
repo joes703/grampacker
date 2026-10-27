@@ -2,7 +2,7 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
-import app from './index'
+import { createApp } from './index'
 import { openSqlite, type Sqlite } from './db'
 import { applyMigrations, MigrationStateError, pendingMigrationCount } from './db/migrate'
 import { ConfigError, loadConfig, type AppEnv } from './env'
@@ -28,16 +28,17 @@ export type RunningServer = {
   close(graceMs?: number): Promise<void>
 }
 
-// Listens and serves `app` with `env` on every request. Exported for tests,
+// Listens and serves the app built from `env`. Exported for tests,
 // which start it on port 0 against their own database.
 export function startServer(
   env: AppEnv,
   opts: { port: number; hostname: string },
 ): Promise<RunningServer> {
+  const app = createApp(env)
   return new Promise((resolve, reject) => {
     const server = serve(
       {
-        fetch: (request) => app.fetch(request, env),
+        fetch: app.fetch,
         port: opts.port,
         hostname: opts.hostname,
       },
@@ -57,7 +58,7 @@ export function startServer(
 // close() began would otherwise stay open until Node's keep-alive timeout.
 // Sweeping idle connections until the server is closed lets shutdown finish
 // as soon as the last request does.
-function closeServer(server: Server, graceMs: number): Promise<void> {
+export function closeServer(server: Server, graceMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const sweep = setInterval(() => server.closeIdleConnections(), 50)
     const force = setTimeout(() => server.closeAllConnections(), graceMs)
@@ -148,15 +149,7 @@ export async function main(argv: string[], source: NodeJS.ProcessEnv): Promise<n
     return 1
   }
 
-  const env: AppEnv = {
-    DB: sqlite,
-    BETTER_AUTH_URL: config.BETTER_AUTH_URL,
-    BETTER_AUTH_SECRET: config.BETTER_AUTH_SECRET,
-    RESEND_API_KEY: config.RESEND_API_KEY,
-    EMAIL_FROM: config.EMAIL_FROM,
-    STATIC_DIR: config.STATIC_DIR,
-  }
-  const running = await startServer(env, { port: config.PORT, hostname: config.HOST })
+  const running = await startServer({ ...config, DB: sqlite }, { port: config.PORT, hostname: config.HOST })
   console.log(`listening on http://${config.HOST}:${running.port}`)
   shutdownOnSignals(running, sqlite)
   return 0

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import { toGearItemResponse } from './gear-item-response'
 import {
@@ -21,7 +22,7 @@ import type {
   ImportGearResult,
   UpdateGearItemPatch,
 } from '../repos/gear-items'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/gear-items             - session - own rows only
@@ -46,14 +47,14 @@ function importGearFailure(
     case 'invalid_category':
       return { status: 400, error: 'Invalid category' }
     case 'category_cap_exceeded':
-      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.category }
     case 'cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
   }
 }
 
 export const gearItemRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 
@@ -98,7 +99,7 @@ gearItemRoutes.post('/', async (c) => {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)
     }
-    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
+    return c.json({ error: LIMIT_REACHED.gearItem }, 422)
   }
   return c.json(toGearItemResponse(result.row), 201)
 })
@@ -116,8 +117,8 @@ gearItemRoutes.post('/import', async (c) => {
   // the relational refinements - with no array maxima, so anything malformed
   // (including a malformed OVERSIZED body) stays the uniform 400. Stage 2
   // answers the caps in the trigger's own 422 dialect, which matters because
-  // an over-cap gear CSV is user-reachable (the parser accepts 2000 rows)
-  // and used to burn 500+ executed statements before failing. Categories
+  // an over-cap gear CSV is user-reachable (the parser accepts 2000 rows),
+  // and without this stage it would run 500+ statements before failing. Categories
   // are checked first on purpose: every declared category must be
   // referenced, so 501 valid categories force >=501 items - when both caps
   // are blown, the category message is the actionable one.
@@ -125,13 +126,13 @@ gearItemRoutes.post('/import', async (c) => {
   if (!parsed.ok) return parsed.response
   if (parsed.data.categories.length > CATEGORY_CAP) {
     return c.json(
-      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      { error: LIMIT_REACHED.category },
       422,
     )
   }
   if (parsed.data.items.length > GEAR_ITEM_CAP) {
     return c.json(
-      { error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` },
+      { error: LIMIT_REACHED.gearItem },
       422,
     )
   }

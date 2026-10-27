@@ -6,9 +6,7 @@ const h = vi.hoisted(() => ({ supported: true }))
 
 vi.mock('../lib/auth-client', () => ({
   authClient: {
-    passkey: {
-      listUserPasskeys: vi.fn().mockResolvedValue({ data: [], error: null }),
-    },
+    useListPasskeys: () => ({ data: [], error: null, isPending: false }),
     useSession: () => ({ data: { user: { email: 'hiker@example.com' } } }),
   },
   passkeysSupported: () => h.supported,

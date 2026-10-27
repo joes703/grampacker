@@ -12,6 +12,7 @@ import {
   FORM_INPUT,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
+import { queries } from '../lib/queries/options'
 import {
   createFoodItem,
   deleteFoodItem,
@@ -40,13 +41,12 @@ import { formatTotalWeight, type WeightUnit } from '../lib/weight'
 // for the weight breakdown and for the rows it renders in the Category and
 // Pack arrangements (React Query dedupes the fetch).
 //
-// The layout is the 2026-10 redesign: a planning header (trip length, food
-// weight, add) over a single column of day tables, with the meal plan as the
-// ONE editing surface (every "+ add" and every food line opens
-// FoodItemDialog). The shopping tally that used to sit beside the plan was
-// removed deliberately: it repeated the unitCount the Category and Pack food
-// rows already show, and a buy-count is read at the store, where those views
-// are the ones open.
+// The layout: a planning header (trip length, food weight, add) over a
+// single column of day tables, with the meal plan as the ONE editing surface
+// (every "+ add" and every food line opens FoodItemDialog). There is
+// deliberately no shopping tally beside the plan: it would repeat the
+// unitCount the Category and Pack food rows already show, and a buy-count is
+// read at the store, where those views are the ones open.
 export default function FoodView({ listId }: { listId: string }) {
   const qc = useQueryClient()
   const { weightUnit } = useWeightUnit()
@@ -65,8 +65,7 @@ export default function FoodView({ listId }: { listId: string }) {
   // copy of this query (use-list-food.ts) - its food writes are per-row field
   // patches that cannot destroy another client's work.
   const listFoodQuery = useQuery({
-    queryKey: queryKeys.listFood(listId),
-    queryFn: () => fetchListFood(listId),
+    ...queries.listFood(listId),
     refetchOnWindowFocus: true,
   })
 

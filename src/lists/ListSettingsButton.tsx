@@ -22,12 +22,10 @@ function OptionsTrigger({ ref, onClick, open }: Omit<KebabTriggerProps, 'disable
   )
 }
 
-// Popover trigger for current-list settings and Sharing. On /lists, sharing
-// is reached from the per-row kebab's Share entry (modal + PrivacyPanel);
-// this is the in-list-detail entrypoint where sharing lives inside List
-// options. The panel goes through the shared KebabMenu shell - the same
-// anchor/dismiss semantics as every other popover, which also gives it the
-// viewport flip/clamp the old hand-anchored version lacked.
+// Popover trigger for current-list settings (List options). Sharing is not
+// here: it has its own toolbar button (ListShareButton). The panel goes
+// through the shared KebabMenu shell - the same anchor/dismiss semantics and
+// viewport flip/clamp as every other popover.
 export default function ListSettingsButton({ list }: { list: List }) {
   return (
     <KebabMenu

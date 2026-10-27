@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import {
-  FOOD_ITEM_CAP,
   createFoodItemRequestSchema,
   setFoodDaysRequestSchema,
   updateFoodItemRequestSchema,
@@ -10,7 +10,7 @@ import {
 } from '../../shared/food'
 import type { FoodItemRow } from '../repos/food'
 import { type SessionVars } from '../middleware/session'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // The food estimate on one list. Everything here is nested under a list id, and
 // EVERY handler passes that id to the repo - the child id alone is never enough
@@ -20,9 +20,7 @@ import type { AppEnv } from '../env'
 // Session-scoped throughout: nothing on THESE routes is ever served
 // anonymously. That is a statement about this module, not about food.
 //
-// It used to read "food ... does not appear in the public share projection",
-// which stopped being true when the share began publishing food rows and was
-// left standing. What the share publishes is a narrow projection built in
+// The share does publish food: what it publishes is a narrow projection built in
 // server/routes/shares.ts - name, carried count, weight, order. What never
 // leaves this module is the PLAN: the day grid, the meal slots, and every
 // item's slot ids and pack state.
@@ -49,7 +47,7 @@ function toFoodItemResponse(row: FoodItemRow): FoodItemResponse {
 }
 
 export const foodRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 
@@ -81,12 +79,7 @@ foodRoutes.post('/:id/food/items', async (c) => {
   if (!result.ok) {
     if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
     if (result.reason === 'cap_exceeded') {
-      return c.json({ error: `Food item limit reached (${FOOD_ITEM_CAP} per list)` }, 422)
-    }
-    // The arrival rank claims one past the Unassigned union maximum, so
-    // these are reachable here exactly as they are on the PATCH move path.
-    if (result.reason === 'conflict') {
-      return c.json({ error: 'This bag changed while you were moving' }, 409)
+      return c.json({ error: LIMIT_REACHED.foodItem }, 422)
     }
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)
@@ -111,10 +104,6 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     // wording and status as the gear item PATCH uses for the same failure.
     if (result.reason === 'invalid_location') {
       return c.json({ error: 'Invalid packing location' }, 400)
-    }
-    // Lost a race for the destination rank; nothing partial landed.
-    if (result.reason === 'conflict') {
-      return c.json({ error: 'This bag changed while you were moving' }, 409)
     }
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)

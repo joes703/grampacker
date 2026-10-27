@@ -23,6 +23,12 @@ and that absence is deliberate.
 - What is enforced, and what is knowingly deferred: [SECURITY.md](./SECURITY.md)
 - Rules every agent follows in this repo: [AGENTS.md](./AGENTS.md)
 
+## Supported browsers
+
+Current Chrome, Firefox and Safari: the app uses `Map.groupBy` and other
+ES2024 features, so it needs at least Chrome 117, Firefox 119 or Safari
+17.4.
+
 ## Development
 
 ```sh

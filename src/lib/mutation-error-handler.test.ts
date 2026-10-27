@@ -35,9 +35,8 @@ describe('mutationErrorHandler', () => {
   })
 
   // ----- structured console.warn observability branch -----
-  // Moved here from optimistic.test.ts: that file's charter is the pure cache
-  // lifecycle helpers (no Supabase, no logging). mutationErrorHandler is a
-  // separate module, so its observability tests belong with it.
+  // These live here, not in optimistic.test.ts: that file covers only the
+  // cache lifecycle helpers.
 
   it('logs structured warn with the mutationKey-joined prefix (Error instance)', () => {
     mutationErrorHandler(new Error('permission denied'), undefined, undefined, fakeMutation(undefined, ['gear-items', 'create']))

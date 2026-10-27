@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import type { QueryKey } from '@tanstack/react-query'
+import { deferred } from '../../test/deferred'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -14,7 +15,6 @@ import {
   makeOptimisticUnionPackReorder,
 } from './optimistic'
 import { showToast } from '../toast'
-import { ApiError } from '../api'
 
 type Row = { id: string; name: string; categoryId: string | null }
 type SortableRow = { id: string; name: string; sortOrder: number }
@@ -54,12 +54,12 @@ describe('makeOptimisticInsert', () => {
     expect(qc.getQueryData<Row[]>(key)).toEqual(initial)
   })
 
-  // The two halves of the absent-vs-empty distinction. This helper used to
-  // seed an absent cache with the placeholder, which fabricated a collection
-  // the user never loaded: `data` flipping from undefined to defined is the
-  // signal every page reads as "the fetch resolved", so creating while the
-  // library had failed to load replaced the failure state with a one-row
-  // library and hid every real row.
+  // The two halves of the absent-vs-empty distinction. Seeding an absent
+  // cache with the placeholder would fabricate a collection the user never
+  // loaded: `data` flipping from undefined to defined is the signal every
+  // page reads as "the fetch resolved", so creating while the library had
+  // failed to load would replace the failure state with a one-row library
+  // and hide every real row.
   it('leaves an ABSENT cache absent rather than seeding one', async () => {
     const qc = new QueryClient()
     const key = ['rows'] as const
@@ -241,14 +241,6 @@ describe('makeOptimisticDelete', () => {
 // safe - and so it passed happily against the buggy code. A regression test that
 // cannot fail on the bug is decoration.
 describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
-  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-    let resolve!: (value: T) => void
-    const promise = new Promise<T>((r) => {
-      resolve = r
-    })
-    return { promise, resolve }
-  }
-
   const CACHED: Row[] = [
     { id: 'A', name: 'a', categoryId: null },
     { id: 'B', name: 'b', categoryId: null },
@@ -681,14 +673,4 @@ describe('makeOptimisticUnionPackReorder', () => {
     expect(qc.getQueryData<GearRow[]>(GEAR_KEY)!.map((r) => r.packSortOrder)).toEqual([0, 4])
   })
 
-  it('names the concurrent-reorder cause on a 409', () => {
-    const { helper } = setup()
-    const updates = { items: [], foodItems: [{ id: 'f1', packSortOrder: 2 }] }
-    const ctx = helper.onMutate(updates)
-    helper.onError(new ApiError(409, 'conflict'), updates, ctx)
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/changed somewhere else/i),
-      expect.objectContaining({ type: 'error' }),
-    )
-  })
 })

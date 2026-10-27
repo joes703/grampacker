@@ -12,10 +12,15 @@
 //
 
 // The list caps are defined once in shared/lists.ts (the server's
-// enforcement lives next to its request schemas; the 0004 triggers
-// mirror them) and re-exported here so UI call sites keep the single
-// lib/caps import the old repo established.
-export { LIST_CAP, LIST_ITEM_CAP, PACKING_LOCATION_CAP } from '../../shared/lists'
+// enforcement lives next to its request schemas; the row-cap SQL triggers
+// mirror them) and re-exported here so UI call sites have a single
+// lib/caps import.
+export {
+  LIST_CAP,
+  LIST_ITEM_CAP,
+  MAX_PACKING_LOCATION_NAME,
+  PACKING_LOCATION_CAP,
+} from '../../shared/lists'
 
 // Max gear items in a user's inventory, and the category cap beside it -
 // both defined once in shared/gear.ts next to the schemas that use them.
@@ -23,7 +28,7 @@ export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 // Defined in shared/gear.ts next to weightGramsSchema.
-export { MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
+export { MAX_COST, MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
 
 // Upper bound for a list item's quantity; drafts clamp to this. Consumed by
 // GearItemDialog's list-context field, Quick Add, CSV import and the row's

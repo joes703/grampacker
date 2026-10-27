@@ -10,7 +10,6 @@ type BaseItem = {
 type LinkItem = BaseItem & {
   type: 'link'
   to: string
-  active?: boolean
 }
 
 type ButtonItem = BaseItem & {
@@ -44,7 +43,7 @@ export default function MobileBottomBar({ label, items }: Props) {
                 key={`${item.type}:${item.to}:${item.label}`}
                 to={item.to}
                 aria-label={item.ariaLabel ?? item.label}
-                className={({ isActive }) => itemClass(item.active ?? isActive, false)}
+                className={({ isActive }) => itemClass(isActive, false)}
               >
                 {item.icon}
                 <span>{item.label}</span>

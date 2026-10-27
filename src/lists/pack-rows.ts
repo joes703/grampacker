@@ -1,7 +1,7 @@
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 
-// The union row model for Pack mode. Since 0022 a bag's contents are the
+// The union row model for Pack mode. A bag's contents are the
 // UNION of its gear rows (list_items) and its food rows (list_food_items),
 // merged into one display order. This module owns that merge and the
 // rank-slot arithmetic over it; the server's `unionOrder` / union permutation
@@ -16,7 +16,7 @@ export function packRowId(row: PackRow): string {
   return row.kind === 'gear' ? row.gear.id : row.food.id
 }
 
-export function packRowRank(row: PackRow): number {
+function packRowRank(row: PackRow): number {
   return row.kind === 'gear' ? row.gear.packSortOrder : row.food.packSortOrder
 }
 
@@ -57,8 +57,8 @@ export type UnionRankUpdates = {
 // untouched rows' slots untouched, which is what the server's index-safety
 // rule demands.
 //
-// EXCEPT when the rows hold a duplicate rank (a cross-table tie, left by a
-// degraded old-worker interval or 0023's dense repair fallback): permuting
+// EXCEPT when the rows hold a duplicate rank (a cross-table tie, which older
+// data can still hold): permuting
 // would preserve the tie forever and some assignments would put both tied
 // rows in one table, which the unique index rejects. So a tied cohort gets
 // DENSE slots instead - the smallest nonnegative integers that avoid
@@ -72,8 +72,8 @@ export function assignUnionPackRankSlots(
   const existing = reorderedRows.map(packRowRank).sort((a, b) => a - b)
   // A tie needing the dense path is EITHER a duplicate among these rows OR a
   // collision between one of their ranks and a reserved rank (a hidden or
-  // worn row can be the other half of a cross-table tie - round-5 finding 1:
-  // permuting would land a visible row on the hidden row's slot).
+  // worn row can be the other half of a cross-table tie: permuting would
+  // land a visible row on the hidden row's slot).
   const hasTie =
     existing.some((rank, i) => i > 0 && rank === existing[i - 1]) ||
     existing.some((rank) => avoidRanks.has(rank))

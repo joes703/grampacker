@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
+import { useWornConsumableFlags } from './use-worn-consumable-flags'
+import { clampWeightGrams } from '../../shared/gear'
 
 // Shared state machine for the List Detail "Quick Add" flow. Both the
 // desktop inline AddItemRow and the mobile QuickAddItemModal consume this
@@ -28,21 +31,10 @@ export function useQuickAddForm() {
   // Held as a string so the field can be cleared/retyped without React
   // fighting the cursor; parsed to a clamped integer in buildData().
   const [quantity, setQuantity] = useState('1')
-  const [worn, setWorn] = useState(false)
-  const [consumable, setConsumable] = useState(false)
-
-  // Worn/consumable XOR: ticking one unticks the other. Reflects the DB
-  // CHECK constraint (worn_xor_consumable) and matches GearItemDialog.
-  function toggleWorn() {
-    const next = !worn
-    setWorn(next)
-    if (next) setConsumable(false)
-  }
-  function toggleConsumable() {
-    const next = !consumable
-    setConsumable(next)
-    if (next) setWorn(false)
-  }
+  const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
+    isWorn: false,
+    isConsumable: false,
+  })
 
   const canSubmit = name.trim() !== ''
 
@@ -52,8 +44,8 @@ export function useQuickAddForm() {
   function buildData(): AddItemData | null {
     const trimmed = name.trim()
     if (!trimmed) return null
-    const w = Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS))
-    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, MAX_LIST_ITEM_QUANTITY))
+    const w = clampWeightGrams(weightGrams)
+    const q = clampQuantity(quantity)
     const d = description.trim()
     return {
       name: trimmed.slice(0, MAX_NAME_LENGTH),

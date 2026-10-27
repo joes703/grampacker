@@ -2,11 +2,8 @@
 // (imports nothing) so the pure planner in import-plan.ts can use it
 // without pulling in any I/O module and staying deterministically testable.
 //
-// TRANSPLANT NOTE: the old repo also exported nextCategorySortOrder /
-// nextGearItemSortOrder here (max+1 slot pickers for client-side inserts).
-// The server assigns sortOrder itself now, so those pickers moved out of the
-// import path: they live in src/lib/queries/sort-keys.ts and feed only the
-// optimistic placeholders.
+// The max+1 sortOrder picker for optimistic placeholders is a different
+// helper: nextSortOrder in src/lib/queries/sort-keys.ts.
 
 // Composite dedup key: a CSV row matches an existing gear item when its
 // category + lowercase name + weight all agree. Same shape used to seed the

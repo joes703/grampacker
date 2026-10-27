@@ -4,11 +4,11 @@ import { waitFor } from '@testing-library/react'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import {
   clearToasts,
-  deferred,
   renderHookWithClient,
   testQueryClient,
   shownToasts,
 } from '../test/mutation-hook-harness'
+import { deferred } from '../test/deferred'
 
 // The add/edit/delete gear-item mutations were inline in GearLibraryPage
 // (which has no component test), so this locks what the extraction exposed.
@@ -120,7 +120,7 @@ describe('useGearItemActions', () => {
       })
 
       // The placeholder's sortOrder mirrors what the server will assign
-      // (nextGearItemSortOrder over the cached rows) so the row lands in
+      // (nextSortOrder over the cached rows) so the row lands in
       // place before the settled refetch reconciles it.
       await waitFor(() => expect(cachedGear(qc)).toHaveLength(2))
       expect(cachedGear(qc)?.[1]).toMatchObject({

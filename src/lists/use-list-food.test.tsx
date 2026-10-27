@@ -5,11 +5,11 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import {
   clearToasts,
-  deferred,
   renderHookWithClient,
   shownToasts,
   testQueryClient,
 } from '../test/mutation-hook-harness'
+import { deferred } from '../test/deferred'
 
 // The food rows' two writes: the Packed/Ready checkboxes and the move between
 // packing locations. Both roll back only the fields they wrote, onto the row

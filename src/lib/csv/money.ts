@@ -12,10 +12,10 @@
 //
 // Three letters exactly, deliberately NOT "any letters": the word "minus"
 // must not be strippable, or "minus $5" imports as a positive 5.
+import { MAX_COST } from '../../../shared/gear'
+
 const CURRENCY_DECORATION = String.raw`(?:\p{Sc}|\s|[A-Za-z]{3})`
 
-// The largest value shared/gear.ts costSchema accepts (inclusive).
-const MAX_COST = 99_999_999.99
 
 // Empty/whitespace cells become null (gifts and unknown values stay
 // unknown, never coerced to 0). Negative or unparseable inputs also
@@ -23,12 +23,12 @@ const MAX_COST = 99_999_999.99
 //
 // Money arrives written as money: "$12.99", "1,299.00", "USD 42.50".
 // Bare parseFloat returns NaN for a leading currency symbol, so every
-// priced row used to import blank - and blank is indistinguishable from
-// "the user left cost empty", which is why it went unnoticed. We strip
+// priced row would import blank - and blank is indistinguishable from
+// "the user left cost empty", so nobody would notice. We strip
 // currency decoration, then validate STRICTLY: parseFloat is too lenient
 // to be the gate on its own ('12.99.5' -> 12.99, '12,99' -> 12, both
 // silently wrong rather than rejected).
-export function parseCost(raw: string | undefined): number | null {
+function parseCost(raw: string | undefined): number | null {
   const trimmed = (raw ?? '').trim()
   if (!trimmed) return null
 
@@ -61,8 +61,7 @@ export function parseCost(raw: string | undefined): number | null {
   }
 
   // Strict shape gate: digits with an optional decimal part on either side
-  // of the point (".5" and "5." both parsed before this hardening - no
-  // reason to start rejecting prices that used to import).
+  // of the point. ".5" and "5." are both accepted on purpose.
   if (!/^(\d+\.?\d*|\.\d+)$/.test(n)) return null
   const parsedValue = parseFloat(n)
   if (!isFinite(parsedValue) || parsedValue < 0) return null
@@ -87,13 +86,13 @@ export function parseCost(raw: string | undefined): number | null {
 //
 //   'cost'  - grampacker's own column. 0 means the item is genuinely FREE.
 //   'price' - Lighterpack's column. 0 means UNSET, not free. Lighterpack
-//             defaults an unpriced item to 0, and grampacker's own list
-//             export used to hardcode price=0 for every row as a
-//             "Lighterpack default". Reading those zeros as real would
-//             invent data: a whole inventory imported as costing nothing.
+//             defaults an unpriced item to 0, and older grampacker list
+//             exports wrote price=0 for every row. Reading those zeros as
+//             real would invent data: a whole inventory imported as
+//             costing nothing.
 //
 // So a 0 in a `price` column resolves to null. A genuinely free item is
-// expressible through the `cost` column, which is what our exports now
+// expressible through the `cost` column, which is what our exports
 // emit. The tradeoff is that a real Lighterpack $0 item cannot be
 // distinguished from an unpriced one - accepted, because guessing "free"
 // on a fabricated zero is the damaging direction.

@@ -5,7 +5,7 @@ import { passkey, user, verification } from '../db/schema'
 // Selected columns are the repo's output contract - private columns stay
 // out of handler reach entirely rather than being filtered at the DTO step.
 // `name` is deliberately absent: grampacker never collects or stores a
-// display name (data-minimization call, 2026-07-09); the better-auth
+// display name (data minimization); the better-auth
 // databaseHooks in server/auth.ts blank it on every create/update.
 const selfColumns = {
   id: user.id,
@@ -68,8 +68,9 @@ export function createUsersRepo(db: Db, userId: string) {
     // The email match folds case on BOTH sides. The magic-link plugin stores
     // the address exactly as the request submitted it and lowercases only
     // when it looks the user up, while `email` here is the user row's, which
-    // better-auth always lowercases - so a link requested as `Alice@X.com`
-    // for the account `alice@x.com` used to survive the purge. SQLite's
+    // better-auth always lowercases - so without the fold, a link requested
+    // as `Alice@X.com` for the account `alice@x.com` would survive the
+    // purge. SQLite's
     // lower() folds ASCII only; that matches what the installed validator
     // admits (zod's email regex is ASCII-only), so revisit if internationalized
     // addresses are ever accepted.

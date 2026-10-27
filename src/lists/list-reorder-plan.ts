@@ -17,7 +17,7 @@ import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
 // worth testing in isolation.
 
 // Rows the pack-mode filters have hidden, by the shared predicate in
-// section-rows.ts - the one CategoryGroup renders with, so what the planner
+// section-rows.ts - the one PackSection renders with, so what the planner
 // permutes over is exactly what the user sees.
 export function deriveFilteredItemIds(
   items: ListItemWithGear[],
@@ -117,10 +117,9 @@ export function planListItemReorder({
       // rearranging and keep their ranks untouched; in List view they render
       // inside their category and reorder like any row. The location branch
       // already excludes them in pack (derivePackReorderExclusions). The
-      // mode-scoped rule itself lives in section-rows.ts, shared with
-      // CategoryGroup, because this branch and the renderer once disagreed
-      // (audit F1): a List drag permuted over an invisible worn row and
-      // rewrote its document rank.
+      // mode-scoped rule itself lives in section-rows.ts, shared with the
+      // section renderers: if this branch and the renderer disagree, a drag
+      // permutes over an invisible worn row and rewrites its rank.
       isOrdinarySectionRow(item, mode === 'pack'),
     )
     // Sorted by whichever order the user is actually looking at. The cache is

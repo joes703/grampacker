@@ -1,12 +1,12 @@
-import { env, testDb } from '../test/node-env'
+import { createApp } from '../index'
+import { app, env, TEST_ORIGIN } from '../test/node-env'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import app from '../index'
 import { createAuth } from '../auth'
 import { createDb } from '../db'
-import { chargeMagicLinkGlobalQuota, peekMagicLinkGlobalQuota } from './rate-limit'
+import { chargeMagicLinkGlobalQuota, emailBucketKey, peekMagicLinkGlobalQuota } from './rate-limit'
 import { lastEmailTo } from '../email/console'
 
-const ORIGIN = 'http://localhost:5173'
+const ORIGIN = TEST_ORIGIN
 
 // Budgets under test (mirrors server/middleware/rate-limit.ts).
 const SIGN_IN_LIMIT = 10
@@ -33,9 +33,7 @@ const GLOBAL_KEY = 'magic-send-global:all'
 const TEST_AUTH_SECRET = 'test-only-secret-at-least-32-chars-long!'
 
 async function globalCount(): Promise<number> {
-  const row = await testDb.prepare('select count as c from rate_limits where key = ?')
-    .bind(GLOBAL_KEY)
-    .first<{ c: number }>()
+  const row = (env.DB.prepare('select count as c from rate_limits where key = ?').get(GLOBAL_KEY) as { c: number } | undefined)
   return row?.c ?? 0
 }
 
@@ -61,7 +59,6 @@ function authPost(path: string, body: unknown, ip: string) {
       },
       body: JSON.stringify(body),
     },
-    env,
   )
 }
 
@@ -81,7 +78,6 @@ function signIn(ip: string) {
   return app.request(
     '/api/auth/passkey/generate-authenticate-options',
     { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-    env,
   )
 }
 
@@ -108,9 +104,7 @@ async function signInCeremony(ip: string): Promise<[Response, Response]> {
 // "was charged", and conflating them is how a test keeps passing after the
 // thing it guards stops being metered at all.
 async function passkeyBucketCount(ip: string): Promise<number> {
-  const row = await testDb.prepare('select count from rate_limits where key = ?')
-    .bind(`passkey-sign-in:${ip}`)
-    .first<{ count: number }>()
+  const row = (env.DB.prepare('select count from rate_limits where key = ?').get(`passkey-sign-in:${ip}`) as { count: number } | undefined)
   return row?.count ?? 0
 }
 
@@ -119,13 +113,11 @@ function sendMagicLink(ip: string, email: string) {
 }
 
 describe('auth rate limiting', () => {
-  // THE REGRESSION THIS BUDGET EXISTS FOR (production, 2026-09-12: the app
-  // owner locked himself out of his own app).
-  //
-  // The ceremony costs TWO requests, and a user with several passkeys picks the
-  // wrong one and retries - that is ordinary use, not an attack. On the old
-  // shared SIGN_IN budget (10 per 10 minutes) this capped out at five attempts
-  // and then refused the front door for ten minutes.
+  // The case the passkey budget exists for: the ceremony costs TWO requests,
+  // and a user with several passkeys picks the wrong one and retries - that is
+  // ordinary use, not an attack. On SIGN_IN's budget (10 per 10 minutes) this
+  // would cap out at five attempts and then refuse the front door for ten
+  // minutes.
   //
   // Ten fumbled attempts is a realistic bad day, not abuse. It must not 429.
   it('ten fumbled passkey attempts do not lock a legitimate user out', async () => {
@@ -186,7 +178,6 @@ describe('auth rate limiting', () => {
         },
         body: '{}',
       },
-      env,
     )
     expect(viaRealIp.status).toBe(429)
   })
@@ -276,15 +267,9 @@ describe('auth rate limiting', () => {
   })
 
   it('an INVALID address does not spend global mail budget', async () => {
-    // REGRESSION (code review, 2026-07-12). The global bucket used to be charged
-    // in the middleware, which runs BEFORE better-auth parses the body - so it
-    // could not tell a deliverable address from junk. better-auth validates with
-    // z.email() and 400s a bad one, but the slot was already gone. ~90 requests
-    // carrying garbage addresses, from rotating IPs, drained a full day of the
-    // ONLY recovery path in a passwordless app while sending zero mail.
-    //
-    // The fix moves the charge into sendMagicLink, which better-auth only calls
-    // once the address is real. So: rejected input must move the counter by zero.
+    // The global bucket is charged in sendMagicLink, which better-auth calls
+    // only once the address is valid (MAGIC_LINK_SEND_GLOBAL in rate-limit.ts
+    // says why). Rejected input must move the counter by zero.
     const before = await globalCount()
     const attempts = 12
     for (let i = 0; i < attempts; i++) {
@@ -296,8 +281,8 @@ describe('auth rate limiting', () => {
   })
 
   it('a malformed body does not spend global mail budget', async () => {
-    // The other half of the same hole: a body the limiter cannot parse used to
-    // land in the 'malformed' email bucket AND still charge the global quota.
+    // A body the limiter cannot parse lands in the 'malformed' email bucket,
+    // and must not also charge the global quota.
     const before = await globalCount()
     for (let i = 0; i < 5; i++) {
       await app.request(
@@ -311,7 +296,6 @@ describe('auth rate limiting', () => {
           },
           body: 'this is not json',
         },
-        env,
       )
     }
     expect(await globalCount()).toBe(before)
@@ -343,14 +327,11 @@ describe('auth rate limiting', () => {
     // it: better-auth creates the `verification` row BEFORE it calls
     // sendMagicLink, so without an early refusal a drained quota would turn every
     // further request into a free DB write.
-    const rowsBefore = await testDb.prepare('select count(*) as n from verification')
-      .first<{ n: number }>()
+    const rowsBefore = (env.DB.prepare('select count(*) as n from verification').get() as { n: number } | undefined)
 
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
 
     const blocked = await sendMagicLink('198.51.163.1', 'quota-429@example.com')
     expect(blocked.status).toBe(429)
@@ -361,11 +342,10 @@ describe('auth rate limiting', () => {
     // No mail...
     expect(lastEmailTo('quota-429@example.com')).toBeUndefined()
     // ...and, the actual point: better-auth never ran, so no token row was written.
-    const rowsAfter = await testDb.prepare('select count(*) as n from verification')
-      .first<{ n: number }>()
+    const rowsAfter = (env.DB.prepare('select count(*) as n from verification').get() as { n: number } | undefined)
     expect(rowsAfter?.n).toBe(rowsBefore?.n)
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('the CHARGE in sendMagicLink refuses with a real 429, not a 500', async () => {
@@ -382,14 +362,12 @@ describe('auth rate limiting', () => {
     // runs. Calling the endpoint directly does exactly that - and it is also the
     // path a concurrent burst takes at the quota boundary (peek sees a free slot,
     // charge finds none).
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
 
     const email = 'callback-429@example.com'
-    const res = await createAuth(env).api.signInMagicLink({
+    const res = await createAuth(env, createDb(env.DB)).api.signInMagicLink({
       body: { email },
       headers: new Headers({ Origin: ORIGIN }),
       asResponse: true,
@@ -399,7 +377,7 @@ describe('auth rate limiting', () => {
     expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
     expect(lastEmailTo(email)).toBeUndefined()
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('the global quota holds exactly under a concurrent burst', { timeout: 30000 }, async () => {
@@ -408,13 +386,11 @@ describe('auth rate limiting', () => {
     // settles is whether the authoritative charge still holds the line: with N
     // slots left and 2N simultaneous sends, EXACTLY N may send. Over-admission
     // here would mean the peek had become the gate.
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
     const slack = 6
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT - slack, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT - slack, Date.now())
 
     // Distinct IPs and addresses so neither of the other two buckets interferes.
     const results = await Promise.all(
@@ -425,7 +401,7 @@ describe('auth rate limiting', () => {
     expect(results.filter((r) => r.status === 200).length).toBe(slack)
     expect(results.filter((r) => r.status === 429).length).toBe(slack)
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('a refused send does NOT spend global mail budget (charge order)', async () => {
@@ -476,11 +452,9 @@ describe('auth rate limiting', () => {
     }
 
     const keyExists = async (suffix: string) => {
-      const row = await testDb.prepare(
+      const row = (env.DB.prepare(
         'select count(*) as n from rate_limits where key = ?',
-      )
-        .bind(`magic-send-email:${suffix}`)
-        .first<{ n: number }>()
+      ).get(`magic-send-email:${suffix}`) as { n: number } | undefined)
       return (row?.n ?? 0) > 0
     }
 
@@ -497,11 +471,9 @@ describe('auth rate limiting', () => {
     // the pepper), so a DB read leaks nothing.
     const email = 'private@example.com'
     await sendMagicLink('198.51.102.1', email)
-    const hit = await testDb.prepare(
+    const hit = (env.DB.prepare(
       "select count(*) as n from rate_limits where key like '%' || ? || '%'",
-    )
-      .bind(email)
-      .first<{ n: number }>()
+    ).get(email) as { n: number } | undefined)
     expect(hit?.n).toBe(0)
   })
 
@@ -513,14 +485,12 @@ describe('auth rate limiting', () => {
       const res = await app.request(
         `/api/auth/magic-link/verify?token=bogus-${i}`,
         { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-        env,
       )
       expect(res.status).not.toBe(429)
     }
     const blocked = await app.request(
       '/api/auth/magic-link/verify?token=bogus-over',
       { method: 'GET', headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-      env,
     )
     expect(blocked.status).toBe(429)
   })
@@ -578,7 +548,7 @@ describe('auth rate limiting', () => {
     )
     expect(blocked.status).toBe(429)
     // Still on SIGN_IN's own 10-minute window, not the passkey bucket's 5.
-    // The two budgets diverged on 2026-09-12 and this is what pins the split.
+    // This pins the split between the two budgets.
     const retryAfter = Number(blocked.headers.get('Retry-After'))
     expect(retryAfter).toBeGreaterThan(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
     expect(retryAfter).toBeLessThanOrEqual(SIGN_IN_WINDOW_MS / 1000)
@@ -592,11 +562,9 @@ describe('auth rate limiting', () => {
     expect((await signIn(ip)).status).toBe(429)
 
     // Rewind the stored window past expiry instead of waiting five minutes.
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(PASSKEY_SIGN_IN_WINDOW_MS + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(PASSKEY_SIGN_IN_WINDOW_MS + 1000, `passkey-sign-in:${ip}`)
 
     const afterExpiry = await signIn(ip)
     expect(afterExpiry.status).not.toBe(429)
@@ -611,11 +579,9 @@ describe('auth rate limiting', () => {
     // split is exact - a lost update would show up as an extra allow.
     expect(results.filter((r) => r.status !== 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
     expect(results.filter((r) => r.status === 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       'select count from rate_limits where key = ?',
-    )
-      .bind(`passkey-sign-in:${ip}`)
-      .first<{ count: number }>()
+    ).get(`passkey-sign-in:${ip}`) as { count: number } | undefined)
     expect(row?.count).toBe(PASSKEY_SIGN_IN_LIMIT * 2)
   })
 
@@ -628,15 +594,14 @@ describe('auth rate limiting', () => {
           headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
           body: JSON.stringify({ email: 'nobody@example.com', password: DEAD_PASSWORD }),
         },
-        env,
       )
     for (let i = 0; i < SIGN_IN_LIMIT; i++) {
       expect((await post()).status).not.toBe(429)
     }
     expect((await post()).status).toBe(429)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       "select count from rate_limits where key = 'sign-in:local'",
-    ).first<{ count: number }>()
+    ).get() as { count: number } | undefined)
     expect(row?.count).toBe(SIGN_IN_LIMIT + 1)
   })
 
@@ -655,7 +620,7 @@ describe('auth rate limiting', () => {
 
     // Query strings do not split the bucket: exhaust with a query
     // string, then the plain path is already over budget. Asserted on the
-    // SAME path, because the passkey ceremony now has its own bucket - a
+    // SAME path, because the passkey ceremony has its own bucket - a
     // cross-path assertion here would be testing bucket sharing, not the
     // query-string question this test is about.
     const ip = '203.0.113.9'
@@ -683,17 +648,14 @@ describe('auth rate limiting', () => {
       app.request(
         '/api/auth/sign-in/email',
         { method: 'OPTIONS', headers: { 'x-forwarded-for': ip } },
-        env,
       )
     expect((await options()).status).toBe(404)
 
     // It really COUNTS, not merely "is subject to" - proven on the row, since a
     // 404 looks the same whether or not the limiter ran.
-    const charged = await testDb.prepare(
+    const charged = (env.DB.prepare(
       'select count from rate_limits where key = ?',
-    )
-      .bind(`sign-in:${ip}`)
-      .first<{ count: number }>()
+    ).get(`sign-in:${ip}`) as { count: number } | undefined)
     expect(charged?.count).toBe(1)
 
     // Exhausted on the same bucket the OPTIONS lands in. The passkey ceremony
@@ -710,28 +672,26 @@ describe('auth rate limiting', () => {
 
   it('a new window sweeps buckets expired for every scope, keeps active ones', async () => {
     const now = Date.now()
-    await testDb.prepare(
+    env.DB.prepare(
       'insert into rate_limits (key, count, window_start) values (?, 5, ?), (?, 3, ?)',
-    )
-      .bind(
+    ).run(
         'sign-in:stale-ip',
         now - 25 * 60 * 60 * 1000, // > MAX_WINDOW_MS ago: expired for any scope
         'sign-up:fresh-ip',
         now - 60 * 1000, // active
       )
-      .run()
 
     // First request for an unseen key starts a new window -> sweep runs.
     await signIn('203.0.113.11')
 
-    const stale = await testDb.prepare(
+    const stale = (env.DB.prepare(
       "select 1 as one from rate_limits where key = 'sign-in:stale-ip'",
-    ).first()
-    const fresh = await testDb.prepare(
+    ).get() as Record<string, unknown> | undefined)
+    const fresh = (env.DB.prepare(
       "select 1 as one from rate_limits where key = 'sign-up:fresh-ip'",
-    ).first()
-    expect(stale).toBeNull()
-    expect(fresh).not.toBeNull()
+    ).get() as Record<string, unknown> | undefined)
+    expect(stale).toBeUndefined()
+    expect(fresh).toBeDefined()
   })
 
   it('challenge-generating GETs are limited and stop writing challenges', async () => {
@@ -752,17 +712,16 @@ describe('auth rate limiting', () => {
       app.request(
         '/api/auth/passkey/generate-authenticate-options',
         { headers: { 'x-forwarded-for': ip } },
-        env,
       )
-    const start = await testDb.prepare(
+    const start = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
       expect((await challenge()).status).toBe(200)
     }
-    const before = await testDb.prepare(
+    const before = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     // The allowed calls really DID write challenge rows. Without this the
     // before/after comparison below could hold at zero-equals-zero and prove
     // nothing at all - it would pass just as happily if the endpoint had
@@ -778,9 +737,9 @@ describe('auth rate limiting', () => {
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
-    const after = await testDb.prepare(
+    const after = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(after?.n).toBe(before?.n)
   })
 
@@ -825,16 +784,13 @@ describe('auth rate limiting', () => {
 
     // Roll the window so the sweep actually fires on the next request.
     await signIn(ip)
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
 
-    const res = await app.request(
+    const res = await createApp({ ...env, DB: brokenSweep }).request(
       '/api/auth/passkey/generate-authenticate-options',
       { headers: { Origin: ORIGIN, 'x-forwarded-for': ip } },
-      { ...env, DB: brokenSweep },
     )
     // The sweep really ran and really failed...
     expect(sweepFailures).toBe(1)
@@ -858,35 +814,29 @@ describe('auth rate limiting', () => {
     const ip = '203.0.113.64'
     // An abandoned challenge: options written, never consumed.
     expect((await signIn(ip)).status).toBe(200)
-    const stranded = await testDb.prepare(
+    const stranded = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(stranded!.n).toBeGreaterThan(0)
 
     // Age every row past its expiry rather than waiting five minutes.
-    await testDb.prepare('update verification set expires_at = ?')
-      .bind(Date.now() - 60_000)
-      .run()
+    env.DB.prepare('update verification set expires_at = ?').run(Date.now() - 60_000)
 
     // Force a NEW window on some bucket, which is what triggers the sweep.
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
     expect((await signIn(ip)).status).toBe(200)
 
     // The expired rows are gone - but the challenge that request just wrote is
     // NOT, so the sweep is bounded by expiry rather than clearing the table.
-    const live = await testDb.prepare(
+    const live = (env.DB.prepare(
       'select count(*) as n from verification where expires_at < ?',
-    )
-      .bind(Date.now())
-      .first<{ n: number }>()
+    ).get(Date.now()) as { n: number } | undefined)
     expect(live!.n).toBe(0)
-    const remaining = await testDb.prepare(
+    const remaining = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(remaining!.n).toBeGreaterThan(0)
   })
 
@@ -906,7 +856,6 @@ describe('auth rate limiting', () => {
     const session = await app.request(
       '/api/auth/get-session',
       { headers: { 'x-forwarded-for': ip } },
-      env,
     )
     expect(session.status).toBe(200)
   })
@@ -929,23 +878,19 @@ describe('rate-limit windows', () => {
   const db = createDb(env.DB)
 
   async function bucket(key: string) {
-    return testDb.prepare('select count, window_start from rate_limits where key = ?')
-      .bind(key)
-      .first<{ count: number; window_start: number }>()
+    return (env.DB.prepare('select count, window_start from rate_limits where key = ?').get(key) as { count: number; window_start: number } | undefined)
   }
 
   async function seed(key: string, count: number, windowStart: number) {
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(key, count, windowStart)
-      .run()
+    ).run(key, count, windowStart)
   }
 
   afterEach(async () => {
     vi.restoreAllMocks()
     vi.useRealTimers()
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('a full bucket stays full until exactly windowStart + window, then starts a new window', async () => {
@@ -1020,31 +965,20 @@ describe('rate-limit windows', () => {
   })
 
   it('Retry-After counts from when the address bucket is charged, not when the request arrived', async () => {
-    // The address bucket is charged after an await (the HMAC). If the charge
-    // used the time the request arrived, a newer window started meanwhile
-    // would make Retry-After longer than the window itself.
+    // The address bucket is charged after an await (reading the body for the
+    // email). If the charge used the time the request arrived, a newer window
+    // started meanwhile would make Retry-After longer than the window itself.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(T)
-    const email = 'slow-hmac@example.com'
-    const hmac = async (message: string) => {
-      const key = await crypto.subtle.importKey(
-        'raw',
-        new TextEncoder().encode(TEST_AUTH_SECRET),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      )
-      const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
-      return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32)
-    }
-    const key = `magic-send-email:${await hmac(`grampacker:magic-send-email:v1:${email}`)}`
+    const email = 'slow-body@example.com'
+    const key = `magic-send-email:${emailBucketKey(TEST_AUTH_SECRET, email)}`
     // Faster requests have filled a window that started 2 s after this
     // request arrived.
     await seed(key, MAGIC_SEND_EMAIL_LIMIT, T + 2000)
-    const sign = crypto.subtle.sign.bind(crypto.subtle)
-    vi.spyOn(crypto.subtle, 'sign').mockImplementation(async (...args) => {
+    const json = Request.prototype.json
+    vi.spyOn(Request.prototype, 'json').mockImplementation(async function (this: Request) {
       vi.setSystemTime(T + 2000)
-      return sign(...args)
+      return json.call(this)
     })
 
     const res = await sendMagicLink('198.51.166.1', email)

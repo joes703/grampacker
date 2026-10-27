@@ -20,8 +20,8 @@ export default function ListsEmptyState() {
   const { openImportPicker, importUi } = useListImportFlow()
 
   // THE create path - the same optimistic placeholder, append-slot snapshot
-  // and navigate-on-success every other surface uses. This surface used to
-  // hand-roll its own mutation under the same mutation key with a different
+  // and navigate-on-success every other surface uses. Do not hand-roll a
+  // second mutation here: it would share the mutation key with a different
   // variables shape. The placeholder's failure feedback is the hook's toast:
   // the placeholder makes lists.length 1, ListsPage stops rendering the
   // empty state, and the component holding the inline error - and the

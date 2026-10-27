@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { authClient, passkeysSupported } from '../lib/auth-client'
 import InlineRenameInput from '../components/InlineRenameInput'
 import { authErrorMessage } from '../auth/auth-errors'
@@ -22,17 +22,12 @@ type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
 // sign-in ceremony (the deny-by-default hooks.before gate in server/auth.ts).
 // Renaming does not; it is a display label.
 //
-// Two refusal codes mean the same thing, and both must be caught:
-//   - 403 SESSION_NOT_FRESH - the current dialect: the auth.ts gate and
-//     better-auth's own freshSessionMiddleware (which the passkey plugin
-//     mounts on the two REGISTER endpoints) both speak it.
-//   - 403 REAUTH_REQUIRED   - legacy compatibility: the retired Hono
-//     middleware's word, kept so an old bundle against a new server (or
-//     vice versa) still prompts instead of stranding.
-// Missing the second would strand "Add a passkey" on a raw error message with
-// no way forward. The status alone is not enough to key on: better-auth answers
-// 403 for other reasons (a failed origin check), and those must not masquerade
-// as "just re-authenticate".
+// The refusal is 403 SESSION_NOT_FRESH: the auth.ts gate and better-auth's own
+// freshSessionMiddleware (which the passkey plugin mounts on the two REGISTER
+// endpoints) both answer with it. Missing it would strand "Add a passkey" on a
+// raw error message with no way forward. The status alone is not enough to key
+// on: better-auth answers 403 for other reasons (a failed origin check), and
+// those must not masquerade as "just re-authenticate".
 //
 // better-auth's client error type does not declare `code` even though it passes
 // the field through, so it is narrowed here rather than trusted.
@@ -40,7 +35,7 @@ function isReauthRequired(error: { status: number }): boolean {
   const code = (error as { code?: unknown }).code
   return (
     error.status === 403 &&
-    (code === 'REAUTH_REQUIRED' || code === 'SESSION_NOT_FRESH')
+    code === 'SESSION_NOT_FRESH'
   )
 }
 
@@ -52,7 +47,9 @@ function createdLabel(createdAt: PasskeyRow['createdAt']): string {
 
 
 export default function PasskeySection() {
-  const [rows, setRows] = useState<PasskeyRow[] | null>(null)
+  // better-auth's own query: it refetches after add, delete and rename.
+  const passkeys = authClient.useListPasskeys()
+  const rows: PasskeyRow[] | null = passkeys.data ?? null
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null)
@@ -61,9 +58,6 @@ export default function PasskeySection() {
   // and busy === false (state updates only land on re-render). A ref flips
   // synchronously, so the second delivery bails before the network call.
   const submittingRename = useRef(false)
-  // Bump to refetch the list (after add/remove/rename).
-  const [reloadKey, setReloadKey] = useState(0)
-
   const { data: session } = authClient.useSession()
 
   // Parks a refused gated mutation and replays it after the user
@@ -74,26 +68,6 @@ export default function PasskeySection() {
     setBusy,
     setError,
   })
-
-  useEffect(() => {
-    let canceled = false
-    authClient.passkey
-      .listUserPasskeys()
-      .then(({ data, error: listError }) => {
-        if (canceled) return
-        if (listError) {
-          setError(authErrorMessage(listError, "Couldn't load your passkeys."))
-          return
-        }
-        setRows(data ?? [])
-      })
-      .catch(() => {
-        if (!canceled) setError("Couldn't load your passkeys.")
-      })
-    return () => {
-      canceled = true
-    }
-  }, [reloadKey])
 
   // Runs a mutation against better-auth. Returns 'reauth' when the server
   // refuses for want of a fresh-auth proof, so the caller can prompt and
@@ -116,7 +90,6 @@ export default function PasskeySection() {
         setError(authErrorMessage(result.error, failure))
         return 'done'
       }
-      setReloadKey((k) => k + 1)
       return 'done'
     } catch {
       // For 'add', the overwhelmingly common path here is the user dismissing
@@ -171,9 +144,7 @@ export default function PasskeySection() {
       })
       if (result?.error) {
         setError(authErrorMessage(result.error, "Couldn't rename the passkey."))
-        return
       }
-      setReloadKey((k) => k + 1)
     } catch {
       setError("Couldn't rename the passkey.")
     } finally {
@@ -200,8 +171,9 @@ export default function PasskeySection() {
         <p className="text-sm text-gray-600">Signed in as {session.user.email}.</p>
       )}
       <div className="space-y-2">
-        {rows === null && !error && (
-          <p className="text-sm text-gray-500">Loading...</p>
+        {passkeys.isPending && <p className="text-sm text-gray-500">Loading...</p>}
+        {passkeys.error && (
+          <ErrorText message={authErrorMessage(passkeys.error, "Couldn't load your passkeys.")} />
         )}
         {/* Not decoration: with no passkey, every sign-in costs an inbox
             round-trip, and losing the mailbox loses the account. */}

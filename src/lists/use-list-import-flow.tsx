@@ -7,8 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 
 // The CSV-import-into-a-new-list flow: hidden file input, parse wiring, the
 // preview dialog, the import POST, and the error dialog - one path, used by
-// ListsPage, DesktopListsPanel and ListsEmptyState, which used to carry
-// three copies of this wiring. The underlying data path (plan/preflight/
+// ListsPage, DesktopListsPanel and ListsEmptyState. The underlying data path (plan/preflight/
 // POST + invalidate/navigate) stays in useListImportMutation; this hook owns
 // the SURFACE around it.
 //

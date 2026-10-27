@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router'
 import { Plus, Settings2, Upload } from 'lucide-react'
 import MobileOptionsModal from '../components/MobileOptionsModal'
 import MobileBottomBar from '../components/MobileBottomBar'
@@ -28,7 +27,6 @@ type Props = {
 //   - Renders only on /lists because it's mounted by ListsPage.
 export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) {
   useSuppressMobilePrimaryNav()
-  const { pathname } = useLocation()
   const [optionsOpen, setOptionsOpen] = useState(false)
 
   return (
@@ -36,7 +34,7 @@ export default function MobileListsActionBar({ onNewList, onImportCsv }: Props) 
       <MobileBottomBar
         label="Lists navigation and actions"
         items={[
-          ...buildMobileDestinationItems(pathname),
+          ...buildMobileDestinationItems(),
           {
             type: 'button',
             label: 'Add',

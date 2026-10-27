@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
 import { useLocation, useNavigationType } from 'react-router'
 import type { Category, PackingLocation } from '../lib/types'
+import { getToastHost } from '../lib/toast-host'
 import {
   emptyFood,
   list,
@@ -16,12 +17,9 @@ import {
   stubViewport,
 } from './test/list-detail-harness'
 
-// Pack's entry point back to the gear library.
-//
-// Desktop Pack hides the left aside on purpose so packing gets the focus.
-// That also removed the only desktop way to put a forgotten item on the list
-// without leaving the view - Pack could rearrange what was already there and
-// nothing else. The drawer restores adding without giving the aside back.
+// Pack's paths back to the gear library, its removals, and its section
+// wiring. Pack's picker aside starts at xl, so between lg and xl an Add gear
+// button opens the library in a drawer instead.
 //
 // Which surface carries the trigger is the whole point of these tests, so
 // they assert per-breakpoint and per-view rather than just "a button exists".
@@ -89,9 +87,8 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
 // owner id, which no test in this file asserts on.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -163,6 +160,21 @@ describe('adding gear from Pack view', () => {
 
     // The drawer is lazy-loaded, so this also proves the chunk resolves.
     expect(await screen.findByText('Add from gear')).toBeTruthy()
+  })
+
+  // A toast raised while the drawer is open (a failed remove, say) must land
+  // inside it: anything outside an open modal is painted behind it and inert.
+  // Only Modal hosts toasts, so the drawer has to be a Modal.
+  it('hosts toasts inside the open drawer', async () => {
+    stubViewport(1100)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}/pack`)
+
+    await user.click(addGear() as HTMLElement)
+    const drawer = await screen.findByRole('dialog', { name: 'Add from gear' })
+
+    expect(getToastHost()).not.toBeNull()
+    expect(drawer.contains(getToastHost())).toBe(true)
   })
 
   // The bottom action bar already carries Add below lg. A second button would
@@ -288,8 +300,7 @@ describe('removing gear from Pack view', () => {
   // like this even if the gate were removed. What this pins is the
   // USER-VISIBLE contract - List rows keep exactly one kebab, and the worn
   // removal button is a pack affordance. The gate itself earns its keep
-  // elsewhere (it keeps List view from building menus and placement bindings
-  // it will not render), and that is not observable from the DOM.
+  // elsewhere (it keeps List view from building menus it will not render), and that is not observable from the DOM.
   it('shows no packing affordances on List view rows', async () => {
     stubViewport(1280)
     h.fetchListItems.mockResolvedValue([listItem, wornItem])
@@ -304,8 +315,8 @@ describe('removing gear from Pack view', () => {
   })
 })
 
-// Creating a brand-new item mid-pack was impossible: CategoryGroup gates its
-// "+ Add new item" footer on !packMode, so the only path was Gear view ->
+// Creating a brand-new item mid-pack was impossible: pack sections have no
+// "+ Add new item" footer, so the only path was Gear view ->
 // List view picker -> back to Pack to place it. The picker now carries the
 // control, in both arrangements.
 describe('creating a new item while packing', () => {
@@ -325,9 +336,8 @@ describe('creating a new item while packing', () => {
   })
 })
 
-// Pack used to hide the gear picker so packing got the focus. A real trip
-// showed that costs more than it buys: adding or reweighing one item meant
-// leaving the view. The picker now sits beside Pack too - but at xl, not lg,
+// The gear picker sits beside Pack so that adding or reweighing one item
+// does not mean leaving the view. It shows at xl, not lg,
 // because at 1024px a 320px aside leaves 656px for a row dense enough to
 // truncate item names to ~113px rather than overflow.
 describe('the gear picker beside Pack', () => {
@@ -453,6 +463,23 @@ describe('rewriting retired list URLs', () => {
   })
 })
 
+// Switching views on the same list must not remount the page, or open
+// dialogs and half-typed drafts would be lost. The view nav is rendered by the
+// page itself, so its DOM node survives only if the page does.
+describe('switching views on one list', () => {
+  it('keeps the page mounted from List to Pack', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}`)
+    const nav = screen.getByRole('navigation', { name: 'List views' })
+
+    await user.click(within(nav).getByRole('link', { name: 'Pack' }))
+    await screen.findByLabelText('New packing location')
+
+    expect(screen.getByRole('navigation', { name: 'List views' })).toBe(nav)
+  })
+})
+
 describe('pack collision wiring', () => {
   // Location drags may land only on a sibling location: plain closestCenter
   // would let a section drop onto a cousin, which reparents it. Category
@@ -491,5 +518,30 @@ describe('pack collision wiring', () => {
     await renderDetail(`/lists/${listId}`)
     expect(h.collisionDetections.size).toBeGreaterThan(0)
     expect(new Set(h.collisionDetections.values())).toEqual(new Set([closestCenter]))
+  })
+})
+
+// An empty Pack section names the right thing. Pack groups by category until
+// the list has a packing location, and a category there can be empty because
+// all its items are worn - "no items in this location" would describe a
+// location that does not exist. An empty Unassigned bucket is what a finished
+// list looks like, so it reads as success.
+describe('empty Pack sections', () => {
+  it('calls an empty fallback category a category', async () => {
+    stubViewport(1280)
+    h.fetchListItems.mockResolvedValue([wornItem])
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(screen.getByText('No items in this category.')).toBeTruthy()
+    expect(screen.queryByText('No items in this location.')).toBeNull()
+  })
+
+  it('reads an empty Unassigned bucket as success', async () => {
+    stubViewport(1280)
+    h.fetchPackingLocations.mockResolvedValue([
+      { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
+    ] satisfies PackingLocation[])
+    h.fetchListItems.mockResolvedValue([{ ...listItem, packingLocationId: 'loc-1' }])
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(await screen.findByText('Everything has a location.')).toBeTruthy()
   })
 })

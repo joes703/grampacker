@@ -39,16 +39,7 @@ export function openSqlite(path: string): Sqlite {
   return sqlite
 }
 
-// One Drizzle instance per connection. createDb is called per request (and
-// per better-auth instance); this keeps that cheap and keeps the connection
-// count at one.
-const instances = new WeakMap<Sqlite, Db>()
-
+// Called once per app (server/index.ts createApp), and by scripts and tests.
 export function createDb(sqlite: Sqlite): Db {
-  let db = instances.get(sqlite)
-  if (!db) {
-    db = drizzle(sqlite, { schema })
-    instances.set(sqlite, db)
-  }
-  return db
+  return drizzle(sqlite, { schema })
 }

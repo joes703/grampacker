@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import type { Category, GearItem } from '../lib/types'
+import { deferred } from '../test/deferred'
 
 // What this file is for: the gear library's OWN writes - add/edit/delete an item,
 // add/delete a category, create a list from a selection - all failed silently. (The
@@ -28,32 +29,13 @@ import type { Category, GearItem } from '../lib/types'
 // live. Tests that only assert WHAT is rendered on a settled outcome use a
 // synchronous callback, and say so.
 
-type Deferred = {
-  promise: Promise<unknown>
-  resolve: (value?: unknown) => void
-  reject: (reason?: unknown) => void
-}
-
-function deferred(): Deferred {
-  let resolve!: (value?: unknown) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<unknown>((res, rej) => {
-    resolve = res as (value?: unknown) => void
-    reject = rej
-  })
-  // Nothing awaits the promise until the component does, and a rejection settled
-  // before that would be an unhandled rejection in the test runner itself.
-  promise.catch(() => {})
-  return { promise, resolve, reject }
-}
-
 // Wait for the component's own continuation on a settled deferred, and for React to
 // flush whatever state update it made. Promise reactions run FIFO and the component
 // registered its await at click time, so by the time this returns the guard has
 // already had its say. The two stale-completion tests below assert an ABSENCE, so
 // they need this: a bare `waitFor` on something already true returns before the
 // continuation has run, and would pass against a page with no guard at all.
-async function settle(d: Deferred): Promise<void> {
+async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
   await act(async () => {
     await d.promise.catch(() => {})
   })
@@ -88,7 +70,7 @@ vi.mock('../lib/queries', () => ({
   createCategory: h.createCategory,
   renameCategory: vi.fn(),
   deleteCategory: vi.fn(),
-  nextCategorySortOrder: () => 0,
+  nextSortOrder: () => 0,
   makeOptimisticInsert: () => ({}),
   makeOptimisticUpdate: () => ({}),
   makeOptimisticDelete: () => ({}),
@@ -132,16 +114,8 @@ vi.mock('../lib/use-csv-file-input', () => ({
 vi.mock('../lib/use-breakpoint', () => ({ useIsBelowLg: () => false }))
 vi.mock('../lib/use-weight-unit', () => ({ useWeightUnit: () => ({ weightUnit: 'g' }) }))
 
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore())
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')
@@ -195,7 +169,7 @@ vi.mock('./use-gear-item-actions', () => ({
   // isPending is driven by the test, not pinned. Defaulting it to false pins that
   // the dialog's "Saving…" comes from the page's per-attempt state; setting it TRUE
   // with no save outstanding pins the other half - that the shared mutation flag,
-  // which an inline row edit behind the dialog also raises, no longer leaks in.
+  // which an inline row edit behind the dialog also raises, does not leak in.
   useGearItemActions: () => ({
     addItem: { mutateAsync: h.addItemAsync, isPending: h.addItemPending() },
     editItem: {
@@ -302,7 +276,7 @@ afterEach(() => {
 
 describe('GearItemDialog save failures', () => {
   it('a failed create keeps the dialog open, says so, and does not eat the draft', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -324,7 +298,7 @@ describe('GearItemDialog save failures', () => {
   })
 
   it('a failed edit reports inline, and a retry clears the old message before closing on success', async () => {
-    const first = deferred()
+    const first = deferred<unknown>()
     h.editItemAsync.mockReturnValueOnce(first.promise)
     renderPage()
 
@@ -334,7 +308,7 @@ describe('GearItemDialog save failures', () => {
     first.reject(new Error('offline'))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-    const second = deferred()
+    const second = deferred<unknown>()
     h.editItemAsync.mockReturnValueOnce(second.promise)
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
@@ -343,7 +317,7 @@ describe('GearItemDialog save failures', () => {
     // object instead of installing a fresh one.
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
 
-    second.resolve()
+    second.resolve(undefined)
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Edit item' })).not.toBeInTheDocument(),
     )
@@ -358,7 +332,7 @@ describe('GearItemDialog save failures', () => {
     // setDialog with the old state object, re-opening a dismissed dialog - and
     // because it had unmounted, re-opening it means a blank form, so the draft the
     // error is inviting the user to retry has already been thrown away.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -376,7 +350,7 @@ describe('GearItemDialog save failures', () => {
   })
 
   it('a rejection does not stamp its error onto a different dialog opened since', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -425,7 +399,7 @@ describe('the inline new-category editor', () => {
   })
 
   it('closes and clears only once the create actually succeeds', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValue(d.promise)
     renderPage()
 
@@ -490,7 +464,7 @@ describe('completions that arrive after the user has moved on', () => {
   // because closing a dialog the user has already closed looks identical.
 
   it('a success does not close a different dialog opened since', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -501,7 +475,7 @@ describe('completions that arrive after the user has moved on', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit Tent' }))
 
-    d.resolve()
+    d.resolve(undefined)
     await settle(d)
 
     expect(screen.getByRole('dialog', { name: 'Edit item' })).toBeInTheDocument()
@@ -512,7 +486,7 @@ describe('completions that arrive after the user has moved on', () => {
     // the same item id - only the DialogState object differs. If the guard
     // compared ids instead of identity this would pass an error and a stuck
     // "Saving…" to a session that never submitted anything.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.editItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -532,9 +506,9 @@ describe('completions that arrive after the user has moved on', () => {
     // Out-of-order completion across two dialogs. The `finally` clears the saving
     // slot functionally for exactly this: a plain setSavingAttempt(null) would
     // unfreeze a dialog whose own request is still outstanding.
-    const first = deferred()
+    const first = deferred<unknown>()
     h.editItemAsync.mockReturnValue(first.promise)
-    const second = deferred()
+    const second = deferred<unknown>()
     h.addItemAsync.mockReturnValue(second.promise)
     renderPage()
 
@@ -547,7 +521,7 @@ describe('completions that arrive after the user has moved on', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
     expect(await screen.findByRole('button', { name: 'Saving…' })).toBeInTheDocument()
 
-    first.resolve()
+    first.resolve(undefined)
     await settle(first)
 
     // Still saving: the create's own request has not come back.
@@ -555,7 +529,7 @@ describe('completions that arrive after the user has moved on', () => {
   })
 
   it('a save in flight freezes the form, so nothing typed after Save is silently dropped', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.addItemAsync.mockReturnValue(d.promise)
     renderPage()
 
@@ -570,15 +544,15 @@ describe('completions that arrive after the user has moved on', () => {
     // Abandoning a slow save stays possible; that is what the guard makes safe.
     expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled()
 
-    d.resolve()
+    d.resolve(undefined)
     await settle(d)
   })
 
   it('the shared mutation being busy elsewhere does not make an idle dialog claim it is saving', async () => {
-    // The cross-talk this replaced: `saving` used to read
-    // `addItem.isPending || editItem.isPending`, which an inline row edit BEHIND
-    // the dialog also raises. Pinned by asserting the label with the shared flag
-    // true and no save of the dialog's own outstanding.
+    // `saving` must not read `addItem.isPending || editItem.isPending`, which an
+    // inline row edit BEHIND the dialog also raises. Pinned by asserting the
+    // label with the shared flag true and no save of the dialog's own
+    // outstanding.
     h.editItemPending.mockReturnValue(true)
     renderPage()
 
@@ -594,7 +568,7 @@ describe('the inline new-category editor, concurrency', () => {
   it('will not submit twice while the first create is still out', async () => {
     // Category names are not unique in the schema, so an unguarded repeat - Enter
     // repeats on its own - quietly creates a second category.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValue(d.promise)
     renderPage()
 
@@ -618,7 +592,7 @@ describe('the inline new-category editor, concurrency', () => {
     // session is still the open one. Without it, attempt A's success would clear and
     // close the editor the user reopened for B - or A's failure would stamp its
     // error on it.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValueOnce(d.promise)
     renderPage()
 
@@ -644,9 +618,7 @@ describe('the inline new-category editor, concurrency', () => {
 describe('create list from selection', () => {
   it('reports a failure inside its own dialog, which stays open to retry', async () => {
     // This mutation is NOT optimistic - the case meta.errorToast exists for - but
-    // its dialog stays open on failure, so the error goes beside the form. (The
-    // toast it used to raise expired behind the backdrop, before toasts rendered
-    // over modals, and the create failed silently.)
+    // its dialog stays open on failure, so the error goes beside the form.
     h.createListFromSelection.mockRejectedValue(new Error('nope'))
     renderPage()
 
@@ -672,7 +644,7 @@ describe('sessions ended by something other than their own close button', () => 
     // now carries a session id inside its own dialog variant, so a late answer's
     // decision is one guarded functional update against whatever is open NOW; it
     // does not have to be told about the routes out.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValue(d.promise)
     renderPage()
 
@@ -694,7 +666,7 @@ describe('sessions ended by something other than their own close button', () => 
     // Holding `pending` inside the session is what makes this structural: a new
     // session cannot inherit a previous one's in-flight state, whatever happened to
     // the request that started it.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValue(d.promise)
     renderPage()
 
@@ -724,7 +696,7 @@ describe('sessions ended by something other than their own close button', () => 
     // decides functionally against whatever is open now, queued included. The
     // tests above miss this window because they commit the replacement (or
     // unmount) before settling the create.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createCategory.mockReturnValue(d.promise)
     renderPage()
 
@@ -760,7 +732,7 @@ describe('sessions ended by something other than their own close button', () => 
   })
 
   it('a create-list failure arriving after its dialog closed does not re-open it', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.createListFromSelection.mockReturnValue(d.promise as Promise<unknown>)
     renderPage()
 

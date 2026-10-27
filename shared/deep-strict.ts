@@ -4,8 +4,7 @@ import { z } from 'zod'
 // an UNEXPECTED field must fail loudly: the share route's server-side parse
 // and the API response-contract tests. The browser's runtime schemas stay
 // tolerant (strip) on purpose - an old bundle receiving one additive field
-// from a newer server must not report a COMMITTED write as a failure
-// (review P2.13, owner decision 2026-08-05).
+// from a newer server must not report a COMMITTED write as a failure.
 //
 // Walks only the shapes the response schemas actually use - object, array,
 // nullable, optional, union - via zod's public accessors. Anything else

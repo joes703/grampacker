@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import { deferred } from '../../test/deferred'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -135,7 +136,7 @@ describe('makeOptimisticGearItemUpdate', async () => {
     expect(showToast).not.toHaveBeenCalled()
   })
 
-  it('onSettled invalidates the gear cache and exactly the touched lists', async () => {
+  it('onSettled invalidates the gear cache and every list', async () => {
     const { qc } = seed()
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
     const { onMutate, onSettled } = makeOptimisticGearItemUpdate({ qc })
@@ -145,9 +146,24 @@ describe('makeOptimisticGearItemUpdate', async () => {
 
     const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey)
     expect(keys).toContainEqual(queryKeys.gearItems())
-    expect(keys).toContainEqual(queryKeys.listItems('l1'))
-    expect(keys).toContainEqual(queryKeys.listItems('l2'))
-    expect(keys).not.toContainEqual(queryKeys.listItems('l3'))
+    expect(keys).toContainEqual(queryKeys.listItemsAll())
+  })
+})
+
+describe('settling a gear write', () => {
+  // A list opened while the save is running fetches the gear's old values and
+  // was never snapshotted, so only a prefix invalidation reaches it.
+  it('invalidates a list cache that appeared while the write was in flight', async () => {
+    const { qc } = seed()
+    const { onMutate, onSettled } = makeOptimisticGearItemUpdate({ qc })
+
+    const ctx = await onMutate({ id: 'g1', patch: { name: 'Mid' } })
+    qc.setQueryData(queryKeys.listItems('l4'), [
+      listItem({ id: 'li-5', listId: 'l4', gearItemId: 'g1', gearItem: gear({ id: 'g1' }) }),
+    ])
+    onSettled(undefined, null, { id: 'g1', patch: { name: 'Mid' } }, ctx)
+
+    expect(qc.getQueryState(queryKeys.listItems('l4'))?.isInvalidated).toBe(true)
   })
 })
 
@@ -257,20 +273,16 @@ describe('makeOptimisticGearItemsBulkDelete', async () => {
     expect(itemsOf(qc, 'l3')).toHaveLength(1)
   })
 
-  it('shows the configured toast on rollback', async () => {
+  // The failure toast comes from the mutation's meta through the global
+  // handler (src/lib/mutation-error-handler.ts); the helper only rolls back.
+  it('restores the caches on rollback without raising a toast itself', async () => {
     const { qc } = seed()
-    const { onMutate, onError } = makeOptimisticGearItemsBulkDelete({
-      qc,
-      errorToast: 'Bulk delete failed.',
-    })
+    const { onMutate, onError } = makeOptimisticGearItemsBulkDelete({ qc })
 
     const ctx = await onMutate(['g1'])
     onError(new Error('nope'), ['g1'], ctx)
 
-    expect(showToast).toHaveBeenCalledWith('Bulk delete failed.', {
-      type: 'error',
-    })
-    // And the caches are back.
+    expect(showToast).not.toHaveBeenCalled()
     expect(gearCache(qc).map((g) => g.id)).toEqual(['g1', 'g2', 'g3'])
     expect(itemsOf(qc, 'l2')).toHaveLength(1)
   })
@@ -359,14 +371,6 @@ describe('makeOptimisticGearItemsBulkCategoryMove', async () => {
 // lost on any one of them independently, and a rollback context assembled across a
 // moving set of caches restores a state that never existed.
 describe('an in-flight refetch cannot clobber the gear fan-out', () => {
-  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-    let resolve!: (value: T) => void
-    const promise = new Promise<T>((r) => {
-      resolve = r
-    })
-    return { promise, resolve }
-  }
-
   it('the optimistic write survives on the gear cache AND every affected list', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const g1 = gear({ id: 'g1', name: 'Tent' })

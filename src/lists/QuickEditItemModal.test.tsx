@@ -5,10 +5,10 @@ import userEvent from '@testing-library/user-event'
 import QuickEditItemModal from './QuickEditItemModal'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 
-// The phone editor for a list row. Tapping a row used to open the full
-// inventory form - cost, purchase date, status, a red Delete from inventory -
-// to change one weight (UX audit 2026-10, run 3's #2 finding). This modal
-// carries only what list work needs; everything else is behind More details.
+// The phone editor for a list row. The full inventory form (cost, purchase
+// date, status, Delete from inventory) is too much to change one weight, so
+// this modal carries only what list work needs; everything else is behind
+// More details.
 
 beforeAll(() => {
   if (!HTMLDialogElement.prototype.showModal) {
@@ -96,7 +96,7 @@ describe('QuickEditItemModal', () => {
 
   it('hands its current drafts to More details, so the switch loses nothing', async () => {
     // The switch unmounts this form; edits that silently vanish on the way
-    // to "more" would be worse than no shortcut (Codex review finding).
+    // to "more" would be worse than no shortcut.
     const { onMoreDetails } = renderModal()
     const name = screen.getByLabelText('Name')
     await userEvent.clear(name)

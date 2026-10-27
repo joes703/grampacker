@@ -1,14 +1,11 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import { toGearItemResponse } from './gear-item-response'
-import { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 import {
-  LIST_CAP,
-  LIST_ITEM_CAP,
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
-  normalizeReorderPackRequest,
   quickAddListItemRequestSchema,
   reorderListItemsRequestSchema,
   reorderPackListItemsRequestSchema,
@@ -29,7 +26,7 @@ import type {
   ListRow,
   ListWriteResult,
 } from '../repos/lists'
-import type { AppEnv } from '../env'
+import type { AppDeps } from '../env'
 
 // Authz matrix rows (docs/authz-matrix.md):
 //   GET    /api/lists                          - session - own rows only
@@ -70,8 +67,7 @@ import type { AppEnv } from '../env'
 //                                                on a payload spanning two
 //                                                cohorts, not a permutation of
 //                                                current ranks, or naming a
-//                                                worn row; 409 when a
-//                                                concurrent reorder won
+//                                                worn row
 //   POST   /api/lists/:id/items/reset-packed   - session - own list or 404
 //   POST   /api/lists/:id/items/reset-ready    - session - own list or 404
 //   PATCH  /api/lists/:id/items/:itemId        - session - item must belong
@@ -81,7 +77,7 @@ import type { AppEnv } from '../env'
 // Session-gated by the hoisted api.use('/lists/*', requireSession) in
 // server/index.ts - one lookup for all three sub-apps on this mount.
 export const listRoutes = new Hono<{
-  Bindings: AppEnv
+  Bindings: AppDeps
   Variables: SessionVars
 }>()
 
@@ -119,23 +115,17 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
 }
 
 // One place for the item-write failure map so every route agrees on
-// statuses and wording. Exported for a direct unit test: the conflict branch
-// exists for a race that cannot be staged through the HTTP surface, so the
-// mapping is pinned here and the repo's conversion is pinned in its own test.
+// statuses and wording. Exported for a direct unit test.
 export function listItemFailure(
   result: Extract<ListItemWriteResult, { ok: false }>,
 ): {
-  status: 400 | 404 | 409 | 422
+  status: 400 | 404 | 422
   error: string
 } {
   switch (result.reason) {
     case 'list_not_found':
     case 'not_found':
       return { status: 404, error: 'Not found' }
-    case 'conflict':
-      // Same dialect as the pack-order 409 below: someone else's write landed
-      // first; the client refetches and retries.
-      return { status: 409, error: 'This bag changed while you were moving that item' }
     case 'invalid_gear':
       return { status: 400, error: 'Invalid gear item' }
     case 'invalid_category':
@@ -148,17 +138,16 @@ export function listItemFailure(
         error: 'An item cannot be both worn and consumable',
       }
     case 'gear_cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
     case 'cap_exceeded':
-      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+      return { status: 422, error: LIMIT_REACHED.listItem }
     case 'pack_rank_exhausted':
       // Deliberately does NOT tell the user to reorder. An ordinary drag
       // permutes the ranks a cohort already holds, so it cannot compact
       // anything - it would write the same exhausted values back. (The
       // client's dense renumber runs only when it detects a cross-table tie,
       // not on exhaustion.)
-      // Migration 0019 normalizes existing dirty cohorts, so reaching this
-      // needs roughly a billion arrivals; there is no self-service fix and
+      // Reaching this needs roughly a billion arrivals into one cohort; there is no self-service fix and
       // pretending otherwise would send people in circles.
       return {
         status: 422,
@@ -168,8 +157,8 @@ export function listItemFailure(
 }
 
 
-// The list-write counterpart of listItemFailure above: the four list writes
-// used to re-type near-identical if-chains. Exhaustive on purpose - a new
+// The list-write counterpart of listItemFailure above, shared by the four
+// list writes. Exhaustive on purpose - a new
 // repo reason fails the build here instead of falling through to a wrong
 // default status.
 function listWriteFailure(
@@ -187,13 +176,13 @@ function listWriteFailure(
     case 'invalid_category':
       return { status: 400, error: 'Invalid category' }
     case 'cap_exceeded':
-      return { status: 422, error: `List limit reached (${LIST_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.list }
     case 'gear_cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
     case 'item_cap_exceeded':
-      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+      return { status: 422, error: LIMIT_REACHED.listItem }
     case 'category_cap_exceeded':
-      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.category }
   }
 }
 
@@ -343,27 +332,16 @@ listRoutes.put('/:id/items/order', async (c) => {
 listRoutes.put('/:id/items/pack-order', async (c) => {
   const parsed = await parseBody(c, reorderPackListItemsRequestSchema)
   if (!parsed.ok) return parsed.response
-  // Union reorder since 0022: gear and food halves written in one transaction.
-  // normalizeReorderPackRequest maps the legacy bare-array shape (gear only)
-  // onto the same payload.
-  const result = await c
-    .get('repos')
-    .packReorder.reorder(
-      c.req.param('id'),
-      normalizeReorderPackRequest(parsed.data),
-    )
+  // Gear and food halves are written in one transaction.
+  const result = await c.get('repos').packReorder.reorder(c.req.param('id'), {
+    items: parsed.data.items ?? [],
+    foodItems: parsed.data.foodItems ?? [],
+  })
   if (result.ok) return c.body(null, 204)
   // An id that is not on this list (or not this user's) is indistinguishable
   // from a list that does not exist, deliberately - the same 404 either way,
   // so the response never confirms that someone else's item id is real.
   if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
-  // The unique index refused the write. No longer reachable by a concurrent
-  // reorder (the repo works in one transaction); kept as the backstop. The
-  // transaction rolled back, so nothing partial landed; the client refetches
-  // and retries.
-  if (result.reason === 'conflict') {
-    return c.json({ error: 'This bag changed while you were reordering' }, 409)
-  }
   return c.json({ error: 'Invalid request body' }, 400)
 })
 

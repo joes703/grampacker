@@ -8,13 +8,11 @@ import {
 } from '../../../shared/lists'
 import { apiFetch, apiFetchVoid } from '../api'
 
-// Membership row + its embedded gear row, exactly the old repo's
-// ListItemWithGear shape (camelCased) so the list components and their
-// cache invalidation port unchanged.
+// Membership row + its embedded gear row.
 export type ListItemWithGear = ListItemResponse
 
-// The per-list-item PATCH shape, under the name the old repo's hooks and
-// components already use.
+// The per-list-item PATCH shape, under the name the hooks and components
+// use.
 export type ListItemPatch = UpdateListItemRequest
 
 export async function fetchListItems(

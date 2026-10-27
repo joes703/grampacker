@@ -6,10 +6,9 @@ import type { Db, Tx } from '../db'
 import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
 import {
   isPackRankRangeError,
-  isPackRankUniqueViolation,
   isTriggerAbort,
 } from './db-errors'
-import type { GearItemRow } from './gear-items'
+import { isCapError as isGearCapError, type GearItemRow } from './gear-items'
 import { nextUnionPackRank } from './pack-reorder'
 
 const itemCols = {
@@ -42,21 +41,7 @@ const gearCols = {
   updatedAt: gearItems.updatedAt,
 }
 
-export type ListItemRow = {
-  id: string
-  listId: string
-  gearItemId: string
-  quantity: number
-  isWorn: boolean
-  isConsumable: boolean
-  isPacked: boolean
-  isReady: boolean
-  packingLocationId: string | null
-  sortOrder: number
-  packSortOrder: number
-  createdAt: number // epoch ms
-  updatedAt: number // epoch ms
-}
+type ListItemRow = Omit<typeof listItems.$inferSelect, 'userId'>
 
 // The joined shape the routes serialize: membership row + its gear row
 // (the embedded gear_item response shape).
@@ -95,19 +80,10 @@ export type ListItemWriteResult =
         | 'cap_exceeded'
         | 'gear_cap_exceeded'
         | 'pack_rank_exhausted'
-        | 'conflict'
     }
-
-// The 0004 trigger is the single enforcement point; keep in lockstep
-// with its WHEN clause and message.
-export const LIST_ITEM_CAP = 300
 
 export function isListItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list item cap exceeded')
-}
-
-function isGearCapError(err: unknown): boolean {
-  return isTriggerAbort(err, 'gear item cap exceeded')
 }
 
 // The item writes trip these database rules on purpose. Each becomes a client
@@ -118,7 +94,7 @@ function classifyWriteError(
 ): 'cap_exceeded' | 'gear_cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isListItemCapError(err)) return 'cap_exceeded'
   if (isGearCapError(err)) return 'gear_cap_exceeded'
-  // 0019's range trigger: the cohort's rank space is exhausted, so the
+  // The pack rank range trigger: the cohort's rank space is exhausted, so the
   // `max + 1` an arrival or a move computes would step past PACK_RANK_MAX.
   // A known condition, so it gets a status rather than a 500.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
@@ -251,8 +227,7 @@ export function createListItemsRepo(db: Db, userId: string) {
       }
     },
 
-    // Quick-Add: gear row + membership row in ONE transaction - the old
-    // add_gear_item_with_list_item RPC. Either cap trigger aborts the whole
+    // Quick-Add: gear row + membership row in ONE transaction. Either cap trigger aborts the whole
     // thing; zero partial rows.
     async quickAdd(
       listId: string,
@@ -339,13 +314,6 @@ export function createListItemsRepo(db: Db, userId: string) {
           { behavior: 'immediate' },
         )
       } catch (err) {
-        // A move's destination rank hit a pack-rank unique index, and only
-        // those. The rank is computed inside the same transaction that
-        // writes it, so nothing should be able to take it first; this stays
-        // as the backstop should the index and the rank computation ever
-        // disagree (the same backstop as pack-reorder.ts). Adding an item
-        // never answered 409, so only the move maps it.
-        if (isPackRankUniqueViolation(err)) return { ok: false, reason: 'conflict' }
         const reason = classifyWriteError(err)
         if (reason !== null) return { ok: false, reason }
         throw err
@@ -427,16 +395,14 @@ export function createListItemsRepo(db: Db, userId: string) {
     if (patch.isReady !== undefined) set.isReady = patch.isReady
     if (patch.packingLocationId !== undefined) {
       set.packingLocationId = patch.packingLocationId
-      // A move rebases the PACK rank and nothing else. It used to rebase
-      // sortOrder, which is the bug this column exists to kill: sortOrder is
-      // the document order, read by List view and by the anonymous share, so
-      // dropping an item into a bag walked it to the bottom of the list you
-      // had written AND to the bottom of the link you had shared. Moving
-      // something inside your pack is not an edit to your document.
+      // A move rebases the PACK rank and nothing else. sortOrder is the
+      // document order, read by List view and by the anonymous share, so
+      // rebasing it would walk an item dropped into a bag to the bottom of
+      // the list you wrote AND of the link you shared. Moving something
+      // inside your pack is not an edit to your document.
       //
-      // The row still lands LAST in its destination, exactly like a newly
-      // added one - the outcome stays statable in one sentence, it is just
-      // scoped to the bag now instead of the whole list. A re-assignment to
+      // The row lands LAST in its destination bag, exactly like a newly
+      // added one. A re-assignment to
       // the location the item is ALREADY in keeps its rank, so it does not
       // walk to the bottom of its own bag. `IS` rather than `=` because the
       // target may be null (Unassigned), and `=` is never true against null.

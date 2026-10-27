@@ -39,7 +39,7 @@ vi.mock('../lib/queries', () => ({
   createCategory: vi.fn(),
   renameCategory: vi.fn(),
   deleteCategory: vi.fn(),
-  nextCategorySortOrder: () => 0,
+  nextSortOrder: () => 0,
   makeOptimisticInsert: () => ({}),
   makeOptimisticUpdate: () => ({}),
   makeOptimisticDelete: () => ({}),
@@ -69,32 +69,11 @@ vi.mock('../lib/use-weight-unit', () => ({ useWeightUnit: () => ({ weightUnit: '
 // dnd-kit cannot be driven by a synthetic pointer sequence in jsdom. The
 // passthrough exposes the page's own onDragEnd, which is where the page plans
 // the reorder - the part under test.
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children, onDragEnd }: {
-      children: ReactNode
-      onDragEnd?: (e: unknown) => void
-    }) => (
-      <div>
-        <button
-          type="button"
-          onClick={() => onDragEnd?.({
-            active: { id: makeDnDId('gear-item', h.drag.activeId) },
-            over: { id: makeDnDId('gear-item', h.drag.overId) },
-          })}
-        >
-          fire drag end
-        </button>
-        {children}
-      </div>
-    ),
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore(() => ({
+    active: { id: makeDnDId('gear-item', h.drag.activeId) },
+    over: { id: makeDnDId('gear-item', h.drag.overId) },
+  })))
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')

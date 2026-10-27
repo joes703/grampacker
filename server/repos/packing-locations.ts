@@ -10,7 +10,6 @@ import {
   packingLocations,
 } from '../db/schema'
 import {
-  isPackRankUniqueViolation,
   isPackRankRangeError,
   isTriggerAbort,
   isUniqueViolation,
@@ -29,12 +28,10 @@ const cols = {
   containerListItemId: packingLocations.containerListItemId,
 }
 
-export type PackingLocationRow = {
-  id: string
-  name: string
-  sortOrder: number
-  containerListItemId: string | null
-}
+export type PackingLocationRow = Pick<
+  typeof packingLocations.$inferSelect,
+  'id' | 'name' | 'sortOrder' | 'containerListItemId'
+>
 
 export type CreatePackingLocationResult =
   | { ok: true; row: PackingLocationRow }
@@ -251,23 +248,20 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     async remove(
       listId: string,
       id: string,
-    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted' | 'conflict'> {
+    ): Promise<'deleted' | 'not_found' | 'pack_rank_exhausted'> {
       try {
         return db.transaction(
           (tx) => (removeInTransaction(tx, listId, id) ? 'deleted' : 'not_found'),
           { behavior: 'immediate' },
         )
       } catch (err) {
-        // 0019's range triggers. The dense fallback below keeps the append
+        // The pack rank range triggers. The dense fallback below keeps the append
         // inside the rank space, so this should be unreachable; it stays
         // classified because a 500 on an ordinary delete would be a poor way
         // to find out otherwise.
         if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
-        // Not reachable through concurrency any more (nothing can change
-        // between the reads and the writes). Kept as the route's documented
-        // retryable answer should a PACK-RANK unique index ever disagree with
-        // the plan. Any other constraint failure is a 500.
-        if (isPackRankUniqueViolation(err)) return 'conflict'
+        // Anything else, a pack-rank collision included, is a defect: nothing
+        // can change between the reads and the writes. It answers 500.
         throw err
       }
     },
@@ -292,7 +286,7 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
 
   // Returns whether the location existed (and is now deleted).
   function removeInTransaction(tx: Tx, listId: string, id: string): boolean {
-    // Both halves of the bag - the cohort is a union since 0022 - in display
+    // Both halves of the bag - the cohort is a union of gear and food - in display
     // order, which is what makes "keep their relative order" true.
     const gearOrphans = tx
       .select({ id: listItems.id, packSortOrder: listItems.packSortOrder })
@@ -355,8 +349,8 @@ export function createPackingLocationsRepo(db: Db, userId: string) {
     const now = Date.now()
 
     if (base + orphans.length - 1 > PACK_RANK_MAX && orphans.length > 0) {
-      // DENSE FALLBACK. Appending would step past PACK_RANK_MAX (a legacy
-      // Unassigned cohort may legally sit that high), so renumber the WHOLE
+      // DENSE FALLBACK. Appending would step past PACK_RANK_MAX (a pack-order
+      // PUT may legally set an Unassigned rank that high), so renumber the WHOLE
       // merged cohort densely from 0 instead: Unassigned first, then the
       // bag's contents, both in union display order. Two phases, because the
       // unique index is checked after each statement: every row parks on its

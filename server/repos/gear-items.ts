@@ -21,19 +21,7 @@ const cols = {
   updatedAt: gearItems.updatedAt,
 }
 
-export type GearItemRow = {
-  id: string
-  categoryId: string | null
-  name: string
-  description: string | null
-  weightGrams: number
-  costCents: number | null
-  purchaseDate: string | null
-  status: string // constrained by the DB CHECK; DTO narrows to GearStatus
-  sortOrder: number
-  createdAt: number // epoch ms
-  updatedAt: number // epoch ms
-}
+export type GearItemRow = Omit<typeof gearItems.$inferSelect, 'userId'>
 
 export type CreateGearItemInput = {
   name: string
@@ -180,9 +168,8 @@ export function createGearItemsRepo(db: Db, userId: string) {
     },
 
     // Atomic CSV import: the ownership check and every write run in ONE
-    // transaction. The old app created categories before the gear insert
-    // non-atomically, so a mid-flight failure orphaned the categories - here
-    // a cap abort on any item rolls back the new categories too. Every
+    // transaction, so a cap abort on any item rolls back the new categories
+    // too. Every
     // referenced existing category must be the caller's, checked before any
     // write. No cap preflight on purpose: the trigger stays the single
     // enforcement point for shared/gear.ts's GEAR_ITEM_CAP.
@@ -275,7 +262,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
         )
       } catch (err) {
         if (isCapError(err)) return { ok: false, reason: 'cap_exceeded' }
-        // An import can carry new categories, so the 0021 category cap can
+        // An import can carry new categories, so the category cap trigger can
         // abort it too - everything rolls back, zero partial rows.
         if (isCategoryCapError(err)) {
           return { ok: false, reason: 'category_cap_exceeded' }
