@@ -73,10 +73,7 @@ export function useCurrentListActions() {
   // ListSettingsPanel (the Draft toggle). Routed through useListFlagToggle
   // so rapid double-toggles can't send a stale or duplicate PATCH (see the
   // hook for the two races the naive relative flip carries).
-  const draftToggle = useListFlagToggle({
-    read: (target) => target.isDraft,
-    patch: (isDraft) => ({ isDraft }),
-  })
+  const draftToggle = useListFlagToggle('isDraft')
 
   // Create a new list. The append sortOrder is captured ONCE per invocation -
   // in submitCreateList below, from the pre-insert ['lists'] cache - and passed

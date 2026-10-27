@@ -483,13 +483,14 @@ function ListDetailInner({ listId }: { listId: string }) {
   // List-item write actions (add existing gear / update fields / delete / Quick
   // Add new gear+item) live in a dedicated hook; it owns the optimistic
   // insert/update/delete wiring, the update sibling-in-flight invalidation gate,
-  // and addNewItem's dual-cache invalidation + errorToast. The page keeps the
+  // and addNewItem's dual-cache invalidation, errorToast and double-fire
+  // guard. The page keeps the
   // stable handler/memo layer that reads these raw mutations' `.mutate` through
   // the live binding (onLibraryAdd/onLibraryRemove/onAddNewItem, sharedGroupProps),
-  // the addingNewItemRef double-fire guard, DnD/reorder, dialog orchestration,
+  // DnD/reorder, dialog orchestration,
   // and the inline notes list-field mutation. (Gear/category writes live in
   // useListGearActions, above.)
-  const { addItem, updateItem, deleteItem, addNewItem, moveItem } = useListItemActions(listId, {
+  const { addItem, updateItem, deleteItem, addNewItemOnce, moveItem } = useListItemActions(listId, {
     listItems,
     foodItems: listFood.items,
   })
@@ -521,14 +522,6 @@ function ListDetailInner({ listId }: { listId: string }) {
     }),
   })
 
-  // Guards against the inline Quick Add row firing twice when the user
-  // commits the same draft rapidly (Enter then blur, or two Enter presses).
-  // Each press fires a fresh quick-add request; without a gate the second
-  // succeeds and creates a duplicate gear item + list item.
-  // addNewItem.isPending lives on a fresh useMutation result each render,
-  // so reading it through a [] -deps useCallback closure is stale; a ref is
-  // the stable handle.
-  const addingNewItemRef = useRef(false)
   // Item ids whose removal preflight (the container check) is in flight. See
   // requestRemoveListItem: the preflight can await a fetch, during which the
   // row stays on screen and clickable.
@@ -758,18 +751,12 @@ function ListDetailInner({ listId }: { listId: string }) {
   // Stable callback for CategoryGroup's "+ Add new item" affordance.
   // CategoryGroup's onAddItem signature is (categoryId, data) => void so we
   // can pass ONE memoized handler to both the categorized and uncategorized
-  // call sites instead of two fresh inline arrows. addNewItem see prior
-  // mutation-ref convention.
+  // call sites instead of two fresh inline arrows.
   const onAddNewItem = useCallback(
     (categoryId: string | null, data: AddItemData) => {
-      if (addingNewItemRef.current) return
-      addingNewItemRef.current = true
-      addNewItem.mutate(
-        { categoryId, data },
-        { onSettled: () => { addingNewItemRef.current = false } },
-      )
+      addNewItemOnce(categoryId, data)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItem: see addItem note
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addNewItemOnce: see addItem note
     [],
   )
 

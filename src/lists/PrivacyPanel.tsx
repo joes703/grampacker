@@ -35,9 +35,9 @@ type Props = { list: List }
 // rule in src/lib/mutation-error-handler.ts). Unless the panel has left the
 // screen by the time it fails - then only a toast can be seen, so it gets one.
 //
-// The flip goes through useListFlagToggle (absolute target + synchronous
-// in-flight ref) - see that hook for the double-toggle races the naive
-// shape carries; on a privacy control they could leave a list PUBLIC
+// The flip goes through useListFlagToggle (absolute target, one pending
+// flip per list and flag) - see that hook for the double-toggle races the
+// naive shape carries; on a privacy control they could leave a list PUBLIC
 // while the UI says private. disabled while pending is the visual layer
 // on top of the hook's guard.
 //
@@ -52,20 +52,14 @@ export default function PrivacyPanel({ list }: Props) {
 
   // `disabled={isPending}` is render-derived, so two clicks inside one commit
   // window both get through and rotate the slug TWICE - burning a link the
-  // person never saw. Same trap useListFlagToggle documents; same fix, a
-  // synchronous ref. Cleared in the mutation's onSettled (success AND error).
+  // person never saw. A synchronous ref closes it, cleared in the mutation's
+  // onSettled (success AND error).
   const resetting = useRef(false)
   // Always rendered, so reportFailure can tell whether the panel is on screen.
   const anchorRef = useRef<HTMLDivElement>(null)
 
-  const shareToggle = useListFlagToggle({
-    read: (l) => l.isShared,
-    patch: (isShared) => ({ isShared }),
-  })
-  const draftToggle = useListFlagToggle({
-    read: (l) => l.isDraft,
-    patch: (isDraft) => ({ isDraft }),
-  })
+  const shareToggle = useListFlagToggle('isShared')
+  const draftToggle = useListFlagToggle('isDraft')
 
   // Not optimistic: the slug is server-minted, so there is nothing to guess.
   // Invalidate and let the new row arrive - on failure too, because a rejected

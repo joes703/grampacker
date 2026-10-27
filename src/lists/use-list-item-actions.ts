@@ -247,5 +247,14 @@ export function useListItemActions(
     },
   })
 
-  return { addItem, updateItem, moveItem, deleteItem, addNewItem }
+  // Enter then blur, or two Enter presses, commit the same draft twice; each
+  // would create a gear item. Ignore a new add while one for this list is
+  // pending. TanStack marks the mutation pending inside mutate(), so a second
+  // call in the same tick already sees it.
+  function addNewItemOnce(categoryId: string | null, data: AddItemData) {
+    if (qc.isMutating({ mutationKey: mutationKeys.addNewListItem(listId) }) > 0) return
+    addNewItem.mutate({ categoryId, data })
+  }
+
+  return { addItem, updateItem, moveItem, deleteItem, addNewItem, addNewItemOnce }
 }

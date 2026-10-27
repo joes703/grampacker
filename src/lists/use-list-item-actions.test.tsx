@@ -403,6 +403,33 @@ describe('useListItemActions', () => {
     })
   })
 
+  describe('addNewItemOnce', () => {
+    // Enter then blur, or two Enter presses, commit the same draft twice.
+    // Without a guard the second request creates a duplicate gear item.
+    it('sends one request for two calls while the first is pending', async () => {
+      h.quickAddListItem.mockReturnValue(new Promise<never>(() => {}))
+      const { result } = setup()
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      result.current.addNewItemOnce(null, sampleAddData)
+
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(1))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(h.quickAddListItem).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts the next add once the first has settled', async () => {
+      const { result } = setup()
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(result.current.addNewItem.isPending).toBe(false))
+
+      result.current.addNewItemOnce(null, sampleAddData)
+      await waitFor(() => expect(h.quickAddListItem).toHaveBeenCalledTimes(2))
+    })
+  })
+
   describe('addNewItem', () => {
     it('maps AddItemData to the quickAddListItem request', async () => {
       const { result } = setup()
