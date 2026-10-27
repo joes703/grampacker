@@ -349,6 +349,10 @@ type GroupContentProps =
 
 export type GroupProps = GroupPropsBase & GroupContentProps
 
+// The props a page hands every section alike; each section adds its own
+// name and items.
+export type SectionGroupProps = Omit<GroupPropsBase, 'name' | 'items'>
+
 // Wrapped in React.memo (default shallow compare) at the export below.
 // Phase 5 Commit 1 introduced structural per-group stability in
 // groupListItemsByCategory — the `items` prop reference is now reused

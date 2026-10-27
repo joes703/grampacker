@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { Link, useParams } from 'react-router'
+import { useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import ListSidebarDrawer from './ListSidebarDrawer'
 import {
   queryKeys,
@@ -25,43 +23,23 @@ import {
   clearLastListPath,
   getListIdFromListPath,
 } from '../lib/last-list-path'
-import { parseDnDId } from '../lib/dnd-ids'
 import { useGroupedListItems } from '../lib/use-grouped-list-items'
 import { wornItemsInDocumentOrder } from '../lib/worn-items'
-import {
-  baseGramsForCategory,
-  computeListWeightBreakdown,
-  consumableGramsForCategory,
-  wornGramsForCategory,
-} from '../lib/weight-breakdown'
-
-import WeightSummary from './WeightSummary'
+import { computeListWeightBreakdown } from '../lib/weight-breakdown'
 import FoodView from './FoodView'
-import type { FoodItemResponse } from '../../shared/food'
 import LibraryPanel from './LibraryPanel'
 import DesktopListsPanel from './DesktopListsPanel'
 import { FLAT_TABLE_SURFACE } from '../components/flat-table-styles'
 import MobileListActionBar from './MobileListActionBar'
 import ListDocumentToolbar from './ListDocumentToolbar'
-import EmptyListCell from './EmptyListCell'
-import AddCategoryControl from './AddCategoryControl'
-import PackingProgress from './PackingProgress'
 import { useListResetActions } from './use-list-reset-actions'
 import { useListItemActions } from './use-list-item-actions'
 import { useListFood } from './use-list-food'
 import { resolveRemovalPlan } from './list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
-import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
-import CategoryGroup from './CategoryGroup'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
-import PanelCard from './PanelCard'
-import ItemRow from './ItemRow'
-import RowIconButton from '../components/RowIconButton'
 import StatusPanel from '../components/StatusPanel'
-import GearItemDialog from '../components/gear/GearItemDialog'
-import QuickEditItemModal from './QuickEditItemModal'
-import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
@@ -72,65 +50,16 @@ import {
 import { selectPackGroupingState } from './packing-grouping'
 import { buildPackingTree } from './packing-tree'
 import { usePackingLocationActions } from './use-packing-location-actions'
-import { useListDnd, EMPTY_FOOD_ITEMS } from './use-list-dnd'
-import MoveToLocationMenu from './MoveToLocationMenu'
-import PackLocationControls from './PackLocationControls'
-import PackingLocationTree from './PackingLocationTree'
+import { useListDnd } from './use-list-dnd'
 import PrintListHeader from './PrintListHeader'
-import { DroppableUnassignedSection } from './SortablePackSection'
-import { PACKING_LOCATION_CAP } from '../lib/caps'
 import { useIsPrinting } from '../lib/use-is-printing'
-import { runGuardedSave } from '../lib/guarded-save'
-
-// PrintListHeader (the print-only document header this note used to promise
-// "returns with the CSV/print slice") is back, above the toolbar in pack
-// mode. The print:* classes scattered through the row components were never
-// inert, as that note claimed - Tailwind emitted them and they worked; what
-// they lacked was a density tier and a document header to sit under.
-// docs/ui-density.md "The print tier" is the current account of how printing
-// works, including the parts that are NOT CSS.
-// TRANSPLANT NOTE (tabs): the old page rendered ListWorkspaceTabs (a
-// Gear/Pack two-tab remnant) above ListDocumentToolbar. The toolbar now owns
-// direct List / Organize / Pack navigation; the old workspace tab strip returns
+import ListDialogs, { type DialogState } from './ListDialogs'
+import ListDocument from './ListDocument'
+import PackDocument from './PackDocument'
 
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
 const EMPTY_GEAR_ITEMS: GearItem[] = []
 const EMPTY_CATEGORIES: Category[] = []
-
-// Every transient dialog/modal/inline-form on this page lives in one
-// discriminated union, set/cleared atomically. `null` is the closed state
-// (matching the pattern in src/gear/GearLibraryPage.tsx). edit-gear folds
-// the optional list-item context AND the partial-save error message into
-// one variant so they can never drift apart.
-type DialogState =
-  | { type: 'edit-gear'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
-  // The phone editor: name, weight, quantity, flags. Same shape as
-  // edit-gear so More details can switch between them without losing the
-  // target. Opened by the mobile row tap (sharedGroupProps picks it below
-  // lg); the full form stays the desktop Edit and the Gear page's editor.
-  | { type: 'quick-edit-item'; gear: GearItem; listItem: ListItemWithGear | null; saveError: string | null }
-  // `returnDialog` lets the confirm dialog restore the prior dialog on
-  // cancel — set when the delete is launched from inside GearItemDialog
-  // so the user lands back in the form they were editing rather than
-  // dropping all the way to the page. Omitted (undefined) for deletes
-  // launched directly from the row kebab.
-  | { type: 'delete-gear'; candidate: GearItem; returnDialog?: DialogState }
-  // The ONLY removal that asks. A list item can be USED AS a packing
-  // container, and removing it removes that container too, moving its
-  // contents to Unassigned - intended, but more than the row that was
-  // clicked. Every other removal goes straight through. See
-  // list-item-removal.ts for the rule.
-  //
-  // `location` is null in the fail-safe case: the packing-locations lookup
-  // failed, so we could not establish whether this row is a container. Asking
-  // without being able to name one is worse copy than the normal path, and
-  // better than removing a container unannounced.
-  | {
-      type: 'remove-container-item'
-      item: ListItemWithGear
-      location: PackingLocation | null
-      returnDialog?: DialogState
-    }
 
 export default function ListDetailPage({ mode }: { mode: ListDetailMode }) {
   // Mounted only under /lists/:id, so params.id is guaranteed by the route.
@@ -253,18 +182,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // ['categories'] refetch lands, and a section that flashes out of
   // existence during that gap reads as the create failing.
   const [starterCategories, setStarterCategories] = useState<Category[]>([])
-  // The edit-gear save currently awaiting a response, held as the exact DialogState
-  // object it was submitted from. Same device as GearLibraryPage's: it is both the
-  // dialog's own pending flag (the mutations behind it are shared with inline row
-  // writes, so their `isPending` is not this dialog's) and the identity a late
-  // completion is checked against before it touches the screen.
-  const [savingGearAttempt, setSavingGearAttempt] = useState<DialogState | null>(null)
-  // Packing-location admin state, lifted from the retired OrganizePackPanel.
-  // Which section is renaming (by id, so switching sections cannot leak a
-  // half-typed name), the pending location delete, and the new-location draft.
-  const [renamingLocationId, setRenamingLocationId] = useState<string | null>(null)
-  const [deleteLocationTarget, setDeleteLocationTarget] = useState<PackingLocation | null>(null)
-  const [newLocationName, setNewLocationName] = useState('')
 
   const list = lists.find((l) => l.id === listId)
   // The list name once it resolves; "Lists" while the lists query is pending
@@ -334,14 +251,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   const gearItemsQuery = useQuery(queries.gearItems())
   const gearItems = gearItemsQuery.data ?? EMPTY_GEAR_ITEMS
 
-  // O(1) id lookups for DnD callbacks and DragOverlay rendering. Linear
-  // scan would be fine at typical N (~50 list items per list); the Map
-  // signals intent more clearly and keeps drag-tick cost flat rather
-  // than scaling with N. Ref-based callback finds (in onLibraryRemove
-  // and sharedGroupProps's onEditGearItem/onDeleteGearItem) are NOT
-  // converted — those read *Ref.current at click-time, and a
-  // *ByIdRef would require an additional ref + useEffect to keep in
-  // sync, which is more code than the linear scan saves at click cadence.
+  // Id lookups for the drag handlers and the drag overlay, which run on
+  // every drag tick. Click handlers scan the cache instead (readListItems).
   const listItemsById = useMemo(
     () => new Map(listItems.map((i) => [i.id, i])),
     [listItems],
@@ -422,40 +333,27 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
-  // Gear/category inventory writes reachable from this list (edit gear, delete
-  // gear from inventory, create a category from the edit-gear dialog) live in a
-  // dedicated hook; it owns the gear-specific fan-out wiring across the
-  // ['gear-items'] + every ['list-items', *] cache, the delete-gear error toast,
-  // and the category optimistic insert. The page keeps the raw mutations' stable
-  // `.mutate` reads (sharedGroupProps.onSaveGear*/onSetGearStatus), the edit-gear
-  // dialog's sequential gear-then-list save orchestration + saveError state, and
-  // the delete-gear confirm + returnDialog restore.
-  const { updateGearItem, deleteGearItem, addCategory } = useListGearActions(categories)
+  // Gear and category writes reachable from this list. The hook owns their
+  // cache wiring across ['gear-items'] and every ['list-items', *] cache.
+  const gearActions = useListGearActions(categories)
+  const { updateGearItem, addCategory } = gearActions
 
-  // List-item write actions (add existing gear / update fields / delete / Quick
-  // Add new gear+item) live in a dedicated hook; it owns the optimistic
-  // insert/update/delete wiring, the update sibling-in-flight invalidation gate,
-  // and addNewItem's dual-cache invalidation, errorToast and double-fire
-  // guard. The page keeps the
-  // stable handler/memo layer that reads these raw mutations' `.mutate` through
-  // the live binding (onLibraryAdd/onLibraryRemove/onAddNewItem, sharedGroupProps),
-  // DnD/reorder, dialog orchestration,
-  // and the inline notes list-field mutation. (Gear/category writes live in
-  // useListGearActions, above.)
+  // List-item writes. The hook owns their optimistic cache wiring; the page
+  // keeps the stable handlers that call `.mutate` on them.
   const { addItem, updateItem, deleteItem, addNewItemOnce, moveItem } = useListItemActions(listId, {
     listItems,
     foodItems: listFood.items,
   })
 
-  // Packing-location admin (create / rename / delete / promote an item to a
-  // container), lifted from the retired OrganizePackPanel unchanged.
-  const { createLocation, createItemContainer, renameLocation, removeLocation } =
-    usePackingLocationActions(listId, packingLocations)
+  // Packing-location admin: create, rename, delete, promote an item to a
+  // container.
+  const locationActions = usePackingLocationActions(listId, packingLocations)
+  const { createLocation, createItemContainer, removeLocation } = locationActions
   const locationCreationPending =
     createLocation.isPending || createItemContainer.isPending
 
   // A pending optimistic bag delete makes cached locations lie about what
-  // is rendered; structural writes wait for it to settle (round-7).
+  // is rendered, so structural writes wait for it to settle.
   // useListDnd folds this, with location creation, into itemDragPending.
   const structuralWritePending = locationCreationPending || removeLocation.isPending
 
@@ -533,27 +431,9 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [listItems, packingLocations, mode],
   )
 
-  // Drag and drop orchestration - the handlers, narration, the two reorder
-  // mutations and the packing derivations they consume - lives in useListDnd. The destructured names
-  // are unchanged, so every consumer below reads as before the move.
-  const {
-    sensors,
-    activeId,
-    announcement,
-    collisionDetection: packingCollisionDetection,
-    onDragStart: handleDragStart,
-    onDragEnd: handleDragEnd,
-    onDragCancel: handleDragCancel,
-    requestMove,
-    requestMoveFood,
-    anyItemReorderPending,
-    itemDragPending,
-    realLocations,
-    containerMoveExclusions,
-    packFoodItems,
-    foodById,
-    foodByLocation,
-  } = useListDnd({
+  // Drag and drop: the handlers, narration, the two reorder mutations and the
+  // packing derivations they consume.
+  const dnd = useListDnd({
     listId,
     mode,
     groupingKind: grouping.kind,
@@ -585,8 +465,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     }),
     [categories, listItems, foodGrams],
   )
-  // Mirrors WeightSummary's own render guard.
-  const showWeightSummary = listItems.length > 0 || weightBreakdown.totalPackGrams > 0
 
   // Worn rows are always extracted into one trailing section in Edit and Pack.
   const wornItems = wornItemsInDocumentOrder(grouped)
@@ -730,51 +608,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the read helpers use only qc and listId, both fixed for this instance
   }, [setDialog])
 
-  // The full and quick editors' save: gear fields first, then the list-item
-  // patch, each failure reported inline with copy that claims only what it can
-  // prove. The dialog stays dismissable while saving (abandoning a slow save
-  // is legitimate), so completion goes through runGuardedSave's identity
-  // guard (src/lib/guarded-save.ts); installing `attempt` also clears the
-  // previous try's error.
-  function saveGearAndItem(
-    dialog: Extract<DialogState, { type: 'edit-gear' | 'quick-edit-item' }>,
-    gearPatch: Parameters<typeof updateGearItem.mutateAsync>[0]['patch'],
-    listPatch: ListItemPatch | null,
-  ) {
-    const attempt: DialogState = { ...dialog, saveError: null }
-    const gearTarget = dialog.gear
-    const listTarget = dialog.listItem
-    runGuardedSave<DialogState>({
-      attempt,
-      setState: setDialog,
-      setSaving: setSavingGearAttempt,
-      run: async (settle) => {
-        try {
-          await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
-        } catch {
-          settle((prev) => ({
-            ...prev,
-            saveError: "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
-          }))
-          return
-        }
-        if (listPatch && listTarget) {
-          try {
-            await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
-          } catch {
-            settle((prev) => ({
-              ...prev,
-              saveError:
-                "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
-            }))
-            return
-          }
-        }
-        settle(() => null)
-      },
-    })
-  }
-
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
   //
@@ -847,166 +680,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [mode, grouping.kind, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
   )
 
-  // The per-row packing menu: move this item to another location, or promote
-  // it to a container. This is the keyboard- and touch-reachable equivalent of
-  // dragging a row between sections, and the ONLY route to those actions for
-  // anyone not using a pointer.
-  //
-  // Not folded into sharedGroupProps on purpose: it depends on the locations
-  // array, which changes on every packing write, and sharedGroupProps is
-  // memoized precisely to keep unrelated sections from re-rendering.
-  //
-  // A plain function, not a useCallback: its inputs are the un-memoized
-  // packing derivations above, so a memo could never hit and the dependency
-  // array would only mislead.
-  //
-  // KNOWN TRADE, stated plainly because the surrounding architecture works
-  // hard at the opposite: passing a fresh function here defeats
-  // CategoryGroup's React.memo for pack sections, so a checkbox tick
-  // re-renders every location section rather than the one that changed.
-  //
-  // PROFILED AND ACCEPTED (2026-10, jsdom at 1280px): a tick at the worst
-  // case the caps allow (300 items across 30 locations) commits in ~140ms
-  // jsdom / roughly 15-45ms in a browser, scaling linearly down to ~8ms
-  // jsdom for one section of ten - inside the 100ms interaction budget even
-  // at the extreme. Making this menu stable would NOT restore the memo hits
-  // on a tick anyway: every list-items write rebuilds packingTree, which
-  // hands every section a fresh `items` array, so the real fix is stable
-  // callbacks PLUS identity-preserving tree builds - complexity well above
-  // the measured cost. The stability discipline stays where it already
-  // pays: edit mode and the library panel, whose arrays survive unrelated
-  // page-state changes. Re-profile before adding cost to this path (more
-  // per-row work, higher caps), not before ticking checkboxes.
-  const renderPackRowAction = (item: ListItemWithGear) => (
-    <MoveToLocationMenu
-      itemId={item.id}
-      itemName={item.gearItem.name}
-      currentLocationId={item.packingLocationId}
-      locations={realLocations}
-      mobile={isBelowLg}
-      disabled={itemDragPending}
-      locationsUnavailable={!packingLocationsResolved}
-      containerCreationDisabled={
-        packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
-      }
-      isContainer={false}
-      excludedLocationIds={containerMoveExclusions.get(item.id)}
-      onMove={(locationId) => requestMove(item.id, locationId)}
-      // Membership: this drops the row from the list and leaves the gear item
-      // in the library. requestRemoveListItem owns the container-backing
-      // case, which needs a confirm because it destroys more than the row.
-      //
-      // Authoring now lives here too (onEdit below). Pack used to be
-      // membership-only on the grounds that gear is authored in the library;
-      // a real trip showed that a wrong weight noticed while packing then
-      // cost a round trip through two other views.
-      onRemoveFromList={() => requestRemoveListItem(item)}
-      onEdit={() => openEditor('edit-gear', item.gearItem.id)}
-      onUseAsContainer={() => createItemContainer.mutate({
-        itemId: item.id,
-        name: item.gearItem.name,
-      })}
-    />
-  )
-
-  // The food row's menu: move between bags. No
-  // container promotion (food cannot back a container) and no removal - food
-  // membership is authored in the Food view, and a checklist row losing its
-  // delete is the same rule worn gear rows follow for structure actions.
-  const renderFoodRowAction = (food: FoodItemResponse) => (
-    <MoveToLocationMenu
-      itemId={food.id}
-      itemName={food.name}
-      currentLocationId={food.packingLocationId}
-      locations={realLocations}
-      mobile={isBelowLg}
-      disabled={itemDragPending}
-      locationsUnavailable={!packingLocationsResolved}
-      containerCreationDisabled
-      isContainer={false}
-      onMove={(locationId) => requestMoveFood(food.id, locationId)}
-    />
-  )
-  const packFoodRowAction = mode === 'pack' ? renderFoodRowAction : undefined
-
-  // The same action, for the category-grouped sections. Those sections are
-  // NOT pack-only - they are what List view renders too - so the mode test is
-  // the whole point of this binding.
-  //
-  // Pack falls back to category grouping until a list has its first packing
-  // location (selectPackGrouping), which is every list on its first visit to
-  // this view. Without this the feature would be missing exactly where a new
-  // user meets it, and present only after they had built a bag - the kind of
-  // partial coverage that reads as "it does not work".
-  //
-  // The menu degrades correctly here on its own: with no locations the move
-  // list holds only the current one, disabled.
-  const packRowAction = mode === 'pack' ? renderPackRowAction : undefined
-
-  // Worn rows, which sit outside the packing tree by design: they are not in
-  // a bag, so move, reorder and containerize do not apply to them. Removal
-  // does - deciding you are not taking something is as likely for a worn item
-  // as any other - and pack mode suppresses ItemRow's ordinary kebab, so
-  // without this the Worn section is the one place in Pack you cannot drop an
-  // item from.
-  //
-  // Buttons rather than a kebab. Editing joined removal here so that "you can
-  // edit an item from Pack" is true of the Worn section too - it has no
-  // packing kebab to hang a menu entry on. Two direct controls beat a menu:
-  // hiding Remove behind an extra click costs more than the ~28px.
-  const renderWornPackRowAction = (item: ListItemWithGear) => (
-    <>
-      <RowIconButton
-        touchSafe
-        onClick={() => openEditor('edit-gear', item.gearItem.id)}
-        ariaLabel={`Edit ${item.gearItem.name}`}
-        title="Edit item"
-        icon={<Pencil size={14} />}
-      />
-      <RowIconButton
-        touchSafe
-        disabled={itemDragPending}
-        onClick={() => requestRemoveListItem(item)}
-        ariaLabel={`Remove ${item.gearItem.name} from list`}
-        title="Remove from list"
-        icon={<Trash2 size={14} />}
-      />
-    </>
-  )
-
-  // The container header's menu, built here beside the row menus because it
-  // shares their orchestration (requestMove, requestRemoveListItem,
-  // openEditor). PackingLocationTree calls back into this per node.
-  const renderContainerAction = (
-    containerItem: ListItemWithGear,
-    location: PackingLocation,
-  ) => (
-    <MoveToLocationMenu
-      itemId={containerItem.id}
-      itemName={containerItem.gearItem.name}
-      currentLocationId={containerItem.packingLocationId}
-      locations={realLocations}
-      mobile={isBelowLg}
-      disabled={itemDragPending}
-      locationsUnavailable={!packingLocationsResolved}
-      containerCreationDisabled={
-        packingLocations.length >= PACKING_LOCATION_CAP || locationCreationPending
-      }
-      isContainer
-      excludedLocationIds={containerMoveExclusions.get(containerItem.id)}
-      onMove={(locationId) => requestMove(containerItem.id, locationId)}
-      // The container's own row. Removing it necessarily takes the
-      // location with it (container_list_item_id cascades) and drops its
-      // contents to Unassigned - requestRemoveListItem routes exactly
-      // this case through a confirm that names both consequences.
-      onRemoveFromList={() => requestRemoveListItem(containerItem)}
-      // A container's own row lives in the section header, so the
-      // ordinary row kebab never renders for it. Without this, the one
-      // item you cannot edit from Pack would be the bag itself.
-      onEdit={() => openEditor('edit-gear', containerItem.gearItem.id)}
-      onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
-    />
-  )
+  const onDeleteLocation = (location: PackingLocation) =>
+    setDialog({ type: 'delete-location', location })
 
   // ── Loading / not found ────────────────────────────────────────────────────
 
@@ -1057,24 +732,15 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     // dead-end. Render an empty state with a Back-to-lists link so there's
     // always a way out.
     return (
-      <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
-        <p className="text-base font-medium text-gray-700">List not found</p>
-        <p className="text-sm text-gray-500">
-          This list may have been deleted or the link is no longer valid.
-        </p>
-        <Link
-          to="/lists"
-          className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          Back to lists
-        </Link>
-      </div>
+      <StatusPanel
+        title="List not found"
+        body="This list may have been deleted or the link is no longer valid."
+        showBackToLists
+      />
     )
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
-
-  const editDialogListItem = dialog?.type === 'edit-gear' ? dialog.listItem : null
 
   return (
     <div className="flex flex-col gap-4 print:pb-0">
@@ -1084,20 +750,17 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
           inside the document column moved sideways on every view switch. */}
       <ListDocumentToolbar list={list} mode={mode} />
 
-      {/* Two-column grid. The aside serves BOTH gear arrangements now
-          (Organize returned through its exclusive branch above; Food keeps
-          its own left rail and is excluded here). */}
+      {/* Two columns: the gear picker aside (List and Pack; Food has its
+          own left rail) and the list document. */}
       <div className="flex gap-4 items-start">
         {/* LEFT column — Lists switcher above the gear library picker.
             DesktopListsPanel is the primary desktop workflow for list
             switching/management; /lists remains the mobile management page
             and a desktop fallback (e.g. when no lists exist).
 
-            Pack used to hide this entirely so packing got the focus. A real
-            trip retired that argument: adding or reweighing one item meant
-            leaving the view and coming back.
-
-            But Pack's aside starts at xl, not lg. At 1024px the shell's 32px
+            Pack shows it too: adding or reweighing one item while packing
+            must not mean leaving the view. But Pack's aside starts at xl,
+            not lg. At 1024px the shell's 32px
             padding leaves 992px; minus a 320px aside and the 16px gap the
             document is 656px, and a pack row (grip, two checkboxes, name,
             description, two icon slots, quantity, weight, menu) does not
@@ -1135,13 +798,11 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
             items (always visible; packing checkbox column appears in pack
             mode).
 
-            Pack is capped at the Food view's measure (max-w-3xl, centered in
-            the leftover flex space by mx-auto). The cap was dropped once on
-            the argument that the xl aside fills the width, but the aside only
-            exists at xl - everywhere below that the document stretched across
-            the whole shell and pack rows read as a ribbon. Paper lifts the
-            cap (print:max-w-none) and uses the full printable width for two
-            columns of sections instead (see the section wrapper below). */}
+            Pack is capped at the Food view's measure (max-w-3xl, centered by
+            mx-auto): without the aside, below xl, pack rows stretched across
+            the whole shell. Paper lifts the cap (print:max-w-none) and uses
+            the full printable width for two columns of sections instead (see
+            PackDocument). */}
         <div
           data-testid="list-document-column"
           className={`flex-1 min-w-0 space-y-4 ${mode === 'pack' ? 'max-w-3xl mx-auto print:max-w-none' : ''}`}
@@ -1170,464 +831,71 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
             />
           ) : detailDataLoading ? (
             <StatusPanel title="Loading list details..." busy />
+          ) : mode === 'pack' ? (
+            <PackDocument
+              listItems={listItems}
+              grouped={grouped}
+              groupingKind={grouping.kind}
+              packingTree={packingTree}
+              wornItems={wornItems}
+              breakdown={weightBreakdown}
+              groupProps={sharedGroupProps}
+              dnd={dnd}
+              listItemsById={listItemsById}
+              weightUnit={weightUnit}
+              isBelowLg={isBelowLg}
+              isBelowXl={isBelowXl}
+              filters={{
+                showUnpackedOnly: showUnpackedOnlySetting,
+                onToggleShowUnpackedOnly: () => setShowUnpackedOnly((v) => !v),
+                showUnreadyOnly: showUnreadyOnlySetting,
+                onToggleShowUnreadyOnly: () => setShowUnreadyOnly((v) => !v),
+              }}
+              onResetPacked={resetPacked}
+              onResetReady={resetReady}
+              locations={{
+                items: packingLocations,
+                resolved: packingLocationsResolved,
+                loadFailed: packingGroupingState.showErrorNotice,
+                onRetry: retryPackingLocations,
+                active: activeLocation,
+                reorderPending: locationReorderPending,
+                creationPending: locationCreationPending,
+              }}
+              locationActions={locationActions}
+              onDeleteLocation={onDeleteLocation}
+              onAddItem={onAddNewItem}
+              onEditItem={(gearId) => openEditor('edit-gear', gearId)}
+              onRemoveItem={requestRemoveListItem}
+              onOpenDrawer={() => setDrawerOpen(true)}
+            />
           ) : (
-            <>
-              {mode === 'pack' && listItems.length + packFoodItems.length > 0 && (
-                <div className="print:hidden">
-                  {/* Union counts (0022): the pack is gear plus food, and a
-                      progress bar that ignored food would read 100% with the
-                      tortillas still on the counter. */}
-                  <PackingProgress
-                    total={listItems.length + packFoodItems.length}
-                    packed={
-                      listItems.filter((i) => i.isPacked).length +
-                      packFoodItems.filter((f) => f.isPacked).length
-                    }
-                    onReset={resetPacked}
-                    showUnpackedOnly={showUnpackedOnlySetting}
-                    onToggleShowUnpackedOnly={() => setShowUnpackedOnly((v) => !v)}
-                    showUnreadyOnly={showUnreadyOnlySetting}
-                    onToggleShowUnreadyOnly={() => setShowUnreadyOnly((v) => !v)}
-                    readyChecks={{
-                      ready:
-                        listItems.filter((i) => i.isReady).length +
-                        packFoodItems.filter((f) => f.isReady).length,
-                      total: listItems.length + packFoodItems.length,
-                      onResetReady: resetReady,
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Notes + Weight summary — side by side on desktop, with Notes
-                  getting the wider column. Both hidden in pack mode: neither
-                  is active-use information while packing (PackingProgress
-                  above is the only summary the packer needs). The entire grid
-                  renders nothing in pack mode.
-                  WeightSummary owns its own mobile-vs-desktop split: below lg
-                  it's a compact Base/Total/Consumable strip with a collapsed
-                  "Weight breakdown" disclosure, at lg+ it's the existing
-                  PanelCard table. */}
-              {mode === 'edit' && (
-                // Two columns exactly when WeightSummary renders something -
-                // the same condition it guards itself with. Keying this on
-                // on "a plan is attached" would reserve an empty column for a
-                // plan that projects to nothing.
-                <div className={`print:hidden grid gap-4 ${showWeightSummary ? 'grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]' : 'grid-cols-1'}`}>
-                  <PanelCard
-                    title="Notes"
-                    headerAction={
-                      !notesEditing && (
-                        // Waits for a save the user canceled mid-flight: a
-                        // second save would take over its callbacks, and its
-                        // failure would go unreported.
-                        <button
-                          type="button"
-                          onClick={() => setNotesEditing(true)}
-                          disabled={notesMut.isPending}
-                          aria-label="Edit notes"
-                          title="Edit notes"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      )
-                    }
-                  >
-                    <NotesEditor
-                      key={list.id}
-                      initial={list.description ?? ''}
-                      onSave={(v, callbacks) => notesMut.mutate(v, callbacks)}
-                      editing={notesEditing}
-                      onEditingChange={setNotesEditing}
-                    />
-                  </PanelCard>
-                  <WeightSummary
-                    items={listItems}
-                    categories={categories}
-                    breakdown={weightBreakdown}
-                  />
-                </div>
-              )}
-
-              {/* Pack's way back to the gear library, for the ONE width band
-                  that has no other path to it: lg to xl.
-
-                  Below lg the bottom action bar already carries Add, so
-                  rendering this there would be a second button for one action
-                  on the surface with the least room for it. At xl and up the
-                  picker aside is on screen permanently, so this would be a
-                  drawer trigger for a panel the user can already see.
-
-                  It opens the same library panel the aside shows, so adding
-                  gear behaves identically either way - only the container
-                  differs. */}
-              {mode === 'pack' && !isBelowLg && isBelowXl && (
-                <div className="print:hidden flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    <Plus size={15} /> Add gear
-                  </button>
-                </div>
-              )}
-
-              {/* Packing-location admin, lifted from the retired Organize
-                  view. Pack mode is the organizer now, so building the
-                  structure and filling it happen in one place instead of
-                  across two tabs. Edit mode never shows this: locations are a
-                  packing concern. */}
-              {mode === 'pack' && (
-                <PackLocationControls
-                  locations={packingLocations}
-                  // The empty-state nudge must not fire on a guess. An empty
-                  // locations array is ALSO what a pending or failed query
-                  // looks like (useReorderable defaults items to []), so
-                  // without this a list that already has locations would be
-                  // told it has none - and its three starter buttons would
-                  // cheerfully create a duplicate.
-                  //
-                  // Scope, honestly: this covers the cold-load and
-                  // first-load-failure cases. It does NOT cover a stale
-                  // cached [] - status stays 'success' through a background
-                  // refetch - so a tab holding a stale empty result while
-                  // another device added a location can still show the nudge
-                  // until the refetch lands. Left as-is because the outcome
-                  // there is one extra, visible, deletable location, not the
-                  // irreversible cascade the removal path guards against.
-                  locationsResolved={packingLocationsResolved}
-                  loadFailed={packingGroupingState.showErrorNotice}
-                  onRetry={retryPackingLocations}
-                  creationPending={locationCreationPending}
-                  draft={newLocationName}
-                  onDraftChange={setNewLocationName}
-                  onCreate={(name) => {
-                    createLocation.mutate(name)
-                    setNewLocationName('')
-                  }}
-                />
-              )}
-
-              {/* Items grouped by category. A starter category (created from
-                  this page, still empty) counts as content in CATEGORY view
-                  only - its section renders there so the user can type the
-                  first item in. Pack never renders starter sections, so
-                  counting them there would blank Pack's empty-state guidance
-                  while showing nothing in its place (Codex review). */}
-              {listItems.length === 0 &&
-              (mode === 'pack' || starterCategories.length === 0) &&
-              (mode !== 'pack' || packFoodItems.length === 0) ? (
-                <div className="flex flex-col gap-3">
-                  <EmptyListCell onMobileAdd={() => setDrawerOpen(true)} />
-                  {mode !== 'pack' && (
-                    <AddCategoryControl
-                      onCreate={(name) => addCategory.mutateAsync(name)}
-                      onCreated={(category) =>
-                        setStarterCategories((prev) => [...prev, category])
-                      }
-                    />
-                  )}
-                </div>
-              ) : (() => {
-                const activeParsed = activeId ? parseDnDId(activeId) : null
-                const activeItem =
-                  activeParsed?.kind === 'item' ? (listItemsById.get(activeParsed.id) ?? null) : null
-                const activePackingItem =
-                  activeParsed?.kind === 'packing-item'
-                    ? (listItemsById.get(activeParsed.id) ?? null)
-                    : null
-                const activePackingFood =
-                  activeParsed?.kind === 'packing-food-item'
-                    ? (foodById.get(activeParsed.id) ?? null)
-                    : null
-                return (
-                  // Paper gets two columns in Pack: a checklist row is
-                  // narrow, so one column wasted half of every sheet. Rows
-                  // and section headers already refuse to split from what
-                  // follows them (PRINT_KEEP_TOGETHER / PRINT_KEEP_WITH_NEXT),
-                  // so a section may continue into the next column but never
-                  // leaves a header or half a row behind. Block layout drops
-                  // the flex gap, so each card carries its own margin there.
-                  <div
-                    data-testid={mode === 'pack' ? 'pack-print-columns' : undefined}
-                    className={`flex flex-col gap-3 ${mode === 'pack' ? 'print:block print:columns-2 print:gap-4 print:*:mb-2' : ''}`}
-                  >
-                    <DndContext
-                      sensors={sensors}
-                      // Location grouping needs the packing filter: it keeps a
-                      // section drag from landing on a cousin (which would
-                      // silently reparent it) and keeps an item drag from
-                      // colliding with things it can never be dropped on.
-                      // Category grouping has one kind of target and needs no
-                      // filtering.
-                      collisionDetection={
-                        grouping.kind === 'location' ? packingCollisionDetection : closestCenter
-                      }
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                      onDragCancel={handleDragCancel}
-                    >
-                      {/* Categories render in their global sortOrder but are not
-                          reorderable here — category-level DnD is /gear-only. Each
-                          CategoryGroup still renders a per-category SortableContext
-                          internally so items reorder within their category. */}
-                      {grouping.kind === 'location' && packingTree ? (
-                        <>
-                          {/* Unassigned is a drop target but not sortable: it
-                              is not a location row and has no sortOrder.
-                              Dragging a row here is how you take it back out
-                              of a container. */}
-                          <DroppableUnassignedSection>
-                            <CategoryGroup
-                              key="__unassigned__"
-                              name="Unassigned"
-                              categoryId={null}
-                              regionKey="packing-unassigned"
-                              items={packingTree.unassignedItems}
-                              {...sharedGroupProps}
-                              renderRowAction={renderPackRowAction}
-                              packFoodRows={foodByLocation.get(null) ?? EMPTY_FOOD_ITEMS}
-                              renderFoodRowAction={packFoodRowAction}
-                              reorderPending={anyItemReorderPending}
-                            />
-                          </DroppableUnassignedSection>
-                          <PackingLocationTree
-                            roots={packingTree.roots}
-                            groupProps={sharedGroupProps}
-                            renderRowAction={renderPackRowAction}
-                            renderFoodRowAction={packFoodRowAction}
-                            renderContainerAction={renderContainerAction}
-                            foodByLocation={foodByLocation}
-                            itemReorderPending={anyItemReorderPending}
-                            locationReorderPending={locationReorderPending || locationCreationPending}
-                            movePending={itemDragPending}
-                            renamingLocationId={renamingLocationId}
-                            onStartRename={setRenamingLocationId}
-                            onCancelRename={() => setRenamingLocationId(null)}
-                            onRename={(id, name) => renameLocation.mutate({ id, name })}
-                            onDeleteLocation={setDeleteLocationTarget}
-                          />
-                        </>
-                      ) : (
-                        <>
-                        {grouped.map((group) => {
-                          const definition = group.group
-                          if (definition) {
-                            return (
-                              <CategoryGroup
-                                key={definition.id}
-                                name={definition.name}
-                                categoryId={definition.id}
-                                items={group.items}
-                                {...sharedGroupProps}
-                                renderRowAction={packRowAction}
-                                reorderPending={anyItemReorderPending}
-                                baseSubtotalGrams={baseGramsForCategory(weightBreakdown, definition.id)}
-                                consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, definition.id)}
-                                wornSubtotalGrams={wornGramsForCategory(weightBreakdown, definition.id)}
-                                onAddItem={onAddNewItem}
-                              />
-                            )
-                          }
-                          return (
-                            <CategoryGroup
-                              key="__uncategorized__"
-                              name="Uncategorized"
-                              categoryId={null}
-                              items={group.items}
-                              {...sharedGroupProps}
-                              renderRowAction={packRowAction}
-                              reorderPending={anyItemReorderPending}
-                              baseSubtotalGrams={baseGramsForCategory(weightBreakdown, null)}
-                              consumableSubtotalGrams={consumableGramsForCategory(weightBreakdown, null)}
-                              wornSubtotalGrams={wornGramsForCategory(weightBreakdown, null)}
-                              onAddItem={onAddNewItem}
-                            />
-                          )
-                        })}
-                        {/* Starter sections: categories created from this
-                            page that have no items yet (grouped hides empty
-                            categories), rendered with the add-item row
-                            already open - the whole point of making one is
-                            typing an item into it next. Skipped once the
-                            category has items (grouped covers it then). */}
-                        {mode !== 'pack' &&
-                          starterCategories
-                            .filter((starter) => !grouped.some((group) => group.group?.id === starter.id))
-                            // Prefer the cached row (it follows a rename on
-                            // /gear); the stored object covers the gap before
-                            // the refetch lands.
-                            .map((starter) => categories.find((category) => category.id === starter.id) ?? starter)
-                            .map((category) => (
-                              <CategoryGroup
-                                key={`starter-${category.id}`}
-                                name={category.name}
-                                categoryId={category.id}
-                                items={EMPTY_LIST_ITEMS}
-                                {...sharedGroupProps}
-                                reorderPending={anyItemReorderPending}
-                                onAddItem={onAddNewItem}
-                                startAdding
-                              />
-                            ))}
-                        {/* Pack's no-locations fallback groups gear by
-                            category; food gets its own section so the
-                            checklist still covers the whole pack. Rows check
-                            off and drag-reorder among themselves (the union
-                            planner handles `packing-food-item:` ids in any
-                            grouping); bag assignment starts existing once
-                            the first location does. */}
-                        {mode === 'pack' && packFoodItems.length > 0 && (
-                          <CategoryGroup
-                            key="__pack_food__"
-                            name="Food"
-                            regionKey="packing-food-fallback"
-                            items={EMPTY_LIST_ITEMS}
-                            {...sharedGroupProps}
-                            packFoodRows={packFoodItems}
-                            renderFoodRowAction={packFoodRowAction}
-                            reorderPending={anyItemReorderPending}
-                          />
-                        )}
-                        </>
-                      )}
-                      {/* className reaches the overlay's own portaled
-                          wrapper; the chips below are not descendants of
-                          anything already print-hidden. */}
-                      <DragOverlay dropAnimation={null} className="print:hidden">
-                        {activeItem ? (
-                          <ItemRow item={activeItem} weightUnit={weightUnit} isBelowLg={isBelowLg} />
-                        ) : activePackingItem ? (
-                          // Location grouping drags a `packing-item:`, and the
-                          // full ItemRow clone is too heavy to read mid-drag
-                          // when the target is another section rather than a
-                          // slot. A name chip is the whole payload.
-                          <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
-                            {activePackingItem.gearItem.name}
-                          </div>
-                        ) : activePackingFood ? (
-                          // Same chip treatment as a gear packing drag.
-                          <div className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm shadow-lg">
-                            {activePackingFood.name}
-                          </div>
-                        ) : activeLocation ? (
-                          <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-lg">
-                            {activeLocation.name}
-                          </div>
-                        ) : null}
-                      </DragOverlay>
-                      {/* Packing drags have no visible result for a screen
-                          reader otherwise: the row simply stops being where
-                          it was. */}
-                      <div className="sr-only" aria-live="polite" aria-atomic="true">
-                        {announcement}
-                      </div>
-                    </DndContext>
-
-                    {/* Worn section — PACK MODE ONLY: worn gear is a separate
-                        pile when packing (you lay it out to wear, you do not
-                        pack it). In the Category arrangement worn rows stay
-                        inside their category - worn is a weight flag, not an
-                        organizing principle, and flipping it must not move
-                        the row (section-rows.ts owns the mode-scoped rule).
-                        Sits outside the DndContext: it isn't a reorder target
-                        (no renderRows), and in pack mode worn items don't
-                        render inside their location sections. Spreads the
-                        same sharedGroupProps every in-category section uses so
-                        row chrome stays consistent — onSetGearStatus,
-                        edit/delete handlers, weight unit, and breakpoint.
-                        Worn-specific overrides come after the spread
-                        so they win: section name "Worn", the wornItems list,
-                        and renderRows={undefined} (no drag). The items are in
-                        document order (wornItemsInDocumentOrder), not
-                        category order. regionKey is explicit
-                        because this section passes no categoryId: without it
-                        the collapsible region derives the same
-                        'cat-region-uncategorized' id as the real Uncategorized
-                        section above, duplicating the id in the document and
-                        pointing both chevrons' aria-controls at one target.
-                        No footer: pack mode renders none, and the list-level
-                        worn total lives in the weight summary. */}
-                    {mode === 'pack' && wornItems.length > 0 && (
-                      <CategoryGroup
-                        {...sharedGroupProps}
-                        name="Worn"
-                        items={wornItems}
-                        regionKey="worn"
-                        wornSection
-                        renderRows={undefined}
-                        renderRowAction={renderWornPackRowAction}
-                      />
-                    )}
-                    {/* In-list category creation (List view only; pack
-                        organizes by location, and category ORDER is still
-                        authored on /gear). Every 2026-10 UX audit run went
-                        hunting for this. */}
-                    {mode !== 'pack' && (
-                      <AddCategoryControl
-                        onCreate={(name) => addCategory.mutateAsync(name)}
-                        onCreated={(category) =>
-                          setStarterCategories((prev) => [...prev, category])
-                        }
-                      />
-                    )}
-                  </div>
-                )
-              })()}
-
-              {/* Food in the Category arrangement, as its own trailing
-                  section of rows.
-
-                  It used to be a single summary line linking to the Food
-                  view, on the theory that food was a private planning aid
-                  that would clutter a shared list. That theory did not
-                  survive contact with how these lists are actually read -
-                  food you carry is part of the pack - and it cost a
-                  permanent asymmetry: the same list showed items in Pack and
-                  one number in List, and the share showed neither.
-                  List, Pack and the share now all show the rows.
-
-                  INSIDE the loaded branch, OUTSIDE the listItems.length === 0
-                  one. Inside, because a document half-rendered under a
-                  "couldn't load" banner is worse than none - the same reason
-                  every other section sits there. (The empty-food fallback the
-                  page uses while the query is in flight cannot leak a section
-                  through on its own; the items.length gate below stops that
-                  independently.) Outside the empty-gear branch, because a
-                  list with food and no gear yet is a real, usable list.
-
-                  Category only: in Pack, food rows are part of each bag's
-                  union cohort and are rendered by the location sections
-                  above. Rendering them here as well would show every one
-                  twice. */}
-              {mode === 'edit' && listFood.items.length > 0 && (
-                <CategoryGroup
-                  name="Food"
-                  items={EMPTY_LIST_ITEMS}
-                  regionKey="food"
-                  foodRows={listFood.items}
-                  weightUnit={weightUnit}
-                  isBelowLg={isBelowLg}
-                  // CONSUMABLE, not the bare subtotal. `subtotalGrams` is the
-                  // Worn section's channel and CategoryFooterWeights labels it
-                  // "Worn" - passing food through it would print "Worn 470 g"
-                  // under the food. Food is consumable by definition, which is
-                  // the same bucket its grams already land in upstream.
-                  consumableSubtotalGrams={foodGrams}
-                  // No "Edit" link, no kebab, no grip here: the rows are a
-                  // read-out, authored in the Food view (ListViewNav's Food
-                  // tab is the route), and one authoring path per thing.
-                  // The gear rows above carry a leading grip and a trailing
-                  // kebab; reserve both boxes empty so this table's cells
-                  // and footer sit on the same rails as theirs.
-                  reserveControlColumns
-                />
-              )}
-            </>
+            <ListDocument
+              list={list}
+              notes={{
+                editing: notesEditing,
+                onEditingChange: setNotesEditing,
+                saving: notesMut.isPending,
+                onSave: (v, callbacks) => notesMut.mutate(v, callbacks),
+              }}
+              listItems={listItems}
+              categories={categories}
+              grouped={grouped}
+              breakdown={weightBreakdown}
+              food={listFood.items}
+              foodGrams={foodGrams}
+              starterCategories={starterCategories}
+              onCreateCategory={(name) => addCategory.mutateAsync(name)}
+              onCategoryCreated={(category) => setStarterCategories((prev) => [...prev, category])}
+              onAddItem={onAddNewItem}
+              onOpenDrawer={() => setDrawerOpen(true)}
+              groupProps={sharedGroupProps}
+              dnd={dnd}
+              listItemsById={listItemsById}
+              weightUnit={weightUnit}
+              isBelowLg={isBelowLg}
+            />
           )}
-
         </div>
       </div>
 
@@ -1636,10 +904,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
           add/remove actions so the user can build up a list quickly.
 
           Below lg: edit and pack, since there is no room for the aside there.
-          At lg+: pack only. Desktop Pack hides the left aside on purpose (see
-          the aside's comment - packing wants the focus), which also removed
-          the only way to put a forgotten item on the list without leaving the
-          view. The drawer restores that without giving the aside back.
+          At lg+: pack only, for the lg-to-xl band where Pack has no aside
+          (PackDocument's Add gear button opens it).
 
           Food is excluded at every width: it has no drawer registration (see
           useRegisterSidebarDrawer above, gated the same `edit || pack` way)
@@ -1650,191 +916,16 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         </ListSidebarDrawer>
       )}
 
-      {/* Gear-item edit (reached from the row tap on mobile or the kebab →
-          Edit on any viewport). Reuses GearItemDialog and, when a list item
-          accompanies the gear item, renders an "On this list" section with
-          quantity / worn / consumable controls.
-          Save runs sequentially: gear first, then the per-list patch, and a
-          failed gear write short-circuits the list one. Three reachable
-          outcomes, not four - "both failed" cannot happen, because stage two
-          never starts.
-
-          The messages say UNCONFIRMED rather than "not applied", and the
-          distinction is not pedantry. A rejected mutateAsync does not prove
-          the server did not commit: the connection can drop after the PATCH
-          lands, and apiFetch also rejects when a 200 fails DTO validation.
-          Telling the user "no changes were applied" - as this did - invites
-          them to close the dialog believing a change to their SHARED gear
-          item did not persist when it did.
-
-          What we can honestly offer is that retrying is safe, because both
-          stages are PATCHes and repeating one converges on the same row, and
-          that a REFRESH shows the truth. Not "reopen the dialog": the
-          settled invalidation is fired unawaited, so a quick reopen reads
-          whatever is in the cache right now - possibly the rollback
-          snapshot - and if that refetch failed, it stays there.
-
-          updateGearItem's fan-out invalidates the affected per-list caches
-          it snapshotted, so other open lists pick the change up; it is not
-          a broad ['list-items'] prefix invalidation. */}
-      {dialog?.type === 'edit-gear' && (
-        <GearItemDialog
-          key={dialog.gear.id}
-          categories={categories}
-          item={dialog.gear}
-          listContext={
-            editDialogListItem
-              ? {
-                  quantity: editDialogListItem.quantity,
-                  isWorn: editDialogListItem.isWorn,
-                  isConsumable: editDialogListItem.isConsumable,
-                }
-              : undefined
-          }
-          // Per-attempt, NOT `updateGearItem.isPending || updateItem.isPending`. Both
-          // mutations also serve inline row writes behind this dialog, so the shared
-          // flags would report a row edit as this dialog saving - and now that
-          // `saving` freezes the form, that would disable a dialog the user is
-          // typing in for a write that has nothing to do with it.
-          saving={savingGearAttempt === dialog}
-          saveError={dialog.saveError}
-          onClose={() => setDialog(null)}
-          onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
-          onSave={(gearPatch, listPatch) => saveGearAndItem(dialog, gearPatch, listPatch)}
-          onRemoveFromList={
-            editDialogListItem
-              ? () => {
-                  // Close the editor first: a pristine item removes with no
-                  // confirm, and leaving the dialog open over a row that no
-                  // longer exists is worse than the friction we just removed.
-                  // If a confirm IS needed, requestRemoveListItem re-opens on
-                  // top of this and `returnDialog` restores the editor on
-                  // cancel (both setDialog calls batch; the confirm wins).
-                  setDialog(null)
-                  requestRemoveListItem(editDialogListItem, dialog)
-                }
-              : undefined
-          }
-          onDeleteFromInventory={
-            dialog.listItem
-              ? () => {
-                  const target = dialog.gear
-                  setDialog({ type: 'delete-gear', candidate: target, returnDialog: dialog })
-                }
-              : undefined
-          }
-        />
-      )}
-
-      {/* The phone row tap's compact editor, with the same save as the full
-          dialog (saveGearAndItem). More details switches to the full GearItemDialog with the
-          same target, so nothing is re-looked-up. */}
-      {dialog?.type === 'quick-edit-item' && (
-        <QuickEditItemModal
-          key={dialog.gear.id}
-          gear={dialog.gear}
-          listItem={dialog.listItem}
-          saving={savingGearAttempt === dialog}
-          saveError={dialog.saveError}
-          onClose={() => setDialog(null)}
-          // The drafts travel into the full form by overlaying the snapshots
-          // it initializes from. GearItemDialog computes its save from its
-          // own form values, so a draft-seeded baseline changes what the
-          // form SHOWS, never what a save would write on its own.
-          onMoreDetails={(gearDraft, listDraft) =>
-            setDialog({
-              type: 'edit-gear',
-              gear: { ...dialog.gear, ...gearDraft },
-              listItem:
-                dialog.listItem && listDraft
-                  ? { ...dialog.listItem, ...listDraft }
-                  : dialog.listItem,
-              saveError: null,
-            })
-          }
-          onSave={(gearPatch, listPatch) => saveGearAndItem(dialog, gearPatch, listPatch)}
-        />
-      )}
-
-
-      {/* The one removal that still asks. Ordinary removals are immediate
-          without a dialog; this row is being USED AS a packing container, so
-          removing it also removes that container and moves its contents to
-          Unassigned. That is intended behavior - gear-backed containers
-          cannot outlive their gear - but it changes more than the row that
-          was clicked, so it gets named first rather than happening
-          silently. See list-item-removal.ts for the rule. */}
-      {dialog?.type === 'remove-container-item' && (
-        <ConfirmDialog
-          title={dialog.location ? 'Remove container from list' : 'Remove from list'}
-          // Descriptive, not alarming. Losing the container along with the
-          // gear is the intended outcome - a container that IS a piece of
-          // gear cannot outlive it - and its contents going to Unassigned is
-          // where they belong. The dialog exists because that is a bigger
-          // change than the row the user clicked, not because it is a
-          // mistake.
-          message={dialog.location
-            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also removes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. The gear item stays in your library.`
-            // Fail-safe wording: we could not load this list's packing
-            // locations, so we cannot say whether this row is a container.
-            // Claiming it is would be a guess; saying nothing would spring
-            // the container removal on the user unannounced.
-            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also removes that container and moves its contents to Unassigned. The gear item stays in your library.`}
-          confirmLabel="Remove"
-          dangerous
-          onCancel={() => setDialog(dialog.returnDialog ?? null)}
-          onConfirm={() => {
-            const target = dialog.item
-            setDialog(null)
-            deleteItem.mutate(target.id)
-          }}
-        />
-      )}
-
-      {/* Delete-from-inventory confirm (reached from the kebab). Removes the
-          gear item from the library and cascades to every list item that
-          references it (ON DELETE CASCADE on gear_item_id). */}
-      {dialog?.type === 'delete-gear' && (
-        <ConfirmDialog
-          title="Delete from inventory"
-          message={`This will remove "${dialog.candidate.name}" from your inventory and from any list it appears on. This cannot be undone.`}
-          confirmLabel="Delete"
-          dangerous
-          // Cancel restores the prior dialog when one was captured (the
-          // user launched delete from inside GearItemDialog). Otherwise
-          // close to the page.
-          onCancel={() => setDialog(dialog.returnDialog ?? null)}
-          onConfirm={() => {
-            const target = dialog.candidate
-            setDialog(null)
-            deleteGearItem.mutate(target.id)
-          }}
-        />
-      )}
-
-      {/* Delete a packing location / stop using an item as a container.
-          Lifted from the retired Organize view. Deleting a location does not
-          touch the gear in it - its items fall back to Unassigned - so this
-          is recoverable by re-creating the location, unlike removing the
-          backing ITEM (which is why that path has its own confirm). */}
-      {deleteLocationTarget && (
-        <ConfirmDialog
-          title={deleteLocationTarget.containerListItemId === null
-            ? 'Delete packing location'
-            : 'Stop using item as container'}
-          message={deleteLocationTarget.containerListItemId === null
-            ? `Delete "${deleteLocationTarget.name}"? Its items will move to Unassigned.`
-            : `Stop using "${deleteLocationTarget.name}" as a container? Its items will move to Unassigned.`}
-          confirmLabel={deleteLocationTarget.containerListItemId === null ? 'Delete' : 'Stop using'}
-          dangerous={deleteLocationTarget.containerListItemId === null}
-          onCancel={() => setDeleteLocationTarget(null)}
-          onConfirm={() => {
-            const target = deleteLocationTarget
-            setDeleteLocationTarget(null)
-            removeLocation.mutate(target.id)
-          }}
-        />
-      )}
+      <ListDialogs
+        dialog={dialog}
+        setDialog={setDialog}
+        categories={categories}
+        gearActions={gearActions}
+        updateItem={updateItem}
+        deleteItem={deleteItem}
+        requestRemoveListItem={requestRemoveListItem}
+        removeLocation={(id) => removeLocation.mutate(id)}
+      />
 
       {/* Mobile-only bottom action bar. Gear / Lists / Add / Options
           in normal mode; the Options slot is an edit-mode shortcut only,

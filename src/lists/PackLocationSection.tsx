@@ -1,7 +1,7 @@
-import type { ComponentProps, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
-import CategoryGroup from './CategoryGroup'
+import CategoryGroup, { type SectionGroupProps } from './CategoryGroup'
 import type { PackingTreeLocation } from './packing-tree'
 import {
   PackSectionMenu,
@@ -27,7 +27,7 @@ import {
 export type PackSectionProps = {
   node: PackingTreeLocation
   depth: number
-  groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'>
+  groupProps: SectionGroupProps
   /** Forwarded to CategoryGroup unchanged. */
   renderRowAction?: (item: ListItemWithGear) => ReactNode
   /** This location's food rows (0022 union) plus their menu, forwarded to
