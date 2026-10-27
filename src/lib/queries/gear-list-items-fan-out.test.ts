@@ -272,20 +272,16 @@ describe('makeOptimisticGearItemsBulkDelete', async () => {
     expect(itemsOf(qc, 'l3')).toHaveLength(1)
   })
 
-  it('shows the configured toast on rollback', async () => {
+  // The failure toast comes from the mutation's meta through the global
+  // handler (src/lib/mutation-error-handler.ts); the helper only rolls back.
+  it('restores the caches on rollback without raising a toast itself', async () => {
     const { qc } = seed()
-    const { onMutate, onError } = makeOptimisticGearItemsBulkDelete({
-      qc,
-      errorToast: 'Bulk delete failed.',
-    })
+    const { onMutate, onError } = makeOptimisticGearItemsBulkDelete({ qc })
 
     const ctx = await onMutate(['g1'])
     onError(new Error('nope'), ['g1'], ctx)
 
-    expect(showToast).toHaveBeenCalledWith('Bulk delete failed.', {
-      type: 'error',
-    })
-    // And the caches are back.
+    expect(showToast).not.toHaveBeenCalled()
     expect(gearCache(qc).map((g) => g.id)).toEqual(['g1', 'g2', 'g3'])
     expect(itemsOf(qc, 'l2')).toHaveLength(1)
   })

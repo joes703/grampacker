@@ -20,10 +20,8 @@ type BulkMoveInput = { ids: string[]; categoryId: string | null }
 // open list view embedding the gear through list_items.gearItem), so they
 // use the gear-list-items BULK fan-out helpers.
 //
-// Unlike the single-item mutations (whose silent rollback is the only
-// failure signal), the bulk actions layer an explicit error toast on top of
-// the rollback - a bulk failure is otherwise easy to miss - via the
-// helpers' errorToast option.
+// The bulk actions add an error toast (meta.errorToast) on top of the
+// rollback: a bulk failure is otherwise easy to miss.
 //
 // The page keeps owning selection UI state: `selectMode`, `selectedIds`, and
 // `exitSelectMode`. Select mode is exited on success at the mutate call site
@@ -36,20 +34,16 @@ export function useGearBulkActions() {
   const bulkDelete = useMutation({
     mutationKey: mutationKeys.bulkDeleteGear(),
     mutationFn: (ids: string[]) => bulkDeleteGearItems(ids),
-    ...makeOptimisticGearItemsBulkDelete({
-      qc,
-      errorToast: "Couldn't confirm the selected items were deleted. Refresh to check before trying again.",
-    }),
+    ...makeOptimisticGearItemsBulkDelete({ qc }),
+    meta: { errorToast: "Couldn't confirm the selected items were deleted. Refresh to check before trying again." },
   })
 
   const bulkMove = useMutation({
     mutationKey: mutationKeys.bulkMoveGear(),
     mutationFn: ({ ids, categoryId }: BulkMoveInput) =>
       bulkMoveToCategoryGearItems(ids, categoryId),
-    ...makeOptimisticGearItemsBulkCategoryMove({
-      qc,
-      errorToast: "Couldn't confirm the selected items were moved. Try again, or refresh to check.",
-    }),
+    ...makeOptimisticGearItemsBulkCategoryMove({ qc }),
+    meta: { errorToast: "Couldn't confirm the selected items were moved. Try again, or refresh to check." },
   })
 
   return { bulkDelete, bulkMove }

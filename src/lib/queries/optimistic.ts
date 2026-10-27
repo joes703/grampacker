@@ -152,14 +152,6 @@ type CommonOpts = {
   // also invalidates ['list-items'] so any open list view picks up the
   // change after the round-trip.
   invalidateKeys?: QueryKey[]
-  // If provided, shows a toast on error rollback. WHICH mutations set it is one
-  // rule, stated in src/lib/mutation-error-handler.ts: in-place edits stay silent
-  // because the snap-back explains itself, while deletes/removals, bulk
-  // transforms and reorders do not and need saying out loud. Omit it whenever the
-  // calling surface shows the error inline instead - a dialog with its own error
-  // state, or the gear library's inline category editor; the modal rule there
-  // makes that the default for anything reached from inside a modal.
-  errorToast?: string
 }
 
 type OptimisticContext<T> = { previous: T[] | undefined }
@@ -173,7 +165,6 @@ function makeRollback<T>(opts: CommonOpts) {
     ctx: OptimisticContext<T> | undefined,
   ) => {
     if (ctx?.previous) opts.qc.setQueryData(opts.queryKey, ctx.previous)
-    if (opts.errorToast) showToast(opts.errorToast, { type: 'error' })
   }
 }
 

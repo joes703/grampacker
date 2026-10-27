@@ -80,8 +80,8 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
       // Unassigned with fresh ranks, and a stale food cache would keep the
       // old bag assignment and order until an incidental refetch.
       invalidateKeys: [queryKeys.listItems(listId), queryKeys.listFood(listId)],
-      errorToast: "Couldn't confirm that packing location was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that packing location was deleted. Refresh to check before trying again." },
   })
 
   return {

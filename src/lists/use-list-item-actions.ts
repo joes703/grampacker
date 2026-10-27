@@ -219,8 +219,8 @@ export function useListItemActions(
       // location, whose SET NULL + rerank cascade now moves FOOD rows as
       // well as gear.
       invalidateKeys: [queryKeys.packingLocations(listId), queryKeys.listFood(listId)],
-      errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that item was removed. Refresh to check before trying again." },
   })
 
   // Quick Add creates a gear_item (so it also lands in the gear library) and

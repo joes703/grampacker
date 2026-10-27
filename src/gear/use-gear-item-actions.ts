@@ -88,8 +88,8 @@ export function useGearItemActions(allItems: GearItem[]) {
     // 404. Refreshing is the only thing that settles it.
     ...makeOptimisticGearItemDelete({
       qc,
-      errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that item was deleted. Refresh to check before trying again." },
   })
 
   return { addItem, editItem, removeItem }

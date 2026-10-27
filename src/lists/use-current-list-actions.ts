@@ -159,8 +159,8 @@ export function useCurrentListActions() {
       qc,
       queryKey: queryKeys.lists(),
       id: (id) => id,
-      errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that list was deleted. Refresh to check before trying again." },
     onSuccess: (_data, id) => forgetLastListPathTo(id),
   })
 

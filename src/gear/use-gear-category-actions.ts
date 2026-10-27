@@ -58,8 +58,8 @@ export function useGearCategoryActions(categories: Category[]) {
       queryKey: queryKeys.categories(),
       invalidateKeys: [queryKeys.gearItems(), queryKeys.listItemsAll()],
       id: (id) => id,
-      errorToast: "Couldn't confirm that category was deleted. Refresh to check before trying again.",
     }),
+    meta: { errorToast: "Couldn't confirm that category was deleted. Refresh to check before trying again." },
   })
 
   return { addCategory, renameCategory, removeCategory }

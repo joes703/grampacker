@@ -1,6 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import type { UpdateGearItemRequest } from '../../../shared/gear'
-import { showToast } from '../toast'
 import type { GearItem } from './gear'
 import { queryKeys } from './keys'
 import type { ListItemWithGear } from './list-items'
@@ -29,11 +28,6 @@ export type GearFanOutContext = {
 
 type FanOutOpts = {
   qc: QueryClient
-  // Set on the rollbacks the user would otherwise not notice - bulk surfaces and
-  // single-item DELETES alike. Same rule as the generic helpers, stated once in
-  // src/lib/mutation-error-handler.ts; an in-place gear EDIT stays silent because
-  // its snap-back happens under the user's cursor.
-  errorToast?: string
 }
 
 // findAll matches by prefix, so it would also return a bare ['list-items'] query
@@ -114,7 +108,6 @@ function makeRollback(opts: FanOutOpts) {
     for (const { key, data } of ctx?.listSnapshots ?? []) {
       opts.qc.setQueryData(key, data)
     }
-    if (opts.errorToast) showToast(opts.errorToast, { type: 'error' })
   }
 }
 
