@@ -51,9 +51,9 @@ jobs:
 
       # Refuses a pull request that edits a migration main already holds:
       # production applies migrations by name and never re-runs one.
-      # Pull-request-only; skips itself on a push.
       - name: Check (shipped migrations unchanged)
-        run: node scripts/check-migration-immutability.mjs
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-migration-safety.mjs --immutability
 
       # We pin actions by SHA because tags are mutable, and then rely on a
       # trailing `# v7.0.0` comment to say what the SHA is. Nothing checked that
