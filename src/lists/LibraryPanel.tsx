@@ -39,7 +39,7 @@ type Props = {
    *
    *  The control lives in the picker rather than in a section footer because
    *  the picker means the same thing in both gear arrangements. A Pack
-   *  section is a BAG, and CategoryGroup's footer add takes a category id -
+   *  section is a BAG, and CategoryTable's footer add takes a category id -
    *  so an add there has no category to offer and would quietly file
    *  everything as Uncategorized while appearing to add "to this bag".
    *

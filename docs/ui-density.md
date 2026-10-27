@@ -128,7 +128,7 @@ too. Two cases exist today, both fixed by rendering differently while
 `useIsPrinting()` is true rather than by a class:
 
 - Pack's row filters (`Show unpacked only` / `Show un-ready only`) filter the
-  rendered arrays in `CategoryGroup`.
+  rendered arrays in `PackSection`.
 - A collapsed section drops its whole body. Pack renders no collapse control,
   so a section collapsed in List view and carried into Pack cannot even be
   reopened.

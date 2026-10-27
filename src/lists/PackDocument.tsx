@@ -3,12 +3,11 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import type { StableListItemGroup } from '../lib/use-grouped-list-items'
-import type { WeightBreakdown } from '../lib/weight-breakdown'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
 import type { FoodItemResponse } from '../../shared/food'
 import RowIconButton from '../components/RowIconButton'
-import CategoryGroup, { type SectionGroupProps } from './CategoryGroup'
-import CategorySections from './CategorySections'
+import PackSection from './PackSection'
+import type { SharedPackSectionProps } from './section-parts'
 import EmptyListCell from './EmptyListCell'
 import ListDndArea from './ListDndArea'
 import MoveToLocationMenu from './MoveToLocationMenu'
@@ -17,7 +16,6 @@ import PackingLocationTree from './PackingLocationTree'
 import PackingProgress from './PackingProgress'
 import { DroppableUnassignedSection } from './SortablePackSection'
 import type { PackingTree } from './packing-tree'
-import type { AddItemData } from './use-quick-add-form'
 import { EMPTY_FOOD_ITEMS, type useListDnd } from './use-list-dnd'
 import type { usePackingLocationActions } from './use-packing-location-actions'
 
@@ -31,8 +29,7 @@ type Props = {
   // category.
   packingTree: PackingTree | null
   wornItems: ListItemWithGear[]
-  breakdown: WeightBreakdown
-  groupProps: SectionGroupProps
+  groupProps: SharedPackSectionProps
   dnd: ReturnType<typeof useListDnd>
   listItemsById: ReadonlyMap<string, ListItemWithGear>
   weightUnit: WeightUnit
@@ -59,7 +56,6 @@ type Props = {
   }
   locationActions: ReturnType<typeof usePackingLocationActions>
   onDeleteLocation: (location: PackingLocation) => void
-  onAddItem: (categoryId: string | null, data: AddItemData) => void
   onEditItem: (gearId: string) => void
   onRemoveItem: (item: ListItemWithGear) => void
   onOpenDrawer: () => void
@@ -74,7 +70,6 @@ export default function PackDocument({
   groupingKind,
   packingTree,
   wornItems,
-  breakdown,
   groupProps,
   dnd,
   listItemsById,
@@ -87,7 +82,6 @@ export default function PackDocument({
   locations,
   locationActions: { createLocation, createItemContainer, renameLocation },
   onDeleteLocation,
-  onAddItem,
   onEditItem,
   onRemoveItem,
   onOpenDrawer,
@@ -115,7 +109,7 @@ export default function PackDocument({
   // A plain function, not a useCallback: its inputs change on every packing
   // write, so a memo could never hit.
   //
-  // KNOWN TRADE: a fresh function defeats CategoryGroup's React.memo for pack
+  // KNOWN TRADE: a fresh function defeats PackSection's React.memo for pack
   // sections, so a checkbox tick re-renders every section. PROFILED AND
   // ACCEPTED (2026-10, jsdom at 1280px): a tick at the worst case the caps
   // allow (300 items across 30 locations) commits in ~140ms jsdom, roughly
@@ -291,11 +285,11 @@ export default function PackDocument({
                     location row and has no sortOrder. Dragging a row here
                     takes it back out of a container. */}
                 <DroppableUnassignedSection>
-                  <CategoryGroup
-                    key="__unassigned__"
+                  <PackSection
                     name="Unassigned"
-                    categoryId={null}
-                    regionKey="packing-unassigned"
+                    // An empty Unassigned bucket is what a finished,
+                    // organized list looks like.
+                    emptyLabel="Everything has a location."
                     items={packingTree.unassignedItems}
                     {...groupProps}
                     renderRowAction={renderRowAction}
@@ -325,24 +319,26 @@ export default function PackDocument({
               <>
                 {/* Until the list has its first packing location, Pack groups
                     by category. The move menu still renders, so the feature
-                    is there on a new list's first visit. */}
-                <CategorySections
-                  grouped={grouped}
-                  groupProps={groupProps}
-                  renderRowAction={renderRowAction}
-                  reorderPending={dnd.anyItemReorderPending}
-                  breakdown={breakdown}
-                  onAddItem={onAddItem}
-                />
+                    is there on a new list's first visit. A category can be
+                    empty here because all its items are worn. */}
+                {grouped.map((group) => (
+                  <PackSection
+                    key={group.group?.id ?? '__uncategorized__'}
+                    name={group.group?.name ?? 'Uncategorized'}
+                    emptyLabel="No items in this category."
+                    items={group.items}
+                    {...groupProps}
+                    renderRowAction={renderRowAction}
+                    reorderPending={dnd.anyItemReorderPending}
+                  />
+                ))}
                 {/* Food gets its own section so the checklist still covers
                     the whole pack. Rows check off and reorder among
                     themselves; bag assignment starts with the first
                     location. */}
                 {packFoodItems.length > 0 && (
-                  <CategoryGroup
-                    key="__pack_food__"
+                  <PackSection
                     name="Food"
-                    regionKey="packing-food-fallback"
                     items={EMPTY_LIST_ITEMS}
                     {...groupProps}
                     packFoodRows={packFoodItems}
@@ -356,16 +352,12 @@ export default function PackDocument({
 
           {/* Worn gear is a separate pile when packing: you lay it out to
               wear, you do not pack it. Outside the DndContext - it is not a
-              reorder target. Items are in document order. regionKey is
-              explicit because this section has no categoryId: without it the
-              region id would duplicate the Uncategorized section's. No
-              footer: pack mode renders none. */}
+              reorder target. Items are in document order. */}
           {wornItems.length > 0 && (
-            <CategoryGroup
+            <PackSection
               {...groupProps}
               name="Worn"
               items={wornItems}
-              regionKey="worn"
               wornSection
               renderRows={undefined}
               renderRowAction={renderWornRowAction}

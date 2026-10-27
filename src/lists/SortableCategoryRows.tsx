@@ -3,19 +3,15 @@ import { makeDnDId } from '../lib/dnd-ids'
 import SortableItemRow from './SortableItemRow'
 import SortableFoodRow from './SortableFoodRow'
 import { packRowId, unionPackRows, type PackRow } from './pack-rows'
-import type { RenderRows } from './CategoryGroup'
+import type { RenderRows } from './section-parts'
 
-// The drag half of a category's rows, kept OUT of CategoryGroup so that
-// CategoryGroup - which the public read-only share view renders - has no import
-// edge to @dnd-kit at all. CategoryGroup used to import SortableContext directly
-// and branch on a `sortable` boolean; a boolean cannot hide an import from the
-// bundler, so the share view downloaded the drag machinery it can never use.
-//
-// So the drag behavior is INJECTED instead: the authenticated list view passes
-// this in as CategoryGroup's `renderRows`, and the share view passes nothing and
-// gets plain rows. The seam is a prop, which the bundler CAN see through: only
-// ListDetailPage imports this module, so @dnd-kit lands in the authenticated
-// chunk and nowhere else.
+// The drag half of a section's rows, kept OUT of CategoryTable and
+// PackSection so that CategoryTable - which the public read-only share view
+// renders - has no import edge to @dnd-kit at all. A `sortable` boolean
+// cannot hide an import from the bundler; a prop can. So the authenticated
+// list view passes these in as `renderRows`, and the share view passes
+// nothing and gets plain rows. Only ListDetailPage imports this module, so
+// @dnd-kit lands in the authenticated chunk and nowhere else.
 //
 // Three id namespaces, one component:
 //

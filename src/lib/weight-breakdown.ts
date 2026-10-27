@@ -128,10 +128,9 @@ export const UNCATEGORIZED_ROW_ID = '__uncategorized__'
 
 // Per-section base subtotal, for the footer under each rendered category.
 //
-// This exists so a category section CANNOT compute its own subtotal. It used
-// to: CategoryGroup summed its own rows, which meant consumables and worn items
-// landed in the subtotal, so display details silently redefined a weight metric, and
-// the subtotals never summed to the summary's Base weight.
+// This exists so a category section CANNOT compute its own subtotal: summing
+// its own rows would put consumables and worn items in the subtotal, and the
+// subtotals would never sum to the summary's Base weight.
 //
 // Returns BASE grams only: consumable and worn weight are excluded, always and
 // regardless of any display toggle. Because that makes the number no longer the

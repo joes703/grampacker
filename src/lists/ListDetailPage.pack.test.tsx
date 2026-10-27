@@ -17,12 +17,9 @@ import {
   stubViewport,
 } from './test/list-detail-harness'
 
-// Pack's entry point back to the gear library.
-//
-// Desktop Pack hides the left aside on purpose so packing gets the focus.
-// That also removed the only desktop way to put a forgotten item on the list
-// without leaving the view - Pack could rearrange what was already there and
-// nothing else. The drawer restores adding without giving the aside back.
+// Pack's paths back to the gear library, its removals, and its section
+// wiring. Pack's picker aside starts at xl, so between lg and xl an Add gear
+// button opens the library in a drawer instead.
 //
 // Which surface carries the trigger is the whole point of these tests, so
 // they assert per-breakpoint and per-view rather than just "a button exists".
@@ -319,8 +316,8 @@ describe('removing gear from Pack view', () => {
   })
 })
 
-// Creating a brand-new item mid-pack was impossible: CategoryGroup gates its
-// "+ Add new item" footer on !packMode, so the only path was Gear view ->
+// Creating a brand-new item mid-pack was impossible: pack sections have no
+// "+ Add new item" footer, so the only path was Gear view ->
 // List view picker -> back to Pack to place it. The picker now carries the
 // control, in both arrangements.
 describe('creating a new item while packing', () => {
@@ -523,5 +520,30 @@ describe('pack collision wiring', () => {
     await renderDetail(`/lists/${listId}`)
     expect(h.collisionDetections.size).toBeGreaterThan(0)
     expect(new Set(h.collisionDetections.values())).toEqual(new Set([closestCenter]))
+  })
+})
+
+// An empty Pack section names the right thing. Pack groups by category until
+// the list has a packing location, and a category there can be empty because
+// all its items are worn - "no items in this location" would describe a
+// location that does not exist. An empty Unassigned bucket is what a finished
+// list looks like, so it reads as success.
+describe('empty Pack sections', () => {
+  it('calls an empty fallback category a category', async () => {
+    stubViewport(1280)
+    h.fetchListItems.mockResolvedValue([wornItem])
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(screen.getByText('No items in this category.')).toBeTruthy()
+    expect(screen.queryByText('No items in this location.')).toBeNull()
+  })
+
+  it('reads an empty Unassigned bucket as success', async () => {
+    stubViewport(1280)
+    h.fetchPackingLocations.mockResolvedValue([
+      { id: 'loc-1', name: 'Main pack', sortOrder: 0, containerListItemId: null },
+    ] satisfies PackingLocation[])
+    h.fetchListItems.mockResolvedValue([{ ...listItem, packingLocationId: 'loc-1' }])
+    await renderDetail(`/lists/${listId}/pack`)
+    expect(await screen.findByText('Everything has a location.')).toBeTruthy()
   })
 })

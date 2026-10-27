@@ -6,7 +6,7 @@ export type PackingTreeLocation = {
   items: ListItemWithGear[]
   children: PackingTreeLocation[]
   /** Every checklist row rendered in this location's subtree, including its
-   * own backing item. CategoryGroup uses this for parent-level pack progress. */
+   * own backing item. PackSection uses this for parent-level pack progress. */
   packProgressItems: ListItemWithGear[]
 }
 

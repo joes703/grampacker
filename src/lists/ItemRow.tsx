@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react'
 // This module is on the public share view's critical path
-// (SharePage -> CategoryGroup -> ItemRow), and a share view is read-only: it
+// (SharePage -> CategoryTable -> ItemRow), and a share view is read-only: it
 // can never drag anything. A VALUE import from @dnd-kit here would pull the
 // whole drag-and-drop library into the anonymous bundle. That is exactly what
 // SortableItemRow living in this file used to do - hence SortableItemRow.tsx.
@@ -78,7 +78,7 @@ export type ItemRowProps = {
   isBelowLg: boolean
   packMode?: boolean
   // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
-  // on the base Props so CategoryGroup's rowPropsFor() builder can spread the
+  // on the base Props so the sections' buildRowProps() output can spread the
   // same object into either renderer.
   reorderPending?: boolean
   onUpdate?: (patch: Partial<Pick<ListItemWithGear, 'quantity' | 'isWorn' | 'isConsumable' | 'isPacked' | 'isReady'>>) => void
@@ -93,7 +93,7 @@ export type ItemRowProps = {
   onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
   // Trailing control on a PACK-mode row, injected as an opaque node (see the
-  // matching note in CategoryGroup). Pack mode is now also the organizer, so
+  // matching note in PackSection). Pack mode is now also the organizer, so
   // a row carries a "move to location" menu - the keyboard- and
   // touch-reachable equivalent of dragging it into another section. Injected
   // rather than built here because this module renders on the public share

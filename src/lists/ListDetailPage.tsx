@@ -56,6 +56,7 @@ import { useIsPrinting } from '../lib/use-is-printing'
 import ListDialogs, { type DialogState } from './ListDialogs'
 import ListDocument from './ListDocument'
 import PackDocument from './PackDocument'
+import type { SharedPackSectionProps } from './section-parts'
 
 const EMPTY_LIST_ITEMS: ListItemWithGear[] = []
 const EMPTY_GEAR_ITEMS: GearItem[] = []
@@ -135,7 +136,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // Pack-mode filter: when true, hide already-packed items from each
   // category. Header counts and the "complete" affordance still reflect the
   // full items array. Lifted here because both PackingProgress (the toggle)
-  // and CategoryGroup (the filter consumer) live as children of this page.
+  // and PackSection (the filter consumer) live below this page.
   const [showUnpackedOnlySetting, setShowUnpackedOnly] = useState(false)
   // Peer of showUnpackedOnly for the ready column: "what still needs prepping".
   // Independent, not a mode switch - with both on you see only the rows that
@@ -145,7 +146,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   const [showUnreadyOnlySetting, setShowUnreadyOnly] = useState(false)
   // Printing renders the FULL list, whatever the filters are set to.
   //
-  // These filters drop rows from the rendered arrays (CategoryGroup does the
+  // These filters drop rows from the rendered arrays (PackSection does the
   // filtering in JS), so unlike ordinary chrome they cannot be undone by a
   // print stylesheet - a sheet printed with a filter on is silently missing
   // gear, and the filter switches themselves do not print, so nothing on the
@@ -391,7 +392,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // Stable across pack-mode toggles. The naive `useMemo([listItems])` shape
   // mints a fresh Set on every list-items mutation — including isPacked
   // toggles where membership did not change — which busts LibraryPanel's
-  // React.memo barrier on the inner CategoryGroup.
+  // React.memo barrier on its inner sections.
   //
   // Fix: derive a primitive membership signature during render (a sorted
   // join of gearItemIds) and key the Set's useMemo on that signature, not
@@ -478,7 +479,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
 
   // Stable callbacks for LibraryPanel. Inline arrows would mint fresh
   // references on every parent render and defeat LibraryPanel's React.memo
-  // on the inner CategoryGroup. addItem / deleteItem follow the same
+  // on its inner sections. addItem / deleteItem follow the same
   // mutation-ref convention as sharedGroupProps below — `.mutate` is read
   // through the live binding at call time, never depended on directly.
   const onLibraryAdd = useCallback(
@@ -543,10 +544,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [],
   )
 
-  // Stable callback for CategoryGroup's "+ Add new item" affordance.
-  // CategoryGroup's onAddItem signature is (categoryId, data) => void so we
-  // can pass ONE memoized handler to both the categorized and uncategorized
-  // call sites instead of two fresh inline arrows.
+  // Stable callback for the sections' "+ Add new item" row. It takes the
+  // categoryId, so ONE memoized handler serves every section.
   const onAddNewItem = useCallback(
     (categoryId: string | null, data: AddItemData) => {
       addNewItemOnce(categoryId, data)
@@ -608,39 +607,20 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the read helpers use only qc and listId, both fixed for this instance
   }, [setDialog])
 
-  // Per-row handler bag passed to every CategoryGroup. Memoized so each
-  // category section doesn't re-render on every parent state change.
+  // The props every section shares (see SharedSectionProps). Memoized so a
+  // section does not re-render on every parent state change.
   //
-  // Mutation refs are intentionally NOT in deps. TanStack Query rebuilds the
-  // useMutation result object on every render (the wrapper is fresh; only
-  // the internal `.mutate` callback is stable), so depending on `updateItem`
-  // etc. would defeat the memo and re-create this bag every render. Calling
-  // `.mutate` through the live binding is safe: the closure resolves
-  // `updateItem.mutate` at call time, which is always the current stable ref.
-  // setDialog (the React useState setter) is React-guaranteed stable.
+  // Mutation results are intentionally NOT in deps. TanStack Query rebuilds
+  // the useMutation result object on every render (only its `.mutate` is
+  // stable), so depending on `updateItem` etc. would re-create this object
+  // every render. Calling `.mutate` through the live binding is safe: the
+  // closure resolves it at call time.
   const sharedGroupProps = useMemo(
-    () => ({
-      packMode: mode === 'pack',
-      // Ready checks are unconditional. They were once a per-list opt-in
-      // toggled from PackingProgress; the toggle was pure friction - a
-      // checklist either has a prep step or you ignore the column - so the
-      // feature became unconditional, the flag was pinned true here, and the
-      // prop is now gone from every consumer.
-      //
-      // The lists.ready_checks_enabled COLUMN is GONE, dropped by migration
-      // 0027. This comment used to say it had to stay because dropping it
-      // meant a SQLite table rebuild that would cascade-delete list_items -
-      // true of a rebuild, and never true of `ALTER TABLE ... DROP COLUMN`,
-      // which rewrites rows in place and issues no DROP TABLE. is_ready on
-      // each item was always persisted independently of the flag, so a list
-      // that had ready checks on, collected some ticks, then turned them off
-      // gets those ticks back rather than a reset - the honest outcome, since
-      // the data was never deleted, only hidden.
+    (): SharedPackSectionProps => ({
       weightUnit,
       isBelowLg,
-      // Injects the drag rendering. CategoryGroup itself has no @dnd-kit import
-      // (it is on the public share view's path); this is the seam that keeps the
-      // library in the authenticated chunk. See SortableCategoryRows.tsx.
+      // Injects the drag rendering, which keeps @dnd-kit out of the share
+      // view's chunk. See SortableCategoryRows.tsx.
       // Location grouping needs `packing-item:` ids so the packing planner
       // (reorder OR cross-location move) sees the drag; category grouping
       // keeps `item:`, whose planner only reorders within a category.
@@ -677,7 +657,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         updateGearItem.mutate({ id: gearId, patch: { status } }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above re: mutation refs
-    [mode, grouping.kind, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
+    [grouping.kind, weightUnit, isBelowLg, showUnpackedOnly, showUnreadyOnly],
   )
 
   const onDeleteLocation = (location: PackingLocation) =>
@@ -838,7 +818,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
               groupingKind={grouping.kind}
               packingTree={packingTree}
               wornItems={wornItems}
-              breakdown={weightBreakdown}
               groupProps={sharedGroupProps}
               dnd={dnd}
               listItemsById={listItemsById}
@@ -864,7 +843,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
               }}
               locationActions={locationActions}
               onDeleteLocation={onDeleteLocation}
-              onAddItem={onAddNewItem}
               onEditItem={(gearId) => openEditor('edit-gear', gearId)}
               onRemoveItem={requestRemoveListItem}
               onOpenDrawer={() => setDrawerOpen(true)}

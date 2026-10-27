@@ -5,7 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { DndContext, type DragStartEvent } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
-import CategoryGroup from './CategoryGroup'
+import PackSection from './PackSection'
+import type { SharedPackSectionProps } from './section-parts'
 import { PackLocationSection } from './PackLocationSection'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import type { PackingTreeLocation } from './packing-tree'
@@ -66,9 +67,9 @@ function node(
   }
 }
 
-const groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'> = {
+const groupProps: SharedPackSectionProps = {
   weightUnit: 'g',
-  packMode: true,
+  isBelowLg: false,
   renderRows: packingSortableRows,
 }
 
@@ -139,7 +140,7 @@ describe('PackLocationSection', () => {
     // The collapse control still announces the section while it is being
     // renamed - `name` keeps supplying accessible labels even though the
     // rendered title is an input.
-    // Pack headers have no collapse control - see CategoryGroup. The section
+    // Pack headers have no collapse control - see PackSection. The section
     // still announces its name through the rename input's label.
   })
 
@@ -265,7 +266,7 @@ describe('renderRows seams', () => {
     const onDragStart = vi.fn<(event: DragStartEvent) => void>()
     render(
       <DndContext onDragStart={onDragStart}>
-        <CategoryGroup name="Main pack" items={[item('a', 'Tarp')]} weightUnit="g" packMode renderRows={renderRows} />
+        <PackSection name="Main pack" items={[item('a', 'Tarp')]} weightUnit="g" isBelowLg={false} renderRows={renderRows} />
       </DndContext>,
     )
     const handle = screen.getByRole('button', { name: grip })

@@ -70,8 +70,8 @@ describe('gear picker search control', () => {
 })
 
 // Creating a brand-new item was the one thing Pack could not do: the picker
-// only ever added gear that already existed, and CategoryGroup gates its
-// "+ Add new item" footer on !packMode. The control lives here rather than in
+// only ever added gear that already existed, and only CategoryTable (never
+// PackSection) has a "+ Add new item" footer. The control lives here rather than in
 // a section footer because the picker means the same thing in both
 // arrangements - a Pack section is a BAG, and a footer add there has no
 // category to offer.

@@ -15,10 +15,9 @@ import { FLAT_TABLE_HEADER_TITLE } from '../components/flat-table-styles'
 
 // The drag + admin chrome for a packing-location section in pack mode.
 //
-// Same seam as SortableCategoryRows: CategoryGroup renders on the PUBLIC share
-// view, so it must not import @dnd-kit or any authenticated component. This
-// module owns both and hands CategoryGroup opaque ReactNodes through its
-// headerLeading / headerAction props. Only ListDetailPage imports this file.
+// Same seam as SortableCategoryRows: PackSection must not import @dnd-kit or
+// any authenticated component. This module owns both and hands PackSection
+// opaque ReactNodes through its headerLeading / headerAction props. Only ListDetailPage imports this file.
 //
 // This replaces OrganizePackPanel's SortableLocationSection and
 // SortableItemContainerSection, which wrapped a LocationSection. The wiring is

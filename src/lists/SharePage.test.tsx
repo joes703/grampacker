@@ -336,7 +336,7 @@ describe('SharePage error and not-found states', () => {
   })
 })
 
-// Parent-level wiring for the per-section footer subtotals. CategoryGroup's own
+// Parent-level wiring for the per-section footer subtotals. CategoryTable's own
 // tests prove it renders what it is handed; only a test at this level can prove
 // the PARENT hands each section the right number. The failure modes are all
 // silent and plausible-looking: passing a null category lookup to the Worn

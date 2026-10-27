@@ -35,7 +35,7 @@ import { useDragSensors } from '../lib/use-drag-sensors'
 
 // One shared empty array for every "no food rows here" case: Edit mode, where
 // Pack's food derivations are switched off, and a bag that holds no food. It
-// reaches CategoryGroup as a prop, and CategoryGroup is memoized - a fresh []
+// reaches PackSection as a prop, and PackSection is memoized - a fresh []
 // literal would be a new identity every render and defeat that memo.
 export const EMPTY_FOOD_ITEMS: FoodItemResponse[] = []
 // Edit mode has no pack filters, so nothing is ever hidden there. Module-level

@@ -32,7 +32,7 @@ import { ConsumableIcon } from './list-item-flags'
 // and the rows are simply the document.
 //
 // No @dnd-kit import, deliberately: this module renders on the anonymous
-// share page. The same bundling seam CategoryGroup maintains with its
+// share page. The same bundling seam CategoryTable maintains with its
 // renderRows prop would be pointless if the plain food row dragged in the
 // drag machinery by itself.
 type Props = {
@@ -43,7 +43,7 @@ type Props = {
   isBelowLg?: boolean
   /** Reserve the control columns the gear rows around this table carry:
    *  the leading drag-grip box (both tiers) and the trailing kebab box
-   *  (desktop; mobile gear rows have no kebab). Set through CategoryGroup's
+   *  (desktop; mobile gear rows have no kebab). Set through CategoryTable's
    *  reserveControlColumns on the owner's page. The share page leaves it
    *  unset - its gear rows are read-only too, with neither control.
    *  print:hidden like the controls themselves, which vanish on paper. */

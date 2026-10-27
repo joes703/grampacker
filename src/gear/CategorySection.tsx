@@ -136,7 +136,7 @@ function CategorySectionInner(
             ROW_LEADING_CONTROL_TARGET, not ROW_CONTROL_TARGET: this box has
             to stay the same width as GearItemRow's grip or the alignment
             documented above stops holding. Glyph is 14px to match the
-            narrower desktop box (and CategoryGroup's chevron). */}
+            narrower desktop box (and CategoryTable's chevron). */}
         <button
           onClick={() => onToggleCollapse(collapseKey)}
           aria-expanded={!collapsed}

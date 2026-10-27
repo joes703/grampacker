@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
-import CategoryGroup, { type SectionGroupProps } from './CategoryGroup'
+import PackSection from './PackSection'
+import type { SharedPackSectionProps } from './section-parts'
 import type { PackingTreeLocation } from './packing-tree'
 import {
   PackSectionMenu,
@@ -10,8 +11,8 @@ import {
   useSortableLocationSection,
 } from './SortablePackSection'
 
-// One packing-location section in the merged Pack view: the checklist section
-// (CategoryGroup) wrapped in its drag, drop and admin chrome.
+// One packing-location section in the Pack view: the checklist section
+// (PackSection) wrapped in its drag, drop and admin chrome.
 //
 // Two components rather than one with a conditional hook. A section backed by
 // a list item needs a SECOND dnd identity (the backing item, so containers can
@@ -19,19 +20,17 @@ import {
 // location id, so promoting an item to a container - or dropping that status -
 // swaps the component type and remounts, which is the correct behavior anyway.
 //
-// The chrome is passed to CategoryGroup as opaque ReactNodes. CategoryGroup
-// renders on the public share view and must not import @dnd-kit or any
-// authenticated component; this module is the seam that keeps it that way,
-// exactly like SortableCategoryRows does for rows.
+// The chrome is passed to PackSection as opaque ReactNodes, so PackSection
+// stays free of @dnd-kit, exactly like SortableCategoryRows does for rows.
 
 export type PackSectionProps = {
   node: PackingTreeLocation
   depth: number
-  groupProps: SectionGroupProps
-  /** Forwarded to CategoryGroup unchanged. */
+  groupProps: SharedPackSectionProps
+  /** Forwarded to PackSection unchanged. */
   renderRowAction?: (item: ListItemWithGear) => ReactNode
-  /** This location's food rows (0022 union) plus their menu, forwarded to
-   *  CategoryGroup unchanged. */
+  /** This location's food rows plus their menu, forwarded to PackSection
+   *  unchanged. */
   packFoodRows?: FoodItemResponse[]
   renderFoodRowAction?: (food: FoodItemResponse) => ReactNode
   containerAction?: ReactNode
@@ -110,10 +109,9 @@ function PackPlainSection({
         style={style}
         className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}
       >
-        <CategoryGroup
+        <PackSection
           {...groupProps}
           name={location.name}
-          regionKey={location.id}
           items={node.items}
           packProgressItems={node.packProgressItems}
           reorderPending={itemReorderPending}
@@ -138,7 +136,7 @@ function PackPlainSection({
           ) : undefined}
         >
           {children}
-        </CategoryGroup>
+        </PackSection>
       </div>
     </div>
   )
@@ -175,10 +173,9 @@ function PackContainerSection({
         style={style}
         className={isOver ? 'rounded-lg ring-2 ring-blue-400' : ''}
       >
-        <CategoryGroup
+        <PackSection
           {...groupProps}
           name={sectionTitle(node)}
-          regionKey={location.id}
           containerItem={containerItem}
           items={node.items}
           packProgressItems={node.packProgressItems}
@@ -197,7 +194,7 @@ function PackContainerSection({
           headerAction={confirmed ? containerAction : undefined}
         >
           {children}
-        </CategoryGroup>
+        </PackSection>
       </div>
     </div>
   )

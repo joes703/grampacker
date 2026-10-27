@@ -27,7 +27,7 @@ import { SessionCacheGuard } from './layout/session-cache-guard'
 //
 // "One chunk" is the intent, not quite the emitted graph: the authenticated
 // area resolves to the AuthenticatedApp chunk PLUS the shared chunk it has in
-// common with SharePage (CategoryGroup and the list-rendering subtree). Both are
+// common with SharePage (CategoryTable and the list-rendering subtree). Both are
 // fetched in the same wave - Vite emits the static deps of a dynamic import as
 // preloads alongside it - so it costs bytes, not a round-trip. What it is NOT is
 // one chunk per page: see AuthenticatedApp.tsx for that trade.

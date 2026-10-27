@@ -1,32 +1,28 @@
-import type { ReactNode } from 'react'
 import type { StableListItemGroup } from '../lib/use-grouped-list-items'
-import type { ListItemWithGear } from '../lib/types'
 import {
   baseGramsForCategory,
   consumableGramsForCategory,
   wornGramsForCategory,
   type WeightBreakdown,
 } from '../lib/weight-breakdown'
-import CategoryGroup, { type SectionGroupProps } from './CategoryGroup'
+import CategoryTable from './CategoryTable'
+import type { SharedSectionProps } from './section-parts'
 import type { AddItemData } from './use-quick-add-form'
 
 type Props = {
   grouped: StableListItemGroup[]
-  groupProps: SectionGroupProps
-  renderRowAction?: (item: ListItemWithGear) => ReactNode
+  groupProps: SharedSectionProps
   reorderPending: boolean
   breakdown: WeightBreakdown
   onAddItem: (categoryId: string | null, data: AddItemData) => void
 }
 
-// One section per category group, in the categories' global sortOrder, with
-// items in their own order. The group with no category is "Uncategorized".
-// Categories are not reorderable here (category order is authored on /gear);
-// each section still reorders its own items.
+// The List view's category sections, in the categories' global sortOrder,
+// with items in their own order. The group with no category is
+// "Uncategorized".
 export default function CategorySections({
   grouped,
   groupProps,
-  renderRowAction,
   reorderPending,
   breakdown,
   onAddItem,
@@ -34,13 +30,12 @@ export default function CategorySections({
   return grouped.map((group) => {
     const categoryId = group.group?.id ?? null
     return (
-      <CategoryGroup
+      <CategoryTable
         key={categoryId ?? '__uncategorized__'}
         name={group.group?.name ?? 'Uncategorized'}
         categoryId={categoryId}
         items={group.items}
         {...groupProps}
-        renderRowAction={renderRowAction}
         reorderPending={reorderPending}
         baseSubtotalGrams={baseGramsForCategory(breakdown, categoryId)}
         consumableSubtotalGrams={consumableGramsForCategory(breakdown, categoryId)}

@@ -12,7 +12,7 @@ import ItemRow, { type ItemRowProps } from './ItemRow'
 // @dnd-kit stays out of the anonymous graph entirely.
 //
 // Keep it that way. The rule is one line long: no VALUE import from @dnd-kit in
-// ItemRow.tsx or CategoryGroup.tsx, because both are on the share view's
+// ItemRow.tsx or CategoryTable.tsx, because both are on the share view's
 // critical path. Drag belongs to the authenticated list view, so it belongs
 // here, in a module only the authenticated list view imports.
 //

@@ -299,7 +299,7 @@ export const ROW_HOVER_REVEAL =
 // repeated patterns, not for every literal text-* class.
 
 // Body text on flat row surfaces. Used by ItemRow / GearItemRow /
-// LibraryPanel rows / CategoryGroup footer / AddItemRow / CategorySection
+// LibraryPanel rows / CategoryTable footer / AddItemRow / CategorySection
 // rename + empty states. Call sites compose `font-normal` or other
 // weights + color separately when needed.
 export const FLAT_TABLE_BODY_TEXT = `text-sm lg:text-[13px] ${PRINT_BODY_TEXT}`

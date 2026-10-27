@@ -6,7 +6,8 @@ import type { StableListItemGroup } from '../lib/use-grouped-list-items'
 import type { WeightBreakdown } from '../lib/weight-breakdown'
 import type { FoodItemResponse } from '../../shared/food'
 import AddCategoryControl from './AddCategoryControl'
-import CategoryGroup, { type SectionGroupProps } from './CategoryGroup'
+import CategoryTable from './CategoryTable'
+import type { SharedSectionProps } from './section-parts'
 import CategorySections from './CategorySections'
 import EmptyListCell from './EmptyListCell'
 import ListDndArea from './ListDndArea'
@@ -38,7 +39,7 @@ type Props = {
   onCategoryCreated: (category: Category) => void
   onAddItem: (categoryId: string | null, data: AddItemData) => void
   onOpenDrawer: () => void
-  groupProps: SectionGroupProps
+  groupProps: SharedSectionProps
   dnd: ReturnType<typeof useListDnd>
   listItemsById: ReadonlyMap<string, ListItemWithGear>
   weightUnit: WeightUnit
@@ -136,7 +137,7 @@ export default function ListDocument({
             {/* Rendered with the add-item row already open: the point of
                 making a category is typing an item into it next. */}
             {starters.map((category) => (
-              <CategoryGroup
+              <CategoryTable
                 key={`starter-${category.id}`}
                 name={category.name}
                 categoryId={category.id}
@@ -159,7 +160,7 @@ export default function ListDocument({
           Outside the empty-gear branch above: a list with food and no gear
           yet is a real, usable list. */}
       {food.length > 0 && (
-        <CategoryGroup
+        <CategoryTable
           name="Food"
           items={EMPTY_LIST_ITEMS}
           regionKey="food"

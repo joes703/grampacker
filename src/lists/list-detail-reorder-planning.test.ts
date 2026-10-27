@@ -142,7 +142,7 @@ describe('ListDetailPage reorder planning', () => {
 
 // Worn rows are extracted into the trailing Worn section in PACK mode only
 // (section-rows.ts). In List view they render inside their category, so the
-// planner must permute over them exactly as CategoryGroup renders them - the
+// planner must permute over them exactly as CategoryTable renders them - the
 // renderer and planner disagreeing is audit F1, in either direction: a plan
 // over a row the user cannot see rewrites ranks invisibly, and a plan that
 // skips a visible row drops the dragged row somewhere other than where it

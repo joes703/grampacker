@@ -41,10 +41,9 @@ import PackModeCheckbox from './PackModeCheckbox'
 //   row action menu) belongs in `children`, which render as SIBLINGS of the
 //   label, never inside it.
 
-// Shared with the container-header squares in CategoryGroup, so the state
-// mirroring cannot drift between rows and headers. size 11 fits the square's
-// 12px interior (14px minus its borders); an unsized lucide icon is 24px.
-export function PrintCheckboxSquare({
+// size 11 fits the square's 12px interior (14px minus its borders); an
+// unsized lucide icon is 24px.
+function PrintCheckboxSquare({
   variant,
   checked,
 }: {
@@ -59,6 +58,47 @@ export function PrintCheckboxSquare({
     >
       {checked && <Check size={11} strokeWidth={3} />}
     </span>
+  )
+}
+
+// The Ready checkbox, then the wrapping label with the Packed checkbox and
+// whatever names the row (`children`). Shared by every pack row and by a
+// container section's header row, so the checkbox columns and the print
+// squares cannot drift between rows and headers.
+export function PackChecks({
+  name,
+  isPacked,
+  isReady,
+  onUpdate,
+  children,
+}: {
+  name: string
+  isPacked: boolean
+  isReady: boolean
+  onUpdate?: (patch: { isPacked?: boolean; isReady?: boolean }) => void
+  children: ReactNode
+}) {
+  return (
+    <>
+      <PackModeCheckbox
+        variant="ready"
+        checked={isReady}
+        onChange={(checked) => onUpdate?.({ isReady: checked })}
+        ariaLabel={`Mark ${name} ready`}
+        title="Ready"
+        standaloneLabel
+      />
+      <PrintCheckboxSquare variant="ready" checked={isReady} />
+      <label className="flex flex-1 min-w-0 items-center gap-1.5 cursor-pointer">
+        <PackModeCheckbox
+          variant="packed"
+          checked={isPacked}
+          onChange={(checked) => onUpdate?.({ isPacked: checked })}
+        />
+        <PrintCheckboxSquare variant="packed" checked={isPacked} />
+        {children}
+      </label>
+    </>
   )
 }
 
@@ -115,22 +155,7 @@ export default function PackRowFrame({
       }`}
     >
       {dragHandle}
-      <PackModeCheckbox
-        variant="ready"
-        checked={isReady}
-        onChange={(checked) => onUpdate?.({ isReady: checked })}
-        ariaLabel={`Mark ${name} ready`}
-        title="Ready"
-        standaloneLabel
-      />
-      <PrintCheckboxSquare variant="ready" checked={isReady} />
-      <label className="flex flex-1 min-w-0 items-center gap-1.5 lg:gap-1.5 cursor-pointer">
-        <PackModeCheckbox
-          variant="packed"
-          checked={isPacked}
-          onChange={(checked) => onUpdate?.({ isPacked: checked })}
-        />
-        <PrintCheckboxSquare variant="packed" checked={isPacked} />
+      <PackChecks name={name} isPacked={isPacked} isReady={isReady} onUpdate={onUpdate}>
         {statusBadge}
         {/* Name + description at lg+ in the same 2:3 proportion as edit
             mode. <lg keeps the single-column name-only layout. */}
@@ -140,7 +165,7 @@ export default function PackRowFrame({
           </div>
           <div className="hidden lg:block lg:flex-[3] min-w-0">{description}</div>
         </div>
-      </label>
+      </PackChecks>
       {children}
     </div>
   )

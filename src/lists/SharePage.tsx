@@ -20,7 +20,7 @@ import {
 } from '../lib/weight-breakdown'
 import WeightTable from './WeightTable'
 import PanelCard from './PanelCard'
-import CategoryGroup from './CategoryGroup'
+import CategoryTable from './CategoryTable'
 import DraftBanner from './DraftBanner'
 import { UnitSegmentedControlView } from '../components/UnitSegmentedControl'
 import {
@@ -35,7 +35,7 @@ import {
 const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
 // Module-level constant: the Food section holds no gear, and a fresh []
-// literal on every render would defeat CategoryGroup's memo.
+// literal on every render would defeat CategoryTable's memo.
 const EMPTY_GEAR_ITEMS: ListItemWithGear[] = []
 
 // The public /r/:slug read-only view. One anonymous GET returns the whole
@@ -248,7 +248,7 @@ export default function SharePage() {
         {(items.length > 0 || share.food.items.length > 0) && (
           <div className="flex flex-col gap-3">
             {grouped.map((group) => (
-              <CategoryGroup
+              <CategoryTable
                 key={group.category?.id ?? '__uncategorized__'}
                 name={group.category?.name ?? 'Uncategorized'}
                 items={group.items}
@@ -272,7 +272,7 @@ export default function SharePage() {
                 consumable by definition, which is the bucket its grams
                 already land in upstream. */}
             {share.food.items.length > 0 && (
-              <CategoryGroup
+              <CategoryTable
                 name="Food"
                 items={EMPTY_GEAR_ITEMS}
                 regionKey="food"
