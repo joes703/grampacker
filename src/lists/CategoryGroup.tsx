@@ -120,20 +120,6 @@ import { ConsumableIcon, WornIcon } from './list-item-flags'
 // SortableItemRow without either side re-deriving the shape.
 export type RowProps = Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'>
 
-/**
- * Which section is rendering, for injected renderers that need to label or
- * identify it. Plain data: the seam stays something the bundler can see
- * through, which is what keeps @dnd-kit off the public share path.
- *
- * `name` labels controls for a screen reader ("...at the end of Main pack").
- * `key` is the section's IDENTITY - the packing location id, or the sentinel
- * for the Unassigned and Worn buckets. Reorder mode binds to it so a row that
- * gets rehomed mid-placement (moved from another tab, or orphaned into
- * Unassigned when its location is deleted) ends the mode instead of quietly
- * continuing against a different bag's cohort.
- */
-export type SectionIdentity = { key: string; name: string }
-
 /** Props for one pack-mode food row - built here (plain data + handlers, no
  *  @dnd-kit) and rendered by the injected union renderRows, which wraps them
  *  in SortableFoodRow on the authenticated side. */
@@ -162,7 +148,6 @@ export type PlainFoodRow = {
 export type RenderRows = (
   items: ListItemWithGear[],
   rowPropsFor: (item: ListItemWithGear) => RowProps,
-  section: SectionIdentity,
   /** Pack mode only (0022): this section's food rows plus their per-row
    *  props builder. The injected renderer merges them with the gear rows
    *  into union display order; plain (share/edit) rendering never sees
@@ -261,24 +246,8 @@ type GroupPropsBase = {
   /** Per-row trailing control, same injection rationale as the header slots.
    *  Pack rows use it for the "move to location" menu, which is the
    *  keyboard- and touch-reachable equivalent of dragging a row between
-   *  sections. Called per rendered row.
-   *
-   *  `cohort` is the rows this section actually rendered, AFTER filtering -
-   *  the same array the reorder slots work against. The menu needs it to know
-   *  whether reordering this row could change anything: in a section showing
-   *  one row there is nowhere to put it, and offering the action anyway opens
-   *  a mode with no controls in it. Passing the array rather than a boolean
-   *  keeps the decision with the caller, which is the side that knows what
-   *  reorder means. */
-  renderRowAction?: (
-    item: ListItemWithGear,
-    cohort: ListItemWithGear[],
-    section: SectionIdentity,
-    /** Rendered gear + food rows in this section. The row menu withholds
-     *  click-to-place when fewer than two rows are visible, and with food in
-     *  the bag the gear cohort alone under-counts. */
-    unionRowCount?: number,
-  ) => ReactNode
+   *  sections. Called per rendered row. */
+  renderRowAction?: (item: ListItemWithGear) => ReactNode
   /** Pack-mode only (0022): this section's food rows. Food is filtered by the
    *  same pack filters as gear, counted into the header progress, and handed
    *  to renderRows for union-ordered rendering. */
@@ -308,11 +277,7 @@ type GroupPropsBase = {
     foodId: string,
     patch: { isPacked?: boolean; isReady?: boolean },
   ) => void
-  renderFoodRowAction?: (
-    food: FoodItemResponse,
-    unionRowCount: number,
-    section: SectionIdentity,
-  ) => ReactNode
+  renderFoodRowAction?: (food: FoodItemResponse) => ReactNode
   /** The one section allowed to render worn rows. Every ordinary category or
    *  packing-location section filters them into the trailing Worn section. */
   wornSection?: boolean
@@ -465,7 +430,6 @@ function CategoryGroup({
   // onto the same 'uncategorized' id and duplicate it in the document.
   const sectionKey = regionKey ?? categoryId ?? 'uncategorized'
   const regionId = `cat-region-${sectionKey}`
-  const section: SectionIdentity = { key: sectionKey, name }
   // sectionItems = the items that BELONG to this category section. In pack
   // mode worn items belong to the trailing Worn section, so ordinary pack
   // sections exclude them from the pack count and rows - by the one shared
@@ -542,7 +506,7 @@ function CategoryGroup({
       onEditGearItem: onEditGearItem ? () => onEditGearItem(gearId) : undefined,
       onSetGearStatus: onSetGearStatus ? (s: GearStatus) => onSetGearStatus(gearId, s) : undefined,
       onDelete: onDelete ? () => onDelete(item.id) : undefined,
-      rowAction: renderRowAction?.(item, visibleItems, section, unionRowCount),
+      rowAction: renderRowAction?.(item),
     }
   }
 
@@ -747,7 +711,6 @@ function CategoryGroup({
             ? renderRows(
                 visibleItems,
                 rowPropsFor,
-                section,
                 packMode && packFoodRows !== undefined
                   ? {
                       rows: visibleFood,
@@ -760,7 +723,7 @@ function CategoryGroup({
                         weightUnit,
                         onUpdate: (patch: { isPacked?: boolean; isReady?: boolean }) =>
                           onUpdateFood?.(food.id, patch),
-                        rowAction: renderFoodRowAction?.(food, unionRowCount, section),
+                        rowAction: renderFoodRowAction?.(food),
                       }),
                     }
                   : undefined,

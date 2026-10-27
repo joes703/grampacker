@@ -3,7 +3,6 @@ import { useSortableRow } from '../lib/use-sortable-row'
 import RowIconButton from '../components/RowIconButton'
 import { ROW_HOVER_REVEAL } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
-import { useIsPlacing } from './placement-context'
 
 // This lived inside ItemRow.tsx, which meant every module that rendered a row
 // imported @dnd-kit - including SharePage, the PUBLIC, READ-ONLY share view,
@@ -42,17 +41,10 @@ export default function SortableItemRow({
 }: Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'> & {
   dndKind?: 'item' | 'packing-item'
 }) {
-  // Click-to-place marks the row it is moving, so the insertion slots are not
-  // floating next to an unidentified row. Read from context rather than passed
-  // down - the section above this is memoized and bails out, and the prop
-  // would have to come through CategoryGroup, which is on the share path.
-  // The tint itself is PLACING_ROW_STYLE (lib/row-indicator-styles).
-  const isPlacing = useIsPlacing(props.item.id)
   const { outerRef, outerStyle, handleProps } = useSortableRow({
     kind: dndKind,
     id: props.item.id,
     disabled: props.reorderPending,
-    placing: isPlacing,
   })
 
   // Every viewport drives reorder from a dedicated in-row grip. This used to sit in

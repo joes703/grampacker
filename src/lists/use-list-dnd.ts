@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   closestCenter,
@@ -29,11 +29,8 @@ import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
 import { passesPackFilters } from './section-rows'
 import {
   nextUnionPackRankFor,
-  packRowName,
   type UnionRankUpdates,
 } from './pack-rows'
-import { usePlacement } from './placement-context'
-import { planPlacementWithinLocation } from './placement-plan'
 import { useDragSensors } from '../lib/use-drag-sensors'
 
 // One shared empty array for every "no food rows here" case: Edit mode, where
@@ -49,11 +46,10 @@ const EMPTY_EXCLUSIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map()
 // The callbacks `narrated` hands every write it narrates.
 type NarrationCallbacks = { onSuccess: () => void; onError: () => void }
 
-// Everything that turns a drag, a drop or a click-to-place on the list
-// detail page into a write and a screen-reader narration: the sensors, the
-// two reorder mutations, the move requests, the placement mode's plan
-// callback and lifecycle effects, the collision filter, and the packing
-// derivations those consume. It renders nothing - the page still renders
+// Everything that turns a drag or a drop on the list detail page into a write
+// and a screen-reader narration: the sensors, the two reorder mutations, the
+// move requests, the collision filter, and the packing derivations those
+// consume. It renders nothing - the page still renders
 // DndContext, DragOverlay and the aria-live region from what this returns.
 //
 // The hook does NOT subscribe to the queries itself: the page already owns
@@ -126,8 +122,8 @@ export function useListDnd({
     ...makeOptimisticReorder<ListItemWithGear>(qc, queryKeys.listItems(listId)),
   })
 
-  // PACK order. Every reorder that happens in Pack view - drag and
-  // click-to-place alike - goes here instead, which is the whole point of the
+  // PACK order. Every reorder that happens in Pack view goes here instead,
+  // which is the whole point of the
   // split: arranging your pack no longer rewrites the list you wrote or the
   // share link you sent someone.
   const reorderPackItemsMut = useMutation({
@@ -178,8 +174,8 @@ export function useListDnd({
   const [announcement, setAnnouncement] = useState('')
 
   // The narration trio every packing write follows: say what is starting,
-  // then say it landed or that it could not. One owner so the four sites
-  // (gear move, food move, click-to-place, pack reorder) cannot drift.
+  // then say it landed or that it could not. One owner so the three sites
+  // (gear move, food move, pack reorder) cannot drift.
   // An undefined string skips that announcement without skipping the write -
   // the guards differ on purpose: starting and landing name the destination,
   // so they need one; the failure names only the row.
@@ -288,85 +284,8 @@ export function useListDnd({
       : null,
   )
 
-  // Click-to-place. The plan is computed against the array the SECTION
-  // rendered, handed back by the slot that was activated - never rebuilt from
-  // a location id here, because the displayed cohort and a raw
-  // packingLocationId scan diverge while a location delete is still
-  // optimistic.
-  const { placement, actions: placementActions } = usePlacement(
-    (rowId, insertIndex, eligibleRows) => {
-      // Reserved ranks: same-cohort rows the section did NOT render (worn
-      // gear, filtered rows, container headers). The densify path that heals
-      // a cross-table tie must not mint one of their slots.
-      //
-      // Locations are NORMALIZED through the rendered-location set, exactly
-      // like buildPackingTree and foodByLocation normalize rows: during an
-      // optimistic location delete the cache still carries the dead bag's
-      // id while the rows RENDER under Unassigned, and comparing raw cached
-      // ids would drop the genuine-Unassigned hidden rows from the avoid
-      // set (round-6 finding 2).
-      const renderedIds = new Set(
-        eligibleRows.map((row) => (row.kind === 'gear' ? row.gear.id : row.food.id)),
-      )
-      const normalizeLocation = (locationId: string | null) =>
-        locationId !== null && renderedLocationIds.has(locationId)
-          ? locationId
-          : null
-      const cohortLocation = eligibleRows[0]
-        ? normalizeLocation(
-            eligibleRows[0].kind === 'gear'
-              ? eligibleRows[0].gear.packingLocationId
-              : eligibleRows[0].food.packingLocationId,
-          )
-        : null
-      const avoidRanks = new Set([
-        ...listItems
-          .filter(
-            (item) =>
-              normalizeLocation(item.packingLocationId) === cohortLocation &&
-              !renderedIds.has(item.id),
-          )
-          .map((item) => item.packSortOrder),
-        ...listFoodItems
-          .filter(
-            (item) =>
-              normalizeLocation(item.packingLocationId) === cohortLocation &&
-              !renderedIds.has(item.id),
-          )
-          .map((item) => item.packSortOrder),
-      ])
-      const updates = planPlacementWithinLocation(
-        rowId,
-        insertIndex,
-        eligibleRows,
-        avoidRanks,
-      )
-      if (!updates) return
-      const movedRow = eligibleRows.find(
-        (row) => (row.kind === 'gear' ? row.gear.id : row.food.id) === rowId,
-      )
-      const movedName = movedRow ? packRowName(movedRow) : undefined
-      // Pack rank: click-to-place is offered only inside a bag (the menu
-      // withholds it outside location grouping), so it is always a pack
-      // reorder - a union one since 0022.
-      narrated({
-        doing: movedName ? `Moving ${movedName}.` : undefined,
-        done: movedName ? `Moved ${movedName}.` : undefined,
-        failed: movedName ? `Could not move ${movedName}.` : undefined,
-        run: (callbacks) => reorderPackItemsMut.mutate(updates, callbacks),
-      })
-    },
-  )
-
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
-    // A drag and a placement are two answers to the same question. Starting
-    // one closes the other rather than leaving both offering targets.
-    //
-    // WITHOUT returning focus: a keyboard drag reads its keystrokes from the
-    // focused drag handle, so sending focus back to the kebab here would
-    // strand the drag that just started.
-    placementActions.cancel({ returnFocus: false })
     locationDrag.onDragStart(e)
   }
 
@@ -529,53 +448,6 @@ export function useListDnd({
     else if (plan) reorderItemsMut.mutate(plan.updates)
   }
 
-  // Placement is a MODE, and a mode that outlives its subject acts on the
-  // wrong thing. ListDetailInner is keyed only by list id, so switching to
-  // List view does not remount it, and collapsing a section merely stops
-  // rendering its rows - without this the mode could go invisible and come
-  // back later against a changed list.
-  //
-  // The slots themselves already fail safe: each one only renders when the
-  // placing row is present in the array ITS OWN section rendered, so a row
-  // that is filtered away, removed, or moved elsewhere simply stops offering
-  // slots. This clears the state behind that, for the cases where it would
-  // otherwise linger.
-  //
-  // A row being promoted to a container is caught here, because
-  // packingReorderExclusions counts pending containers.
-  //
-  // This check is deliberately NOT exhaustive. Everything it cannot see -
-  // the section collapsing, another tab moving the row into a collapsed bag,
-  // its location being optimistically deleted - shows up as "no usable slots
-  // are mounted any more", which PlacementProvider watches directly. Adding a
-  // predicate here per case would be a second, partial copy of a question the
-  // slots can answer exactly.
-  const placingItemId = placement?.itemId
-  const placementCancel = placementActions.cancel
-  const placingStillEligible =
-    placingItemId === undefined ||
-    (groupingKind === 'location' &&
-      mode === 'pack' &&
-      (foodById.has(placingItemId)
-        ? !packFilteredFoodIds.has(placingItemId)
-        : listItemsById.has(placingItemId) &&
-          !packFilteredItemIds.has(placingItemId) &&
-          !packingReorderExclusions.has(placingItemId)))
-  useEffect(() => {
-    if (!placingStillEligible) placementCancel()
-  }, [placingStillEligible, placementCancel])
-
-  // Escape closes the mode from anywhere, which is the documented way out of
-  // it. Registered only while placing so it cannot shadow anything else.
-  useEffect(() => {
-    if (placingItemId === undefined) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') placementCancel()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [placingItemId, placementCancel])
-
   // Location drags are constrained to siblings; item drags may target any
   // item or location. Without this filter, closestCenter would happily
   // reparent a section onto a cousin.
@@ -598,8 +470,6 @@ export function useListDnd({
     onDragStart: handleDragStart,
     onDragEnd: handleDragEnd,
     onDragCancel: handleDragCancel,
-    placement,
-    placementActions,
     requestMove,
     requestMoveFood,
     anyItemReorderPending,

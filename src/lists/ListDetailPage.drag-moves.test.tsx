@@ -2,7 +2,6 @@
 import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import type { Category, PackingLocation } from '../lib/types'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
@@ -14,12 +13,10 @@ import {
   stubViewport,
 } from './test/list-detail-harness'
 
-// Characterization tests for the page-level drag/move/placement orchestration,
-// written BEFORE that code moves out of ListDetailPage (Phase 6 Tier 2). The
-// pure planners have their own suites; what is pinned here is the page's
-// WIRING: which mutation each drag kind reaches, the move announcements a
-// screen reader hears, and the click-to-place path from a slot to the union
-// pack reorder. dnd-kit cannot be driven by synthetic pointers in jsdom, so
+// Tests for the page-level drag and move wiring. The pure planners have their
+// own suites; what is pinned here is which mutation each drag kind reaches,
+// the payload a pack reorder sends, and the announcements a screen reader
+// hears. dnd-kit cannot be driven by synthetic pointers in jsdom, so
 // the DndContext stub records the page's own handlers and the tests invoke
 // them with the events a real drag would deliver.
 
@@ -267,43 +264,35 @@ describe('drag narration', () => {
   })
 })
 
-describe('click-to-place', () => {
-  it('fires the union pack reorder from a slot and narrates it', async () => {
-    // Held open so the Moving -> Moved transition is observable: userEvent
-    // flushes microtasks, and an already-resolved mock would let the final
-    // announcement overwrite the transient one before the first assertion.
+describe('pack reorder by drag', () => {
+  it('sends the union pack reorder and narrates it', async () => {
+    // Held open so the Reordering -> Reordered transition is observable.
     let settle!: () => void
     h.reorderPackListItems.mockImplementation(
       () => new Promise<void>((resolve) => { settle = resolve }),
     )
     await renderPack()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Open Stove packing options' }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Reorder in this bag' }))
+    fireDragEnd({
+      active: { id: 'packing-item:li-a' },
+      over: { id: 'packing-item:li-b' },
+    })
 
-    // Moving the first of two rows: both before-slots mean "leave it here",
-    // so the only offered slot is the trailing one.
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Place Stove at the end of Backpack' }),
-    )
-
-    expect(screen.getByText('Moving Stove.')).toBeInTheDocument()
+    expect(screen.getByText('Reordering Stove.')).toBeInTheDocument()
     await waitFor(() => expect(h.reorderPackListItems).toHaveBeenCalledTimes(1))
     const [calledListId, updates] = h.reorderPackListItems.mock.calls[0] as [
       string,
       { items: { id: string; packSortOrder: number }[]; foodItems: unknown[] },
     ]
     expect(calledListId).toBe(listId)
-    // The plan reranks the rendered cohort in its new order: Cooking pot
-    // first, Stove after it.
+    // Stove moves below the Cooking pot: the bag's ranks are reassigned in
+    // the new order.
     expect(updates.items).toEqual([
       { id: 'li-b', packSortOrder: 0 },
       { id: 'li-a', packSortOrder: 1 },
     ])
     expect(updates.foodItems).toEqual([])
     act(() => settle())
-    await screen.findByText('Moved Stove.')
+    await screen.findByText('Reordered Stove.')
   })
 })

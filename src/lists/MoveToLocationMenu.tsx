@@ -1,4 +1,4 @@
-import { ArrowUpDown, MapPin, PackageMinus, PackagePlus, Pencil, Trash2 } from 'lucide-react'
+import { MapPin, PackageMinus, PackagePlus, Pencil, Trash2 } from 'lucide-react'
 import type { PackingLocation } from '../lib/types'
 import KebabMenu, { type KebabMenuContext } from '../components/KebabMenu'
 import { RowMenuItem } from '../components/RowMenuItem'
@@ -29,16 +29,6 @@ type BaseProps = {
   isContainer: boolean
   excludedLocationIds?: ReadonlySet<string>
   onMove: (locationId: string | null) => void
-  /** Starts click-to-place: the non-drag way to reposition this row inside its
-   *  own bag (WCAG 2.5.7). Omitted where the row cannot be row-reordered -
-   *  container HEADER rows use this same menu but are excluded from reorder,
-   *  and a dead action there would be worse than no action. The caller also
-   *  omits it when the row's own section shows fewer than two rows, where
-   *  every insertion point is a no-op and the mode would open empty.
-   *
-   *  Receives the kebab element so focus can come back here when the mode
-   *  closes - by then the slot that had focus has unmounted. */
-  onStartReorder?: (origin: HTMLElement | null) => void
   /** Drops the item from the list entirely. Pack could previously only
    *  rearrange what was already there, so noticing "I am not taking this"
    *  while packing meant leaving for List view and finding the row again.
@@ -95,7 +85,6 @@ export default function MoveToLocationMenu({
   isContainer,
   excludedLocationIds,
   onMove,
-  onStartReorder,
   onRemoveFromList,
   onEdit,
   onUseAsContainer,
@@ -139,25 +128,6 @@ export default function MoveToLocationMenu({
             }}
           >
             Edit item
-          </RowMenuItem>
-          <div className="my-1 border-t border-gray-100" />
-        </>
-      ) : null}
-      {onStartReorder ? (
-        <>
-          <RowMenuItem
-            icon={<ArrowUpDown size={13} />}
-            disabled={disabled || locationsUnavailable}
-            onClick={() => {
-              // Read the trigger BEFORE close(), while the menu is still the
-              // thing that owns it. close() only clears the popover position;
-              // the kebab itself stays mounted, so the element stays valid.
-              const origin = triggerRef.current
-              close()
-              onStartReorder(origin)
-            }}
-          >
-            Reorder in this bag
           </RowMenuItem>
           <div className="my-1 border-t border-gray-100" />
         </>

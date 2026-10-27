@@ -53,7 +53,7 @@ import { resolveRemovalPlan } from './list-item-removal'
 import { useListGearActions } from './use-list-gear-actions'
 import NotesEditor from './NotesEditor'
 import { type AddItemData } from './use-quick-add-form'
-import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
+import CategoryGroup from './CategoryGroup'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import PanelCard from './PanelCard'
 import ItemRow from './ItemRow'
@@ -77,7 +77,6 @@ import MoveToLocationMenu from './MoveToLocationMenu'
 import PackLocationControls from './PackLocationControls'
 import PackingLocationTree from './PackingLocationTree'
 import PrintListHeader from './PrintListHeader'
-import { PlacementProvider } from './placement-context'
 import { DroppableUnassignedSection } from './SortablePackSection'
 import { PACKING_LOCATION_CAP } from '../lib/caps'
 import { useIsPrinting } from '../lib/use-is-printing'
@@ -534,9 +533,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [listItems, packingLocations, mode],
   )
 
-  // Drag, drop and click-to-place orchestration - the handlers, narration,
-  // placement lifecycle, the two reorder mutations and the packing
-  // derivations they consume - lives in useListDnd. The destructured names
+  // Drag and drop orchestration - the handlers, narration, the two reorder
+  // mutations and the packing derivations they consume - lives in useListDnd. The destructured names
   // are unchanged, so every consumer below reads as before the move.
   const {
     sensors,
@@ -546,8 +544,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     onDragStart: handleDragStart,
     onDragEnd: handleDragEnd,
     onDragCancel: handleDragCancel,
-    placement,
-    placementActions,
     requestMove,
     requestMoveFood,
     anyItemReorderPending,
@@ -637,29 +633,10 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       // The synchronous path this replaced was self-limiting because the
       // optimistic delete removed the row before a second click could land.
       if (removalPreflightRef.current.has(li.id)) return
-      // Click-to-place is a persistent mode: its insertion slots stay mounted
-      // and the rows around them stay clickable, so a removal started from a
-      // pack kebab can otherwise open a confirm dialog on top of live slots -
-      // and if the removed row is the one being placed, the mode is left
-      // pointing at something that no longer exists. Placement is about where
-      // a row sits; removing it makes that question moot, so the mode loses.
-      //
-      // returnFocus is false because the kebab that started this is inside the
-      // row about to disappear. PlacementProvider's restore already declines
-      // to focus a disconnected origin, but asking for it at all would be
-      // stating an intent this call cannot honor.
-      placementActions.cancel({ returnFocus: false })
       removalPreflightRef.current.add(li.id)
       void (async () => {
         try {
           const plan = await resolveRemovalPlan(qc, listId, li.id)
-          // Again, after the await. The lookup is a real round trip - the
-          // duplicate guard above exists because it is long enough for a
-          // second click - so placement can be started DURING it, after the
-          // cancel above has already run. Canceling once on entry would leave
-          // the confirm dialog opening over live slots in exactly that window.
-          // cancel() is idempotent, so the common path pays nothing.
-          placementActions.cancel({ returnFocus: false })
           if (plan.kind === 'confirm') {
             setDialog({
               type: 'remove-container-item',
@@ -675,7 +652,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         }
       })()
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; deleteItem is a TanStack mutation result (.mutate is stable, the wrapper is not); refs are stable; placementActions is a useMemo over an empty dep array (see placement-context); listId is fixed for this component instance (keyed by list)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- qc and setDialog are stable; deleteItem is a TanStack mutation result (.mutate is stable, the wrapper is not); refs are stable; listId is fixed for this component instance (keyed by list)
     [],
   )
 
@@ -867,12 +844,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // pays: edit mode and the library panel, whose arrays survive unrelated
   // page-state changes. Re-profile before adding cost to this path (more
   // per-row work, higher caps), not before ticking checkboxes.
-  const renderPackRowAction = (
-    item: ListItemWithGear,
-    cohort: ListItemWithGear[],
-    section: SectionIdentity,
-    unionRowCount?: number,
-  ) => (
+  const renderPackRowAction = (item: ListItemWithGear) => (
     <MoveToLocationMenu
       itemId={item.id}
       itemName={item.gearItem.name}
@@ -887,24 +859,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       isContainer={false}
       excludedLocationIds={containerMoveExclusions.get(item.id)}
       onMove={(locationId) => requestMove(item.id, locationId)}
-      // Click-to-place, the non-drag path for reorder. Withheld while a
-      // reorder is already in flight, and withheld entirely in category
-      // grouping - the insertion slots only render for packing rows, so the
-      // action would open a mode with nothing in it.
-      //
-      // Also withheld when this section rendered fewer than two rows. Every
-      // insertion point in a one-row section is a no-op, so the mode would
-      // open with no slots and no way out but Escape. `cohort` is post-filter,
-      // which is the right test: a bag of ten rows showing one is just as
-      // unreorderable as a bag holding one.
-      onStartReorder={
-        grouping.kind === 'location' &&
-        !anyItemReorderPending &&
-        (unionRowCount ?? cohort.length) > 1
-          ? (origin: HTMLElement | null) =>
-              placementActions.start({ kind: 'gear', gear: item }, section, origin)
-          : undefined
-      }
       // Membership: this drops the row from the list and leaves the gear item
       // in the library. requestRemoveListItem owns the container-backing
       // case, which needs a confirm because it destroys more than the row.
@@ -922,15 +876,11 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     />
   )
 
-  // The food row's menu: move between bags, click-to-place within one. No
+  // The food row's menu: move between bags. No
   // container promotion (food cannot back a container) and no removal - food
   // membership is authored in the Food view, and a checklist row losing its
   // delete is the same rule worn gear rows follow for structure actions.
-  const renderFoodRowAction = (
-    food: FoodItemResponse,
-    unionRowCount: number,
-    section: SectionIdentity,
-  ) => (
+  const renderFoodRowAction = (food: FoodItemResponse) => (
     <MoveToLocationMenu
       itemId={food.id}
       itemName={food.name}
@@ -942,12 +892,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       containerCreationDisabled
       isContainer={false}
       onMove={(locationId) => requestMoveFood(food.id, locationId)}
-      onStartReorder={
-        grouping.kind === 'location' && !anyItemReorderPending && unionRowCount > 1
-          ? (origin: HTMLElement | null) =>
-              placementActions.start({ kind: 'food', food }, section, origin)
-          : undefined
-      }
     />
   )
   const packFoodRowAction = mode === 'pack' ? renderFoodRowAction : undefined
@@ -962,9 +906,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // user meets it, and present only after they had built a bag - the kind of
   // partial coverage that reads as "it does not work".
   //
-  // The menu degrades correctly here on its own: click-to-place is already
-  // withheld outside location grouping, and with no locations the move list
-  // holds only the current one, disabled.
+  // The menu degrades correctly here on its own: with no locations the move
+  // list holds only the current one, disabled.
   const packRowAction = mode === 'pack' ? renderPackRowAction : undefined
 
   // Worn rows, which sit outside the packing tree by design: they are not in
@@ -1378,7 +1321,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
                     data-testid={mode === 'pack' ? 'pack-print-columns' : undefined}
                     className={`flex flex-col gap-3 ${mode === 'pack' ? 'print:block print:columns-2 print:gap-4 print:*:mb-2' : ''}`}
                   >
-                    <PlacementProvider placement={placement} actions={placementActions}>
                     <DndContext
                       sensors={sensors}
                       // Location grouping needs the packing filter: it keeps a
@@ -1550,7 +1492,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
                         {announcement}
                       </div>
                     </DndContext>
-                    </PlacementProvider>
 
                     {/* Worn section — PACK MODE ONLY: worn gear is a separate
                         pile when packing (you lay it out to wear, you do not

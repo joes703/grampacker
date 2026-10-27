@@ -304,8 +304,7 @@ describe('removing gear from Pack view', () => {
   // like this even if the gate were removed. What this pins is the
   // USER-VISIBLE contract - List rows keep exactly one kebab, and the worn
   // removal button is a pack affordance. The gate itself earns its keep
-  // elsewhere (it keeps List view from building menus and placement bindings
-  // it will not render), and that is not observable from the DOM.
+  // elsewhere (it keeps List view from building menus it will not render), and that is not observable from the DOM.
   it('shows no packing affordances on List view rows', async () => {
     stubViewport(1280)
     h.fetchListItems.mockResolvedValue([listItem, wornItem])

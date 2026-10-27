@@ -500,31 +500,6 @@ describe('CategoryGroup footer subtotal', () => {
       expect(screen.queryByText('Pot')).toBeNull()
     })
 
-    // The row menu decides whether to offer click-to-place from this array.
-    // If it were the UNFILTERED set, a bag showing one row would still offer
-    // "Reorder in this bag" and open a mode whose every insertion point is a
-    // no-op - a live mode with no controls in it.
-    it('hands the row action the rows that survived filtering, not all of them', () => {
-      const cohorts: number[] = []
-      render(
-        <CategoryGroup
-          name="Kitchen"
-          categoryId="cat-1"
-          items={all}
-          weightUnit="g"
-          packMode
-          showUnpackedOnly
-          showUnreadyOnly
-          renderRowAction={(_item, cohort) => {
-            cohorts.push(cohort.length)
-            return null
-          }}
-        />,
-      )
-      // Stakes is the only row left of four, and every call agrees on that.
-      expect(cohorts).toEqual([1])
-    })
-
     it('judges completeness on the unfiltered set', () => {
       // The filter is a view of the section, not a redefinition of it. If
       // completeness followed the filter, a filter that hides unpacked rows

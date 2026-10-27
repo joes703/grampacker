@@ -13,7 +13,6 @@ import {
 } from '../components/flat-table-styles'
 import PackRowFrame from './PackRowFrame'
 import { ConsumableIcon } from './list-item-flags'
-import { useIsPlacing } from './placement-context'
 
 // A food row in Pack mode - the food half of the 0022 union cohort. Mirrors
 // the pack-mode branch of ItemRow (same tokens, same column skeleton: grip,
@@ -39,15 +38,10 @@ export default function SortableFoodRow({
   onUpdate,
   rowAction,
 }: Props) {
-  // Same placing tint as SortableItemRow (PLACING_ROW_STYLE): the row being
-  // click-to-placed stays put and stays interactive, so it gets a marker,
-  // not the drag fade.
-  const isPlacing = useIsPlacing(food.id)
   const { outerRef, outerStyle, handleProps } = useSortableRow({
     kind: 'packing-food-item',
     id: food.id,
     disabled: reorderPending,
-    placing: isPlacing,
   })
 
   return (

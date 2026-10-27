@@ -2,14 +2,12 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties } from 'react'
 import { makeDnDId, type DnDIdKind } from './dnd-ids'
-import { PLACING_ROW_STYLE } from './row-indicator-styles'
 
 // The shared dnd-kit sortable-row recipe: typed id, the transform/transition/
 // drag-fade outer style, and the spreadable activator props every grip button
 // wires the same way. Per-surface rules stay at the call site: what disables
-// dragging (select mode, an in-flight reorder, temp- ids), what the grip
-// looks like, and whether the row is the click-to-place target (`placing`
-// adds the tint; see PLACING_ROW_STYLE).
+// dragging (select mode, an in-flight reorder, temp- ids) and what the grip
+// looks like.
 //
 // The container pack section (useSortableContainerSection) stays on raw
 // useSortable + useDraggable: its node carries two drag identities whose
@@ -18,12 +16,10 @@ export function useSortableRow({
   kind,
   id,
   disabled = false,
-  placing = false,
 }: {
   kind: DnDIdKind
   id: string
   disabled?: boolean
-  placing?: boolean
 }) {
   const {
     attributes,
@@ -40,7 +36,6 @@ export function useSortableRow({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
-    ...(placing ? PLACING_ROW_STYLE : null),
   }
 
   return {

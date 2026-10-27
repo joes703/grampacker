@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
-import CategoryGroup, { type SectionIdentity } from './CategoryGroup'
+import CategoryGroup from './CategoryGroup'
 import type { PackingTreeLocation } from './packing-tree'
 import {
   PackSectionMenu,
@@ -28,22 +28,12 @@ export type PackSectionProps = {
   node: PackingTreeLocation
   depth: number
   groupProps: Omit<ComponentProps<typeof CategoryGroup>, 'name' | 'items'>
-  /** Forwarded to CategoryGroup unchanged - see its declaration for what
-   *  `cohort` is and why the row menu needs it. */
-  renderRowAction?: (
-    item: ListItemWithGear,
-    cohort: ListItemWithGear[],
-    section: SectionIdentity,
-    unionRowCount?: number,
-  ) => ReactNode
+  /** Forwarded to CategoryGroup unchanged. */
+  renderRowAction?: (item: ListItemWithGear) => ReactNode
   /** This location's food rows (0022 union) plus their menu, forwarded to
    *  CategoryGroup unchanged. */
   packFoodRows?: FoodItemResponse[]
-  renderFoodRowAction?: (
-    food: FoodItemResponse,
-    unionRowCount: number,
-    section: SectionIdentity,
-  ) => ReactNode
+  renderFoodRowAction?: (food: FoodItemResponse) => ReactNode
   containerAction?: ReactNode
   itemReorderPending: boolean
   locationReorderPending: boolean
