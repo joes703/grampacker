@@ -8,6 +8,7 @@ import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
 import { asButtonRef } from '../lib/dnd'
 import KebabMenu from '../components/KebabMenu'
+import InlineRenameInput from '../components/InlineRenameInput'
 import RowIconButton from '../components/RowIconButton'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import { FLAT_TABLE_HEADER_TITLE } from '../components/flat-table-styles'
@@ -223,17 +224,14 @@ export function PackSectionRenameInput({
       <span className={`hidden print:block min-w-0 flex-1 [overflow-wrap:anywhere] ${FLAT_TABLE_HEADER_TITLE}`}>
         {name}
       </span>
-      <input
-        autoFocus
+      <InlineRenameInput
         value={draft}
         maxLength={60}
-        aria-label="Packing location name"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') commit()
-          if (event.key === 'Escape') onCancel()
-        }}
+        selectOnOpen={false}
+        ariaLabel="Packing location name"
+        onChange={setDraft}
+        onSubmit={commit}
+        onCancel={onCancel}
         className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-2 py-1 text-sm font-semibold text-gray-900 print:hidden"
       />
     </>

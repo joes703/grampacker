@@ -12,6 +12,7 @@ type Props = {
   ariaLabel?: string
   /** Full input chrome per surface (e.g. LIST_RENAME_INPUT_CLASS). */
   className?: string
+  maxLength?: number
 }
 
 // The inline-rename machine, in one place: focus/select on mount, Enter
@@ -29,6 +30,7 @@ export default function InlineRenameInput({
   selectOnOpen = true,
   ariaLabel,
   className,
+  maxLength,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const commitOnce = useCommitOnce()
@@ -45,6 +47,7 @@ export default function InlineRenameInput({
       type="text"
       value={value}
       aria-label={ariaLabel}
+      maxLength={maxLength}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') commitOnce(onSubmit)

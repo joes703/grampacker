@@ -154,6 +154,29 @@ describe('PackLocationSection', () => {
     expect(onCancelRename).toHaveBeenCalled()
   })
 
+  // Enter or Escape can be followed by a blur before the input goes away (the
+  // parent re-renders later, or focus moves in the same task). The blur must
+  // not save a second time, or turn a cancel into a save.
+  it('saves once on Enter followed by blur', () => {
+    const onRename = vi.fn()
+    renderSection({ renaming: true, onRename })
+    const input = screen.getByLabelText('Packing location name')
+    fireEvent.change(input, { target: { value: 'Top lid' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.blur(input)
+    expect(onRename).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not save on Escape followed by blur', () => {
+    const onRename = vi.fn()
+    renderSection({ renaming: true, onRename })
+    const input = screen.getByLabelText('Packing location name')
+    fireEvent.change(input, { target: { value: 'Top lid' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    fireEvent.blur(input)
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
   it('withholds admin chrome from an unconfirmed optimistic location', () => {
     // A temp- id has no server row yet, so rename and delete have nothing to
     // address and dragging it would name a location that does not exist.
