@@ -8,6 +8,18 @@ import { createListItemsRepo } from './list-items'
 import { createListsRepo } from './lists'
 import { createPackingLocationsRepo } from './packing-locations'
 
+// Slugs to hand out before the real generator, so a test can force a
+// collision. Empty by default: every other test gets real random slugs.
+const forcedSlugs = vi.hoisted(() => [] as string[])
+vi.mock('better-auth/crypto', async (importOriginal) => {
+  const real = await importOriginal<typeof import('better-auth/crypto')>()
+  return {
+    ...real,
+    generateRandomString: (...args: Parameters<typeof real.generateRandomString>) =>
+      forcedSlugs.shift() ?? real.generateRandomString(...args),
+  }
+})
+
 // Lists and list items run each operation as ONE SQLite transaction
 // (server/repos/lists.ts, list-items.ts). These tests prove that through the
 // real API and the real repositories:
@@ -443,20 +455,10 @@ describe('list and list-item error classification', () => {
     const { cookie, userId } = await newUser()
     const { list } = await seedFullList(cookie)
     const taken = list.slug
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-    const real = crypto.getRandomValues.bind(crypto)
-    let forced = false
-    vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
-      if (!forced && array instanceof Uint8Array && array.length === 6) {
-        forced = true
-        array.set([...taken].map((ch) => alphabet.indexOf(ch)))
-        return array
-      }
-      return real(array as never) as T
-    })
+    forcedSlugs.push(taken)
 
     const result = await createListsRepo(createDb(sqlite), userId).duplicate(list.id)
-    expect(forced).toBe(true)
+    expect(forcedSlugs).toEqual([])
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.row.slug).not.toBe(taken)
