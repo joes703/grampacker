@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { main } from './check-migration-immutability.mjs'
+import { checkShippedUnchanged } from './migration-rules.mjs'
 
 const SHA = 'a'.repeat(40)
 const JOURNAL = 'migrations/meta/_journal.json'
@@ -45,13 +45,13 @@ const gitWith = (changed: Buffer, journals?: { base: string; head: string }): Gi
   }
 }
 
-const run = (git: Git, eventName: string | undefined = 'pull_request', argv: string[] = []) => {
+const run = (git: Git) => {
   const lines: string[] = []
-  const code = main({ argv, eventName, git, log: (line) => lines.push(line) })
+  const code = checkShippedUnchanged({ git, log: (line) => lines.push(line) })
   return { code, output: lines.join('\n') }
 }
 
-describe('main', () => {
+describe('checkShippedUnchanged', () => {
   it('permits a pull request that only adds files (additions never reach the diff)', () => {
     // --diff-filter=a excludes additions, so an added migration and its
     // snapshot produce no output at all. No journals are supplied, so the stub
@@ -92,6 +92,15 @@ describe('main', () => {
     }
   })
 
+  it('ignores key order inside an entry, which carries no meaning', () => {
+    const base = journal('0027_a')
+    const entry = JSON.parse(base).entries[0]
+    const reordered = JSON.stringify({ ...JSON.parse(base), entries: [Object.fromEntries(Object.entries(entry).reverse())] })
+    const { code, output } = run(gitWith(z(JOURNAL), { base, head: reordered }))
+    expect(code).toBe(0)
+    expect(output).toMatch(/OK/)
+  })
+
   it('refuses a rewritten journal', () => {
     const base = journal('0027_a', '0028_b')
     const rewrites: Array<[string, string]> = [
@@ -120,37 +129,5 @@ describe('main', () => {
     const unreadable = run(gitWith(z(JOURNAL)))
     expect(unreadable.code).toBe(1)
     expect(unreadable.output).toContain('CANNOT BE CHECKED')
-  })
-
-  it('skips without touching git off pull_request', () => {
-    const git: Git = () => {
-      throw new Error('should not be called')
-    }
-    for (const event of ['push', 'merge_group']) {
-      const { code, output } = run(git, event)
-      expect(code, event).toBe(0)
-      expect(output).toContain('skipped')
-    }
-
-    // An explicit `undefined` would hit `run`'s default parameter, so this one
-    // goes straight to main: an unset GITHUB_EVENT_NAME (running it by hand)
-    // must skip, not fail.
-    const lines: string[] = []
-    expect(main({ argv: [], eventName: undefined, git, log: (line) => lines.push(line) })).toBe(0)
-    expect(lines.join('\n')).toContain('skipped')
-  })
-
-  it('exits 1 on any argument, before touching git', () => {
-    // The exit code alone cannot tell the argument check from a git failure:
-    // both fail closed with 1. The message and the untouched git stub can.
-    const calls: string[][] = []
-    const git: Git = (args) => {
-      calls.push(args)
-      throw new Error('should not be called')
-    }
-    const { code, output } = run(git, 'pull_request', ['--dry-run'])
-    expect(code).toBe(1)
-    expect(output).toContain('takes no arguments (got: --dry-run)')
-    expect(calls).toEqual([])
   })
 })

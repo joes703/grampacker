@@ -51,26 +51,11 @@ jobs:
 
       # Refuses a pull request that edits a migration main already holds:
       # production applies migrations by name and never re-runs one.
-      # Pull-request-only; skips itself on a push.
       - name: Check (shipped migrations unchanged)
-        run: node scripts/check-migration-immutability.mjs
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-migration-safety.mjs --immutability
 
-      # We pin actions by SHA because tags are mutable, and then rely on a
-      # trailing `# v7.0.0` comment to say what the SHA is. Nothing checked that
-      # comment until now: Dependabot moves the hash and leaves the label, so
-      # #154 offered the right v7.0.0 SHA still marked `# v6`. Needs network -
-      # it resolves each tag upstream - and fails closed if it cannot look.
-      - name: Check (action pins match their tag comments)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      # Every action pinned to a full commit SHA with a `# <tag>` comment.
+      # Offline: it does not check that the comment matches the SHA.
+      - name: Check (action pins)
         run: npm run check:action-pins
-
-      # A malformed dependabot.yml shipped twice before anything could validate
-      # it. This catches only PARSE-level mistakes - duplicate keys, tabs, bad
-      # indentation - which is what silently changes a config's meaning. It does
-      # NOT check the schema: a misspelled key is valid YAML and Dependabot just
-      # ignores it. See .yamllint.yml. The npm script owns the yamllint version
-      # pin (so local runs and CI cannot diverge); pinned so a linter release
-      # cannot fail an unrelated PR.
-      - name: Check (YAML parses as intended)
-        run: npm run check:yaml

@@ -15,21 +15,26 @@
 // Everything else - including whether the SQL runs on SQLite - is proven by
 // the API suite, which builds its database from this directory.
 //
-// Usage: node scripts/check-migration-safety.mjs. Needs origin/main fetched.
+// With `--immutability` it runs only the other check: no migration main
+// already holds was changed (`checkShippedUnchanged` in migration-rules.mjs).
+// CI runs that mode on pull requests.
+//
+// Usage: node scripts/check-migration-safety.mjs [--immutability]. Needs
+// origin/main fetched. Any other argument fails, so no flag can turn the
+// check into a no-op.
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { forbiddenIn } from './migration-rules.mjs'
+import { checkShippedUnchanged, describe, forbiddenIn } from './migration-rules.mjs'
 
 const DIR = 'migrations'
 const NO_CHANGES_MARKER = 'No schema changes, nothing to migrate'
 
 /** @param {string[]} args */
-const git = (args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
-
-/** @param {unknown} error */
-const describe = (error) => (error instanceof Error ? error.message : String(error))
+const gitRaw = (args) => execFileSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+/** @param {string[]} args */
+const git = (args) => gitRaw(args).toString('utf8').trim()
 
 const checkBookkeeping = () => {
   /** @type {{ entries: Array<{ idx: number, tag: string }> }} */
@@ -104,17 +109,22 @@ const checkNewMigrations = () => {
   console.log(`OK: ${pending.length} new migration(s), none rebuilds, renames, or drops a table.`)
 }
 
-const main = () => {
-  checkBookkeeping()
-  checkSnapshotMatchesSchema()
-  checkNewMigrations()
-}
-
-// Unconditional: a "run only when invoked directly" guard could silently turn
-// this CI gate into a no-op. The testable rules live in migration-rules.mjs.
-try {
-  main()
-} catch (error) {
-  console.error(`\n${describe(error)}`)
-  process.exit(1)
+const args = process.argv.slice(2)
+if (args.length === 1 && args[0] === '--immutability') {
+  process.exitCode = checkShippedUnchanged({ git: gitRaw, log: console.log })
+} else if (args.length > 0) {
+  console.error(`Unknown arguments: ${args.join(' ')}. Usage: check-migration-safety.mjs [--immutability]`)
+  process.exitCode = 1
+} else {
+  // Unconditional: a "run only when invoked directly" guard could silently
+  // turn this CI gate into a no-op. The testable rules live in
+  // migration-rules.mjs.
+  try {
+    checkBookkeeping()
+    checkSnapshotMatchesSchema()
+    checkNewMigrations()
+  } catch (error) {
+    console.error(`\n${describe(error)}`)
+    process.exit(1)
+  }
 }

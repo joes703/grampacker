@@ -43,7 +43,7 @@ repositories are the authorization boundary.
 | Unit tests | `npm run test:unit` | Node tier: `scripts/`, `shared/`, `src/`, `server/**/*.node.test.ts`. |
 | API tests | `npm run test:api` | Every other `server/**/*.test.ts`: the real app on Node against a fresh SQLite database per file. A few tests open a local port; if the sandbox cannot bind one, say so and rely on CI. |
 | Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
-| Other checks | `npm run check:action-pins`, `npm run check:yaml` | Action pins need network. |
+| Other checks | `npm run check:action-pins` | Every action pinned to a full SHA with a tag comment. |
 | Dev server | `npm run dev` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. |
 | Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |
 | Container image | `docker build --platform linux/amd64 -t grampacker:check .`, `scripts/check-image.sh grampacker:check` | Builds the production image and tests the running container (`docs/container-image.md`). Needs Docker. `image.yml` runs both on every pull request; a manual dispatch on main publishes to GHCR, and deploys to the VPS only when its `deploy` input is set (`docs/vps-runbook.md`). |

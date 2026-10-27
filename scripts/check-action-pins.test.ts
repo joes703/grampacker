@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseUses } from './check-action-pins.mjs'
+import { parseUses, pinProblem } from './check-action-pins.mjs'
 
 // The checker guards the pin-by-SHA rule, so its own parser must not skip
 // lines. YAML allows the `uses:` value to be quoted; a parser that only
@@ -41,5 +41,21 @@ describe('parseUses', () => {
     expect(parseUses('      - uses: ./.github/actions/build@main')).toBeNull()
     expect(parseUses('      - uses: docker://alpine@sha256:abc')).toBeNull()
     expect(parseUses('      - run: echo "uses: actions/checkout@v4"')).toBeNull()
+  })
+})
+
+describe('pinProblem', () => {
+  it('accepts a full SHA with a tag comment', () => {
+    expect(pinProblem({ action: 'actions/checkout', ref: SHA, trailer: '# v4.2.2' })).toBeNull()
+  })
+
+  it('rejects a tag or short SHA', () => {
+    expect(pinProblem({ action: 'actions/checkout', ref: 'v4', trailer: '# v4' })).toMatch(/not a full/)
+    expect(pinProblem({ action: 'actions/checkout', ref: 'a'.repeat(7), trailer: '# v4' })).toMatch(/not a full/)
+  })
+
+  it('rejects a SHA with no tag comment', () => {
+    expect(pinProblem({ action: 'actions/checkout', ref: SHA, trailer: '' })).toMatch(/no trailing/)
+    expect(pinProblem({ action: 'actions/checkout', ref: SHA, trailer: '#' })).toMatch(/no trailing/)
   })
 })
