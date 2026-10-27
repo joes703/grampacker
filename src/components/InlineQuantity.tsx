@@ -6,6 +6,7 @@ import {
   INLINE_EDIT_FOCUS_RING,
   MOBILE_ROW_CONTROL_MIN_TARGET,
 } from './flat-table-styles'
+import { clampQuantity } from '../../shared/lists'
 
 // Click-to-edit quantity, the sibling of InlineWeight and extracted for the
 // same reason: a second surface now needs it.
@@ -73,10 +74,9 @@ export default function InlineQuantity({
   }, [editing])
 
   function commit() {
-    const parsed = parseInt(draft, 10)
     // Clamp rather than reject: the server's range check is the real gate, and
     // an out-of-range draft should not be able to strand the row in edit mode.
-    const clamped = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, max)
+    const clamped = clampQuantity(draft, max)
     if (clamped !== quantity && onSave) onSave(clamped)
     setEditing(false)
   }

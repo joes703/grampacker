@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { MAX_ITEM_WEIGHT_GRAMS, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
 
 // Shared state machine for the List Detail "Quick Add" flow. Both the
 // desktop inline AddItemRow and the mobile QuickAddItemModal consume this
@@ -53,7 +54,7 @@ export function useQuickAddForm() {
     const trimmed = name.trim()
     if (!trimmed) return null
     const w = Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS))
-    const q = Math.max(1, Math.min(parseInt(quantity, 10) || 1, MAX_LIST_ITEM_QUANTITY))
+    const q = clampQuantity(quantity)
     const d = description.trim()
     return {
       name: trimmed.slice(0, MAX_NAME_LENGTH),

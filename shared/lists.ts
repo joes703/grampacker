@@ -45,6 +45,14 @@ const packRankSchema = z.number().int().min(0).max(PACK_RANK_MAX)
 // Exported for the list import, whose items carry the same quantity bound.
 export const quantitySchema = z.number().int().min(1).max(MAX_LIST_ITEM_QUANTITY)
 
+// What a quantity field's text means: rounded to the nearest whole number and
+// kept between 1 and `max`; anything that is not a number is 1. Every form,
+// the inline editor and the CSV import read quantities through this.
+export function clampQuantity(raw: string | number, max: number = MAX_LIST_ITEM_QUANTITY): number {
+  const value = Math.round(Number(raw))
+  return Number.isFinite(value) ? Math.min(max, Math.max(1, value)) : 1
+}
+
 // An item is worn OR consumable, never both. The repo re-checks the MERGED
 // row for patches (a patch setting one true while the other is already true
 // is a 400); this schema-level refine only rejects the statically impossible

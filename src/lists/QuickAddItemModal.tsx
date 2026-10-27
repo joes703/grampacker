@@ -9,6 +9,7 @@ import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
 
 type Props = {
   onSubmit: (data: AddItemData, categoryId: string | null) => void
@@ -71,7 +72,7 @@ export default function QuickAddItemModal({ onSubmit, onClose, categories }: Pro
     onSubmit(data, categoryId === '' ? null : categoryId)
   }
 
-  const qtyNum = parseInt(quantity, 10) || 1
+  const qtyNum = clampQuantity(quantity)
 
   return (
     <Modal

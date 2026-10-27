@@ -10,6 +10,7 @@ import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
 import { MAX_ITEM_WEIGHT_GRAMS, MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../../lib/caps'
+import { clampQuantity } from '../../../shared/lists'
 
 export type GearPatch = {
   name: string
@@ -113,7 +114,7 @@ export default function GearItemDialog({
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
-          quantity: Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, Math.round(quantity) || 1)),
+          quantity: clampQuantity(quantity),
           isWorn: worn,
           isConsumable: consumable,
         }
@@ -348,7 +349,7 @@ export default function GearItemDialog({
                     max={MAX_LIST_ITEM_QUANTITY}
                     value={quantity}
                     onChange={(e) =>
-                      setQuantity(Math.max(1, Math.min(MAX_LIST_ITEM_QUANTITY, parseInt(e.target.value, 10) || 1)))
+                      setQuantity(clampQuantity(e.target.value))
                     }
                     className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />

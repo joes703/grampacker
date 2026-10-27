@@ -1,7 +1,7 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv } from './core'
 import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
-import { MAX_LIST_ITEM_QUANTITY } from '../caps'
+import { clampQuantity } from '../../../shared/lists'
 
 // Parse output. The CSV column HEADERS keep the Lighterpack shape
 // (byte-identical to the old repo's export), but the parsed TS row is
@@ -48,7 +48,6 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
 
   return rows
     .map((row) => {
-      const rawQty = qtyKey ? parseInt(row[qtyKey] ?? '1', 10) : 1
       const isWorn = wornKey ? toBool(row[wornKey]) : false
       const isConsumable = consumKey ? toBool(row[consumKey]) : false
       // worn/consumable exclusivity is a DB CHECK constraint; if both are
@@ -58,7 +57,7 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
       const bothSet = isWorn && isConsumable
       return {
         ...commonRowFields(row, cols),
-        quantity:     isNaN(rawQty) || rawQty < 1 ? 1 : Math.min(rawQty, MAX_LIST_ITEM_QUANTITY),
+        quantity:     qtyKey ? clampQuantity(row[qtyKey] ?? '1') : 1,
         isWorn:       bothSet ? false : isWorn,
         isConsumable: bothSet ? false : isConsumable,
       }

@@ -8,6 +8,7 @@ import { FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../components/
 import WeightInput from '../components/WeightInput'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-styles'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../lib/caps'
+import { clampQuantity } from '../../shared/lists'
 
 export type QuickEditGearPatch = { name: string; weightGrams: number }
 export type QuickEditListPatch = {
@@ -62,7 +63,7 @@ export default function QuickEditItemModal({
   const [worn, setWorn] = useState(listItem?.isWorn ?? false)
   const [consumable, setConsumable] = useState(listItem?.isConsumable ?? false)
 
-  const qtyNum = parseInt(quantity, 10) || 1
+  const qtyNum = clampQuantity(quantity)
   const canSubmit = name.trim().length > 0 && !saving
 
   function handleSubmit(e: FormEvent) {
@@ -73,7 +74,7 @@ export default function QuickEditItemModal({
       { name: trimmed, weightGrams },
       listItem
         ? {
-            quantity: Math.min(MAX_LIST_ITEM_QUANTITY, Math.max(1, qtyNum)),
+            quantity: qtyNum,
             // The DB forbids worn+consumable together; the checkboxes below
             // clear each other, same as the row toggles and Quick Add.
             isWorn: worn,
@@ -218,7 +219,7 @@ export default function QuickEditItemModal({
                   { name, weightGrams },
                   listItem
                     ? {
-                        quantity: Math.min(MAX_LIST_ITEM_QUANTITY, Math.max(1, qtyNum)),
+                        quantity: qtyNum,
                         isWorn: worn,
                         isConsumable: consumable,
                       }
