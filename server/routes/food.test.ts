@@ -678,7 +678,7 @@ describe('the food item cap (200 per list)', () => {
 })
 
 
-describe('food counts derive from the plan (0024)', () => {
+describe('food counts derive from the plan', () => {
   // The failure this prevents: a five-day trip with a peanut butter packet in
   // each lunch reporting ONE packet. The plan would be right and the pack
   // weight wrong, silently, which is the worst failure this app has.

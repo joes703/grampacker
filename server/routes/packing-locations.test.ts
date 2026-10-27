@@ -1527,7 +1527,7 @@ describe('location deletion near the top of the rank space', () => {
   })
 })
 
-describe('deleting a list with bagged items (P0.1)', () => {
+describe('deleting a list with bagged items', () => {
   async function collidingList(email: string) {
     // The minimal shape that reproduces it: rank 0 held in Unassigned AND rank
     // 0 held inside a bag. On delete the bagged row is SET NULL into Unassigned

@@ -71,7 +71,7 @@ describe('isUniqueViolation', () => {
 })
 
 describe('isPackRankRangeError', () => {
-  it('matches the 0019 range trigger at the root', () => {
+  it('matches the pack rank range trigger at the root', () => {
     const err = wrapped(
       sqliteError('pack_sort_order out of range', 'SQLITE_CONSTRAINT_TRIGGER'),
       'Failed query: update "list_items" ...',

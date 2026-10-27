@@ -232,7 +232,7 @@ describe('POST /api/auth/delete-user', () => {
     expect(await verificationCount(userId, email), 'verification artifacts after delete').toBe(0)
   })
 
-  it('deletes an account whose list has a bagged item colliding on pack rank (P0.1)', async () => {
+  it('deletes an account whose list has a bagged item colliding on pack rank', async () => {
     // One cascade level deeper than the list-delete case: user -> lists ->
     // packing_locations, whose SET NULL then drops bagged items into
     // Unassigned carrying their old ranks. Without the
