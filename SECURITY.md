@@ -96,14 +96,16 @@ coverage in `server/routes/me.test.ts`):
 
 - React escaping end-to-end; no `dangerouslySetInnerHTML`, no `eval`,
   no raw HTML in markdown when that ports.
-- One security-header map is applied by the Hono server to every response -
-  SPA shell, static assets, and API alike
-  (`server/middleware/security-headers.ts`). CSP `default-src 'self'` with no external
-  origins, `frame-ancestors 'none'` + `X-Frame-Options: DENY`
-  (clickjacking), `nosniff`, `Referrer-Policy`, `Permissions-Policy`,
-  HSTS with preload, COOP. Integration tests assert the full set on an
-  HTML route AND an API route AND an error response
-  (`server/middleware/security-headers.test.ts`).
+- Hono's `secureHeaders` is applied to every response - SPA shell, static
+  assets, and API alike (`server/middleware/security-headers.ts`). Our
+  values: CSP `default-src 'self'` with no external origins, `frame-ancestors
+  'none'` + `X-Frame-Options: DENY` (clickjacking), `Referrer-Policy`,
+  `Permissions-Policy`, HSTS with preload. Hono's defaults for the rest:
+  `nosniff`, COOP, CORP `same-origin`, `Origin-Agent-Cluster`,
+  `X-DNS-Prefetch-Control`, `X-Download-Options`,
+  `X-Permitted-Cross-Domain-Policies`, `X-XSS-Protection: 0`. Integration
+  tests assert the exact set on an HTML route AND an API route AND an error
+  response (`server/middleware/security-headers.test.ts`).
 - Dev mode drops exactly one header (the CSP - Vite HMR needs inline
   scripts); the delta is pinned by a test.
 

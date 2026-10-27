@@ -124,5 +124,6 @@ Rate limiting, tested in `server/middleware/rate-limit.test.ts`:
 
 Response headers, tested in `server/middleware/security-headers.test.ts`:
 
-- Every response (SPA shell, assets, API, errors) carries the shared
-  security-header map (`server/middleware/security-headers.ts`).
+- Every response (SPA shell, assets, API, errors) carries the
+  security headers from Hono's `secureHeaders`, configured in
+  `server/middleware/security-headers.ts`.

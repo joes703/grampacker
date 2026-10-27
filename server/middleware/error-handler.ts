@@ -1,8 +1,6 @@
 import type { ErrorHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { securityHeaderMap } from './security-headers'
 import type { ApiErrorBody } from '../../shared/api'
-import type { AppDeps } from '../env'
 
 // The server's single incident handler. Before this existed the whole server
 // held one `console.` call (the dev email sender) and no `onError`, so every
@@ -388,7 +386,7 @@ export async function withAuthErrorCorrelation(
   })
 }
 
-export const errorHandler: ErrorHandler<{ Bindings: AppDeps }> = (err, c) => {
+export const errorHandler: ErrorHandler = (err, c) => {
   const httpException = err instanceof HTTPException ? err : null
 
   // A sub-500 HTTPException is a deliberate answer from a middleware, not an
@@ -413,17 +411,9 @@ export const errorHandler: ErrorHandler<{ Bindings: AppDeps }> = (err, c) => {
     err,
   })
 
+  // Security headers are added by the root app's securityHeaders middleware,
+  // which sets them after `await next()` on this response too.
   const headers = new Headers()
-  // The handler applies the header map ITSELF rather than relying on
-  // securityHeaders above it. That middleware sets headers after `await next()`,
-  // which does run when onError produces a response - but if securityHeaders is
-  // the thing that threw, it never gets there. Failing closed here costs one
-  // redundant assignment on the normal path.
-  for (const [key, value] of Object.entries(
-    securityHeaderMap({ dev: c.env.dev }),
-  )) {
-    headers.set(key, value)
-  }
   if (httpException) {
     const original = httpException.getResponse()
     for (const name of PRESERVED_HEADERS) {

@@ -25,7 +25,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // onError would win, so `api` must not have one. Mirrors server/index.ts.
 function appThatThrows(thrown: unknown) {
   const root = new Hono<{ Bindings: AppDeps }>()
-  root.use('*', securityHeaders)
+  root.use('*', securityHeaders(false))
   const api = new Hono<{ Bindings: AppDeps }>()
   api.get('/boom', () => {
     throw thrown

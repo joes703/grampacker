@@ -136,7 +136,7 @@ export function createApp(env: AppEnv) {
   }
 
   const app = new Hono<{ Bindings: AppDeps }>()
-  app.use('*', securityHeaders)
+  app.use('*', securityHeaders(deps.dev))
   // Long-lived browser caching for content-hashed assets only. It rebuilds the
   // response itself, so it does not depend on running before or after
   // securityHeaders.
