@@ -7,7 +7,7 @@ import RowIconButton from './RowIconButton'
 import { POPOVER_SURFACE } from './flat-table-styles'
 
 // Tailwind scans whole class tokens, so each width is a literal class plus
-// the matching pixel width useAnchoredMenu needs for right-flush anchoring.
+// the matching pixel width useAnchoredMenu needs to align the menu's right edge.
 // Add a row here before using a new width.
 const WIDTHS = {
   44: { className: 'w-44', px: 176 },
@@ -83,7 +83,7 @@ export default function KebabMenu({
   trigger: Trigger,
 }: Props) {
   const { open, openMenu, close, triggerRef, menuRef, menuPos } =
-    useAnchoredMenu({ variant: 'right-flush', menuWidth: WIDTHS[width].px })
+    useAnchoredMenu(WIDTHS[width].px)
 
   // The kebab usually sits inside a row whose body is itself clickable (an
   // edit button, a link); opening the menu must not also activate the row.
