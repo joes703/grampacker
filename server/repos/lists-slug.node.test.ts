@@ -85,4 +85,10 @@ describe('withFreshSlug', () => {
       expect(generateSlug()).toMatch(/^[A-Za-z0-9]{6}$/)
     }
   })
+
+  it('generateSlug uses all 62 characters', () => {
+    const seen = new Set<string>()
+    for (let i = 0; i < 2000; i++) for (const ch of generateSlug()) seen.add(ch)
+    expect(seen.size).toBe(62)
+  })
 })

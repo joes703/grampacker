@@ -1,3 +1,4 @@
+import { generateRandomString } from 'better-auth/crypto'
 import { and, asc, eq, type Table } from 'drizzle-orm'
 import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
@@ -100,20 +101,14 @@ function isListCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list cap exceeded')
 }
 
-const SLUG_ALPHABET =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 // A fresh slug colliding twice is already ~1-in-2^71; five failures in a
 // row means something is broken, not unlucky - throw and let it 500.
 const SLUG_ATTEMPTS = 5
 
-// 6-char base62 share slug, minted server-side (the old repo generated
-// client-side and retried on 23505; server-side removes that trust).
-// b % 62 carries a tiny modulo bias (256 = 4*62 + 8); acceptable for a
-// share URL - effective entropy stays ~35.7 of 35.8 bits.
+// 6-character base62 share slug, minted on the server. better-auth's
+// generator rejects out-of-range bytes, so every character is equally likely.
 export function generateSlug(): string {
-  const bytes = new Uint8Array(6)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => SLUG_ALPHABET[b % 62]).join('')
+  return generateRandomString(6, 'A-Z', 'a-z', '0-9')
 }
 
 // A fresh slug can still collide with an existing one on the
