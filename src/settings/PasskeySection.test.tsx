@@ -43,11 +43,7 @@ function listResolves(rows: unknown[]) {
 }
 
 // The server's refusal when the session is too old to change the credential set.
-// The server answers SESSION_NOT_FRESH; REAUTH_REQUIRED is an older code the
-// component still accepts (see isReauthRequired). Both mean
-// "re-authenticate", and the component must handle both.
-const STALE = { status: 403, code: 'REAUTH_REQUIRED', message: 'stale' }
-const STALE_BETTER_AUTH = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
+const STALE = { status: 403, code: 'SESSION_NOT_FRESH', message: 'stale' }
 
 // Re-authentication is a CEREMONY, not a typed secret: signing in again
 // mints a new session, and a new session is a fresh one.
@@ -211,12 +207,12 @@ describe('PasskeySection fresh-auth gate', () => {
 
   it('re-authenticates and replays the ADD when better-auth says the session is stale', async () => {
     // The register endpoints are gated by better-auth's own middleware, which
-    // answers SESSION_NOT_FRESH - a different code from our delete gate. Missing
-    // it would strand "Add a passkey" on a raw error with no way forward.
+    // answers SESSION_NOT_FRESH like our delete gate. Missing it would strand
+    // "Add a passkey" on a raw error with no way forward.
     // (One passkey already enrolled, so re-asserting one is possible here - the
     // zero-passkey case is its own test below.)
     listResolves([{ id: 'pk1', name: 'work laptop', aaguid: null }])
-    h.addPasskey.mockResolvedValueOnce({ error: STALE_BETTER_AUTH })
+    h.addPasskey.mockResolvedValueOnce({ error: STALE })
     h.addPasskey.mockResolvedValueOnce({ error: null })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
@@ -245,7 +241,7 @@ describe('PasskeySection fresh-auth gate', () => {
     // who signed in by email days ago and never enrolled a passkey now wants to.
     // Their session is stale, and "use a passkey" would be a door with no key.
     listResolves([])
-    h.addPasskey.mockResolvedValue({ error: STALE_BETTER_AUTH })
+    h.addPasskey.mockResolvedValue({ error: STALE })
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
 

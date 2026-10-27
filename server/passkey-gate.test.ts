@@ -68,10 +68,7 @@ describe('passkey fresh-auth gate', () => {
     for (const [method, path] of GATED) {
       const res = await request(method, path, cookie)
       expect(res.status, path).toBe(403)
-      // better-auth's native dialect now - the client accepts REAUTH_REQUIRED
-      // (the old custom middleware's word) AND SESSION_NOT_FRESH
-      // (PasskeySection.isReauthRequired), so moving to the native code is
-      // invisible to the UI.
+      // The code PasskeySection.isReauthRequired keys on.
       expect(await res.json(), path).toMatchObject({ code: 'SESSION_NOT_FRESH' })
     }
   })

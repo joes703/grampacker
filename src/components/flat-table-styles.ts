@@ -462,10 +462,9 @@ export const SECONDARY_BUTTON =
 // Call sites compose this with `fixed z-50 w-XX` and a body padding
 // (`py-1` for menu-row popovers; `p-2` / `p-3` for embedded-panel popovers
 // like List options).
-// print:hidden is load-bearing and belongs HERE rather than at the 10 render
-// sites: every one of these menus portals to document.body, so hiding the
-// trigger - or any ancestor of it - cannot hide the menu. The surface token
-// is the one thing they all share.
+// print:hidden is load-bearing and belongs HERE rather than at the call sites:
+// the menus portal to document.body, so hiding the trigger - or any ancestor
+// of it - cannot hide the menu. The surface token is the one thing they share.
 export const POPOVER_SURFACE =
   `${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} shadow-lg print:hidden`
 

@@ -22,17 +22,12 @@ type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
 // sign-in ceremony (the deny-by-default hooks.before gate in server/auth.ts).
 // Renaming does not; it is a display label.
 //
-// Two refusal codes mean the same thing, and both must be caught:
-//   - 403 SESSION_NOT_FRESH - the current dialect: the auth.ts gate and
-//     better-auth's own freshSessionMiddleware (which the passkey plugin
-//     mounts on the two REGISTER endpoints) both speak it.
-//   - 403 REAUTH_REQUIRED   - an older server code. The server no longer
-//     sends it; it is still accepted so a tab and a server on different
-//     versions still prompt instead of stranding.
-// Missing the second would strand "Add a passkey" on a raw error message with
-// no way forward. The status alone is not enough to key on: better-auth answers
-// 403 for other reasons (a failed origin check), and those must not masquerade
-// as "just re-authenticate".
+// The refusal is 403 SESSION_NOT_FRESH: the auth.ts gate and better-auth's own
+// freshSessionMiddleware (which the passkey plugin mounts on the two REGISTER
+// endpoints) both answer with it. Missing it would strand "Add a passkey" on a
+// raw error message with no way forward. The status alone is not enough to key
+// on: better-auth answers 403 for other reasons (a failed origin check), and
+// those must not masquerade as "just re-authenticate".
 //
 // better-auth's client error type does not declare `code` even though it passes
 // the field through, so it is narrowed here rather than trusted.
@@ -40,7 +35,7 @@ function isReauthRequired(error: { status: number }): boolean {
   const code = (error as { code?: unknown }).code
   return (
     error.status === 403 &&
-    (code === 'REAUTH_REQUIRED' || code === 'SESSION_NOT_FRESH')
+    code === 'SESSION_NOT_FRESH'
   )
 }
 

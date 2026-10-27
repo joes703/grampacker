@@ -119,7 +119,7 @@ function toListItemResponse(row: ListItemWithGear): ListItemResponse {
 export function listItemFailure(
   result: Extract<ListItemWriteResult, { ok: false }>,
 ): {
-  status: 400 | 404 | 409 | 422
+  status: 400 | 404 | 422
   error: string
 } {
   switch (result.reason) {
