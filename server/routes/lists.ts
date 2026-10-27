@@ -1,10 +1,8 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import { toGearItemResponse } from './gear-item-response'
-import { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 import {
-  LIST_CAP,
-  LIST_ITEM_CAP,
   addListItemRequestSchema,
   createListFromSelectionRequestSchema,
   createListRequestSchema,
@@ -143,9 +141,9 @@ export function listItemFailure(
         error: 'An item cannot be both worn and consumable',
       }
     case 'gear_cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
     case 'cap_exceeded':
-      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+      return { status: 422, error: LIMIT_REACHED.listItem }
     case 'pack_rank_exhausted':
       // Deliberately does NOT tell the user to reorder. An ordinary drag
       // permutes the ranks a cohort already holds, so it cannot compact
@@ -182,13 +180,13 @@ function listWriteFailure(
     case 'invalid_category':
       return { status: 400, error: 'Invalid category' }
     case 'cap_exceeded':
-      return { status: 422, error: `List limit reached (${LIST_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.list }
     case 'gear_cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
     case 'item_cap_exceeded':
-      return { status: 422, error: `List item limit reached (${LIST_ITEM_CAP} per list)` }
+      return { status: 422, error: LIMIT_REACHED.listItem }
     case 'category_cap_exceeded':
-      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.category }
   }
 }
 

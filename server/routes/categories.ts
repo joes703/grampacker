@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import {
-  CATEGORY_CAP,
   createCategoryRequestSchema,
   reorderRequestSchema,
   updateCategoryRequestSchema,
@@ -45,7 +45,7 @@ categoryRoutes.post('/', async (c) => {
   const result = await c.get('repos').categories.create(parsed.data.name)
   if (!result.ok) {
     return c.json(
-      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      { error: LIMIT_REACHED.category },
       422,
     )
   }

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import { toGearItemResponse } from './gear-item-response'
 import {
@@ -46,9 +47,9 @@ function importGearFailure(
     case 'invalid_category':
       return { status: 400, error: 'Invalid category' }
     case 'category_cap_exceeded':
-      return { status: 422, error: `Category limit reached (${CATEGORY_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.category }
     case 'cap_exceeded':
-      return { status: 422, error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }
+      return { status: 422, error: LIMIT_REACHED.gearItem }
   }
 }
 
@@ -98,7 +99,7 @@ gearItemRoutes.post('/', async (c) => {
     if (result.reason === 'invalid_category') {
       return c.json({ error: 'Invalid category' }, 400)
     }
-    return c.json({ error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` }, 422)
+    return c.json({ error: LIMIT_REACHED.gearItem }, 422)
   }
   return c.json(toGearItemResponse(result.row), 201)
 })
@@ -125,13 +126,13 @@ gearItemRoutes.post('/import', async (c) => {
   if (!parsed.ok) return parsed.response
   if (parsed.data.categories.length > CATEGORY_CAP) {
     return c.json(
-      { error: `Category limit reached (${CATEGORY_CAP} per user)` },
+      { error: LIMIT_REACHED.category },
       422,
     )
   }
   if (parsed.data.items.length > GEAR_ITEM_CAP) {
     return c.json(
-      { error: `Gear item limit reached (${GEAR_ITEM_CAP} per user)` },
+      { error: LIMIT_REACHED.gearItem },
       422,
     )
   }

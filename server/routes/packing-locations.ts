@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import {
-  PACKING_LOCATION_CAP,
   createPackingLocationRequestSchema,
   reorderPackingLocationsRequestSchema,
   updatePackingLocationRequestSchema,
@@ -61,7 +61,7 @@ packingLocationRoutes.post('/:id/packing-locations', async (c) => {
     }
     if (result.reason === 'cap_exceeded') {
       return c.json(
-        { error: `Packing location limit reached (${PACKING_LOCATION_CAP} per list)` },
+        { error: LIMIT_REACHED.packingLocation },
         422,
       )
     }

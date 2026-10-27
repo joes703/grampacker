@@ -8,7 +8,7 @@ import {
   isPackRankRangeError,
   isTriggerAbort,
 } from './db-errors'
-import type { GearItemRow } from './gear-items'
+import { isCapError as isGearCapError, type GearItemRow } from './gear-items'
 import { nextUnionPackRank } from './pack-reorder'
 
 const itemCols = {
@@ -102,10 +102,6 @@ export const LIST_ITEM_CAP = 300
 
 export function isListItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list item cap exceeded')
-}
-
-function isGearCapError(err: unknown): boolean {
-  return isTriggerAbort(err, 'gear item cap exceeded')
 }
 
 // The item writes trip these database rules on purpose. Each becomes a client

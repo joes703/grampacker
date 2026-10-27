@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
+import { LIMIT_REACHED } from './limit-messages'
 import { parseBody } from './parse-body'
 import {
-  FOOD_ITEM_CAP,
   createFoodItemRequestSchema,
   setFoodDaysRequestSchema,
   updateFoodItemRequestSchema,
@@ -81,7 +81,7 @@ foodRoutes.post('/:id/food/items', async (c) => {
   if (!result.ok) {
     if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
     if (result.reason === 'cap_exceeded') {
-      return c.json({ error: `Food item limit reached (${FOOD_ITEM_CAP} per list)` }, 422)
+      return c.json({ error: LIMIT_REACHED.foodItem }, 422)
     }
     if (result.reason === 'pack_rank_exhausted') {
       return c.json({ error: 'This bag cannot accept more items' }, 422)
