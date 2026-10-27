@@ -1,36 +1,31 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { openSqlite } from '../server/db'
+import { applyMigrations } from '../server/db/migrate'
 
-// The CURRENT definition of every table, index and trigger, read from the
-// migration files in apply order: a later CREATE replaces an earlier one and a
-// DROP removes it. Tests use this to check the literals SQL copies from
-// TypeScript (SQL cannot import a constant).
-const dir = new URL('../migrations/', import.meta.url)
+// The CURRENT definition of every table, index and trigger: the migrations
+// applied by the real runner to an in-memory database, read back from
+// sqlite_schema. SQLite keeps each object's statement as written (and updated
+// by ALTER TABLE), so a later migration's change is what this returns. Tests
+// use it to check the literals SQL copies from TypeScript (SQL cannot import
+// a constant).
 
 const stripComments = (sql: string) =>
   sql.replaceAll(/\/\*[\s\S]*?\*\//g, ' ').replaceAll(/--[^\n]*/g, ' ')
 
+let definitions: Map<string, string> | undefined
+
 const currentDefinitions = (): Map<string, string> => {
-  const files = readdirSync(dir)
-    .filter((name) => /^\d+_.*\.sql$/.test(name))
-    .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10))
-  const defs = new Map<string, string>()
-  for (const file of files) {
-    const sql = stripComments(readFileSync(new URL(file, dir), 'utf8'))
-    const pattern = /\b(CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER)|DROP\s+(TABLE|INDEX|TRIGGER))\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?[`"]?(\w+)/gi
-    for (const match of sql.matchAll(pattern)) {
-      const [, verb = '', createKind, , name = ''] = match
-      if (verb.toUpperCase().startsWith('DROP')) {
-        defs.delete(name)
-        continue
-      }
-      const start = match.index
-      const end = createKind?.toUpperCase() === 'TRIGGER'
-        ? sql.slice(start).search(/\bEND\s*;/i) + start
-        : sql.indexOf(';', start)
-      defs.set(name, sql.slice(start, end))
-    }
+  if (definitions) return definitions
+  const sqlite = openSqlite(':memory:')
+  try {
+    applyMigrations(sqlite)
+    const rows = sqlite
+      .prepare('select name, sql from sqlite_schema where sql is not null')
+      .all() as { name: string; sql: string }[]
+    definitions = new Map(rows.map((row) => [row.name, stripComments(row.sql)]))
+  } finally {
+    sqlite.close()
   }
-  return defs
+  return definitions
 }
 
 export const definitionOf = (name: string): string => {
