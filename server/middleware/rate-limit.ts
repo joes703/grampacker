@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { createMiddleware } from 'hono/factory'
 import { eq, lt, sql } from 'drizzle-orm'
 import type { Db } from '../db'
@@ -219,22 +220,10 @@ function ruleFor(path: string): Rule {
 //   uses, is the shape cross-protocol confusion needs; the prefix removes it.
 const EMAIL_BUCKET_DOMAIN = 'grampacker:magic-send-email:v1:'
 
-async function emailBucketKey(secret: string, email: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const mac = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(`${EMAIL_BUCKET_DOMAIN}${email.toLowerCase()}`),
-  )
-  return [...new Uint8Array(mac)]
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+export function emailBucketKey(secret: string, email: string): string {
+  return createHmac('sha256', secret)
+    .update(`${EMAIL_BUCKET_DOMAIN}${email.toLowerCase()}`)
+    .digest('hex')
     .slice(0, 32)
 }
 
@@ -480,8 +469,8 @@ export const authRateLimit = createMiddleware<{ Bindings: AppDeps }>(
     // today. If something ever does, it is stepping around two of the three
     // buckets and needs to say why.
     if (c.req.path === MAGIC_LINK_SEND_PATH) {
-      const emailKey = await emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
-      // Read the clock again after those awaits. Other requests may have
+      const emailKey = emailBucketKey(c.env.BETTER_AUTH_SECRET, await magicLinkEmail(c))
+      // Read the clock again after the body read. Other requests may have
       // started a newer window meanwhile; Retry-After counted from the
       // earlier time would be longer than the window.
       const sendNow = Date.now()

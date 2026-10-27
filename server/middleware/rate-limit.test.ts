@@ -3,7 +3,7 @@ import { app, env, testDb } from '../test/node-env'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAuth } from '../auth'
 import { createDb } from '../db'
-import { chargeMagicLinkGlobalQuota, peekMagicLinkGlobalQuota } from './rate-limit'
+import { chargeMagicLinkGlobalQuota, emailBucketKey, peekMagicLinkGlobalQuota } from './rate-limit'
 import { lastEmailTo } from '../email/console'
 
 const ORIGIN = 'http://localhost:5173'
@@ -1009,31 +1009,20 @@ describe('rate-limit windows', () => {
   })
 
   it('Retry-After counts from when the address bucket is charged, not when the request arrived', async () => {
-    // The address bucket is charged after an await (the HMAC). If the charge
-    // used the time the request arrived, a newer window started meanwhile
-    // would make Retry-After longer than the window itself.
+    // The address bucket is charged after an await (reading the body for the
+    // email). If the charge used the time the request arrived, a newer window
+    // started meanwhile would make Retry-After longer than the window itself.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(T)
-    const email = 'slow-hmac@example.com'
-    const hmac = async (message: string) => {
-      const key = await crypto.subtle.importKey(
-        'raw',
-        new TextEncoder().encode(TEST_AUTH_SECRET),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      )
-      const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message))
-      return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32)
-    }
-    const key = `magic-send-email:${await hmac(`grampacker:magic-send-email:v1:${email}`)}`
+    const email = 'slow-body@example.com'
+    const key = `magic-send-email:${emailBucketKey(TEST_AUTH_SECRET, email)}`
     // Faster requests have filled a window that started 2 s after this
     // request arrived.
     await seed(key, MAGIC_SEND_EMAIL_LIMIT, T + 2000)
-    const sign = crypto.subtle.sign.bind(crypto.subtle)
-    vi.spyOn(crypto.subtle, 'sign').mockImplementation(async (...args) => {
+    const json = Request.prototype.json
+    vi.spyOn(Request.prototype, 'json').mockImplementation(async function (this: Request) {
       vi.setSystemTime(T + 2000)
-      return sign(...args)
+      return json.call(this)
     })
 
     const res = await sendMagicLink('198.51.166.1', email)
