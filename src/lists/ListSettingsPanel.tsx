@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Copy, Download, Pencil, Trash2 } from 'lucide-react'
 import type { List } from '../lib/types'
 import { RowMenuItem } from '../components/RowMenuItem'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { INLINE_EDIT_FOCUS_RING } from '../components/flat-table-styles'
-import { useCommitOnce } from '../lib/use-commit-once'
+import InlineRenameInput from '../components/InlineRenameInput'
 import { reportFailure } from '../lib/report-failure'
 import { MAX_NAME_LENGTH } from '../lib/caps'
 import { useCurrentListActions } from './use-current-list-actions'
@@ -86,16 +86,6 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
   const [draft, setDraft] = useState('')
   const [renameError, setRenameError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (renaming) {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
-  }, [renaming])
-
-  const commitOnce = useCommitOnce()
-
   function startRename() {
     setRenameError(null)
     setDraft(list.name)
@@ -139,18 +129,13 @@ export default function ListSettingsPanel({ list, onClose }: Props) {
         <div className="space-y-0.5">
           {renaming ? (
             <div className="px-3 py-0.5">
-              <input
-                ref={inputRef}
-                type="text"
+              <InlineRenameInput
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitOnce(commitRename)
-                  if (e.key === 'Escape') commitOnce(cancelRename)
-                }}
-                onBlur={() => commitOnce(commitRename)}
+                onChange={setDraft}
+                onSubmit={commitRename}
+                onCancel={cancelRename}
                 maxLength={MAX_NAME_LENGTH}
-                aria-label="List name"
+                ariaLabel="List name"
                 className={`w-full rounded border border-blue-400 px-2 py-1 text-sm ${INLINE_EDIT_FOCUS_RING}`}
               />
             </div>
