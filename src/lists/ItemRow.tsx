@@ -276,56 +276,24 @@ export default function ItemRow({
           onSaveDescription={onSaveDescription}
         />
 
-        {/* Worn (Shirt) — toggle button when editable; static icon-only span otherwise.
-            Branch on `onUpdate` directly (not the derived `editable` bool) so
-            TS narrows the function type inside the truthy branch. */}
-        {onUpdate ? (
-          <>
-            <RowIconButton
-              variant="purpleToggle"
-              active={item.isWorn}
-              onClick={() => onUpdate({ isWorn: !item.isWorn, isConsumable: false })}
-              title={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
-              ariaLabel={item.isWorn ? 'Worn. Clear worn status.' : 'Mark as worn'}
-              icon={<Shirt size={14} />}
-            />
-            {/* The toggle above conveys DATA as well as an action - its active
-                state is what says "this item is worn" - and RowIconButton is
-                print:hidden everywhere. Without this the printed editable row
-                silently loses the flag, while the read-only branch below keeps
-                it. Same empty w-6 box when the flag is off, so the column rail
-                stays aligned either way. */}
-            <span className={`hidden print:inline-flex ${COL_ICON} items-center justify-center`}>
-              {item.isWorn && <WornIcon />}
-            </span>
-          </>
-        ) : (
-          <span className={`${COL_ICON} inline-flex items-center justify-center`}>
-            {item.isWorn && <WornIcon />}
-          </span>
-        )}
-
-        {/* Consumable (UtensilsCrossed) */}
-        {onUpdate ? (
-          <>
-            <RowIconButton
-              variant="orangeToggle"
-              active={item.isConsumable}
-              onClick={() => onUpdate({ isConsumable: !item.isConsumable, isWorn: false })}
-              title={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
-              ariaLabel={item.isConsumable ? 'Consumable. Clear consumable status.' : 'Mark as consumable'}
-              icon={<UtensilsCrossed size={14} />}
-            />
-            {/* Print-only static indicator; see the worn toggle above. */}
-            <span className={`hidden print:inline-flex ${COL_ICON} items-center justify-center`}>
-              {item.isConsumable && <ConsumableIcon />}
-            </span>
-          </>
-        ) : (
-          <span className={`${COL_ICON} inline-flex items-center justify-center`}>
-            {item.isConsumable && <ConsumableIcon />}
-          </span>
-        )}
+        <FlagCell
+          active={item.isWorn}
+          variant="purpleToggle"
+          icon={<Shirt size={14} />}
+          staticIcon={<WornIcon />}
+          onLabel="Worn. Clear worn status."
+          offLabel="Mark as worn"
+          onToggle={onUpdate && (() => onUpdate({ isWorn: !item.isWorn, isConsumable: false }))}
+        />
+        <FlagCell
+          active={item.isConsumable}
+          variant="orangeToggle"
+          icon={<UtensilsCrossed size={14} />}
+          staticIcon={<ConsumableIcon />}
+          onLabel="Consumable. Clear consumable status."
+          offLabel="Mark as consumable"
+          onToggle={onUpdate && (() => onUpdate({ isConsumable: !item.isConsumable, isWorn: false }))}
+        />
 
         {/* Quantity — clickable when editable, static otherwise */}
         <InlineQuantity
@@ -451,5 +419,52 @@ function RowKebab({
         </>
       )}
     </KebabMenu>
+  )
+}
+
+// The worn or consumable cell: a toggle when the row is editable, a static
+// icon otherwise. The toggle conveys DATA as well as an action - its active
+// state is what says "this item is worn" - and RowIconButton is print:hidden,
+// so an editable row also renders the static icon for print only. The empty
+// box when the flag is off keeps the column rail aligned.
+function FlagCell({
+  active,
+  variant,
+  icon,
+  staticIcon,
+  onLabel,
+  offLabel,
+  onToggle,
+}: {
+  active: boolean
+  variant: 'purpleToggle' | 'orangeToggle'
+  icon: ReactNode
+  staticIcon: ReactNode
+  onLabel: string
+  offLabel: string
+  onToggle: (() => void) | undefined
+}) {
+  if (!onToggle) {
+    return (
+      <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+        {active && staticIcon}
+      </span>
+    )
+  }
+  const label = active ? onLabel : offLabel
+  return (
+    <>
+      <RowIconButton
+        variant={variant}
+        active={active}
+        onClick={onToggle}
+        title={label}
+        ariaLabel={label}
+        icon={icon}
+      />
+      <span className={`hidden print:inline-flex ${COL_ICON} items-center justify-center`}>
+        {active && staticIcon}
+      </span>
+    </>
   )
 }

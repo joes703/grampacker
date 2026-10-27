@@ -1,4 +1,4 @@
-import { memo, useCallback, useId, useMemo, useState } from 'react'
+import { memo, useId, useMemo, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Plus, Search } from 'lucide-react'
 import type { GearItem, Category } from '../lib/types'
 import { groupByCategory } from '../lib/grouping'
@@ -18,6 +18,7 @@ import GearStatusBadge from '../components/gear/GearStatusBadge'
 import PickerEmptyState from './PickerEmptyState'
 import QuickAddItemModal from './QuickAddItemModal'
 import { type AddItemData } from './use-quick-add-form'
+import { useToggleSet } from '../lib/use-toggle-set'
 
 type Props = {
   gearItems: GearItem[]
@@ -56,24 +57,12 @@ type Props = {
 
 export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onRemove, onCreateNew, createDisabledReason }: Props) {
   const [search, setSearch] = useState('')
-  const [collapsed, setCollapsed] = useState(new Set<string>())
+  // Stable toggle: it goes straight to the memoized LibraryCategoryGroup as
+  // onToggle, where a fresh closure would defeat React.memo.
+  const { set: collapsed, toggle: toggleCollapse } = useToggleSet<string>()
   const [creating, setCreating] = useState(false)
   const searchId = useId()
   const createReasonId = useId()
-
-  // Stable across renders: setCollapsed from useState is referentially
-  // stable, and the closure captures only that. Stability matters because
-  // we pass toggleCollapse straight through as `onToggle` to the memoized
-  // inner LibraryCategoryGroup — a fresh closure every render would defeat the
-  // shallow-prop compare that React.memo relies on.
-  const toggleCollapse = useCallback((key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [])
 
   const q = search.trim().toLowerCase()
   const searchFiltered = useMemo(

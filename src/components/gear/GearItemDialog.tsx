@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { CircleMinus, Minus, Plus, Shirt, Trash2, UtensilsCrossed, X } from 'lucide-react'
 import type { Category, GearItem } from '../../lib/types'
-import { DEFAULT_GEAR_STATUS, type GearStatus } from '../../lib/gear-status'
+import { DEFAULT_GEAR_STATUS, GEAR_STATUS_MENU_OPTIONS, type GearStatus } from '../../lib/gear-status'
 import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../../lib/row-indicator-styles'
 import { FLAT_TABLE_EYEBROW, FORM_INPUT, ROW_CONTROL_TARGET, SECONDARY_BUTTON } from '../flat-table-styles'
 import FormLabel from '../FormLabel'
@@ -309,10 +309,11 @@ export default function GearItemDialog({
               onChange={(e) => setStatus(e.target.value as GearStatus)}
               className={`w-full ${FORM_INPUT}`}
             >
-              <option value="active">Active</option>
-              <option value="needs_repair">Needs repair</option>
-              <option value="loaned_out">Loaned out</option>
-              <option value="need_to_buy">Need to buy</option>
+              {GEAR_STATUS_MENU_OPTIONS.map((option) => (
+                <option key={option.status} value={option.status}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
