@@ -127,13 +127,13 @@ function makeRollback(opts: FanOutOpts) {
 // food cached while its list-items query is failed or pending, and then it
 // has no snapshot here to be discovered through. An update or a category
 // move cascades nothing and leaves them alone.
-function makeSettled(opts: FanOutOpts, { cascades }: { cascades: boolean }) {
-  return (
-    _data: unknown,
-    _err: unknown,
-    _vars: unknown,
-    ctx: GearFanOutContext | undefined,
-  ) => {
+// The return type keeps TanStack's onSettled shape for callers; the body
+// needs none of its arguments.
+function makeSettled(
+  opts: FanOutOpts,
+  { cascades }: { cascades: boolean },
+): (data: unknown, err: unknown, vars: unknown, ctx: GearFanOutContext | undefined) => void {
+  return () => {
     void opts.qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
     // The whole prefix, not only the snapshots: a list first fetched while the
     // write was in flight may hold the gear's old values.
