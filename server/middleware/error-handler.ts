@@ -297,93 +297,24 @@ export function recordAuthLog(
 }
 
 // The `logger` option handed to better-auth (server/auth.ts).
-export const authLogger = {
-  log: (
-    level: 'debug' | 'info' | 'warn' | 'error',
-    message: string,
-    ...args: unknown[]
-  ) => recordAuthLog(level, message, ...args),
-}
+export const authLogger = { log: recordAuthLog }
 
-// /api/auth/* failures never reach the handler below: better-call answers an
+// /api/auth/* failures never reach errorHandler below: better-call answers an
 // APIError with a Response, and the /api/auth/* route in server/index.ts
-// catches any other error. This brings both into the same scheme.
-//
-// The id has to ride in the BODY: @better-fetch/fetch returns
-// {...parsedJsonBody, status, statusText} to callers and drops response headers
-// entirely, so a header would be invisible to every auth caller in the SPA.
-//
-// Rewriting that body is only safe with care, and NOT because the body is always
-// empty - an earlier draft assumed that and was wrong. better-auth throws
-// APIError-derived 500s with real bodies (api/routes/session.mjs:257 ->
-// {message, code}), and the same route calls deleteSessionCookie, so these
-// responses can carry Set-Cookie. Losing that header would leave a dead session
-// cookie in the browser - the bug PR 4.3 just fixed, reintroduced from the
-// server side.
-export async function withAuthErrorCorrelation(
+// catches any other error. This logs both as correlated incidents. The
+// response goes back exactly as better-auth wrote it (body, status, every
+// Set-Cookie): the SPA's auth client does not read a correlation id.
+export function logAuthFailure(
   res: Response,
   req: { method: string; path: string },
-  // The error behind the response, when one escaped better-auth's handler
-  // (the /api/auth/* route in server/index.ts). Absent for a 5xx better-auth
-  // answered itself, such as an APIError.
+  // The error behind the response, when one escaped better-auth's handler.
+  // Absent for a 5xx better-auth answered itself, such as an APIError.
   err?: unknown,
-): Promise<Response> {
-  if (res.status < 500) return res
-
-  const correlationId = recordIncident({
-    source: 'auth-response',
-    method: req.method,
-    path: req.path,
-    status: res.status,
-    err,
-  })
-  if (correlationId === undefined) return res
-
-  // Read the CLONE, never the original. Deciding whether a body is JSON means
-  // reading it, and reading the original locks its stream - so every "return it
-  // untouched" path below would hand back an unusable response. The original is
-  // returnable precisely because it was never read.
-  const raw = await res
-    .clone()
-    .text()
-    .catch(() => null)
-  if (raw === null) return res
-
-  let body: unknown
-  if (raw === '') {
-    // better-call's generic 500 is `new Response(null, {status: 500})`. Nothing
-    // is overwritten because there is nothing there.
-    body = {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Internal Server Error',
-      correlationId,
-    }
-  } else {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      // Malformed or non-JSON: hand back the original byte-for-byte rather than
-      // guessing at a shape.
-      return res
-    }
-    // Only a non-null, non-array OBJECT can gain a field without changing shape.
-    // An array, string, number or null cannot, so they take the untouched path.
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return res
-    }
-    body = { ...parsed, correlationId }
+): Response {
+  if (res.status >= 500) {
+    recordIncident({ source: 'auth-response', method: req.method, path: req.path, status: res.status, err })
   }
-
-  // The original Headers OBJECT is passed through, not a copied plain map:
-  // multiple Set-Cookie values do not survive a round trip through an object.
-  // better-call strips content-length from its responses, so the new body length
-  // cannot contradict a stale header.
-  return new Response(JSON.stringify(body), {
-    status: res.status,
-    statusText: res.statusText,
-    headers: res.headers,
-  })
+  return res
 }
 
 export const errorHandler: ErrorHandler = (err, c) => {

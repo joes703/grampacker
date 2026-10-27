@@ -102,6 +102,16 @@ describe('auth failures in the log', () => {
       .map(String)
       .join('\n')
 
+  // The 500 is logged as one correlated incident; the response body is
+  // better-auth's own (the client does not read a correlation id).
+  const expectCorrelatedIncident = () => {
+    const incidents = consoleError.mock.calls
+      .map((call: unknown[]) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .filter((entry: Record<string, unknown>) => entry.event === 'server-error')
+    expect(incidents).toHaveLength(1)
+    expect(incidents[0]?.correlationId).toMatch(UUID_RE)
+  }
+
   // Every line the server writes is one JSON entry from the incident
   // handler. A line that does not parse is a sink outside the budget - the
   // better-call fallback this suite exists to keep closed.
@@ -137,8 +147,7 @@ describe('auth failures in the log', () => {
     expect(out).toContain(MARKER)
     assertOnlyBudgetedLines()
 
-    const body = (await res.json()) as { correlationId?: string }
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
   })
 
   it('never logs the session token when the user read after the session read fails', async () => {
@@ -198,9 +207,7 @@ describe('auth failures in the log', () => {
     expect(out).not.toContain('SERVER_ERROR: ')
     assertOnlyBudgetedLines()
 
-    const body = (await res.json()) as { correlationId?: string; code?: string }
-    expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
   })
 
   it('fails a magic-link send closed when no mail key is set outside local dev', async () => {
@@ -219,9 +226,7 @@ describe('auth failures in the log', () => {
       },
     )
     expect(res.status).toBe(500)
-    const body = (await res.json()) as { correlationId?: string; code?: string }
-    expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-    expect(body.correlationId).toMatch(UUID_RE)
+    expectCorrelatedIncident()
 
     const out = everything()
     // No link was printed anywhere - not by the console sender, not by a
@@ -263,9 +268,7 @@ describe('auth failures in the log', () => {
         },
       )
       expect(res.status).toBe(500)
-      const body = (await res.json()) as { correlationId?: string; code?: string }
-      expect(body.code).toBe('INTERNAL_SERVER_ERROR')
-      expect(body.correlationId).toMatch(UUID_RE)
+      expectCorrelatedIncident()
     } finally {
       vi.unstubAllGlobals()
     }

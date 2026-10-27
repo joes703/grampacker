@@ -5,7 +5,7 @@ import {
   errorHandler,
   recordAuthLog,
   resetLogBudget,
-  withAuthErrorCorrelation,
+  logAuthFailure,
 } from './error-handler'
 import { isDevEnvironment, securityHeaders } from './security-headers'
 import type { AppDeps, AppEnv } from '../env'
@@ -233,55 +233,27 @@ describe('auth 5xx correlation', () => {
     consoleError.mockRestore()
   })
 
-  it('leaves sub-500 responses alone', async () => {
+  it('leaves sub-500 responses alone and logs nothing', () => {
     const original = new Response(JSON.stringify({ code: 'BAD_REQUEST' }), { status: 400 })
-    const res = await withAuthErrorCorrelation(original, req)
-    expect(res).toBe(original)
+    expect(logAuthFailure(original, req)).toBe(original)
     expect(consoleError).not.toHaveBeenCalled()
   })
 
-  it('synthesizes a body for better-calls empty generic 500', async () => {
-    const res = await withAuthErrorCorrelation(new Response(null, { status: 500 }), req)
-    const body = (await res.json()) as Record<string, unknown>
-    expect(body).toMatchObject({ code: 'INTERNAL_SERVER_ERROR', message: 'Internal Server Error' })
-    expect(body.correlationId).toMatch(UUID_RE)
-  })
-
-  it('merges into an APIError body without disturbing it, Set-Cookie included', async () => {
-    // better-auth/dist/api/routes/session.mjs:257 throws this shape, and the
-    // same route calls deleteSessionCookie - so the teardown cookie rides along.
+  // The client never reads a correlation id on auth calls, so the response is
+  // returned as better-auth wrote it: body, status and every Set-Cookie.
+  it('returns a 5xx untouched and logs one correlated incident', async () => {
     const original = new Response(
       JSON.stringify({ message: 'Failed to get session', code: 'FAILED_TO_GET_SESSION' }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'better-auth.session_token=; Max-Age=0; Path=/',
-        },
+        headers: { 'Set-Cookie': 'better-auth.session_token=; Max-Age=0; Path=/' },
       },
     )
-
-    const res = await withAuthErrorCorrelation(original, req)
-    const body = (await res.json()) as Record<string, unknown>
-    expect(body.code).toBe('FAILED_TO_GET_SESSION')
-    expect(body.message).toBe('Failed to get session')
-    expect(body.correlationId).toMatch(UUID_RE)
-    // Dropping this would leave a dead session cookie in the browser.
-    expect(res.headers.get('Set-Cookie')).toBe('better-auth.session_token=; Max-Age=0; Path=/')
-    expect(res.status).toBe(500)
-  })
-
-  it.each([
-    ['malformed JSON', '{not json'],
-    ['plain text', 'Internal Server Error'],
-    ['a JSON array', '[1,2,3]'],
-    ['a JSON string', '"nope"'],
-    ['JSON null', 'null'],
-  ])('returns %s untouched, byte for byte', async (_label, raw) => {
-    // None of these can gain a field without changing shape, so they are handed
-    // back exactly as better-auth wrote them rather than guessed at.
-    const res = await withAuthErrorCorrelation(new Response(raw, { status: 500 }), req)
-    expect(await res.text()).toBe(raw)
+    const res = logAuthFailure(original, req)
+    expect(res).toBe(original)
+    const [entry] = logLines(consoleError)
+    expect(entry).toMatchObject({ event: 'server-error', source: 'auth-response', status: 500 })
+    expect(entry?.correlationId).toMatch(UUID_RE)
   })
 })
 

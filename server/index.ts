@@ -5,7 +5,7 @@ import { createDb } from './db'
 import type { AppDeps, AppEnv } from './env'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
-import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
+import { errorHandler, logAuthFailure } from './middleware/error-handler'
 import { authRateLimit } from './middleware/rate-limit'
 import { requireSession } from './middleware/session'
 import { isDevEnvironment, securityHeaders } from './middleware/security-headers'
@@ -58,18 +58,17 @@ api.use('/auth/*', authRateLimit)
 // Wrapped for observability: better-call answers an APIError with a Response,
 // and with `onAPIError.throw` (server/auth.ts) any other error escaping an
 // endpoint is rethrown here instead of being logged raw. Both kinds of 5xx get
-// one correlated entry, so auth is not outside the correlation scheme.
+// one correlated log entry.
 api.on(['GET', 'POST'], '/auth/*', async (c) => {
   const req = { method: c.req.method, path: c.req.path }
   let res: Response
   try {
     res = await c.env.auth.handler(c.req.raw)
   } catch (err) {
-    // The same bare 500 better-call would have answered; the wrapper fills
-    // in the body and logs the error beside the correlation id.
-    return withAuthErrorCorrelation(new Response(null, { status: 500 }), req, err)
+    // The same bare 500 better-call would have answered.
+    return logAuthFailure(new Response(null, { status: 500 }), req, err)
   }
-  return withAuthErrorCorrelation(res, req)
+  return logAuthFailure(res, req)
 })
 
 // ONE session gate for the three sub-apps that share the /lists base: a
