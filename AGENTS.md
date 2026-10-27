@@ -42,7 +42,7 @@ repositories are the authorization boundary.
 | Build | `npm run build` | Typecheck + lint + bundle; tests are separate. A bare `tsc --noEmit` misses project-reference errors. |
 | Unit tests | `npm run test:unit` | Node tier: `scripts/`, `shared/`, `src/`, `server/**/*.node.test.ts`. |
 | API tests | `npm run test:api` | Every other `server/**/*.test.ts`: the real app on Node against a fresh SQLite database per file. A few tests open a local port; if the sandbox cannot bind one, say so and rely on CI. |
-| Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no destructive statement in a new migration. Fetch origin/main first. |
+| Migration check | `npm run test:migrations` | Bookkeeping, snapshot vs `schema.ts`, no snapshot parent collision (`drizzle-kit check`), no destructive statement in a new migration. Fetch origin/main first. |
 | Other checks | `npm run check:action-pins` | Every action pinned to a full SHA with a tag comment. |
 | Dev server | `npm run dev` | SPA with hot reload + `/api/*` on Node, local SQLite in `.data/`. |
 | Node server | `npm run db:migrate`, `npm run build:server`, `npm run start:node` | Apply migrations to `DATABASE_PATH` (tsx, dev), compile the server to `dist/server`, run it with node. Production runs the compiled JavaScript; tsx is for local development only. The server refuses to start while migrations are pending. |

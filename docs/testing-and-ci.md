@@ -53,6 +53,8 @@ check proves:
 
 - every journal entry has SQL and every SQL file has a journal entry;
 - the newest snapshot matches `server/db/schema.ts`;
+- no two snapshots claim the same parent (`drizzle-kit check`: two branches
+  that each generated a migration from the same snapshot);
 - migrations absent from the merge base do not rebuild or rename tables,
   drop tables, change `PRAGMA foreign_keys`, touch the migration ledger, or
   write the SQLite schema table;

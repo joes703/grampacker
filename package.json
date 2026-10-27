@@ -15,7 +15,7 @@
     "test": "npm run test:unit && npm run test:api",
     "test:unit": "vitest run",
     "test:api": "vitest run --config vitest.api.config.ts",
-    "test:migrations": "node scripts/check-migration-safety.mjs",
+    "test:migrations": "node scripts/check-migration-safety.mjs && drizzle-kit check",
     "check:action-pins": "node scripts/check-action-pins.mjs"
   },
   "overrides": {
