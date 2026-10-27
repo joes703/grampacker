@@ -1,8 +1,7 @@
 # Testing and CI/CD
 
-**Binding, maintained against the code.** `vitest.config.ts`,
-`vitest.api.config.ts` and `.github/workflows/` are the executable sources of
-truth.
+**Binding, maintained against the code.** `vitest.config.ts` (its `unit` and
+`api` projects) and `.github/workflows/` are the executable sources of truth.
 
 ## 1. Test tiers
 

@@ -12,9 +12,9 @@
     "build": "npm run typecheck && npm run lint && npm run build:client && npm run build:server",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "test": "npm run test:unit && npm run test:api",
-    "test:unit": "vitest run",
-    "test:api": "vitest run --config vitest.api.config.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:api": "vitest run --project api",
     "test:migrations": "node scripts/check-migration-safety.mjs && drizzle-kit check",
     "check:action-pins": "node scripts/check-action-pins.mjs"
   },
