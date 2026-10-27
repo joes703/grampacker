@@ -95,7 +95,7 @@ async function renderDetail(seedLists?: List[]) {
       <ListsQueryProbe />
       <MemoryRouter initialEntries={[`/lists/${listId}`]}>
         <Routes>
-          <Route path="/lists/:id" element={<ListDetailPage />} />
+          <Route path="/lists/:id" element={<ListDetailPage mode="edit" />} />
         </Routes>
       </MemoryRouter>
     </ListDetailProviders>,

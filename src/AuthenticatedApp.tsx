@@ -3,7 +3,7 @@ import RootRedirect from './layout/RootRedirect'
 import AppShell from './layout/AppShell'
 import GearLibraryPage from './gear/GearLibraryPage'
 import ListsPage from './lists/ListsPage'
-import ListDetailPage from './lists/ListDetailPage'
+import { LIST_DETAIL_ROUTES } from './lists/list-detail-routes'
 
 // Everything behind the session gate (App.tsx imports this module and nothing
 // else from here), as one lazy boundary rather than one per page.
@@ -38,18 +38,10 @@ export default function AuthenticatedApp() {
         <Route path="food/*" element={<Navigate to="/lists" replace />} />
         {/* Settings is a modal in AppShell now, not a route. A stale
             bookmark falls through to the catch-all below. */}
-        {/* Pack is a URL segment of the same detail page (see
-            ListDetailPage's mode derivation). The two /organize routes are
-            RETIRED - Organize merged into Pack - but stay mounted so old
-            bookmarks and home-screen shortcuts resolve; the page rewrites
-            them to /pack rather than 404ing. */}
         <Route path="lists" element={<ListsPage />} />
-        <Route path="lists/:id" element={<ListDetailPage />} />
-        <Route path="lists/:id/pack" element={<ListDetailPage />} />
-        <Route path="lists/:id/food" element={<ListDetailPage />} />
-        <Route path="lists/:id/organize" element={<ListDetailPage />} />
-        {/* Organize's original nesting under Pack, kept for the same reason. */}
-        <Route path="lists/:id/pack/organize" element={<ListDetailPage />} />
+        {Object.entries(LIST_DETAIL_ROUTES).map(([path, element]) => (
+          <Route key={path} path={path} element={element} />
+        ))}
       </Route>
       {/* Unknown path under the gate: send them home rather than showing a
           dead end. This is the old top-level "*" catch-all - it lives here now

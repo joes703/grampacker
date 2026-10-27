@@ -2,82 +2,25 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, matchRoutes } from 'react-router'
 import ListViewNav from './ListViewNav'
-import {
-  deriveListMode,
-  isLegacyOrganizePath,
-  listDocumentTitle,
-  persistedListPath,
-} from './list-detail-mode'
+import { listDocumentTitle, persistedListPath } from './list-detail-mode'
+import { LIST_DETAIL_ROUTES } from './list-detail-routes'
 
 const LIST_ID = 'list-1'
 
-describe('deriveListMode', () => {
+// The route table decides the view. React Router matches case-insensitively
+// and ignores trailing slashes, so these spellings must reach the right route.
+describe('list detail routes', () => {
+  const routes = Object.keys(LIST_DETAIL_ROUTES).map((path) => ({ path }))
   it.each([
-    [`/lists/${LIST_ID}`, 'edit'],
-    [`/lists/${LIST_ID}/pack`, 'pack'],
-    // Organize merged INTO Pack, so its retired URLs resolve to Pack rather
-    // than falling through to Edit. Falling through would silently drop a
-    // returning bookmark into the wrong view instead of the one that
-    // replaced Organize.
-    [`/lists/${LIST_ID}/organize`, 'pack'],
-    [`/lists/${LIST_ID}/pack/organize`, 'pack'],
-    [`/lists/${LIST_ID}/food`, 'food'],
-    // Router matching is case-insensitive and slash-tolerant; mode
-    // derivation must agree or these URLs render the wrong view.
-    [`/lists/${LIST_ID}/FOOD`, 'food'],
-    [`/lists/${LIST_ID}/food/`, 'food'],
-    [`/lists/${LIST_ID}/pack/`, 'pack'],
-    // The retired spellings get the same tolerance as the live ones,
-    // including more than one trailing slash.
-    [`/lists/${LIST_ID}/organize/`, 'pack'],
-    [`/lists/${LIST_ID}/ORGANIZE`, 'pack'],
-    [`/LISTS/${LIST_ID.toUpperCase()}/pack/organize//`, 'pack'],
-  ] as const)('%s -> %s', (pathname, expected) => {
-    expect(deriveListMode(pathname, LIST_ID)).toBe(expected)
-  })
-
-  // The router takes the list id from the URL as typed, so an upper-case URL
-  // arrives with an upper-case id. The id must be case-folded too.
-  it('/LISTS/LIST-1/PACK, with the id the router reads from it -> pack', () => {
-    expect(deriveListMode('/LISTS/LIST-1/PACK', 'LIST-1')).toBe('pack')
-  })
-})
-
-// The one predicate behind both the address-bar rewrite (ListDetailPage) and
-// the 'pack' answer for retired URLs (deriveListMode). The rows add the
-// router's case tolerance: an exact match would render Pack without the
-// address-bar rewrite.
-describe('isLegacyOrganizePath', () => {
-  const legacy = [
-    `/lists/${LIST_ID}/organize`,
-    `/lists/${LIST_ID}/organize/`,
-    `/lists/${LIST_ID}/pack/organize`,
-    `/lists/${LIST_ID}/PACK/ORGANIZE/`,
-  ]
-
-  it.each([`/lists/${LIST_ID}/ORGANIZE`, `/lists/${LIST_ID}/PACK/ORGANIZE/`])(
-    '%s is legacy',
-    (pathname) => {
-      expect(isLegacyOrganizePath(pathname, LIST_ID)).toBe(true)
-    },
-  )
-
-  it('agrees with deriveListMode on every legacy spelling', () => {
-    for (const pathname of legacy) {
-      expect(deriveListMode(pathname, LIST_ID)).toBe('pack')
-    }
-  })
-
-  it('never classifies the rewrite target as legacy, so the rewrite runs once', () => {
-    // ListDetailPage navigates to this exact path, keeping the search string;
-    // if it were legacy too the effect would fire again on arrival. The
-    // canonical /lists/<id> is never legacy either: deriveListMode would
-    // answer 'pack' for it.
-    const target = persistedListPath(LIST_ID, 'pack')
-    expect(isLegacyOrganizePath(target, LIST_ID)).toBe(false)
-    expect(deriveListMode(target, LIST_ID)).toBe('pack')
+    [`/lists/${LIST_ID}`, 'lists/:id'],
+    [`/lists/${LIST_ID}/pack/`, 'lists/:id/pack'],
+    [`/lists/${LIST_ID}/FOOD`, 'lists/:id/food'],
+    [`/lists/${LIST_ID}/ORGANIZE/`, 'lists/:id/organize'],
+    [`/LISTS/${LIST_ID}/pack/organize`, 'lists/:id/pack/organize'],
+  ])('%s -> %s', (pathname, expected) => {
+    expect(matchRoutes(routes, pathname)?.[0]?.route.path).toBe(expected)
   })
 })
 

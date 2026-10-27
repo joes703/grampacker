@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { makeGearItem, makeListItem } from '../test/fixtures'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
 import type { ComponentProps } from 'react'
@@ -466,6 +466,23 @@ describe('rewriting retired list URLs', () => {
     // first effect flush, long before the loaded anchor above appeared - and
     // the URL, query and fragment are exactly what was entered.
     expect(screen.getByTestId('location')).toHaveTextContent(`${path}|POP`)
+  })
+})
+
+// Switching views on the same list must not remount the page, or open
+// dialogs and half-typed drafts would be lost. The view nav is rendered by the
+// page itself, so its DOM node survives only if the page does.
+describe('switching views on one list', () => {
+  it('keeps the page mounted from List to Pack', async () => {
+    stubViewport(1280)
+    const user = userEvent.setup()
+    await renderDetail(`/lists/${listId}`)
+    const nav = screen.getByRole('navigation', { name: 'List views' })
+
+    await user.click(within(nav).getByRole('link', { name: 'Pack' }))
+    await screen.findByLabelText('New packing location')
+
+    expect(screen.getByRole('navigation', { name: 'List views' })).toBe(nav)
   })
 })
 

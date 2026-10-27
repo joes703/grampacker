@@ -1,6 +1,5 @@
 import { Link } from 'react-router'
-import type { ListDetailMode } from './list-detail-mode'
-import { persistedListPath } from './list-detail-mode'
+import { LIST_VIEW_LABELS, persistedListPath, type ListDetailMode } from './list-detail-mode'
 
 // Order encodes a distinction, and it is not cosmetic. List and Pack are
 // two ARRANGEMENTS of the same rows - the same gear, grouped by category or
@@ -12,14 +11,10 @@ import { persistedListPath } from './list-detail-mode'
 // The first view is called List, not Category: it is the list itself, and
 // Pack and Food are sections of it. It cannot be Gear, which the top nav
 // already uses for the gear library.
-//
-// Keep in step with LIST_VIEW_LABELS in list-detail-mode.ts, which feeds the
-// document title from the same strings.
-const VIEWS: { mode: ListDetailMode; label: string }[] = [
-  { mode: 'edit', label: 'List' },
-  { mode: 'pack', label: 'Pack' },
-  { mode: 'food', label: 'Food' },
-]
+const VIEWS = Object.entries(LIST_VIEW_LABELS).map(([mode, label]) => ({
+  mode: mode as ListDetailMode,
+  label,
+}))
 
 // These are peer URL destinations, not on/off toggles. Links keep
 // every view one activation away, preserve browser navigation, and expose the

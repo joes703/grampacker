@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import ListSidebarDrawer from './ListSidebarDrawer'
@@ -69,8 +69,6 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { useDocumentTitle } from '../lib/use-document-title'
 import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
-  deriveListMode,
-  isLegacyOrganizePath,
   listDocumentTitle,
   persistedListPath,
   type ListDetailMode,
@@ -139,20 +137,18 @@ type DialogState =
       returnDialog?: DialogState
     }
 
-export default function ListDetailPage() {
-  // Mounted only at /lists/:id, so params.id is guaranteed by the route.
-  // Asserting here narrows routeId to string for ListDetailInner's listId prop.
+export default function ListDetailPage({ mode }: { mode: ListDetailMode }) {
+  // Mounted only under /lists/:id, so params.id is guaranteed by the route.
   const { id } = useParams<{ id: string }>()
   const routeId = id!
 
   // key={routeId} forces a fresh ListDetailInner instance per list, so local
   // state (open dialogs, draft inputs, etc.) doesn't leak when the user
-  // switches lists. That key is this wrapper's whole job: everything else,
-  // including the lists query, lives in the instance it remounts.
-  return <ListDetailInner key={routeId} listId={routeId} />
+  // switches lists. Keyed by list only: switching views on one list keeps it.
+  return <ListDetailInner key={routeId} listId={routeId} mode={mode} />
 }
 
-function ListDetailInner({ listId }: { listId: string }) {
+function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMode }) {
   // The lists collection, subscribed here rather than in the wrapper:
   // TanStack dedupes subscriptions on the key, so this is the same fetch
   // DesktopListsPanel and the wrapper would share anyway, and the flags are
@@ -205,18 +201,6 @@ function ListDetailInner({ listId }: { listId: string }) {
   // here (this page renders inside RequireSession); read for the id only.
   const { data: session } = authClient.useSession()
   const ownerId = session?.user.id ?? null
-  // Pack mode is URL-represented as /lists/:id/pack so it's bookmarkable,
-  // refresh-stable, and back/forward navigable. The retired spellings - the
-  // two /organize paths from before Organize merged into Pack - derive to
-  // Pack AND get rewritten to /pack below, so old bookmarks and home-screen
-  // shortcuts land in the view that replaced them rather than on a dead
-  // route. Both facts come from the same predicate in list-detail-mode.ts:
-  // this page used to keep exact-match copies of the checks, and
-  // /lists/<id>/organize/ then rendered Pack without the rewrite.
-  const location = useLocation()
-  const navigate = useNavigate()
-  const isLegacyPath = isLegacyOrganizePath(location.pathname, listId)
-  const mode: ListDetailMode = deriveListMode(location.pathname, listId)
   const { weightUnit } = useWeightUnit()
   // Page-level breakpoint, prop-drilled into rows via sharedGroupProps so a
   // long list registers ONE matchMedia subscription instead of one per row.
@@ -294,21 +278,6 @@ function ListDetailInner({ listId }: { listId: string }) {
   // The list name once it resolves; "Lists" while the lists query is pending
   // so the title doesn't briefly drop to the bare app name.
   useDocumentTitle(list ? listDocumentTitle(list.name, mode) : 'Lists')
-
-  // Only the path changes. The search string and hash travel with the URL
-  // unchanged.
-  useEffect(() => {
-    if (isLegacyPath) {
-      void navigate(
-        {
-          pathname: persistedListPath(listId, 'pack'),
-          search: location.search,
-          hash: location.hash,
-        },
-        { replace: true },
-      )
-    }
-  }, [isLegacyPath, listId, location.hash, location.search, navigate])
 
   // Last-list cache write: stash the list path only AFTER the list resolves
   // to a real, server-permitted row. Writing on mount unconditionally would

@@ -94,23 +94,19 @@ export async function renderListDetailPage(
   routes: readonly string[],
   { client = testQueryClient(), beside }: { client?: QueryClient; beside?: ReactNode } = {},
 ): Promise<QueryClient> {
-  // Imported lazily so the test file's module mocks are installed first.
-  const { default: ListDetailPage } = await import('../ListDetailPage')
-  const page =
-    beside === undefined ? (
-      <ListDetailPage />
-    ) : (
-      <>
-        <ListDetailPage />
-        {beside}
-      </>
-    )
+  // Imported lazily so the test file's module mocks are installed first. The
+  // app's own route table, so each pattern renders what the app renders.
+  const { LIST_DETAIL_ROUTES } = await import('../list-detail-routes')
+  const elementFor = (pattern: string) => {
+    const element = LIST_DETAIL_ROUTES[pattern.replace(/^\//, '') as keyof typeof LIST_DETAIL_ROUTES]
+    return beside === undefined ? element : <>{element}{beside}</>
+  }
   render(
     <ListDetailProviders client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           {routes.map((pattern) => (
-            <Route key={pattern} path={pattern} element={page} />
+            <Route key={pattern} path={pattern} element={elementFor(pattern)} />
           ))}
         </Routes>
       </MemoryRouter>
