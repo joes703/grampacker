@@ -28,12 +28,10 @@ const cols = {
   containerListItemId: packingLocations.containerListItemId,
 }
 
-export type PackingLocationRow = {
-  id: string
-  name: string
-  sortOrder: number
-  containerListItemId: string | null
-}
+export type PackingLocationRow = Pick<
+  typeof packingLocations.$inferSelect,
+  'id' | 'name' | 'sortOrder' | 'containerListItemId'
+>
 
 export type CreatePackingLocationResult =
   | { ok: true; row: PackingLocationRow }

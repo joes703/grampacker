@@ -21,19 +21,7 @@ const cols = {
   updatedAt: gearItems.updatedAt,
 }
 
-export type GearItemRow = {
-  id: string
-  categoryId: string | null
-  name: string
-  description: string | null
-  weightGrams: number
-  costCents: number | null
-  purchaseDate: string | null
-  status: string // constrained by the DB CHECK; DTO narrows to GearStatus
-  sortOrder: number
-  createdAt: number // epoch ms
-  updatedAt: number // epoch ms
-}
+export type GearItemRow = Omit<typeof gearItems.$inferSelect, 'userId'>
 
 export type CreateGearItemInput = {
   name: string

@@ -30,17 +30,7 @@ const cols = {
   updatedAt: lists.updatedAt,
 }
 
-export type ListRow = {
-  id: string
-  name: string
-  description: string | null
-  slug: string
-  isShared: boolean
-  isDraft: boolean
-  sortOrder: number
-  createdAt: number // epoch ms
-  updatedAt: number // epoch ms
-}
+export type ListRow = Omit<typeof lists.$inferSelect, 'userId'>
 
 // PATCH semantics: undefined = unchanged, null = clear (nullable fields).
 export type UpdateListPatch = {

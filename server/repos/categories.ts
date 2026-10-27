@@ -14,12 +14,7 @@ const cols = {
   createdAt: categories.createdAt,
 }
 
-export type CategoryRow = {
-  id: string
-  name: string
-  sortOrder: number
-  createdAt: number // epoch ms
-}
+export type CategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder' | 'createdAt'>
 
 export type CategoryCreateResult =
   | { ok: true; row: CategoryRow }

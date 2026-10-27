@@ -41,21 +41,7 @@ const gearCols = {
   updatedAt: gearItems.updatedAt,
 }
 
-export type ListItemRow = {
-  id: string
-  listId: string
-  gearItemId: string
-  quantity: number
-  isWorn: boolean
-  isConsumable: boolean
-  isPacked: boolean
-  isReady: boolean
-  packingLocationId: string | null
-  sortOrder: number
-  packSortOrder: number
-  createdAt: number // epoch ms
-  updatedAt: number // epoch ms
-}
+export type ListItemRow = Omit<typeof listItems.$inferSelect, 'userId'>
 
 // The joined shape the routes serialize: membership row + its gear row
 // (the embedded gear_item response shape).

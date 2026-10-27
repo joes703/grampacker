@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core'
+import { GEAR_STATUSES } from '../../shared/gear'
 import { user } from './auth-schema'
 
 // App-owned tables. Auth tables live in auth-schema.ts (CLI-generated,
@@ -89,7 +90,8 @@ export const gearItems = sqliteTable(
     // exist in SQLite and REAL is the wrong tool for money.
     costCents: integer('cost_cents'),
     purchaseDate: text('purchase_date'), // ISO YYYY-MM-DD
-    status: text('status').notNull().default('active'),
+    // The enum types the column in TypeScript only; the CHECK below enforces it.
+    status: text('status', { enum: GEAR_STATUSES }).notNull().default('active'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull(), // epoch ms
     updatedAt: integer('updated_at').notNull(), // epoch ms, repo-maintained

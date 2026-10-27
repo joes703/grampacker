@@ -8,7 +8,7 @@ import {
   listFoodSlots,
   packingLocations,
 } from '../db/schema'
-import { MEALS, foodUnitCount, type Meal } from '../../shared/food'
+import { MEALS, foodUnitCount } from '../../shared/food'
 import {
   isPackRankRangeError,
   isTriggerAbort,
@@ -23,28 +23,25 @@ import { nextUnionPackRank } from './pack-reorder'
 // 2500 g for one 500 g bag of trail mix eaten across five lunches. There is no
 // such join anywhere in this file, and there must never be one.
 
-export type FoodSlotRow = {
-  id: string
-  dayNumber: number
-  meal: Meal
-}
+export type FoodSlotRow = Pick<typeof listFoodSlots.$inferSelect, 'id' | 'dayNumber' | 'meal'>
 
-export type FoodItemRow = {
-  id: string
-  name: string
-  weightGrams: number
-  // Per MEAL when isPerMeal, a total otherwise. unitCount is what you carry.
-  quantity: number
-  isPerMeal: boolean
+// Quantity is per MEAL when isPerMeal, a total otherwise; unitCount (computed)
+// is what you carry. Weight stays summed over items alone, wherever they are
+// packed.
+export type FoodItemRow = Pick<
+  typeof listFoodItems.$inferSelect,
+  | 'id'
+  | 'name'
+  | 'weightGrams'
+  | 'quantity'
+  | 'isPerMeal'
+  | 'sortOrder'
+  | 'isPacked'
+  | 'isReady'
+  | 'packingLocationId'
+  | 'packSortOrder'
+> & {
   unitCount: number
-  sortOrder: number
-  // Pack state (0022): food is a full peer of gear in Pack mode. Rank
-  // semantics live on pack-reorder.ts; weight stays summed over items alone
-  // regardless of where they are packed.
-  isPacked: boolean
-  isReady: boolean
-  packingLocationId: string | null
-  packSortOrder: number
   slotIds: string[]
 }
 

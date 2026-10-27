@@ -22,17 +22,9 @@ import { foodUnitCount } from '../../shared/food'
 // SharedListResponse field-by-field, which keeps the response allowlist
 // enforcement visible at the handler.
 
-export type PublicListRow = {
-  name: string
-  description: string | null
-  isDraft: boolean
-}
+export type PublicListRow = Pick<typeof lists.$inferSelect, 'name' | 'description' | 'isDraft'>
 
-export type PublicCategoryRow = {
-  id: string
-  name: string
-  sortOrder: number
-}
+export type PublicCategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder'>
 
 export type PublicListItemRow = {
   id: string
