@@ -9,7 +9,7 @@ import {
   packingLocations,
 } from '../db/schema'
 import { isTriggerAbort } from '../repos/db-errors'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, addListItem, createGearItemId, createList, createPackingLocation, getListItems, userIdFor } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 type ListBody = { id: string }
@@ -28,56 +28,6 @@ type LocationBody = {
   name: string
   sortOrder: number
   containerListItemId: string | null
-}
-
-async function userIdFor(cookie: string): Promise<string> {
-  const res = await apiRequest(cookie, 'GET', '/api/me')
-  return ((await res.json()) as { id: string }).id
-}
-
-async function createList(cookie: string, name: string): Promise<ListBody> {
-  const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ListBody
-}
-
-async function createGear(cookie: string, name: string): Promise<string> {
-  const res = await apiRequest(cookie, 'POST', '/api/gear-items', { name })
-  expect(res.status).toBe(201)
-  return ((await res.json()) as { id: string }).id
-}
-
-async function addItem(
-  cookie: string,
-  listId: string,
-  gearItemId: string,
-): Promise<ItemBody> {
-  const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
-    gearItemId,
-  })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ItemBody
-}
-
-async function getItems(cookie: string, listId: string): Promise<ItemBody[]> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ItemBody[]
-}
-
-async function createLocation(
-  cookie: string,
-  listId: string,
-  name: string,
-): Promise<LocationBody> {
-  const res = await apiRequest(
-    cookie,
-    'POST',
-    `/api/lists/${listId}/packing-locations`,
-    { name },
-  )
-  expect(res.status).toBe(201)
-  return (await res.json()) as LocationBody
 }
 
 async function createItemContainer(
@@ -158,7 +108,7 @@ describe('/api/lists/:id/packing-locations authorization', () => {
   it('allows GET without the CSRF header but rejects every write', async () => {
     const { cookie } = await signUpVerifiedUser('packing-csrf@example.com', 'C')
     const list = await createList(cookie, 'CSRF')
-    const location = await createLocation(cookie, list.id, 'Top')
+    const location = await createPackingLocation(cookie, list.id, 'Top')
 
     expect(
       (await requestWithoutCsrf(cookie, 'GET', `/api/lists/${list.id}/packing-locations`)).status,
@@ -177,10 +127,10 @@ describe('/api/lists/:id/packing-locations authorization', () => {
     const a = await signUpVerifiedUser('packing-owner-a@example.com', 'A')
     const b = await signUpVerifiedUser('packing-owner-b@example.com', 'B')
     const aList = await createList(a.cookie, 'A')
-    const aLocation = await createLocation(a.cookie, aList.id, 'A loc')
+    const aLocation = await createPackingLocation(a.cookie, aList.id, 'A loc')
     const bList = await createList(b.cookie, 'B')
-    const bGear = await createGear(b.cookie, 'B gear')
-    const bItem = await addItem(b.cookie, bList.id, bGear)
+    const bGear = await createGearItemId(b.cookie, 'B gear')
+    const bItem = await addListItem(b.cookie, bList.id, bGear)
 
     for (const [method, path, body] of [
       ['GET', `/api/lists/${aList.id}/packing-locations`, undefined],
@@ -199,7 +149,7 @@ describe('/api/lists/:id/packing-locations authorization', () => {
       { packingLocationId: aLocation.id },
     )
     expect(assign.status).toBe(400)
-    expect((await getItems(b.cookie, bList.id))[0]?.packingLocationId).toBeNull()
+    expect((await getListItems(b.cookie, bList.id))[0]?.packingLocationId).toBeNull()
     expect((await getLocations(a.cookie, aList.id))[0]).toEqual(aLocation)
   })
 })
@@ -208,8 +158,8 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('round-trips CRUD and reorder in sortOrder order', async () => {
     const { cookie } = await signUpVerifiedUser('packing-crud@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const top = await createLocation(cookie, list.id, 'Top')
-    const side = await createLocation(cookie, list.id, 'Side')
+    const top = await createPackingLocation(cookie, list.id, 'Top')
+    const side = await createPackingLocation(cookie, list.id, 'Side')
     expect([top.sortOrder, side.sortOrder]).toEqual([0, 1])
 
     const rename = await apiRequest(
@@ -243,8 +193,8 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('rejects invalid names, unknown keys, malformed order payloads, and non-UUID assignments', async () => {
     const { cookie } = await signUpVerifiedUser('packing-validation@example.com', 'V')
     const list = await createList(cookie, 'Validation')
-    const location = await createLocation(cookie, list.id, 'Valid')
-    const item = await addItem(cookie, list.id, await createGear(cookie, 'Gear'))
+    const location = await createPackingLocation(cookie, list.id, 'Valid')
+    const item = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Gear'))
 
     for (const body of [
       { name: '' },
@@ -284,20 +234,20 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const other = await signUpVerifiedUser('packing-container-other@example.com', 'X')
     const list = await createList(owner.cookie, 'Trip')
     const otherList = await createList(owner.cookie, 'Other trip')
-    const canisterGear = await createGear(owner.cookie, 'Bear canister')
-    const canister = await addItem(owner.cookie, list.id, canisterGear)
-    const otherListItem = await addItem(
+    const canisterGear = await createGearItemId(owner.cookie, 'Bear canister')
+    const canister = await addListItem(owner.cookie, list.id, canisterGear)
+    const otherListItem = await addListItem(
       owner.cookie,
       otherList.id,
-      await createGear(owner.cookie, 'Other pack'),
+      await createGearItemId(owner.cookie, 'Other pack'),
     )
     const foreignList = await createList(other.cookie, 'Foreign trip')
-    const foreignItem = await addItem(
+    const foreignItem = await addListItem(
       other.cookie,
       foreignList.id,
-      await createGear(other.cookie, 'Foreign pack'),
+      await createGearItemId(other.cookie, 'Foreign pack'),
     )
-    const existingLocation = await createLocation(owner.cookie, list.id, 'Top lid')
+    const existingLocation = await createPackingLocation(owner.cookie, list.id, 'Top lid')
     expect(existingLocation.sortOrder).toBe(0)
 
     const location = await createItemContainer(owner.cookie, list.id, canister.id)
@@ -356,10 +306,10 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('uses live container names to break equal sort-order ties', async () => {
     const { cookie } = await signUpVerifiedUser('packing-live-sort@example.com', 'S')
     const list = await createList(cookie, 'Live sort')
-    const zuluGear = await createGear(cookie, 'Zulu snapshot')
-    const alphaGear = await createGear(cookie, 'Alpha snapshot')
-    const zuluItem = await addItem(cookie, list.id, zuluGear)
-    const alphaItem = await addItem(cookie, list.id, alphaGear)
+    const zuluGear = await createGearItemId(cookie, 'Zulu snapshot')
+    const alphaGear = await createGearItemId(cookie, 'Alpha snapshot')
+    const zuluItem = await addListItem(cookie, list.id, zuluGear)
+    const alphaItem = await addListItem(cookie, list.id, alphaGear)
     const zuluLocation = await createItemContainer(cookie, list.id, zuluItem.id)
     const alphaLocation = await createItemContainer(cookie, list.id, alphaItem.id)
 
@@ -393,8 +343,8 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const { cookie } = await signUpVerifiedUser('packing-long-container@example.com', 'L')
     const list = await createList(cookie, 'Long container')
     const longName = 'x'.repeat(250)
-    const gearId = await createGear(cookie, longName)
-    const item = await addItem(cookie, list.id, gearId)
+    const gearId = await createGearItemId(cookie, longName)
+    const item = await addListItem(cookie, list.id, gearId)
 
     const response = await apiRequest(
       cookie,
@@ -419,15 +369,15 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('prevents self-containment and unassigns contents when the source item is removed', async () => {
     const { cookie } = await signUpVerifiedUser('packing-container-delete@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const canister = await addItem(
+    const canister = await addListItem(
       cookie,
       list.id,
-      await createGear(cookie, 'Bear canister'),
+      await createGearItemId(cookie, 'Bear canister'),
     )
-    const foodBag = await addItem(
+    const foodBag = await addListItem(
       cookie,
       list.id,
-      await createGear(cookie, 'Food bag'),
+      await createGearItemId(cookie, 'Food bag'),
     )
     const location = await createItemContainer(cookie, list.id, canister.id)
 
@@ -438,7 +388,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       { packingLocationId: location.id },
     )
     expect(selfAssign.status).toBe(400)
-    expect((await getItems(cookie, list.id)).find((item) => item.id === canister.id)?.packingLocationId)
+    expect((await getListItems(cookie, list.id)).find((item) => item.id === canister.id)?.packingLocationId)
       .toBeNull()
 
     const assignContents = await apiRequest(
@@ -456,7 +406,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     )
     expect(removeSource.status).toBe(204)
     expect(await getLocations(cookie, list.id)).toEqual([])
-    expect((await getItems(cookie, list.id))).toEqual([
+    expect((await getListItems(cookie, list.id))).toEqual([
       expect.objectContaining({ id: foodBag.id, packingLocationId: null }),
     ])
   })
@@ -464,11 +414,11 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('allows nested item containers but rejects a cycle with zero writes', async () => {
     const { cookie } = await signUpVerifiedUser('packing-container-cycle@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const pack = await addItem(cookie, list.id, await createGear(cookie, 'Pack'))
-    const canister = await addItem(
+    const pack = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Pack'))
+    const canister = await addListItem(
       cookie,
       list.id,
-      await createGear(cookie, 'Bear canister'),
+      await createGearItemId(cookie, 'Bear canister'),
     )
     const packLocation = await createItemContainer(cookie, list.id, pack.id)
     const canisterLocation = await createItemContainer(cookie, list.id, canister.id)
@@ -488,7 +438,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       { packingLocationId: canisterLocation.id },
     )
     expect(createCycle.status).toBe(400)
-    expect((await getItems(cookie, list.id)).find((item) => item.id === pack.id)?.packingLocationId)
+    expect((await getListItems(cookie, list.id)).find((item) => item.id === pack.id)?.packingLocationId)
       .toBeNull()
   })
 
@@ -496,10 +446,10 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const { cookie } = await signUpVerifiedUser('packing-assign@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const other = await createList(cookie, 'Other')
-    const location = await createLocation(cookie, list.id, 'Main')
-    const otherLocation = await createLocation(cookie, other.id, 'Other loc')
-    const gear = await createGear(cookie, 'Tarp')
-    const item = await addItem(cookie, list.id, gear)
+    const location = await createPackingLocation(cookie, list.id, 'Main')
+    const otherLocation = await createPackingLocation(cookie, other.id, 'Other loc')
+    const gear = await createGearItemId(cookie, 'Tarp')
+    const item = await addListItem(cookie, list.id, gear)
 
     const assign = await apiRequest(
       cookie,
@@ -539,7 +489,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect((await bad.json()) as { error: string }).toEqual({
       error: 'Invalid packing location',
     })
-    expect((await getItems(cookie, list.id))[0]?.packingLocationId).toBe(location.id)
+    expect((await getListItems(cookie, list.id))[0]?.packingLocationId).toBe(location.id)
 
     const unassign = await apiRequest(
       cookie,
@@ -578,11 +528,11 @@ describe('packing location CRUD, assignment, and integrity', () => {
     // list you wrote and of the link you had already shared.
     const { cookie } = await signUpVerifiedUser('packing-move-rank@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
+    const location = await createPackingLocation(cookie, list.id, 'Main')
 
-    const first = await addItem(cookie, list.id, await createGear(cookie, 'Tarp'))
-    const second = await addItem(cookie, list.id, await createGear(cookie, 'Stove'))
-    const third = await addItem(cookie, list.id, await createGear(cookie, 'Bag'))
+    const first = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Tarp'))
+    const second = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Stove'))
+    const third = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bag'))
     // The FIRST item is the interesting one: it holds the lowest rank, so
     // without a rebase it would land at the TOP of the destination.
     expect(first.packSortOrder).toBeLessThan(third.packSortOrder)
@@ -643,7 +593,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     // both - if it ever stopped doing so, an item would drift to the bottom
     // every time someone tried an invalid destination.
     const otherList = await createList(cookie, 'Other')
-    const foreign = await createLocation(cookie, otherList.id, 'Foreign')
+    const foreign = await createPackingLocation(cookie, otherList.id, 'Foreign')
     const rejected = await apiRequest(
       cookie,
       'PATCH',
@@ -651,7 +601,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       { packingLocationId: foreign.id },
     )
     expect(rejected.status).toBe(400)
-    const afterReject = (await getItems(cookie, list.id)).find((i) => i.id === first.id)
+    const afterReject = (await getListItems(cookie, list.id)).find((i) => i.id === first.id)
     expect(afterReject?.packingLocationId).toBe(location.id)
     expect(afterReject?.packSortOrder).toBe(movedBody.packSortOrder)
 
@@ -683,10 +633,10 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('deleting a location unassigns three items without deleting them; deleting an empty location is 204', async () => {
     const { cookie } = await signUpVerifiedUser('packing-delete@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const full = await createLocation(cookie, list.id, 'Full')
-    const empty = await createLocation(cookie, list.id, 'Empty')
+    const full = await createPackingLocation(cookie, list.id, 'Full')
+    const empty = await createPackingLocation(cookie, list.id, 'Empty')
     for (let i = 0; i < 3; i++) {
-      const item = await addItem(cookie, list.id, await createGear(cookie, `Gear ${i}`))
+      const item = await addListItem(cookie, list.id, await createGearItemId(cookie, `Gear ${i}`))
       const assign = await apiRequest(
         cookie,
         'PATCH',
@@ -699,7 +649,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(
       (await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}/packing-locations/${full.id}`)).status,
     ).toBe(204)
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     expect(items).toHaveLength(3)
     expect(items.every((item) => item.packingLocationId === null)).toBe(true)
     expect(
@@ -718,7 +668,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const { cookie } = await signUpVerifiedUser('packing-parent-patch@example.com', 'O')
     const a = await createList(cookie, 'A')
     const b = await createList(cookie, 'B')
-    const bLoc = await createLocation(cookie, b.id, 'B loc')
+    const bLoc = await createPackingLocation(cookie, b.id, 'B loc')
 
     const patch = await apiRequest(
       cookie,
@@ -760,7 +710,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const { cookie } = await signUpVerifiedUser('packing-parent-patch-container@example.com', 'O')
     const a = await createList(cookie, 'A')
     const b = await createList(cookie, 'B')
-    const bItem = await addItem(cookie, b.id, await createGear(cookie, 'Bear canister'))
+    const bItem = await addListItem(cookie, b.id, await createGearItemId(cookie, 'Bear canister'))
     const bContainer = await createItemContainer(cookie, b.id, bItem.id)
 
     const patch = await apiRequest(
@@ -790,9 +740,9 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const { cookie } = await signUpVerifiedUser('packing-parent@example.com', 'O')
     const a = await createList(cookie, 'A')
     const b = await createList(cookie, 'B')
-    const aLoc = await createLocation(cookie, a.id, 'A loc')
-    const bLoc = await createLocation(cookie, b.id, 'B loc')
-    const item = await addItem(cookie, a.id, await createGear(cookie, 'Gear'))
+    const aLoc = await createPackingLocation(cookie, a.id, 'A loc')
+    const bLoc = await createPackingLocation(cookie, b.id, 'B loc')
+    const item = await addListItem(cookie, a.id, await createGearItemId(cookie, 'Gear'))
     await apiRequest(cookie, 'PATCH', `/api/lists/${a.id}/items/${item.id}`, {
       packingLocationId: aLoc.id,
     })
@@ -803,7 +753,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
       `/api/lists/${a.id}/packing-locations/${bLoc.id}`,
     )
     expect(del.status).toBe(404)
-    expect((await getItems(cookie, a.id))[0]).toMatchObject({
+    expect((await getListItems(cookie, a.id))[0]).toMatchObject({
       id: item.id,
       packingLocationId: aLoc.id,
     })
@@ -821,7 +771,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('maps the 31st location to a friendly 422', async () => {
     const { cookie } = await signUpVerifiedUser('packing-cap@example.com', 'O')
     const list = await createList(cookie, 'Cap')
-    for (let i = 0; i < 30; i++) await createLocation(cookie, list.id, `L${i}`)
+    for (let i = 0; i < 30; i++) await createPackingLocation(cookie, list.id, `L${i}`)
     const over = await apiRequest(
       cookie,
       'POST',
@@ -837,8 +787,8 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('cascades locations on list delete and duplicates locations with remapped assignments', async () => {
     const { cookie } = await signUpVerifiedUser('packing-copy@example.com', 'O')
     const list = await createList(cookie, 'Source')
-    const location = await createLocation(cookie, list.id, 'Canister')
-    const item = await addItem(cookie, list.id, await createGear(cookie, 'Food bag'))
+    const location = await createPackingLocation(cookie, list.id, 'Canister')
+    const item = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Food bag'))
     await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
       packingLocationId: location.id,
     })
@@ -850,7 +800,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     expect(copyLocations).toHaveLength(1)
     expect(copyLocations[0]).toMatchObject({ name: 'Canister', sortOrder: 0 })
     expect(copyLocations[0]?.id).not.toBe(location.id)
-    expect((await getItems(cookie, copy.id))[0]?.packingLocationId).toBe(
+    expect((await getListItems(cookie, copy.id))[0]?.packingLocationId).toBe(
       copyLocations[0]?.id,
     )
     expect((await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)).status).toBe(204)
@@ -866,10 +816,10 @@ describe('packing location CRUD, assignment, and integrity', () => {
   it('duplicates an item-backed container with both sides remapped to the copied graph', async () => {
     const { cookie } = await signUpVerifiedUser('packing-container-copy@example.com', 'O')
     const list = await createList(cookie, 'Source')
-    const canisterGear = await createGear(cookie, 'Bear canister')
-    const foodGear = await createGear(cookie, 'Food bag')
-    const canister = await addItem(cookie, list.id, canisterGear)
-    const foodBag = await addItem(cookie, list.id, foodGear)
+    const canisterGear = await createGearItemId(cookie, 'Bear canister')
+    const foodGear = await createGearItemId(cookie, 'Food bag')
+    const canister = await addListItem(cookie, list.id, canisterGear)
+    const foodBag = await addListItem(cookie, list.id, foodGear)
     const location = await createItemContainer(cookie, list.id, canister.id)
     await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${foodBag.id}`, {
       packingLocationId: location.id,
@@ -878,7 +828,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
     const duplicate = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/duplicate`)
     expect(duplicate.status).toBe(201)
     const copy = (await duplicate.json()) as ListBody
-    const copyItems = await getItems(cookie, copy.id)
+    const copyItems = await getListItems(cookie, copy.id)
     const copiedCanister = copyItems.find((item) => item.gearItemId === canisterGear)
     const copiedFood = copyItems.find((item) => item.gearItemId === foodGear)
     const [copiedLocation] = await getLocations(cookie, copy.id)
@@ -946,7 +896,7 @@ describe('a foreign-key failure inside create is a 500, not a client error', () 
       'F',
     )
     const list = await createList(cookie, 'Trip')
-    const item = await addItem(cookie, list.id, await createGear(cookie, 'Bear can'))
+    const item = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bear can'))
     // The same-list guard trigger checks a superset of the container foreign
     // key, so while it exists the foreign key can never be the first to
     // fail. Drop it for this test only, to reach the foreign-key
@@ -990,14 +940,14 @@ describe('packing location database triggers', () => {
     const aList = await createList(a.cookie, 'A')
     const aOther = await createList(a.cookie, 'A other')
     const bList = await createList(b.cookie, 'B')
-    const aLocation = await createLocation(a.cookie, aList.id, 'A loc')
-    const otherLocation = await createLocation(a.cookie, aOther.id, 'Other loc')
-    const aGear = await createGear(a.cookie, 'A gear')
-    const item = await addItem(a.cookie, aList.id, aGear)
-    const otherListItem = await addItem(
+    const aLocation = await createPackingLocation(a.cookie, aList.id, 'A loc')
+    const otherLocation = await createPackingLocation(a.cookie, aOther.id, 'Other loc')
+    const aGear = await createGearItemId(a.cookie, 'A gear')
+    const item = await addListItem(a.cookie, aList.id, aGear)
+    const otherListItem = await addListItem(
       a.cookie,
       aOther.id,
-      await createGear(a.cookie, 'A other gear'),
+      await createGearItemId(a.cookie, 'A other gear'),
     )
     const db = createDb(env.DB)
 
@@ -1071,10 +1021,10 @@ describe('packing location database triggers', () => {
       'container nesting cycle',
     )
 
-    const nestedItem = await addItem(
+    const nestedItem = await addListItem(
       a.cookie,
       aList.id,
-      await createGear(a.cookie, 'Nested container'),
+      await createGearItemId(a.cookie, 'Nested container'),
     )
     const nestedLocation = await createItemContainer(
       a.cookie,
@@ -1101,11 +1051,11 @@ describe('pack ordering is independent of document ordering', () => {
   it('a pack reorder leaves List order and the public share alone', async () => {
     const { cookie } = await signUpVerifiedUser('pack-independent@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
+    const location = await createPackingLocation(cookie, list.id, 'Main')
 
-    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
-    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
-    const c = await addItem(cookie, list.id, await createGear(cookie, 'Charlie'))
+    const a = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Alpha'))
+    const b = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bravo'))
+    const c = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Charlie'))
     for (const item of [a, b, c]) {
       const res = await apiRequest(
         cookie,
@@ -1121,10 +1071,10 @@ describe('pack ordering is independent of document ordering', () => {
     })
     expect(share.status).toBe(200)
     const slug = ((await share.json()) as { slug: string }).slug
-    const documentOrder = (await getItems(cookie, list.id)).map((i) => i.id)
+    const documentOrder = (await getListItems(cookie, list.id)).map((i) => i.id)
 
     // Reverse the bag, reusing the ranks those rows already hold.
-    const inBag = (await getItems(cookie, list.id))
+    const inBag = (await getListItems(cookie, list.id))
       .filter((i) => i.packingLocationId === location.id)
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
     const ranks = inBag.map((i) => i.packSortOrder)
@@ -1137,7 +1087,7 @@ describe('pack ordering is independent of document ordering', () => {
     )
     expect(reorder.status).toBe(204)
 
-    const after = await getItems(cookie, list.id)
+    const after = await getListItems(cookie, list.id)
     // Pack order flipped...
     expect(
       after
@@ -1161,15 +1111,15 @@ describe('pack ordering is independent of document ordering', () => {
   it('a List reorder leaves pack order alone', async () => {
     const { cookie } = await signUpVerifiedUser('list-independent@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
-    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
-    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
+    const location = await createPackingLocation(cookie, list.id, 'Main')
+    const a = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Alpha'))
+    const b = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bravo'))
     for (const item of [a, b]) {
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
     }
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     const packBefore = new Map(before.map((i) => [i.id, i.packSortOrder]))
 
     const swap = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/order`, [
@@ -1178,7 +1128,7 @@ describe('pack ordering is independent of document ordering', () => {
     ])
     expect(swap.status).toBe(204)
 
-    for (const item of await getItems(cookie, list.id)) {
+    for (const item of await getListItems(cookie, list.id)) {
       expect(item.packSortOrder).toBe(packBefore.get(item.id))
     }
   })
@@ -1188,15 +1138,15 @@ describe('pack-order route contract', () => {
   async function bagOfTwo(email: string) {
     const { cookie } = await signUpVerifiedUser(email, 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
-    const a = await addItem(cookie, list.id, await createGear(cookie, 'Alpha'))
-    const b = await addItem(cookie, list.id, await createGear(cookie, 'Bravo'))
+    const location = await createPackingLocation(cookie, list.id, 'Main')
+    const a = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Alpha'))
+    const b = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bravo'))
     for (const item of [a, b]) {
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
     }
-    const inBag = (await getItems(cookie, list.id)).filter(
+    const inBag = (await getListItems(cookie, list.id)).filter(
       (i) => i.packingLocationId === location.id,
     )
     return { cookie, list, location, inBag }
@@ -1206,28 +1156,28 @@ describe('pack-order route contract', () => {
   // bundle from before the gear+food union. Only the object form is valid now.
   it('rejects the old bare-array body, with zero writes', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-legacy@example.com')
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
 
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, [
       { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
     ])
     expect(res.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it('rejects a payload spanning two cohorts, with zero writes', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-cohort@example.com')
     // This one stays Unassigned, so it is a different cohort.
-    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
-    const before = await getItems(cookie, list.id)
+    const loose = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Loose'))
+    const before = await getListItems(cookie, list.id)
 
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 1 },
       { id: loose.id, packSortOrder: 0 },
     ], foodItems: [] })
     expect(res.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it('accepts collision-free minted ranks, rejects a landing on an untouched row', async () => {
@@ -1243,14 +1193,14 @@ describe('pack-order route contract', () => {
     ], foodItems: [] })
     expect(minted.status).toBe(204)
 
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     // inBag[1] now holds 8; moving inBag[0] onto it without touching it
     // must be refused.
     const collision = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 8 },
     ], foodItems: [] })
     expect(collision.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it('rejects a payload naming a worn row', async () => {
@@ -1259,27 +1209,27 @@ describe('pack-order route contract', () => {
     await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${worn.id}`, {
       isWorn: true,
     })
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
 
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: worn.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: worn.packSortOrder },
     ], foodItems: [] })
     expect(res.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it("404s on another user's item without writing anything", async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-foreign-a@example.com')
     const b = await signUpVerifiedUser('pack-foreign-b@example.com', 'B')
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
 
     const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: 1 },
       { id: inBag[1]!.id, packSortOrder: 0 },
     ], foodItems: [] })
     expect(res.status).toBe(404)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it("404s the gear half submitted through ANOTHER OWNED parent without writing anything", async () => {
@@ -1289,9 +1239,9 @@ describe('pack-order route contract', () => {
     // owner constant.
     const { cookie, list: listA, inBag } = await bagOfTwo('pack-parent-a@example.com')
     const listB = await createList(cookie, 'Other')
-    const b1 = await addItem(cookie, listB.id, await createGear(cookie, 'B1'))
-    const b2 = await addItem(cookie, listB.id, await createGear(cookie, 'B2'))
-    const before = { a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }
+    const b1 = await addListItem(cookie, listB.id, await createGearItemId(cookie, 'B1'))
+    const b2 = await addListItem(cookie, listB.id, await createGearItemId(cookie, 'B2'))
+    const before = { a: await getListItems(cookie, listA.id), b: await getListItems(cookie, listB.id) }
 
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${listB.id}/items/pack-order`, { items: [
       { id: b1.id, packSortOrder: b2.packSortOrder },
@@ -1300,18 +1250,18 @@ describe('pack-order route contract', () => {
       { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
     ], foodItems: [] })
     expect(res.status).toBe(404)
-    expect({ a: await getItems(cookie, listA.id), b: await getItems(cookie, listB.id) }).toEqual(before)
+    expect({ a: await getListItems(cookie, listA.id), b: await getListItems(cookie, listB.id) }).toEqual(before)
   })
 
   it('does not bump updatedAt', async () => {
     const { cookie, list, inBag } = await bagOfTwo('pack-updated@example.com')
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: inBag[1]!.packSortOrder },
       { id: inBag[1]!.id, packSortOrder: inBag[0]!.packSortOrder },
     ], foodItems: [] })
     expect(res.status).toBe(204)
-    const after = await getItems(cookie, list.id)
+    const after = await getListItems(cookie, list.id)
     for (const item of after) {
       const was = before.find((i) => i.id === item.id)!
       expect(item.updatedAt).toBe(was.updatedAt)
@@ -1329,7 +1279,7 @@ describe('pack-order route contract', () => {
       { id: second!.id, packSortOrder: first!.packSortOrder },
     ], foodItems: [] })
     expect(res.status).toBe(204)
-    const after = await getItems(cookie, list.id)
+    const after = await getListItems(cookie, list.id)
     expect(after.find((i) => i.id === first!.id)?.packSortOrder).toBe(second!.packSortOrder)
     expect(after.find((i) => i.id === second!.id)?.packSortOrder).toBe(first!.packSortOrder)
   })
@@ -1339,22 +1289,22 @@ describe('deleting a location keeps its contents together', () => {
   it('appends the orphans to Unassigned as one block, in their prior order', async () => {
     const { cookie } = await signUpVerifiedUser('pack-orphans@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
+    const location = await createPackingLocation(cookie, list.id, 'Main')
 
     // Two rows already sitting in Unassigned, so the block has to land AFTER
     // them rather than interleaving with them.
-    const looseA = await addItem(cookie, list.id, await createGear(cookie, 'LooseA'))
-    const looseB = await addItem(cookie, list.id, await createGear(cookie, 'LooseB'))
+    const looseA = await addListItem(cookie, list.id, await createGearItemId(cookie, 'LooseA'))
+    const looseB = await addListItem(cookie, list.id, await createGearItemId(cookie, 'LooseB'))
 
     const inBag = []
     for (const name of ['BagOne', 'BagTwo', 'BagThree']) {
-      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      const item = await addListItem(cookie, list.id, await createGearItemId(cookie, name))
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
       inBag.push(item)
     }
-    const bagOrderBefore = (await getItems(cookie, list.id))
+    const bagOrderBefore = (await getListItems(cookie, list.id))
       .filter((i) => i.packingLocationId === location.id)
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
       .map((i) => i.id)
@@ -1366,7 +1316,7 @@ describe('deleting a location keeps its contents together', () => {
     )
     expect(del.status).toBe(204)
 
-    const unassigned = (await getItems(cookie, list.id))
+    const unassigned = (await getListItems(cookie, list.id))
       .filter((i) => i.packingLocationId === null)
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
     // The pre-existing rows keep the top, the bag's contents follow as a
@@ -1388,14 +1338,14 @@ describe('pack-order rank bounds and scratch band', () => {
   async function bagOfThree(email: string) {
     const { cookie } = await signUpVerifiedUser(email, 'O')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Main')
+    const location = await createPackingLocation(cookie, list.id, 'Main')
     for (const name of ['Alpha', 'Bravo', 'Charlie']) {
-      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      const item = await addListItem(cookie, list.id, await createGearItemId(cookie, name))
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
     }
-    const inBag = (await getItems(cookie, list.id))
+    const inBag = (await getListItems(cookie, list.id))
       .filter((i) => i.packingLocationId === location.id)
       .sort((x, y) => x.packSortOrder - y.packSortOrder)
     return { cookie, list, location, inBag }
@@ -1406,22 +1356,22 @@ describe('pack-order rank bounds and scratch band', () => {
     // 0019 in place anything slipping past the DTO would RAISE(ABORT) and
     // surface as a 500, so the DTO is the thing that has to say no.
     const { cookie, list, inBag } = await bagOfThree('pack-negative@example.com')
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: -1 },
     ], foodItems: [] })
     expect(res.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it('rejects a rank above PACK_RANK_MAX with 400', async () => {
     const { cookie, list, inBag } = await bagOfThree('pack-overmax@example.com')
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     const res = await apiRequest(cookie, 'PUT', `/api/lists/${list.id}/items/pack-order`, { items: [
       { id: inBag[0]!.id, packSortOrder: PACK_RANK_MAX + 1 },
     ], foodItems: [] })
     expect(res.status).toBe(400)
-    expect(await getItems(cookie, list.id)).toEqual(before)
+    expect(await getListItems(cookie, list.id)).toEqual(before)
   })
 
   it('reserves negative ranks for staged updates, refusing them on INSERT', async () => {
@@ -1435,7 +1385,7 @@ describe('pack-order rank bounds and scratch band', () => {
         id: crypto.randomUUID(),
         userId,
         listId: list.id,
-        gearItemId: await createGear(cookie, 'Band'),
+        gearItemId: await createGearItemId(cookie, 'Band'),
         packSortOrder: -1,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1474,14 +1424,14 @@ describe('pack rank exhaustion is a status, not a 500', () => {
     const { cookie } = await signUpVerifiedUser('pack-exhausted@example.com', 'O')
     const list = await createList(cookie, 'Trip')
     const userId = await userIdFor(cookie)
-    const seed = await addItem(cookie, list.id, await createGear(cookie, 'Seed'))
+    const seed = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Seed'))
     await createDb(env.DB)
       .update(listItems)
       .set({ packSortOrder: PACK_RANK_MAX })
       .where(and(eq(listItems.id, seed.id), eq(listItems.userId, userId)))
 
     const res = await apiRequest(cookie, 'POST', `/api/lists/${list.id}/items`, {
-      gearItemId: await createGear(cookie, 'Next'),
+      gearItemId: await createGearItemId(cookie, 'Next'),
     })
     expect(res.status).toBe(422)
     expect(await res.json()).toEqual({
@@ -1508,7 +1458,7 @@ describe('pack rank exhaustion is a status, not a 500', () => {
     })
     expect(res.status).toBe(201)
     const listId = ((await res.json()) as { id: string }).id
-    const items = await getItems(cookie, listId)
+    const items = await getListItems(cookie, listId)
 
     expect(items.map((i) => i.sortOrder).sort((a, b) => a - b)).toEqual([0, PACK_RANK_MAX])
     // Dense, and in the file's order.
@@ -1516,7 +1466,7 @@ describe('pack rank exhaustion is a status, not a 500', () => {
 
     // And the list still accepts an arrival, which is the whole point.
     const after = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
-      gearItemId: await createGear(cookie, 'Charlie'),
+      gearItemId: await createGearItemId(cookie, 'Charlie'),
     })
     expect(after.status).toBe(201)
   })
@@ -1535,18 +1485,18 @@ describe('location deletion near the top of the rank space', () => {
     const userId = await userIdFor(cookie)
     const db = createDb(env.DB)
 
-    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
+    const loose = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Loose'))
     await db
       .update(listItems)
       .set({ packSortOrder: PACK_RANK_MAX - 1 })
       .where(and(eq(listItems.id, loose.id), eq(listItems.userId, userId)))
 
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     // Each arrival lands in Unassigned at max+1, which is now PACK_RANK_MAX
     // itself, so the items must be moved into the bag one at a time - a
     // second arrival before the first moved would already be refused.
     const bag = async (name: string) => {
-      const item = await addItem(cookie, list.id, await createGear(cookie, name))
+      const item = await addListItem(cookie, list.id, await createGearItemId(cookie, name))
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${item.id}`, {
         packingLocationId: location.id,
       })
@@ -1567,7 +1517,7 @@ describe('location deletion near the top of the rank space', () => {
     // into a 422. (food-packing.test.ts reaches the same branch with food.)
     expect(res.status).toBe(204)
 
-    const after = await getItems(cookie, list.id)
+    const after = await getListItems(cookie, list.id)
     expect(after).toHaveLength(3)
     expect(after.every((i) => i.packingLocationId === null)).toBe(true)
     expect(after.map((i) => i.packSortOrder).sort((x, y) => x - y)).toEqual([0, 1, 2])
@@ -1584,13 +1534,13 @@ describe('deleting a list with bagged items (P0.1)', () => {
     // carrying rank 0, which the partial unique index rejects.
     const { cookie } = await signUpVerifiedUser(email, 'O')
     const list = await createList(cookie, 'Trip')
-    const loose = await addItem(cookie, list.id, await createGear(cookie, 'Loose'))
-    const location = await createLocation(cookie, list.id, 'Bag')
-    const bagged = await addItem(cookie, list.id, await createGear(cookie, 'Bagged'))
+    const loose = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Loose'))
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
+    const bagged = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Bagged'))
     await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${bagged.id}`, {
       packingLocationId: location.id,
     })
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     // Assert the colliding shape really exists, so this cannot pass vacuously.
     const looseRank = items.find((i) => i.id === loose.id)!.packSortOrder
     const baggedRank = items.find((i) => i.id === bagged.id)!.packSortOrder
@@ -1614,15 +1564,15 @@ describe('deleting a list with bagged items (P0.1)', () => {
     // nothing. Assert the pre-delete shape to keep it that way.
     const { cookie } = await signUpVerifiedUser('p01-container@example.com', 'O')
     const list = await createList(cookie, 'Trip')
-    const survivor = await addItem(cookie, list.id, await createGear(cookie, 'Survivor'))
-    const backing = await addItem(cookie, list.id, await createGear(cookie, 'Backing'))
+    const survivor = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Survivor'))
+    const backing = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Backing'))
     const container = await createItemContainer(cookie, list.id, backing.id)
-    const content = await addItem(cookie, list.id, await createGear(cookie, 'Content'))
+    const content = await addListItem(cookie, list.id, await createGearItemId(cookie, 'Content'))
     await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${content.id}`, {
       packingLocationId: container.id,
     })
 
-    const before = await getItems(cookie, list.id)
+    const before = await getListItems(cookie, list.id)
     expect(
       before.filter((i) => i.packingLocationId === null).map((i) => i.id).sort(),
     ).toEqual([survivor.id, backing.id].sort())
@@ -1633,7 +1583,7 @@ describe('deleting a list with bagged items (P0.1)', () => {
       `/api/lists/${list.id}/items/${backing.id}`,
     )
     expect(res.status).toBe(204)
-    const after = await getItems(cookie, list.id)
+    const after = await getListItems(cookie, list.id)
     expect(after.map((i) => i.packSortOrder).sort((a, b) => a - b)).toEqual([0, 1])
   })
 
@@ -1656,7 +1606,7 @@ describe('cascade delete at the schema caps', () => {
     const { cookie } = await signUpVerifiedUser('cascade-scale@example.com', 'O')
     const list = await createList(cookie, 'Big')
     const userId = await userIdFor(cookie)
-    const gearId = await createGear(cookie, 'Shared')
+    const gearId = await createGearItemId(cookie, 'Shared')
     const db = createDb(env.DB)
     const now = Date.now()
 
@@ -1675,7 +1625,7 @@ describe('cascade delete at the schema caps', () => {
 
     // Unassigned-heavy on purpose: a big destination cohort is what the old
     // shape rewrote once per location.
-    const existing = (await getItems(cookie, list.id)).length
+    const existing = (await getListItems(cookie, list.id)).length
     const rows = []
     let unassigned = existing
     for (let i = 0; i < ITEMS - existing; i++) {
@@ -1695,7 +1645,7 @@ describe('cascade delete at the schema caps', () => {
     // One statement: about 300 rows x 14 columns is far below SQLite's
     // parameter limit.
     await db.insert(listItems).values(rows)
-    expect((await getItems(cookie, list.id)).length).toBe(ITEMS)
+    expect((await getListItems(cookie, list.id)).length).toBe(ITEMS)
 
     const res = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
     expect(res.status).toBe(204)

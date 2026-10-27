@@ -6,7 +6,7 @@ import {
   reorderRequestSchema,
   type CategoryResponse,
 } from '../../shared/gear'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, listCategories } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 async function createCategory(
@@ -16,11 +16,6 @@ async function createCategory(
   const res = await apiRequest(cookie, 'POST', '/api/categories', { name })
   if (res.status !== 201) throw new Error(`create failed: ${res.status}`)
   return categoryResponseSchema.parse(await res.json())
-}
-
-async function listCategories(cookie: string): Promise<CategoryResponse[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/categories')
-  return categoryResponseSchema.array().parse(await res.json())
 }
 
 describe('/api/categories authorization matrix', () => {

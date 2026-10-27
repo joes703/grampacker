@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { sharedListResponseSchema } from '../../shared/shares'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, createList } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 type ListBody = { id: string; slug: string; isShared: boolean }
-
-async function createList(cookie: string, name: string): Promise<ListBody> {
-  const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ListBody
-}
 
 async function setShared(
   cookie: string,

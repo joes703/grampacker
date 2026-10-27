@@ -4,11 +4,10 @@ import {
   categoryResponseSchema,
   gearItemResponseSchema,
   importGearResponseSchema,
-  type CategoryResponse,
   type GearItemResponse,
   importGearRequestSchema,
 } from '../../shared/gear'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, listCategories, userIdFor } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 async function createGear(
@@ -28,17 +27,6 @@ async function listGear(cookie: string): Promise<GearItemResponse[]> {
 async function createCategory(cookie: string, name: string): Promise<string> {
   const res = await apiRequest(cookie, 'POST', '/api/categories', { name })
   return categoryResponseSchema.parse(await res.json()).id
-}
-
-async function listCategories(cookie: string): Promise<CategoryResponse[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/categories')
-  return categoryResponseSchema.array().parse(await res.json())
-}
-
-async function userIdFor(cookie: string): Promise<string> {
-  const res = await apiRequest(cookie, 'GET', '/api/me')
-  const body = (await res.json()) as { id: string }
-  return body.id
 }
 
 describe('/api/gear-items authorization matrix', () => {

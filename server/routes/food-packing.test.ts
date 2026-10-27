@@ -2,7 +2,7 @@ import { testDb } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import { FOOD_ITEM_CAP } from '../../shared/food'
 import { PACK_RANK_MAX } from '../../shared/lists'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, createList, createPackingLocation } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 
 // Food as a full peer of gear in Pack mode (0022): pack state on the food
@@ -19,12 +19,6 @@ type FoodItemBody = {
   packSortOrder: number
 }
 type ItemBody = { id: string; packSortOrder: number }
-
-async function createList(cookie: string, name: string): Promise<ListBody> {
-  const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ListBody
-}
 
 async function createGearOnList(
   cookie: string,
@@ -54,21 +48,6 @@ async function createFood(
   })
   expect(res.status).toBe(201)
   return (await res.json()) as FoodItemBody
-}
-
-async function createLocation(
-  cookie: string,
-  listId: string,
-  name: string,
-): Promise<{ id: string }> {
-  const res = await apiRequest(
-    cookie,
-    'POST',
-    `/api/lists/${listId}/packing-locations`,
-    { name },
-  )
-  expect(res.status).toBe(201)
-  return (await res.json()) as { id: string }
 }
 
 async function patchFood(
@@ -112,7 +91,7 @@ describe('food pack state on the item PATCH', () => {
   it('assigns food to a bag, landing last in the UNION cohort', async () => {
     const { cookie } = await signUpVerifiedUser('fp2@example.com', 'FP')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Bear canister')
+    const location = await createPackingLocation(cookie, list.id, 'Bear canister')
     // A gear item already in the bag: the food's arrival rank must clear it.
     const gear = await createGearOnList(cookie, list.id, 'Stove')
     const moveGear = await apiRequest(
@@ -137,7 +116,7 @@ describe('food pack state on the item PATCH', () => {
   it('re-assigning to the current bag keeps the rank', async () => {
     const { cookie } = await signUpVerifiedUser('fp3@example.com', 'FP')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Food bag')
+    const location = await createPackingLocation(cookie, list.id, 'Food bag')
     const food = await createFood(cookie, list.id, 'Oats')
     const first = await patchFood(cookie, list.id, food.id, {
       packingLocationId: location.id,
@@ -155,7 +134,7 @@ describe('food pack state on the item PATCH', () => {
     const list = await createList(owner.cookie, 'Trip')
     const food = await createFood(owner.cookie, list.id, 'Oats')
     const otherList = await createList(other.cookie, 'Their trip')
-    const otherLocation = await createLocation(
+    const otherLocation = await createPackingLocation(
       other.cookie,
       otherList.id,
       'Their bag',
@@ -175,7 +154,7 @@ describe('food pack state on the item PATCH', () => {
     const listA = await createList(cookie, 'Trip A')
     const listB = await createList(cookie, 'Trip B')
     const food = await createFood(cookie, listA.id, 'Oats')
-    const locationB = await createLocation(cookie, listB.id, 'B bag')
+    const locationB = await createPackingLocation(cookie, listB.id, 'B bag')
 
     const res = await patchFood(cookie, listA.id, food.id, {
       packingLocationId: locationB.id,
@@ -254,7 +233,7 @@ describe('the union pack-order permutation', () => {
   it('rejects a payload spanning two cohorts with 400', async () => {
     const { cookie } = await signUpVerifiedUser('up3@example.com', 'UP')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     const gear = await createGearOnList(cookie, list.id, 'Stove')
     const food = await createFood(cookie, list.id, 'Oats')
     const moved = await patchFood(cookie, list.id, food.id, {
@@ -505,7 +484,7 @@ describe('location deletion near the rank ceiling', () => {
     // merged cohort and the delete succeeds.
     const { cookie } = await signUpVerifiedUser('ceil1@example.com', 'CL')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
     await testDb.prepare(
@@ -587,7 +566,7 @@ describe('location deletion returns food to Unassigned', () => {
   it('appends the bag contents after the union maximum, order preserved', async () => {
     const { cookie } = await signUpVerifiedUser('ld1@example.com', 'LD')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     // Unassigned holds one gear row; the bag holds gear then food.
     const stays = await createGearOnList(cookie, list.id, 'Tarp')
     const bagGear = await createGearOnList(cookie, list.id, 'Stove')
@@ -622,7 +601,7 @@ describe('duplicate copies food pack state', () => {
   it('keeps packed flags and remaps the location', async () => {
     const { cookie } = await signUpVerifiedUser('dp1@example.com', 'DP')
     const list = await createList(cookie, 'Trip')
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     const food = await createFood(cookie, list.id, 'Oats')
     await patchFood(cookie, list.id, food.id, {
       packingLocationId: location.id,
@@ -664,7 +643,7 @@ describe('list_food_items guards below the API', () => {
     const { id: userId } = (await me.json()) as { id: string }
     const list = await createList(cookie, 'Trip')
     const otherList = await createList(cookie, 'Other trip')
-    const location = await createLocation(cookie, list.id, 'Bag')
+    const location = await createPackingLocation(cookie, list.id, 'Bag')
     return { cookie, userId, list, otherList, location }
   }
 

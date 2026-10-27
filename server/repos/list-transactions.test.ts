@@ -1,7 +1,7 @@
 import { env } from '../test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDb } from '../db'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, getListItems, getLists } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import { PACK_RANK_MAX } from '../../shared/lists'
 import { createListItemsRepo } from './list-items'
@@ -85,18 +85,6 @@ const addItem = (cookie: string, listId: string, gearItemId: string) =>
   post<ItemBody>(cookie, `/api/lists/${listId}/items`, { gearItemId })
 const createLocation = (cookie: string, listId: string, name = 'Bag') =>
   post<{ id: string }>(cookie, `/api/lists/${listId}/packing-locations`, { name }).then((l) => l.id)
-
-async function getItems(cookie: string, listId: string): Promise<ItemBody[]> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ItemBody[]
-}
-
-async function getLists(cookie: string): Promise<ListBody[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/lists')
-  expect(res.status).toBe(200)
-  return (await res.json()) as ListBody[]
-}
 
 // Every row one user owns, read directly (no app code), in a stable order,
 // so a before/after comparison catches any write at all.
@@ -499,7 +487,7 @@ describe('overlapping list operations', () => {
       deleteRow('gear_items', gear),
     ])
     expect(added.ok).toBe(true)
-    expect(await getItems(cookie, list.id)).toEqual([])
+    expect(await getListItems(cookie, list.id)).toEqual([])
   })
 
   it('quick-add while the list is deleted: gear and item land whole, then the delete cascades the item', async () => {
@@ -534,7 +522,7 @@ describe('overlapping list operations', () => {
     expect(created.ok).toBe(true)
     if (!created.ok) return
     // The list committed with both items; the delete then cascaded B's.
-    expect((await getItems(cookie, created.row.id)).map((i) => i.gearItemId)).toEqual([gear[0]])
+    expect((await getListItems(cookie, created.row.id)).map((i) => i.gearItemId)).toEqual([gear[0]])
   })
 
   it('import while referenced gear is deleted: the import lands whole', async () => {
@@ -572,7 +560,7 @@ describe('overlapping list operations', () => {
     ])
     expect(moved).toMatchObject({ ok: true, row: { item: { packingLocationId: bag } } })
     expect(removed).toBe('deleted')
-    expect((await getItems(cookie, list.id))[0]?.packingLocationId).toBeNull()
+    expect((await getListItems(cookie, list.id))[0]?.packingLocationId).toBeNull()
   })
 
   it('five adds at once each get their own list position and pack rank', async () => {
@@ -609,7 +597,7 @@ describe('write responses are what committed', () => {
     expect(patched.status).toBe(200)
     const patchedBody = (await patched.json()) as ItemBody
 
-    const stored = await getItems(cookie, list.id)
+    const stored = await getListItems(cookie, list.id)
     expect(stored.find((i) => i.id === added.id)).toEqual(patchedBody)
     expect(stored.find((i) => i.id === quick.id)).toEqual(quick)
   })
@@ -640,7 +628,7 @@ describe('refused list writes change nothing', () => {
   it('another user and an anonymous caller: every write is refused and no row moves', async () => {
     const owner = await newUser()
     const { list, bag } = await seedFullList(owner.cookie)
-    const [item] = await getItems(owner.cookie, list.id)
+    const [item] = await getListItems(owner.cookie, list.id)
     const intruder = await newUser()
     const intruderList = await createList(intruder.cookie)
     const intruderItem = await addItem(intruder.cookie, intruderList.id, await createGear(intruder.cookie, 'X'))

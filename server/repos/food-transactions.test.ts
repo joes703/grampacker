@@ -1,6 +1,6 @@
 import { env } from '../test/node-env'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, getListFood } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import { createDb } from '../db'
@@ -48,12 +48,6 @@ function setDays(cookie: string, listId: string, days: number) {
   return apiRequest(cookie, 'PUT', `/api/lists/${listId}/food/days`, { days })
 }
 
-async function getFood(cookie: string, listId: string): Promise<ListFoodResponse> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/food`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ListFoodResponse
-}
-
 async function addItem(
   cookie: string,
   listId: string,
@@ -99,7 +93,7 @@ function injectFailure(sql: string) {
 describe('every food write is all-or-nothing', () => {
   it('create: a failure at the last association rolls back the item and its other links', async () => {
     const { cookie, listId } = await seedList(2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const slots = [slotId(food, 1, 'breakfast'), slotId(food, 1, 'lunch'), slotId(food, 2, 'dinner')]
     const before = foodRows(listId)
     injectFailure(`
@@ -123,7 +117,7 @@ describe('every food write is all-or-nothing', () => {
 
   it('update: a failure while inserting the new links restores the scalars and the old links', async () => {
     const { cookie, listId } = await seedList(2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const item = await addItem(cookie, listId, {
       name: 'Oats',
       slotIds: [slotId(food, 1, 'breakfast')],
@@ -178,7 +172,7 @@ describe('every food write is all-or-nothing', () => {
     // so SQLite undoes this even without the transaction. It pins the result
     // for the one food write that is not several statements.
     const { cookie, listId } = await seedList(1)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const item = await addItem(cookie, listId, {
       name: 'Trail mix',
       slotIds: [slotId(food, 1, 'breakfast'), slotId(food, 1, 'lunch')],
@@ -202,7 +196,7 @@ describe('every food write is all-or-nothing', () => {
     // association is inserted. The repo must not explain it away as a client
     // error, and the trigger's own delete must roll back with the rest.
     const { cookie, listId } = await seedList(1)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const doomed = slotId(food, 1, 'dinner')
     const before = foodRows(listId)
     injectFailure(`
@@ -250,7 +244,7 @@ describe('food error classification', () => {
 
   it('update: a pack-rank index collision on a move is a 500 defect, with nothing written', async () => {
     const { cookie, listId } = await seedList(1)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const bagRes = await apiRequest(cookie, 'POST', `/api/lists/${listId}/packing-locations`, {
       name: 'Bag',
     })
@@ -306,7 +300,7 @@ describe('food error classification', () => {
 
   it('a move into a full bag is the route 422, with nothing written', async () => {
     const { cookie, listId } = await seedList(1)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const bagRes = await apiRequest(cookie, 'POST', `/api/lists/${listId}/packing-locations`, {
       name: 'Full',
     })
@@ -401,7 +395,7 @@ describe('overlapping food operations', () => {
     const results = await Promise.all([repo.setDayCount(listId, 3), repo.setDayCount(listId, 5)])
     expect(results.map((r) => r?.dayCount)).toEqual([3, 5])
 
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.dayCount).toBe(5)
     expect(food.slots).toHaveLength(15)
     for (let day = 1; day <= 5; day++) {
@@ -436,7 +430,7 @@ describe('overlapping food operations', () => {
     // trim then cascades the placement it removed. Nothing is refused and
     // nothing is left pointing at a removed slot.
     const { cookie, listId } = await seedList(3)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const day1 = slotId(food, 1, 'breakfast')
     const day3 = slotId(food, 3, 'dinner')
     const item = await addItem(cookie, listId, { name: 'Oats', slotIds: [day1] })
@@ -470,7 +464,7 @@ describe('overlapping food operations', () => {
 describe('food responses are what committed', () => {
   it('the PATCH response matches the stored item', async () => {
     const { cookie, listId } = await seedList(2)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     const item = await addItem(cookie, listId, {
       name: 'Oats',
       slotIds: [slotId(food, 1, 'breakfast')],
@@ -486,7 +480,7 @@ describe('food responses are what committed', () => {
     expect(res.status).toBe(200)
     const row = (await res.json()) as FoodItemResponse
     expect(row).toMatchObject({ name: 'Renamed', quantity: 7, unitCount: 14 })
-    const stored = (await getFood(cookie, listId)).items.find((i) => i.id === item.id)
+    const stored = (await getListFood(cookie, listId)).items.find((i) => i.id === item.id)
     expect({ ...row, slotIds: [...row.slotIds].sort() }).toEqual({
       ...stored,
       slotIds: [...stored!.slotIds].sort(),
@@ -499,7 +493,7 @@ describe('the largest food writes need no parameter chunking', () => {
     // 90 links x 4 columns, and a 90-id membership check, each in ONE
     // statement. The request schemas cap slot ids at 90 (FOOD_SLOT_CAP).
     const { cookie, listId } = await seedList(30)
-    const food = await getFood(cookie, listId)
+    const food = await getListFood(cookie, listId)
     expect(food.slots).toHaveLength(90)
     const all = food.slots.map((s) => s.id)
 

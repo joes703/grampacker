@@ -4,14 +4,8 @@ import {
   listItemResponseSchema,
   listResponseSchema,
 } from '../../shared/lists'
-import { apiRequest } from '../test/api-helpers'
+import { apiRequest, addListItem, createGearItemId, createList, getListItems, getLists, userIdFor } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
-
-async function userIdFor(cookie: string): Promise<string> {
-  const res = await apiRequest(cookie, 'GET', '/api/me')
-  const body = (await res.json()) as { id: string }
-  return body.id
-}
 
 type ListBody = {
   id: string
@@ -37,42 +31,6 @@ type ItemBody = {
   sortOrder: number
   updatedAt: string
   gearItem: { id: string; name: string; weightGrams: number }
-}
-
-async function createList(cookie: string, name: string): Promise<ListBody> {
-  const res = await apiRequest(cookie, 'POST', '/api/lists', { name })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ListBody
-}
-
-async function createGear(cookie: string, name: string): Promise<string> {
-  const res = await apiRequest(cookie, 'POST', '/api/gear-items', { name })
-  expect(res.status).toBe(201)
-  return ((await res.json()) as { id: string }).id
-}
-
-async function addItem(
-  cookie: string,
-  listId: string,
-  gearItemId: string,
-): Promise<ItemBody> {
-  const res = await apiRequest(cookie, 'POST', `/api/lists/${listId}/items`, {
-    gearItemId,
-  })
-  expect(res.status).toBe(201)
-  return (await res.json()) as ItemBody
-}
-
-async function getItems(cookie: string, listId: string): Promise<ItemBody[]> {
-  const res = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
-  expect(res.status).toBe(200)
-  return (await res.json()) as ItemBody[]
-}
-
-async function getLists(cookie: string): Promise<ListBody[]> {
-  const res = await apiRequest(cookie, 'GET', '/api/lists')
-  expect(res.status).toBe(200)
-  return (await res.json()) as ListBody[]
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -112,8 +70,8 @@ describe('/api/lists authorization matrix', () => {
     const a = await signUpVerifiedUser('lists-a@example.com', 'A')
     const b = await signUpVerifiedUser('lists-b@example.com', 'B')
     const aList = await createList(a.cookie, 'A list')
-    const aGear = await createGear(a.cookie, 'A gear')
-    const aItem = await addItem(a.cookie, aList.id, aGear)
+    const aGear = await createGearItemId(a.cookie, 'A gear')
+    const aItem = await addListItem(a.cookie, aList.id, aGear)
 
     // B cannot see, mutate, or stitch onto A's resources.
     for (const [method, path, body, want] of [
@@ -278,8 +236,8 @@ describe('lists CRUD', () => {
       'C',
     )
     const list = await createList(cookie, 'Doomed')
-    const gearId = await createGear(cookie, 'Survivor')
-    await addItem(cookie, list.id, gearId)
+    const gearId = await createGearItemId(cookie, 'Survivor')
+    await addListItem(cookie, list.id, gearId)
 
     const del = await apiRequest(cookie, 'DELETE', `/api/lists/${list.id}`)
     expect(del.status).toBe(204)
@@ -322,10 +280,10 @@ describe('lists CRUD', () => {
   it('duplicate deep-copies items and resets sharing/draft state', async () => {
     const { cookie } = await signUpVerifiedUser('lists-dup@example.com', 'D')
     const source = await createList(cookie, 'Base weight')
-    const gearA = await createGear(cookie, 'Tarp')
-    const gearB = await createGear(cookie, 'Quilt')
-    const itemA = await addItem(cookie, source.id, gearA)
-    await addItem(cookie, source.id, gearB)
+    const gearA = await createGearItemId(cookie, 'Tarp')
+    const gearB = await createGearItemId(cookie, 'Quilt')
+    const itemA = await addListItem(cookie, source.id, gearA)
+    await addListItem(cookie, source.id, gearB)
 
     // Flag state must survive the copy (packed/ready included).
     await apiRequest(
@@ -354,7 +312,7 @@ describe('lists CRUD', () => {
     expect(copy.isShared).toBe(false)
     expect(copy.isDraft).toBe(true)
 
-    const copiedItems = await getItems(cookie, copy.id)
+    const copiedItems = await getListItems(cookie, copy.id)
     expect(copiedItems).toHaveLength(2)
     const copiedA = copiedItems.find((i) => i.gearItemId === gearA)
     expect(copiedA?.quantity).toBe(3)
@@ -378,8 +336,8 @@ describe('lists CRUD', () => {
 
   it('from-selection creates the list and items in payload order', async () => {
     const { cookie } = await signUpVerifiedUser('lists-sel@example.com', 'S')
-    const gearA = await createGear(cookie, 'Stove')
-    const gearB = await createGear(cookie, 'Pot')
+    const gearA = await createGearItemId(cookie, 'Stove')
+    const gearB = await createGearItemId(cookie, 'Pot')
 
     const res = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
       name: 'Kitchen',
@@ -390,14 +348,14 @@ describe('lists CRUD', () => {
     // description omitted -> defaults to null, same as plain create.
     expect(list.description).toBeNull()
 
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     expect(items.map((i) => i.gearItemId)).toEqual([gearB, gearA])
     expect(items.map((i) => i.sortOrder)).toEqual([0, 1])
   })
 
   it('from-selection persists the optional description', async () => {
     const { cookie } = await signUpVerifiedUser('lists-sel-desc@example.com', 'S')
-    const gearId = await createGear(cookie, 'Tent')
+    const gearId = await createGearItemId(cookie, 'Tent')
 
     const res = await apiRequest(cookie, 'POST', '/api/lists/from-selection', {
       name: 'Overnighter',
@@ -423,9 +381,9 @@ describe('list items', () => {
   it('add existing gear -> embedded gear shape -> patch flags -> remove', async () => {
     const { cookie } = await signUpVerifiedUser('items-crud@example.com', 'I')
     const list = await createList(cookie, 'Pack')
-    const gearId = await createGear(cookie, 'Headlamp')
+    const gearId = await createGearItemId(cookie, 'Headlamp')
 
-    const item = await addItem(cookie, list.id, gearId)
+    const item = await addListItem(cookie, list.id, gearId)
     expect(listItemResponseSchema.parse(item)).toBeTruthy()
     expect(item.quantity).toBe(1)
     expect(item.gearItem.id).toBe(gearId)
@@ -487,10 +445,10 @@ describe('list items', () => {
   it('worn/consumable exclusivity: merged-state 400, single-patch handoff works', async () => {
     const { cookie } = await signUpVerifiedUser('items-worn@example.com', 'W')
     const list = await createList(cookie, 'Pack')
-    const item = await addItem(
+    const item = await addListItem(
       cookie,
       list.id,
-      await createGear(cookie, 'Puffy'),
+      await createGearItemId(cookie, 'Puffy'),
     )
     const path = `/api/lists/${list.id}/items/${item.id}`
 
@@ -535,10 +493,10 @@ describe('list items', () => {
     const { cookie } = await signUpVerifiedUser('items-path@example.com', 'P')
     const list1 = await createList(cookie, 'One')
     const list2 = await createList(cookie, 'Two')
-    const item = await addItem(
+    const item = await addListItem(
       cookie,
       list1.id,
-      await createGear(cookie, 'Spork'),
+      await createGearItemId(cookie, 'Spork'),
     )
 
     const patch = await apiRequest(
@@ -563,7 +521,7 @@ describe('list items', () => {
       [{ id: item.id, sortOrder: 3 }],
     )
     expect(foreign.status).toBe(404)
-    expect((await getItems(cookie, list1.id))[0]?.sortOrder).toBe(0)
+    expect((await getListItems(cookie, list1.id))[0]?.sortOrder).toBe(0)
   })
 
   it('quick-add creates gear + membership atomically', async () => {
@@ -675,8 +633,8 @@ describe('list items', () => {
   it('item reorder respects sortOrder without bumping updatedAt', async () => {
     const { cookie } = await signUpVerifiedUser('items-order@example.com', 'O')
     const list = await createList(cookie, 'Pack')
-    const a = await addItem(cookie, list.id, await createGear(cookie, 'A'))
-    const b = await addItem(cookie, list.id, await createGear(cookie, 'B'))
+    const a = await addListItem(cookie, list.id, await createGearItemId(cookie, 'A'))
+    const b = await addListItem(cookie, list.id, await createGearItemId(cookie, 'B'))
     expect([a.sortOrder, b.sortOrder]).toEqual([0, 1])
 
     await sleep(5)
@@ -690,7 +648,7 @@ describe('list items', () => {
       ],
     )
     expect(res.status).toBe(204)
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     expect(items.map((i) => i.id)).toEqual([b.id, a.id])
     // EVERY reordered row keeps its updatedAt, not just the first.
     expect(items.find((i) => i.id === a.id)?.updatedAt).toBe(a.updatedAt)
@@ -705,13 +663,13 @@ describe('list items', () => {
     const a = await signUpVerifiedUser('items-order-foreign-a@example.com', 'A')
     const b = await signUpVerifiedUser('items-order-foreign-b@example.com', 'B')
     const mine = await createList(a.cookie, 'Mine')
-    const m1 = await addItem(a.cookie, mine.id, await createGear(a.cookie, 'M1'))
-    const m2 = await addItem(a.cookie, mine.id, await createGear(a.cookie, 'M2'))
+    const m1 = await addListItem(a.cookie, mine.id, await createGearItemId(a.cookie, 'M1'))
+    const m2 = await addListItem(a.cookie, mine.id, await createGearItemId(a.cookie, 'M2'))
     const theirs = await createList(b.cookie, 'Theirs')
-    const t1 = await addItem(b.cookie, theirs.id, await createGear(b.cookie, 'T1'))
+    const t1 = await addListItem(b.cookie, theirs.id, await createGearItemId(b.cookie, 'T1'))
     const before = {
-      mine: await getItems(a.cookie, mine.id),
-      theirs: await getItems(b.cookie, theirs.id),
+      mine: await getListItems(a.cookie, mine.id),
+      theirs: await getListItems(b.cookie, theirs.id),
     }
 
     const res = await apiRequest(a.cookie, 'PUT', `/api/lists/${mine.id}/items/order`, [
@@ -721,8 +679,8 @@ describe('list items', () => {
     ])
     expect(res.status).toBe(404)
     expect({
-      mine: await getItems(a.cookie, mine.id),
-      theirs: await getItems(b.cookie, theirs.id),
+      mine: await getListItems(a.cookie, mine.id),
+      theirs: await getListItems(b.cookie, theirs.id),
     }).toEqual(before)
   })
 
@@ -730,23 +688,23 @@ describe('list items', () => {
     const a = await signUpVerifiedUser('items-order-victim@example.com', 'A')
     const b = await signUpVerifiedUser('items-order-intruder@example.com', 'B')
     const list = await createList(a.cookie, 'Victim')
-    const i1 = await addItem(a.cookie, list.id, await createGear(a.cookie, 'I1'))
-    const i2 = await addItem(a.cookie, list.id, await createGear(a.cookie, 'I2'))
-    const before = await getItems(a.cookie, list.id)
+    const i1 = await addListItem(a.cookie, list.id, await createGearItemId(a.cookie, 'I1'))
+    const i2 = await addListItem(a.cookie, list.id, await createGearItemId(a.cookie, 'I2'))
+    const before = await getListItems(a.cookie, list.id)
 
     const res = await apiRequest(b.cookie, 'PUT', `/api/lists/${list.id}/items/order`, [
       { id: i1.id, sortOrder: i2.sortOrder },
       { id: i2.id, sortOrder: i1.sortOrder },
     ])
     expect(res.status).toBe(404)
-    expect(await getItems(a.cookie, list.id)).toEqual(before)
+    expect(await getListItems(a.cookie, list.id)).toEqual(before)
   })
 
   it('reset-packed and reset-ready clear only their own flag', async () => {
     const { cookie } = await signUpVerifiedUser('items-reset@example.com', 'R')
     const list = await createList(cookie, 'Pack')
-    const a = await addItem(cookie, list.id, await createGear(cookie, 'A'))
-    const b = await addItem(cookie, list.id, await createGear(cookie, 'B'))
+    const a = await addListItem(cookie, list.id, await createGearItemId(cookie, 'A'))
+    const b = await addListItem(cookie, list.id, await createGearItemId(cookie, 'B'))
     for (const id of [a.id, b.id]) {
       await apiRequest(cookie, 'PATCH', `/api/lists/${list.id}/items/${id}`, {
         isPacked: true,
@@ -760,7 +718,7 @@ describe('list items', () => {
       `/api/lists/${list.id}/items/reset-packed`,
     )
     expect(reset.status).toBe(204)
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     expect(items.every((i) => !i.isPacked)).toBe(true)
     expect(items.every((i) => i.isReady)).toBe(true)
 
@@ -770,7 +728,7 @@ describe('list items', () => {
       `/api/lists/${list.id}/items/reset-ready`,
     )
     expect(resetReady.status).toBe(204)
-    expect((await getItems(cookie, list.id)).every((i) => !i.isReady)).toBe(
+    expect((await getListItems(cookie, list.id)).every((i) => !i.isReady)).toBe(
       true,
     )
   })
@@ -810,7 +768,7 @@ describe('caps and slug integrity', () => {
     const { cookie } = await signUpVerifiedUser('items-cap@example.com', 'C')
     const userId = await userIdFor(cookie)
     const list = await createList(cookie, 'Big')
-    const gearId = await createGear(cookie, 'Filler')
+    const gearId = await createGearItemId(cookie, 'Filler')
 
     // No UNIQUE(list_id, gear_item_id), so one gear row can seed all 299.
     //
@@ -860,7 +818,7 @@ describe('caps and slug integrity', () => {
     const { cookie } = await signUpVerifiedUser('lists-import@example.com', 'I')
     const catRes = await apiRequest(cookie, 'POST', '/api/categories', { name: 'Shelter' })
     const shelter = (await catRes.json()) as { id: string }
-    const tentId = await createGear(cookie, 'Tent')
+    const tentId = await createGearItemId(cookie, 'Tent')
 
     const res = await apiRequest(cookie, 'POST', '/api/lists/import', {
       name: 'PCT section',
@@ -896,7 +854,7 @@ describe('caps and slug integrity', () => {
     const list = listResponseSchema.parse(await res.json())
     expect(list.name).toBe('PCT section')
 
-    const items = await getItems(cookie, list.id)
+    const items = await getListItems(cookie, list.id)
     expect(items.map((i) => i.sortOrder)).toEqual([0, 2, 3, 4])
     expect(items[0]).toMatchObject({ gearItemId: tentId, quantity: 2, isWorn: true, isConsumable: false })
     expect(items[1]).toMatchObject({ quantity: 1, isWorn: false, isConsumable: true })
@@ -981,7 +939,7 @@ describe('caps and slug integrity', () => {
     const b = await signUpVerifiedUser('lists-import-b@example.com', 'B')
     const bCatRes = await apiRequest(b.cookie, 'POST', '/api/categories', { name: 'Bs' })
     const bCat = (await bCatRes.json()) as { id: string }
-    const bGear = await createGear(b.cookie, 'Foreign tent')
+    const bGear = await createGearItemId(b.cookie, 'Foreign tent')
 
     const viaCategory = await apiRequest(a.cookie, 'POST', '/api/lists/import', {
       name: 'Sneaky',
@@ -1043,7 +1001,7 @@ describe('caps and slug integrity', () => {
 
   it('import validation: tempId wiring, flags, quantity, sortOrders', async () => {
     const { cookie } = await signUpVerifiedUser('lists-import-v@example.com', 'V')
-    const gearId = await createGear(cookie, 'Real')
+    const gearId = await createGearItemId(cookie, 'Real')
     const existingItem = { gear: { kind: 'existing', id: gearId }, sortOrder: 0 }
     for (const body of [
       // unknown gear tempId
