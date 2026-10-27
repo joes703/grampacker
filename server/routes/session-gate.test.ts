@@ -22,7 +22,6 @@ const PUBLIC_ROUTES = [
 // session gate.
 const WILDCARD_REGISTRATIONS = [
   '/*', // securityHeaders
-  '/*', // assetCache
   '/*', // the static-asset fallback
   '/api/*', // apiBodyLimit
   '/api/*', // csrfProtection

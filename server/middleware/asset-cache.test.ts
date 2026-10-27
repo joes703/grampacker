@@ -19,6 +19,19 @@ describe('asset caching', () => {
     }
   })
 
+  it('a HEAD request for a hashed asset gets the same immutable policy', async () => {
+    const res = await app.request('/assets/index-BuiCutTI.js', { method: 'HEAD' })
+    expect(res.status).toBe(200)
+    expect(cacheControl(res)).toBe(IMMUTABLE)
+  })
+
+  // A 206 is part of a file, not the asset; it must not be frozen.
+  it('a range response is not immutable', async () => {
+    const res = await app.request('/assets/index-BuiCutTI.js', { headers: { Range: 'bytes=0-3' } })
+    expect(res.status).toBe(206)
+    expect(cacheControl(res)).not.toBe(IMMUTABLE)
+  })
+
   it('the SPA shell is NOT immutable: it carries the current hashes', async () => {
     // If the shell were frozen, a deploy could never reach a returning browser -
     // it would keep asking for the old hashed bundles forever. must-revalidate on
@@ -53,8 +66,8 @@ describe('asset caching', () => {
     //
     // The Node handler refuses that shape at the source: a miss under /assets/
     // is a 404. Pinned, so a change to the fallback that starts serving the
-    // shell here fails this test, and assetCache's own guard stays the second
-    // line of defense.
+    // shell here fails this test, and the type allowlist in spa.ts stays the
+    // second line of defense.
     const res = await app.request('/assets/nope-12345678.js', {})
 
     expect(res.status).toBe(404)

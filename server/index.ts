@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm'
 import { createAuth } from './auth'
 import { createDb } from './db'
 import type { AppDeps, AppEnv } from './env'
-import { assetCache } from './middleware/asset-cache'
 import { apiBodyLimit } from './middleware/body-limit'
 import { csrfProtection } from './middleware/csrf'
 import { errorHandler, withAuthErrorCorrelation } from './middleware/error-handler'
@@ -137,10 +136,6 @@ export function createApp(env: AppEnv) {
 
   const app = new Hono<{ Bindings: AppDeps }>()
   app.use('*', securityHeaders(deps.dev))
-  // Long-lived browser caching for content-hashed assets only. It rebuilds the
-  // response itself, so it does not depend on running before or after
-  // securityHeaders.
-  app.use('*', assetCache)
   app.route('/api', api)
   // Everything else is the SPA: static files from STATIC_DIR, and index.html
   // for client-side routes. See server/middleware/spa.ts.
