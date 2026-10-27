@@ -82,7 +82,7 @@ jobs:
         run: scripts/check-image.sh grampacker:check
 
   # Manual publish, step 1: build, unit, API and migration checks on this
-  # commit. ci.yml also checks shipped migrations, action pins and YAML;
+  # commit. ci.yml also checks shipped migrations and action pins;
   # those run on the pull request that brought the commit to main.
   # These steps are deliberate copies of ci.yml's verify job (a reusable
   # workflow would add a third file with its own pin and permissions

@@ -56,7 +56,8 @@ check proves:
 - migrations absent from the merge base do not rebuild or rename tables,
   drop tables, change `PRAGMA foreign_keys`, touch the migration ledger, or
   write the SQLite schema table;
-- files already present on `main` are unchanged.
+- files already present on `main` are unchanged. This part runs in CI on
+  pull requests only (`check-migration-safety.mjs --immutability`).
 
 The API suite proves that the complete migration set builds a working SQLite
 database and that its rules behave as expected. Nothing automatically proves
@@ -122,7 +123,8 @@ A local number explains relative cost; it does not prove a CI saving.
 - A tag is not proof of provenance. Deploy only the digest printed by a
   successful `image.yml` run on `main`.
 
-Run `npm run check:yaml` and `npm run check:action-pins` after workflow edits.
+Run `npm run check:action-pins` after workflow edits. It checks pin format
+only; check by eye that each pin's tag comment matches its SHA.
 
 ## 9. Deployment checks
 
@@ -177,6 +179,6 @@ gh api repos/joes703/grampacker/actions/runs/<run-id>/jobs \
 - Code: `npm run build` and `npm run test:unit`.
 - Server: also `npm run test:api`.
 - Migration or schema: also `npm run test:migrations`.
-- Workflow: `npm run check:yaml` and `npm run check:action-pins`.
+- Workflow: `npm run check:action-pins`.
 - Deployment files: section 9 above.
 - Done: read the complete diff; report every check run and any check omitted.
