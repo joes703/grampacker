@@ -61,9 +61,9 @@ export const TABLE_DIVIDER_LINE = 'divide-gray-100'
 // POPOVER_SURFACE below). That is what actually shrinks a row - min-height
 // does not cap CONTENT height, and a visible 40px drag grip holds a row at
 // 40px however low the min-height goes.
-export const PRINT_ROW_HEIGHT = 'print:min-h-0'
-export const PRINT_ROW_PADDING = 'print:px-1 print:py-0'
-export const PRINT_BODY_TEXT = 'print:text-[10px]'
+const PRINT_ROW_HEIGHT = 'print:min-h-0'
+const PRINT_ROW_PADDING = 'print:px-1 print:py-0'
+const PRINT_BODY_TEXT = 'print:text-[10px]'
 
 // Undo `truncate` on paper. A screen truncates because horizontal space is
 // fixed and a scroll gesture is cheap; paper has neither property, and an
@@ -88,8 +88,8 @@ export const PRINT_UNTRUNCATE =
 // of their parent section, so blanket avoidance would ask the browser to keep
 // an entire bag subtree together - which wastes the bottom of pages and has to
 // fail anyway once a group exceeds one page.
-export const PRINT_KEEP_TOGETHER = 'print:break-inside-avoid'
-export const PRINT_KEEP_WITH_NEXT = 'print:break-after-avoid'
+const PRINT_KEEP_TOGETHER = 'print:break-inside-avoid'
+const PRINT_KEEP_WITH_NEXT = 'print:break-after-avoid'
 
 // Row height. Mobile 44px touch target; desktop 28px scanline. Lowered from
 // the previous lg:min-h-8 (32px) so the row reads at the Lighterpack-ish
@@ -101,8 +101,8 @@ export const DESKTOP_ROW_HEIGHT = 'lg:min-h-7'
 // 4px taller than the desktop row so the section divider still reads as a
 // distinct strip without bulking up to a card-like band. Tightened from
 // the prior 36px header in tandem with the row drop.
-export const MOBILE_HEADER_HEIGHT = 'min-h-11'
-export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
+const MOBILE_HEADER_HEIGHT = 'min-h-11'
+const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 
 // Explicit chevron / kebab / drag-handle target box. Mobile 40px square
 // (the minimum comfortable phone target); desktop 28px TALL (exactly fills
@@ -130,8 +130,8 @@ export const DESKTOP_HEADER_HEIGHT = 'lg:min-h-8'
 // The width must stay equal to RowIconButton's compact width - a section
 // header leads with one and an item row leads with the other, and equal
 // widths are what keep their columns aligned.
-export const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
-export const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-6'
+const MOBILE_ROW_CONTROL_TARGET = 'h-10 w-10'
+const DESKTOP_ROW_CONTROL_TARGET = 'lg:h-7 lg:w-6'
 // Same targets as MINIMA, for controls that size to their CONTENT rather than
 // to a fixed icon box - a quantity label that may be one digit or four, and
 // the number input it becomes. Same numbers as above on purpose: a control is
@@ -167,7 +167,7 @@ export const DESKTOP_ROW_CONTROL_MIN_TARGET = 'lg:min-h-7 lg:min-w-6'
 // Mobile is untouched at 40x40 - the density doc's standing rule is that
 // tuning desktop must never move touch sizing, and a grip is exactly the kind
 // of control a thumb needs room for.
-export const DESKTOP_ROW_LEADING_TARGET = 'lg:h-7 lg:w-5'
+const DESKTOP_ROW_LEADING_TARGET = 'lg:h-7 lg:w-5'
 
 // Canonical row padding for main list/item rows. Mobile px-2 + py-2 gives
 // breathing room around touch-sized controls; desktop px-3 + py-0 lets
@@ -350,7 +350,7 @@ export const FLAT_TABLE_FOOTER_VALUE = 'text-xs leading-4 font-mono tabular-nums
 // already owns a deliberate size tier.
 // Keeping size out of this token lets migrations add mono alignment without
 // flattening the existing visual hierarchy.
-export const NUMERIC_VALUE_TEXT = 'font-mono tabular-nums'
+const NUMERIC_VALUE_TEXT = 'font-mono tabular-nums'
 
 // Numeric value cells on dense rows (weight / cost / purchase date right
 // rails). font-mono + tabular-nums so mixed weight strings like
@@ -477,3 +477,8 @@ export const SECONDARY_BUTTON =
 // is the one thing they all share.
 export const POPOVER_SURFACE =
   `${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG} shadow-lg print:hidden`
+
+// The outlined secondary button in page toolbars (Options, Select, Print,
+// bulk actions). Compose layout (flex, gap, margins) at the call site.
+export const TOOLBAR_BUTTON =
+  'rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent'

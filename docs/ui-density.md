@@ -250,7 +250,7 @@ the control lives and whether it can be touched**, not by what the icon is.
 | Compact inline icon button in a surface that renders **only** at `lg+` | `RowIconButton` | 24x24, no touch box |
 | Modal / drawer close button | `ROW_CONTROL_TARGET` | 40px touch / 28x24 pointer |
 | Full-width disclosure button where the chevron is inline content | neither | the whole row is the hit area |
-| Toolbar button, labeled options trigger, form stepper | neither | out of scope; bordered controls with their own padding |
+| Toolbar button, labeled options trigger, form stepper | neither (toolbar buttons compose `TOOLBAR_BUTTON`) | out of scope; bordered controls with their own padding |
 | Compact panel header action (`PanelCard` `headerAction`) | neither | see below |
 
 `RowIconButton` defaults to the narrow desktop-only target. Callers that can
@@ -385,7 +385,7 @@ treatment. Classify before reaching for a token:
 
 | Kind | Meaning | Token | Mono? |
 |---|---|---|---|
-| **Value** | A measurement in a column: weight, cost, purchase date | `FLAT_TABLE_NUMERIC_TEXT`, or `NUMERIC_VALUE_TEXT` when the caller owns its size | yes |
+| **Value** | A measurement in a column: weight, cost, purchase date | `FLAT_TABLE_NUMERIC_TEXT` | yes |
 | **Panel value** | An emphasis stat inside a compact panel | `COMPACT_PANEL_META_TEXT` | yes |
 | **Quantity** | A count of items, in a Qty cell | `FLAT_TABLE_QUANTITY_TEXT` | no |
 | **Numeric prose** | "Updated 5 min ago", "3 of 8 packed" | none; inline | no |
@@ -405,11 +405,8 @@ Legitimate non-value `font-mono`: markdown `<code>` spans, the CSV header
 `<pre>` in the import dialog, and the read-only share-URL input. These are
 monospace for their own reasons, unrelated to the numeric rule.
 
-The food module uses the same numeric treatment as the rest of the app.
-`NUMERIC_VALUE_TEXT` supplies `font-mono tabular-nums` without choosing a font
-size; food tables, cards, editor totals, entry previews, and import-preview
-value columns compose it with their existing size tier. Dense row values that
-do not own a separate hierarchy use `FLAT_TABLE_NUMERIC_TEXT`. Numeric form
+The food module uses the same numeric treatment as the rest of the app:
+`FLAT_TABLE_NUMERIC_TEXT` for values. Numeric form
 inputs and count metadata intentionally keep tabular digits without mono.
 
 ## Chrome

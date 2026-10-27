@@ -10,6 +10,7 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_ROW,
   MOBILE_ROW_HEIGHT,
+  TOOLBAR_BUTTON,
 } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
@@ -292,7 +293,7 @@ function formatRelativeDate(iso: string, now: number): string {
 // bright blue primary button overpowered the otherwise flat gray/white list
 // manager.
 export const LIST_HEADER_ACTION_CLASS =
-  'inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50'
+  `inline-flex items-center gap-1.5 ${TOOLBAR_BUTTON}`
 
 // The inline "New list" draft input, shared by the /lists header (variant
 // 'header': input + Create + cancel) and the panel's first-row slot (variant

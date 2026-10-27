@@ -1,6 +1,7 @@
 import { Settings2 } from 'lucide-react'
 import KebabMenu, { type KebabTriggerProps } from '../components/KebabMenu'
 import GearOptionsContent, { type GearOptionsHandlers } from './GearOptionsContent'
+import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
 
 type Props = {
   gearOptions: GearOptionsHandlers
@@ -24,7 +25,7 @@ function OptionsTrigger({ ref, onClick, open, disabled }: KebabTriggerProps) {
       title="Gear options"
       aria-label="Gear options"
       aria-expanded={open}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+      className={`inline-flex items-center gap-1.5 ${TOOLBAR_BUTTON}`}
     >
       <Settings2 size={14} />
       Options

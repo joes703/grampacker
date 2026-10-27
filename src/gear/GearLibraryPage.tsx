@@ -59,6 +59,7 @@ import { useGearImportFlow } from './use-gear-import-flow'
 import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
+import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
 
 // `saveError` on the two GearItemDialog variants is the dialog's own failure
 // surface. It is inline rather than a toast because the dialog stays open on
@@ -533,7 +534,7 @@ export default function GearLibraryPage() {
           {selectMode ? (
             <button
               onClick={exitSelectMode}
-              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`md:ml-auto ${TOOLBAR_BUTTON}`}
             >
               Cancel
             </button>
@@ -545,7 +546,7 @@ export default function GearLibraryPage() {
               // library snapshot. Disabling the way out of a mode the user is
               // already in would trap them.
               disabled={!libraryReady}
-              className="md:ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              className={`md:ml-auto ${TOOLBAR_BUTTON}`}
             >
               Select
             </button>
@@ -570,7 +571,7 @@ export default function GearLibraryPage() {
             <button
               onClick={() => setDialog({ type: 'create-item', saveError: null })}
               disabled={!libraryReady}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              className={`flex items-center gap-1.5 ${TOOLBAR_BUTTON}`}
             >
               <Plus size={14} />
               New item
