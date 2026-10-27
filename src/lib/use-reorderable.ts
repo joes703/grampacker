@@ -129,11 +129,6 @@ type UseReorderableOptions<T extends { id: string; sortOrder: number }> = {
 
 type UseReorderableResult<T extends { id: string; sortOrder: number }> = {
   items: T[]
-  // NOTE: v5's isLoading is `isPending && isFetching`, which is NOT "has not
-  // resolved yet". A cold load while the browser is offline sits at
-  // fetchStatus 'paused', so isFetching - and therefore isLoading - is false
-  // with no data in hand. Gate an empty state on isPending, not this.
-  isLoading: boolean
   // status === 'pending': no data has arrived, whatever the fetch is doing.
   isPending: boolean
   // Raw query error status. NOTE: in TanStack Query v5 a failed BACKGROUND
@@ -167,7 +162,6 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
 
   const {
     data: items = (initialData ?? ([] as T[])),
-    isLoading,
     isPending,
     isError,
     isLoadingError,
@@ -215,7 +209,6 @@ export function useReorderable<T extends { id: string; sortOrder: number }>(
 
   return {
     items,
-    isLoading,
     isPending,
     isError,
     isLoadingError,

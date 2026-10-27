@@ -6,7 +6,6 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
-import { asButtonRef } from '../lib/dnd'
 import KebabMenu from '../components/KebabMenu'
 import InlineRenameInput from '../components/InlineRenameInput'
 import RowIconButton from '../components/RowIconButton'
@@ -123,7 +122,7 @@ export function useSortableContainerSection({
     dragHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setReorderActivatorNodeRef)}
+        ref={setReorderActivatorNodeRef}
         {...reorderListeners}
         {...reorderAttributes}
         disabled={reorderPending}
@@ -135,7 +134,7 @@ export function useSortableContainerSection({
     nestHandle: (
       <RowIconButton
         touchSafe
-        ref={asButtonRef(setNestingActivatorNodeRef)}
+        ref={setNestingActivatorNodeRef}
         {...nestingListeners}
         {...nestingAttributes}
         disabled={movePending}

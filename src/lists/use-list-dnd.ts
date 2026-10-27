@@ -2,16 +2,10 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import {
   queryKeys,
   reorderListItems,
@@ -40,6 +34,7 @@ import {
 } from './pack-rows'
 import { usePlacement } from './placement-context'
 import { planPlacementWithinLocation } from './placement-plan'
+import { useDragSensors } from '../lib/use-drag-sensors'
 
 // One shared empty array for every "no food rows here" case: Edit mode, where
 // Pack's food derivations are switched off, and a bag that holds no food. It
@@ -168,11 +163,7 @@ export function useListDnd({
   // guidance is to use MouseSensor + TouchSensor (not PointerSensor) when
   // mouse and touch need different activation. PointerSensor's flat 5px
   // distance was hijacking touch scroll, which is what broke mobile reorder.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
   // Active drag id. Three kinds share the page's one DndContext:
   //   item:             a row in category grouping (reorder within category)

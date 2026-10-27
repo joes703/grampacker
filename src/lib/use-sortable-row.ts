@@ -1,7 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties } from 'react'
-import { asButtonRef } from './dnd'
 import { makeDnDId, type DnDIdKind } from './dnd-ids'
 import { PLACING_ROW_STYLE } from './row-indicator-styles'
 
@@ -52,7 +51,7 @@ export function useSortableRow({
     // Spread onto the grip (RowIconButton or a custom button): activator
     // ref + dnd-kit listeners and attributes.
     handleProps: {
-      ref: asButtonRef(setActivatorNodeRef),
+      ref: setActivatorNodeRef,
       ...listeners,
       ...attributes,
     },

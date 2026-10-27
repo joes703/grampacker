@@ -3,18 +3,12 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable'
@@ -60,6 +54,7 @@ import { useGearItemActions } from './use-gear-item-actions'
 import { useGearCategoryActions } from './use-gear-category-actions'
 import { useGearBulkActions } from './use-gear-bulk-actions'
 import { TOOLBAR_BUTTON } from '../components/flat-table-styles'
+import { useDragSensors } from '../lib/use-drag-sensors'
 
 // `saveError` on the two GearItemDialog variants is the dialog's own failure
 // surface. It is inline rather than a toast because the dialog stays open on
@@ -87,6 +82,26 @@ type DialogState =
   | { type: 'bulk-delete' }
 
 
+// When dragging a category, the dragged wrapper carries its items along
+// (they're DOM children). closestCenter measures from the active's center,
+// and the dragged category's own item rects are physically closest - so
+// `over` would resolve to one of its own items and the drop would snap back.
+// So a category drag searches category droppables only; item drags use
+// closestCenter unchanged. The kind tag in the typed id (src/lib/dnd-ids.ts)
+// tells the two apart.
+const collisionDetection: CollisionDetection = (args) => {
+  const activeKind = parseDnDId(String(args.active.id))?.kind
+  if (activeKind === 'category') {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (c) => parseDnDId(String(c.id))?.kind === 'category',
+      ),
+    })
+  }
+  return closestCenter(args)
+}
+
 export default function GearLibraryPage() {
   useDocumentTitle('Gear')
   const qc = useQueryClient()
@@ -103,8 +118,6 @@ export default function GearLibraryPage() {
     isLoadingError: categoriesFailed,
     refetch: retryCategories,
     reorderPending: catReorderPending,
-    handleDragStart: catDragStart,
-    handleDragCancel: catDragCancel,
     handleDragEnd: catDragEnd,
   } = useReorderable<Category>({
     queryKey: queryKeys.categories(),
@@ -197,12 +210,8 @@ export default function GearLibraryPage() {
     clearSelected()
   }
 
-  function closeNewCategory() {
-    setDialog(null)
-  }
-
   // The async way out of the editor, for its success callback ONLY (the user's
-  // own Escape/X goes through closeNewCategory above, unconditionally). A
+  // own Escape/X closes it directly, unconditionally). A
   // create can settle in the same tick as a replacement update that is
   // already QUEUED but not yet committed - a CSV parse finishing closes the
   // editor through the import flow's onBeforeOpen, and the editor is inline,
@@ -292,35 +301,8 @@ export default function GearLibraryPage() {
   // (open edit dialog) or vertical scroll. Category headers keep their
   // dedicated visible grip on mobile, so long-press on that grip reorders
   // categories; gear item rows use the row itself as the touch activator.
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
-  // When dragging a category, the dragged wrapper carries its items along
-  // (they're DOM children). closestCenter measures from the active's center,
-  // and the dragged category's own item rects are physically closest — so
-  // `over` resolves to one of the dragged category's own items, the handler
-  // resolves dest to the same category, and the drop snaps back. Filter the
-  // collision search to category droppables when the active is a category;
-  // item drags use closestCenter unchanged. The kind tag in the typed id
-  // (see src/lib/dnd-ids.ts) is what tells us which case we're in.
-  const collisionDetection = useMemo<CollisionDetection>(
-    () => (args) => {
-      const activeKind = parseDnDId(String(args.active.id))?.kind
-      if (activeKind === 'category') {
-        return closestCenter({
-          ...args,
-          droppableContainers: args.droppableContainers.filter(
-            (c) => parseDnDId(String(c.id))?.kind === 'category',
-          ),
-        })
-      }
-      return closestCenter(args)
-    },
-    [],
-  )
 
   // Active drag id (item id OR category id). The DragOverlay renders an
   // item-row clone for item drags; category drag falls back to dnd-kit's
@@ -338,20 +320,15 @@ export default function GearLibraryPage() {
     ...makeOptimisticReorder<GearItem>(qc, queryKeys.gearItems()),
   })
 
-  // The page tracks its OWN activeId for the gear-item DragOverlay clone
-  // (the DragOverlay below only renders gear-item rows; categories don't
-  // have a clone). The categories useReorderable hook tracks an independent
-  // activeId internally for its own state machine; we forward the lifecycle
-  // events to it so it stays in sync even though its activeItem isn't
-  // consumed at this surface.
+  // The page tracks its own activeId for the gear-item DragOverlay clone
+  // (categories have no clone, so the categories hook's activeItem is unused
+  // here).
   function handleDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id))
-    catDragStart(e)
   }
 
   function handleDragCancel() {
     setActiveId(null)
-    catDragCancel()
   }
 
   // Page-level drag handler. Two cases:
@@ -520,7 +497,7 @@ export default function GearLibraryPage() {
               variant="toolbar"
               create={(categoryName) => addCategory.mutateAsync(categoryName)}
               onCreated={() => closeCategorySession(dialog.session)}
-              onCancel={closeNewCategory}
+              onCancel={() => setDialog(null)}
             />
           )}
 
