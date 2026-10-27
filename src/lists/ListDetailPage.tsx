@@ -717,31 +717,63 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     </div>
   )
 
-  // Opens the gear editor for one item. Hoisted out of sharedGroupProps
-  // because Pack reaches it from three places the category sections never
-  // touch - the packing kebab, a container's section header, and the worn
-  // row's own button - and duplicating the ref lookups at each would be four
-  // copies of one rule about which dialog to open.
+  // Opens the full gear editor or the phone's compact one for one item.
+  // Hoisted out of sharedGroupProps because Pack also reaches it from the
+  // packing kebab, a container's section header and the worn row's button.
   //
   // Reads the cache at call time, so this is stable for the life of the page:
   // rebuilding it would rebuild sharedGroupProps and re-render every section.
-  const openGearEditor = useCallback((gearId: string) => {
+  const openEditor = useCallback((type: 'edit-gear' | 'quick-edit-item', gearId: string) => {
     const g = readGearItems().find((x) => x.id === gearId)
     const li = readListItems().find((l) => l.gearItem.id === gearId)
-    if (g) setDialog({ type: 'edit-gear', gear: g, listItem: li ?? null, saveError: null })
+    if (g) setDialog({ type, gear: g, listItem: li ?? null, saveError: null })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the read helpers use only qc and listId, both fixed for this instance
   }, [setDialog])
 
-  // The phone row tap's editor: the compact form instead of the full
-  // inventory dialog (UX audit 2026-10 - tapping a row to change one weight
-  // opened cost, purchase date, status and a delete button). Same stability
-  // story as openGearEditor above.
-  const openQuickEditor = useCallback((gearId: string) => {
-    const g = readGearItems().find((x) => x.id === gearId)
-    const li = readListItems().find((l) => l.gearItem.id === gearId)
-    if (g) setDialog({ type: 'quick-edit-item', gear: g, listItem: li ?? null, saveError: null })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as openGearEditor
-  }, [setDialog])
+  // The full and quick editors' save: gear fields first, then the list-item
+  // patch, each failure reported inline with copy that claims only what it can
+  // prove. The dialog stays dismissable while saving (abandoning a slow save
+  // is legitimate), so completion goes through runGuardedSave's identity
+  // guard (src/lib/guarded-save.ts); installing `attempt` also clears the
+  // previous try's error.
+  function saveGearAndItem(
+    dialog: Extract<DialogState, { type: 'edit-gear' | 'quick-edit-item' }>,
+    gearPatch: Parameters<typeof updateGearItem.mutateAsync>[0]['patch'],
+    listPatch: ListItemPatch | null,
+  ) {
+    const attempt: DialogState = { ...dialog, saveError: null }
+    const gearTarget = dialog.gear
+    const listTarget = dialog.listItem
+    runGuardedSave<DialogState>({
+      attempt,
+      setState: setDialog,
+      setSaving: setSavingGearAttempt,
+      run: async (settle) => {
+        try {
+          await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
+        } catch {
+          settle((prev) => ({
+            ...prev,
+            saveError: "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
+          }))
+          return
+        }
+        if (listPatch && listTarget) {
+          try {
+            await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
+          } catch {
+            settle((prev) => ({
+              ...prev,
+              saveError:
+                "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
+            }))
+            return
+          }
+        }
+        settle(() => null)
+      },
+    })
+  }
 
   // Per-row handler bag passed to every CategoryGroup. Memoized so each
   // category section doesn't re-render on every parent state change.
@@ -800,7 +832,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       // Below lg this handler is the mobile row TAP (no kebab renders
       // there), so it opens the compact editor; at lg+ it is the kebab's
       // Edit, which keeps the full form.
-      onEditGearItem: isBelowLg ? openQuickEditor : openGearEditor,
+      onEditGearItem: (gearId: string) =>
+        openEditor(isBelowLg ? 'quick-edit-item' : 'edit-gear', gearId),
       // No onDeleteGearItem: the row menu deliberately offers no inventory
       // delete (ItemRow's RowKebab says why). GearItemDialog's own delete
       // path below still works from Edit.
@@ -868,7 +901,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       // a real trip showed that a wrong weight noticed while packing then
       // cost a round trip through two other views.
       onRemoveFromList={() => requestRemoveListItem(item)}
-      onEdit={() => openGearEditor(item.gearItem.id)}
+      onEdit={() => openEditor('edit-gear', item.gearItem.id)}
       onUseAsContainer={() => createItemContainer.mutate({
         itemId: item.id,
         name: item.gearItem.name,
@@ -925,7 +958,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     <>
       <RowIconButton
         touchSafe
-        onClick={() => openGearEditor(item.gearItem.id)}
+        onClick={() => openEditor('edit-gear', item.gearItem.id)}
         ariaLabel={`Edit ${item.gearItem.name}`}
         title="Edit item"
         icon={<Pencil size={14} />}
@@ -943,7 +976,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
 
   // The container header's menu, built here beside the row menus because it
   // shares their orchestration (requestMove, requestRemoveListItem,
-  // openGearEditor). PackingLocationTree calls back into this per node.
+  // openEditor). PackingLocationTree calls back into this per node.
   const renderContainerAction = (
     containerItem: ListItemWithGear,
     location: PackingLocation,
@@ -970,7 +1003,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
       // A container's own row lives in the section header, so the
       // ordinary row kebab never renders for it. Without this, the one
       // item you cannot edit from Pack would be the bag itself.
-      onEdit={() => openGearEditor(containerItem.gearItem.id)}
+      onEdit={() => openEditor('edit-gear', containerItem.gearItem.id)}
       onStopUsingAsContainer={() => setDeleteLocationTarget(location)}
     />
   )
@@ -1667,46 +1700,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
           saveError={dialog.saveError}
           onClose={() => setDialog(null)}
           onCreateCategory={(categoryName) => addCategory.mutateAsync(categoryName)}
-          onSave={(gearPatch, listPatch) => {
-            // The dialog stays dismissable while saving (deliberately -
-            // abandoning a slow save is legitimate), so the two-stage
-            // completion goes through runGuardedSave's identity guard (see
-            // src/lib/guarded-save.ts). Installing `attempt` also clears the
-            // previous try's error.
-            const attempt: DialogState = { ...dialog, saveError: null }
-            const gearTarget = dialog.gear
-            const listTarget = dialog.listItem
-            runGuardedSave<DialogState>({
-              attempt,
-              setState: setDialog,
-              setSaving: setSavingGearAttempt,
-              run: async (settle) => {
-                try {
-                  await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
-                } catch {
-                  settle((prev) => ({
-                    ...prev,
-                    saveError:
-                      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
-                  }))
-                  return
-                }
-                if (listPatch && listTarget) {
-                  try {
-                    await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
-                  } catch {
-                    settle((prev) => ({
-                      ...prev,
-                      saveError:
-                        "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
-                    }))
-                    return
-                  }
-                }
-                settle(() => null)
-              },
-            })
-          }}
+          onSave={(gearPatch, listPatch) => saveGearAndItem(dialog, gearPatch, listPatch)}
           onRemoveFromList={
             editDialogListItem
               ? () => {
@@ -1732,10 +1726,8 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         />
       )}
 
-      {/* The phone row tap's compact editor. Same two-stage guarded save as
-          the full dialog above: gear fields first, then the list-item patch,
-          each failure reported inline with copy that claims only what it can
-          prove. More details switches to the full GearItemDialog with the
+      {/* The phone row tap's compact editor, with the same save as the full
+          dialog (saveGearAndItem). More details switches to the full GearItemDialog with the
           same target, so nothing is re-looked-up. */}
       {dialog?.type === 'quick-edit-item' && (
         <QuickEditItemModal
@@ -1760,41 +1752,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
               saveError: null,
             })
           }
-          onSave={(gearPatch, listPatch) => {
-            const attempt: DialogState = { ...dialog, saveError: null }
-            const gearTarget = dialog.gear
-            const listTarget = dialog.listItem
-            runGuardedSave<DialogState>({
-              attempt,
-              setState: setDialog,
-              setSaving: setSavingGearAttempt,
-              run: async (settle) => {
-                try {
-                  await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
-                } catch {
-                  settle((prev) => ({
-                    ...prev,
-                    saveError:
-                      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
-                  }))
-                  return
-                }
-                if (listPatch && listTarget) {
-                  try {
-                    await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
-                  } catch {
-                    settle((prev) => ({
-                      ...prev,
-                      saveError:
-                        "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
-                    }))
-                    return
-                  }
-                }
-                settle(() => null)
-              },
-            })
-          }}
+          onSave={(gearPatch, listPatch) => saveGearAndItem(dialog, gearPatch, listPatch)}
         />
       )}
 
