@@ -251,9 +251,11 @@ export type ReorderListItemsRequest = z.infer<
 // reads as interchangeable, it is not, and it makes the optimistic cache
 // mapping guess which field it is patching.
 //
-// The server additionally requires the ranks to be a permutation of what the
-// touched rows already hold, and requires them all to be in one cohort. Those
-// are relational facts this schema cannot see, so they live in the repo.
+// The server additionally requires every row to be in one cohort and the
+// ranks to be index-safe (no rank twice within a table, none landing on an
+// untouched row of the same table); a free rank is legal. Those are
+// relational facts this schema cannot see, so they live in the repo
+// (server/repos/pack-reorder.ts).
 const packRankEntriesSchema = (cap: number) =>
   z
     .array(z.object({ id: idSchema, packSortOrder: packRankSchema }).strict())
