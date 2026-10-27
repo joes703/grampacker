@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { decimalNumber } from './decimal'
+import { MAX_ITEM_WEIGHT_GRAMS } from './gear'
 import { idSchema, nonEmptyPatch, uniqueIds } from './schema-primitives'
 
 // Food estimate DTOs and limits, shared by client and server.
@@ -79,14 +80,14 @@ const slotIdsSchema = z
   .max(FOOD_SLOT_CAP)
   .refine(uniqueIds, { message: 'slotIds must be unique' })
 
-const foodNameSchema = z.string().trim().min(1).max(128)
+export const MAX_FOOD_NAME = 128
+const foodNameSchema = z.string().trim().min(1).max(MAX_FOOD_NAME)
 // The same one-decimal bound as gear weight (shared/gear.ts
 // weightGramsSchema, where the rationale lives): the UI renders tenths, so
-// everything storable is displayable. The max is pinned to
-// MAX_ITEM_WEIGHT_GRAMS by src/lists/AddFoodForm.test.tsx. Values stored
-// before this bound existed stay readable - the response schema is a plain
-// number - so it gates new writes only.
-export const foodWeightSchema = decimalNumber({ min: 0, max: 100000, decimals: 1 })
+// everything storable is displayable. Values stored before this bound existed
+// stay readable - the response schema is a plain number - so it gates new
+// writes only.
+const foodWeightSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GRAMS, decimals: 1 })
 // The ceiling in ONE place for everything TypeScript can reach: the request
 // schema below, the add form's validation and max attribute, and the carrying
 // row's inline clamp. The DATABASE holds its own copy as a CHECK literal in

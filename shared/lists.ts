@@ -192,7 +192,7 @@ export type UpdateListItemRequest = z.infer<typeof updateListItemRequestSchema>
 
 // ------------------------------------------------------- packing locations
 
-const MAX_PACKING_LOCATION_NAME = 60
+export const MAX_PACKING_LOCATION_NAME = 60
 const packingLocationNameSchema = z
   .string()
   .trim()

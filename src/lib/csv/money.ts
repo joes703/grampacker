@@ -12,10 +12,10 @@
 //
 // Three letters exactly, deliberately NOT "any letters": the word "minus"
 // must not be strippable, or "minus $5" imports as a positive 5.
+import { MAX_COST } from '../../../shared/gear'
+
 const CURRENCY_DECORATION = String.raw`(?:\p{Sc}|\s|[A-Za-z]{3})`
 
-// The largest value shared/gear.ts costSchema accepts (inclusive).
-const MAX_COST = 99_999_999.99
 
 // Empty/whitespace cells become null (gifts and unknown values stay
 // unknown, never coerced to 0). Negative or unparseable inputs also

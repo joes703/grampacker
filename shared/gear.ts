@@ -62,7 +62,8 @@ export const weightGramsSchema = decimalNumber({ min: 0, max: MAX_ITEM_WEIGHT_GR
 // carry: the epsilon let 1e-9 through (stored as 0 cents) and, near the cap,
 // 99999999.00999999 (v*100 lands exactly on an integer). Max stays inclusive -
 // src/lib/csv/money.ts relies on that.
-export const costSchema = decimalNumber({ min: 0, max: 99_999_999.99, decimals: 2 })
+export const MAX_COST = 99_999_999.99
+export const costSchema = decimalNumber({ min: 0, max: MAX_COST, decimals: 2 })
 
 // Real calendar date, ISO YYYY-MM-DD (rejects 2026-02-30).
 const isoDateSchema = z

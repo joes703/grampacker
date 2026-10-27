@@ -15,7 +15,12 @@
 // enforcement lives next to its request schemas; the 0004 triggers
 // mirror them) and re-exported here so UI call sites keep the single
 // lib/caps import the old repo established.
-export { LIST_CAP, LIST_ITEM_CAP, PACKING_LOCATION_CAP } from '../../shared/lists'
+export {
+  LIST_CAP,
+  LIST_ITEM_CAP,
+  MAX_PACKING_LOCATION_NAME,
+  PACKING_LOCATION_CAP,
+} from '../../shared/lists'
 
 // Max gear items in a user's inventory, and the category cap beside it -
 // both defined once in shared/gear.ts next to the schemas that use them.

@@ -5,6 +5,7 @@ import { useSortableRow } from '../lib/use-sortable-row'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
+import { MAX_PACKING_LOCATION_NAME } from '../lib/caps'
 import { makeDnDId } from '../lib/dnd-ids'
 import KebabMenu from '../components/KebabMenu'
 import InlineRenameInput from '../components/InlineRenameInput'
@@ -225,7 +226,7 @@ export function PackSectionRenameInput({
       </span>
       <InlineRenameInput
         value={draft}
-        maxLength={60}
+        maxLength={MAX_PACKING_LOCATION_NAME}
         selectOnOpen={false}
         ariaLabel="Packing location name"
         onChange={setDraft}

@@ -4,12 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FoodItemDialog from './FoodItemDialog'
 import { shimDialog } from './test/list-detail-harness'
-import {
-  foodWeightSchema,
-  type FoodItemResponse,
-  type FoodSlotResponse,
-} from '../../shared/food'
-import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
+import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 
 beforeAll(shimDialog)
 afterEach(cleanup)
@@ -204,15 +199,6 @@ describe('validation and busy', () => {
     fireEvent.change(screen.getByLabelText('How many'), { target: { value: '0' } })
     expect(screen.queryByText(/You'll carry/)).not.toBeInTheDocument()
     expect(screen.getByText(/Enter how many/)).toBeInTheDocument()
-  })
-
-  // AddFoodForm carried this pin; the coupling it protects (WeightInput's
-  // client clamp equals the server's foodWeightSchema max) still exists
-  // through this dialog's weight field, so the pin moves here rather than
-  // dying with the form (docs/testing-and-ci.md section 6).
-  it('pins MAX_ITEM_WEIGHT_GRAMS to the foodWeightSchema max', () => {
-    expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS).success).toBe(true)
-    expect(foodWeightSchema.safeParse(MAX_ITEM_WEIGHT_GRAMS + 1).success).toBe(false)
   })
 })
 
