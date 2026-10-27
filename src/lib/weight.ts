@@ -36,9 +36,14 @@ export function ozToGrams(oz: number): number {
 
 // Individual item weight (oz only, never compound lb+oz). Pass 'g' when the
 // caller never toggles units.
+// The number of a per-row weight, without its unit: grams as formatGrams,
+// ounces to one decimal.
+export function formatItemWeightNumber(grams: number, unit: WeightUnit): string {
+  return unit === 'g' ? formatGrams(grams) : gramsToOz(grams).toFixed(1)
+}
+
 export function formatItemWeight(grams: number, unit: WeightUnit): string {
-  if (unit === 'g') return `${formatGrams(grams)} g`
-  return `${gramsToOz(grams).toFixed(1)} oz`
+  return `${formatItemWeightNumber(grams, unit)} ${unit}`
 }
 
 // Aggregate weight for summary slots (base, total, consumable). Uses

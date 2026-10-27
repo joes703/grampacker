@@ -14,6 +14,7 @@ import {
 } from '../components/flat-table-styles'
 import { useCommitOnce } from '../lib/use-commit-once'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
+import { formatRelativeDate } from '../lib/dates'
 
 // The one lists-surface row, shared by /lists (variant 'page') and the
 // desktop lists panel on /lists/:id (variant 'panel'). The two surfaces
@@ -260,32 +261,6 @@ function RowMeta({ list, now }: { list: List; now: number }) {
       Updated {updated}
     </span>
   )
-}
-
-// Friendly relative date for the row metadata. Falls back to an absolute
-// short date once the value is more than a week old. `now` is supplied by
-// the caller's useNow hook so the displayed "X min ago" reticks once a
-// minute while the page stays open.
-function formatRelativeDate(iso: string, now: number): string {
-  const then = new Date(iso).getTime()
-  const diffMs = now - then
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-  if (diffMs < minute) return 'just now'
-  if (diffMs < hour) {
-    const m = Math.floor(diffMs / minute)
-    return `${m} min${m === 1 ? '' : 's'} ago`
-  }
-  if (diffMs < day) {
-    const h = Math.floor(diffMs / hour)
-    return `${h} hour${h === 1 ? '' : 's'} ago`
-  }
-  if (diffMs < 7 * day) {
-    const d = Math.floor(diffMs / day)
-    return `${d} day${d === 1 ? '' : 's'} ago`
-  }
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 // Header-action chrome shared by the /lists header buttons and the header

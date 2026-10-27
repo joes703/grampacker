@@ -3,6 +3,7 @@ import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from
 import type { ListFoodResponse } from '../../../shared/food'
 import { buildFoodJson } from './food-json'
 import { buildPackingJson } from './packing-json'
+import { localTimestampParts } from '../dates'
 
 export type TakeoutInput = {
   categories: Category[]
@@ -52,9 +53,6 @@ export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
 // Colons are illegal in filenames on Windows, so the time uses hyphens.
 // Injectable date for deterministic tests.
 export function exportTimestamp(date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
-  )
+  const t = localTimestampParts(date)
+  return `${t.date}T${t.hh}-${t.mm}-${t.ss}`
 }

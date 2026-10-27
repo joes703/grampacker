@@ -1,3 +1,5 @@
+import { localTimestampParts } from '../lib/dates'
+
 type Props = {
   name: string
 }
@@ -6,11 +8,8 @@ type Props = {
 // printed, so wall-clock time; ISO date order so the sheet dates itself the
 // same way whatever the browser locale is.
 function formatPrintTimestamp(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    ` ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  )
+  const t = localTimestampParts(d)
+  return `${t.date} ${t.hh}:${t.mm}`
 }
 
 // One legend entry: a small square drawn like the row squares, then its name.
