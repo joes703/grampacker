@@ -16,7 +16,7 @@ export function packRowId(row: PackRow): string {
   return row.kind === 'gear' ? row.gear.id : row.food.id
 }
 
-export function packRowRank(row: PackRow): number {
+function packRowRank(row: PackRow): number {
   return row.kind === 'gear' ? row.gear.packSortOrder : row.food.packSortOrder
 }
 

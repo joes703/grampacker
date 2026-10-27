@@ -71,7 +71,7 @@ import { mutationKeys } from './queries/keys'
 // order. makeOptimisticReorder accepts only a permutation of those values, and
 // they can have gaps (deleting a row never renumbers the rest), so renumbering
 // 0..N-1 here would fail validation and silently drop the drag.
-export type ReorderUpdates = { id: string; sortOrder: number }[]
+type ReorderUpdates = { id: string; sortOrder: number }[]
 
 export type PlanReorderInput<T extends { id: string; sortOrder: number }> = {
   activeId: string | number | undefined

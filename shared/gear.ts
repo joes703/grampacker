@@ -32,7 +32,7 @@ export const GEAR_STATUSES = [
   'loaned_out',
   'need_to_buy',
 ] as const
-export const gearStatusSchema = z.enum(GEAR_STATUSES)
+const gearStatusSchema = z.enum(GEAR_STATUSES)
 export type GearStatus = z.infer<typeof gearStatusSchema>
 
 // Caps mirror the old schema's CHECK constraints; the DB re-enforces them.

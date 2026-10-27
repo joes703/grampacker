@@ -11,8 +11,8 @@ import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH } from '../lib/caps'
 import { clampQuantity } from '../../shared/lists'
 import { useWornConsumableFlags } from './use-worn-consumable-flags'
 
-export type QuickEditGearPatch = { name: string; weightGrams: number }
-export type QuickEditListPatch = {
+type QuickEditGearPatch = { name: string; weightGrams: number }
+type QuickEditListPatch = {
   quantity: number
   isWorn: boolean
   isConsumable: boolean

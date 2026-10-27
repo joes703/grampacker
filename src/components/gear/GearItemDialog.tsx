@@ -14,7 +14,7 @@ import { clampQuantity } from '../../../shared/lists'
 import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
 import { clampWeightGrams } from '../../../shared/gear'
 
-export type GearPatch = {
+type GearPatch = {
   name: string
   description: string | null
   weightGrams: number
@@ -24,7 +24,7 @@ export type GearPatch = {
   status: GearStatus
 }
 
-export type ListContextPatch = {
+type ListContextPatch = {
   quantity: number
   isWorn: boolean
   isConsumable: boolean

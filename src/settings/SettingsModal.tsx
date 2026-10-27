@@ -90,7 +90,7 @@ export default function SettingsModal({
 // Card shell for a settings section. The shared icon, title, and optional
 // subtitle treatment keeps every card on the same hierarchy. `danger`
 // switches the border/heading to the destructive palette.
-export function Section({
+function Section({
   id,
   title,
   subtitle,

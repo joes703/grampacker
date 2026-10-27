@@ -20,7 +20,7 @@ import type { Sqlite } from './index'
 //
 // `exec` (not `prepare`) runs each chunk because a trigger body or a chunk
 // without breakpoints may hold several statements.
-export const DEFAULT_MIGRATIONS_FOLDER = 'migrations'
+const DEFAULT_MIGRATIONS_FOLDER = 'migrations'
 
 const LEDGER_DDL = `
   CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (

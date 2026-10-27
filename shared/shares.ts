@@ -26,14 +26,12 @@ const publicListSchema = z.object({
   description: z.string().nullable(),
   isDraft: z.boolean(),
 })
-export type PublicList = z.infer<typeof publicListSchema>
 
 const publicCategorySchema = z.object({
   id: z.string(),
   name: z.string(),
   sortOrder: z.number().int(),
 })
-export type PublicCategory = z.infer<typeof publicCategorySchema>
 
 const publicListItemSchema = z.object({
   id: z.string(),
@@ -50,7 +48,6 @@ const publicListItemSchema = z.object({
     categoryId: z.string().nullable(),
   }),
 })
-export type PublicListItem = z.infer<typeof publicListItemSchema>
 
 // What a share publishes about food: the same four facts it publishes about
 // a gear row - what it is, how many, how heavy, and where it sits in the

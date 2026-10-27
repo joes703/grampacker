@@ -9,7 +9,7 @@ import { reportFailure } from '../lib/report-failure'
 // public share view already lazy-loads the same component the same way.
 const MarkdownContent = lazy(() => import('../components/MarkdownContent'))
 
-export type SaveCallbacks = { onSuccess: () => void; onError: () => void }
+type SaveCallbacks = { onSuccess: () => void; onError: () => void }
 
 type Props = {
   initial: string

@@ -33,7 +33,7 @@ import { formatRelativeDate } from '../lib/dates'
 // the DragOverlay clones omit it entirely instead of stubbing a dozen no-op
 // props - the row then renders static, with the kebab disabled.
 
-export type ListRowVariant = 'page' | 'panel'
+type ListRowVariant = 'page' | 'panel'
 
 export type ListRowActions = {
   renaming: boolean

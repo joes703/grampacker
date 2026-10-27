@@ -183,11 +183,11 @@ export function planGearImport(
 // client-minted tempId so items can reference not-yet-created gear, same
 // as gear entries reference not-yet-created categories.
 
-export type GearRef =
+type GearRef =
   | { kind: 'existing'; id: string }
   | { kind: 'new'; tempId: string }
 
-export type PlannedListGear = {
+type PlannedListGear = {
   tempId: string
   name: string
   description: string | null
@@ -199,7 +199,7 @@ export type PlannedListGear = {
   cost: number | null
 }
 
-export type PlannedListItem = {
+type PlannedListItem = {
   gear: GearRef
   quantity: number
   isWorn: boolean

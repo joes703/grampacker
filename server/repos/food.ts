@@ -23,7 +23,7 @@ import { nextUnionPackRank } from './pack-reorder'
 // 2500 g for one 500 g bag of trail mix eaten across five lunches. There is no
 // such join anywhere in this file, and there must never be one.
 
-export type FoodSlotRow = Pick<typeof listFoodSlots.$inferSelect, 'id' | 'dayNumber' | 'meal'>
+type FoodSlotRow = Pick<typeof listFoodSlots.$inferSelect, 'id' | 'dayNumber' | 'meal'>
 
 // Quantity is per MEAL when isPerMeal, a total otherwise; unitCount (computed)
 // is what you carry. Weight stays summed over items alone, wherever they are

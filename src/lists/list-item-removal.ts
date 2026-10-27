@@ -25,7 +25,7 @@ import type { PackingLocation } from '../lib/types'
 // query, which is why ListDetailPage subscribes to it in both views rather
 // than only in Pack - removal is reachable from everywhere.
 
-export function findBackedLocation(
+function findBackedLocation(
   itemId: string,
   locations: PackingLocation[],
 ): PackingLocation | null {

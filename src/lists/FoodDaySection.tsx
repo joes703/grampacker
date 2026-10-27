@@ -42,8 +42,8 @@ import type { WeightUnit } from '../lib/weight'
 // section compose the same stubs, which is what keeps their rails aligned).
 // Widths match the category tables' Qty / Weight rails so the two views scan
 // the same, but these are this table's own columns and may diverge.
-export const FOOD_PLAN_COL_QTY = 'shrink-0 w-8 lg:w-10'
-export const FOOD_PLAN_COL_WEIGHT = 'shrink-0 w-20 lg:w-24'
+const FOOD_PLAN_COL_QTY = 'shrink-0 w-8 lg:w-10'
+const FOOD_PLAN_COL_WEIGHT = 'shrink-0 w-20 lg:w-24'
 
 /** The header's Qty / Weight label stubs. Same width tokens as the row
  *  cells below them, so the labels sit exactly over their columns. */

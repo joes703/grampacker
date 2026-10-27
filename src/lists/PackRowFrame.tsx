@@ -105,7 +105,7 @@ export function PackChecks({
 // The packed-name treatment: calmer than a green tint - gray-500 +
 // line-through pairs with the shell's bg-gray-50 to read as completed
 // without celebrating; print restores plain black on the blank checklist.
-export function packedNameClass(isPacked: boolean): string {
+function packedNameClass(isPacked: boolean): string {
   return `block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
     isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
   }`

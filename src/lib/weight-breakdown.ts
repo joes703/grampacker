@@ -124,7 +124,7 @@ function computeGearWeightBreakdown(
 // Sentinel row id for Uncategorized inside `catRows`. Exported so callers can
 // map a rendered section's `category: null` onto the right row instead of
 // re-spelling the literal.
-export const UNCATEGORIZED_ROW_ID = '__uncategorized__'
+const UNCATEGORIZED_ROW_ID = '__uncategorized__'
 
 // Per-section base subtotal, for the footer under each rendered category.
 //

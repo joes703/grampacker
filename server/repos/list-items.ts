@@ -41,7 +41,7 @@ const gearCols = {
   updatedAt: gearItems.updatedAt,
 }
 
-export type ListItemRow = Omit<typeof listItems.$inferSelect, 'userId'>
+type ListItemRow = Omit<typeof listItems.$inferSelect, 'userId'>
 
 // The joined shape the routes serialize: membership row + its gear row
 // (the embedded gear_item response shape).
@@ -81,10 +81,6 @@ export type ListItemWriteResult =
         | 'gear_cap_exceeded'
         | 'pack_rank_exhausted'
     }
-
-// The 0004 trigger is the single enforcement point; keep in lockstep
-// with its WHEN clause and message.
-export const LIST_ITEM_CAP = 300
 
 export function isListItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'list item cap exceeded')

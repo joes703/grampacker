@@ -22,11 +22,11 @@ import { foodUnitCount } from '../../shared/food'
 // SharedListResponse field-by-field, which keeps the response allowlist
 // enforcement visible at the handler.
 
-export type PublicListRow = Pick<typeof lists.$inferSelect, 'name' | 'description' | 'isDraft'>
+type PublicListRow = Pick<typeof lists.$inferSelect, 'name' | 'description' | 'isDraft'>
 
-export type PublicCategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder'>
+type PublicCategoryRow = Pick<typeof categories.$inferSelect, 'id' | 'name' | 'sortOrder'>
 
-export type PublicListItemRow = {
+type PublicListItemRow = {
   id: string
   gearItemId: string
   quantity: number
@@ -39,7 +39,7 @@ export type PublicListItemRow = {
   gearCategoryId: string | null
 }
 
-export type PublicFoodItemRow = {
+type PublicFoodItemRow = {
   id: string
   name: string
   // What you CARRY, already resolved. The share publishes this instead of the

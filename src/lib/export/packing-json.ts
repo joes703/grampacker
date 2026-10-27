@@ -6,7 +6,7 @@ import type { ListFoodResponse } from '../../../shared/food'
 // this file promises a LOSSLESS snapshot of how a list is organized - "which
 // bag" and "where in the bag" for BOTH kinds, or the food half of the user's
 // arranging silently vanishes from their own backup.
-export const PACKING_DATA_VERSION = 4 as const
+const PACKING_DATA_VERSION = 4 as const
 
 export type PackingData = {
   version: typeof PACKING_DATA_VERSION

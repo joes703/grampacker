@@ -28,7 +28,7 @@ const CURRENCY_DECORATION = String.raw`(?:\p{Sc}|\s|[A-Za-z]{3})`
 // currency decoration, then validate STRICTLY: parseFloat is too lenient
 // to be the gate on its own ('12.99.5' -> 12.99, '12,99' -> 12, both
 // silently wrong rather than rejected).
-export function parseCost(raw: string | undefined): number | null {
+function parseCost(raw: string | undefined): number | null {
   const trimmed = (raw ?? '').trim()
   if (!trimmed) return null
 
