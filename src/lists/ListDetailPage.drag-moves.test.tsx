@@ -254,16 +254,16 @@ describe('category-grouping drags', () => {
 })
 
 describe('drag narration', () => {
-  it('announces the start of a packing drag and its cancellation', async () => {
+  // dnd-kit announces drag start and a user cancel itself. Our live region
+  // adds only what dnd-kit cannot know (saving, saved, failed, refused).
+  it('does not repeat the start or cancel of a packing drag', async () => {
     await renderPack()
 
     fireDragStart({ active: { id: 'packing-item:li-a' } })
-    expect(
-      screen.getByText('Dragging Stove. Reorder it here or choose another packing location.'),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/^Dragging Stove/)).toBeNull()
 
     fireDragCancel()
-    expect(screen.getByText('Move canceled.')).toBeInTheDocument()
+    expect(screen.queryByText('Move canceled.')).toBeNull()
   })
 })
 

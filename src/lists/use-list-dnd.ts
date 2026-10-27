@@ -382,24 +382,13 @@ export function useListDnd({
     // strand the drag that just started.
     placementActions.cancel({ returnFocus: false })
     locationDrag.onDragStart(e)
-    const parsed = parseDnDId(String(e.active.id))
-    const draggedName =
-      parsed?.kind === 'packing-item'
-        ? listItemsById.get(parsed.id)?.gearItem.name
-        : parsed?.kind === 'packing-food-item'
-          ? foodById.get(parsed.id)?.name
-          : undefined
-    if (draggedName) {
-      setAnnouncement(
-        `Dragging ${draggedName}. Reorder it here or choose another packing location.`,
-      )
-    }
   }
 
+  // dnd-kit announces drag start and cancel itself; repeating them here
+  // would say each twice.
   function handleDragCancel() {
     setActiveId(null)
     locationDrag.onDragCancel()
-    setAnnouncement('Move canceled.')
   }
 
   // One implementation behind both move requests: a gear row and a food row
