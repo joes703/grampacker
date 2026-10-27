@@ -23,14 +23,13 @@ import { useNavigate } from 'react-router'
 import { Plus, Search } from 'lucide-react'
 import {
   queryKeys,
-  fetchCategories,
-  fetchGearItems,
-  fetchLists,
   createListFromSelection,
   reorderCategories,
   reorderGearItems,
   makeOptimisticReorder,
+  fetchCategories,
 } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
 import { gearItemsToCsv, downloadCsv } from '../lib/csv'
 import { showToast } from '../lib/toast'
@@ -117,10 +116,7 @@ export default function GearLibraryPage() {
     isPending: gearItemsPending,
     isLoadingError: gearItemsFailed,
     refetch: refetchGearItems,
-  } = useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
-  })
+  } = useQuery(queries.gearItems())
 
   // Retries both halves: the failure panel does not say which one failed, so
   // the button must not either.
@@ -152,8 +148,7 @@ export default function GearLibraryPage() {
   // count changes only, instead of holding every list row for a rarely-read
   // value. Shares the ['lists'] cache with the lists pages.
   const { data: listCount = 0 } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    ...queries.lists(),
     select: (lists) => lists.length,
   })
 

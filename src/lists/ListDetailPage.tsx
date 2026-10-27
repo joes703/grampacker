@@ -6,16 +6,13 @@ import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core'
 import ListSidebarDrawer from './ListSidebarDrawer'
 import {
   queryKeys,
-  fetchLists,
-  fetchListItems,
-  fetchGearItems,
-  fetchCategories,
-  fetchPackingLocations,
   updateList,
   reorderPackingLocations,
   makeOptimisticUpdate,
+  fetchPackingLocations,
   type ListItemPatch,
 } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
 import type { Category, GearItem, ListItemWithGear, List, PackingLocation } from '../lib/types'
 import { authClient } from '../lib/auth-client'
@@ -176,10 +173,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     isPaused: listsPaused,
     isError: listsIsError,
     refetch: refetchLists,
-  } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
-  })
+  } = useQuery(queries.lists())
   const lists = listsData ?? []
   const onRetryLists = useCallback(() => {
     void refetchLists()
@@ -324,10 +318,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     }
   }, [list, listId, listsIndeterminate, listsIsError, ownerId])
 
-  const listItemsQuery = useQuery({
-    queryKey: queryKeys.listItems(listId),
-    queryFn: () => fetchListItems(listId),
-  })
+  const listItemsQuery = useQuery(queries.listItems(listId))
   const listItems = listItemsQuery.data ?? EMPTY_LIST_ITEMS
 
   // This list's food: the query, its weight, and the two writes the page makes
@@ -342,10 +333,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     moveFood: moveFoodMut,
   } = useListFood(listId)
 
-  const gearItemsQuery = useQuery({
-    queryKey: queryKeys.gearItems(),
-    queryFn: fetchGearItems,
-  })
+  const gearItemsQuery = useQuery(queries.gearItems())
   const gearItems = gearItemsQuery.data ?? EMPTY_GEAR_ITEMS
 
   // O(1) id lookups for DnD callbacks and DragOverlay rendering. Linear
@@ -361,10 +349,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [listItems],
   )
 
-  const categoriesQuery = useQuery({
-    queryKey: queryKeys.categories(),
-    queryFn: fetchCategories,
-  })
+  const categoriesQuery = useQuery(queries.categories())
   const categories = categoriesQuery.data ?? EMPTY_CATEGORIES
   // Packing locations, and their reorder state machine.
   //

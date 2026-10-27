@@ -1,15 +1,7 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  queryKeys,
-  fetchCategories,
-  fetchGearItems,
-  fetchLists,
-  fetchListItems,
-  fetchListFood,
-  fetchPackingLocations,
-} from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 
@@ -39,9 +31,9 @@ export default function DownloadAllData() {
       const [fflate, categories, gearItems, lists] =
         await Promise.all([
           fflatePromise,
-          qc.fetchQuery({ queryKey: queryKeys.categories(), queryFn: fetchCategories, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.gearItems(), queryFn: fetchGearItems, staleTime: 0 }),
-          qc.fetchQuery({ queryKey: queryKeys.lists(), queryFn: fetchLists, staleTime: 0 }),
+          qc.fetchQuery({ ...queries.categories(), staleTime: 0 }),
+          qc.fetchQuery({ ...queries.gearItems(), staleTime: 0 }),
+          qc.fetchQuery({ ...queries.lists(), staleTime: 0 }),
         ])
 
       // Items for every list, fetched per list and flattened;
@@ -52,18 +44,15 @@ export default function DownloadAllData() {
           lists.map(async (list) => {
             const [items, locations, food] = await Promise.all([
               qc.fetchQuery({
-                queryKey: queryKeys.listItems(list.id),
-                queryFn: () => fetchListItems(list.id),
+                ...queries.listItems(list.id),
                 staleTime: 0,
               }),
               qc.fetchQuery({
-                queryKey: queryKeys.packingLocations(list.id),
-                queryFn: () => fetchPackingLocations(list.id),
+                ...queries.packingLocations(list.id),
                 staleTime: 0,
               }),
               qc.fetchQuery({
-                queryKey: queryKeys.listFood(list.id),
-                queryFn: () => fetchListFood(list.id),
+                ...queries.listFood(list.id),
                 staleTime: 0,
               }),
             ])

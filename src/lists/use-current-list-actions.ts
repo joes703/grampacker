@@ -7,20 +7,19 @@ import {
   duplicateList,
   deleteList,
   createList,
-  fetchListItems,
-  fetchCategories,
   makeOptimisticUpdate,
   makeOptimisticDelete,
   makeOptimisticInsert,
   nextListSortOrder,
 } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
 import { listItemsToCsv, downloadCsv } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
 import { forgetLastListPathTo } from '../lib/last-list-path'
 import { useListFlagToggle } from './use-list-flag-toggle'
-import type { Category, List } from '../lib/types'
+import type { List } from '../lib/types'
 
 // createListMut variables: the name plus the append sortOrder snapshotted at
 // submit time. Carried together so the optimistic placeholder consumes one
@@ -173,14 +172,8 @@ export function useCurrentListActions() {
       setExportingListId(list.id)
       try {
         const [items, categories] = await Promise.all([
-          qc.fetchQuery({
-            queryKey: queryKeys.listItems(list.id),
-            queryFn: () => fetchListItems(list.id),
-          }),
-          qc.fetchQuery({
-            queryKey: queryKeys.categories(),
-            queryFn: fetchCategories,
-          }) as Promise<Category[]>,
+          qc.fetchQuery(queries.listItems(list.id)),
+          qc.fetchQuery(queries.categories()),
         ])
         const csv = listItemsToCsv(items, categories)
         downloadCsv(

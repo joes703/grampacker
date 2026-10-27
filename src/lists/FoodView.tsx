@@ -12,6 +12,7 @@ import {
   FORM_INPUT,
 } from '../components/flat-table-styles'
 import { queryKeys, mutationKeys } from '../lib/queries/keys'
+import { queries } from '../lib/queries/options'
 import {
   createFoodItem,
   deleteFoodItem,
@@ -65,8 +66,7 @@ export default function FoodView({ listId }: { listId: string }) {
   // copy of this query (use-list-food.ts) - its food writes are per-row field
   // patches that cannot destroy another client's work.
   const listFoodQuery = useQuery({
-    queryKey: queryKeys.listFood(listId),
-    queryFn: () => fetchListFood(listId),
+    ...queries.listFood(listId),
     refetchOnWindowFocus: true,
   })
 

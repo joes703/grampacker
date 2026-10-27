@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { authClient } from '../lib/auth-client'
-import { queryKeys, fetchLists } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { readLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 import AppLoading from '../components/AppLoading'
@@ -49,8 +49,7 @@ export default function RootRedirect() {
   const cachedPath = readLastListPath(session?.user.id)
 
   const { data: lists, isLoading } = useQuery({
-    queryKey: queryKeys.lists(),
-    queryFn: fetchLists,
+    ...queries.lists(),
     enabled: !cachedPath,
   })
 

@@ -1,5 +1,5 @@
 import { type QueryClient } from '@tanstack/react-query'
-import { fetchPackingLocations, queryKeys } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import type { PackingLocation } from '../lib/types'
 
 // When does removing gear from a list need to ask first?
@@ -58,10 +58,7 @@ export async function resolveRemovalPlan(
 ): Promise<RemovalPlan> {
   let locations: PackingLocation[]
   try {
-    locations = await qc.fetchQuery({
-      queryKey: queryKeys.packingLocations(listId),
-      queryFn: () => fetchPackingLocations(listId),
-    })
+    locations = await qc.fetchQuery(queries.packingLocations(listId))
   } catch {
     return { kind: 'confirm', location: null }
   }

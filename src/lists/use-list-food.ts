@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, fetchListFood } from '../lib/queries'
+import { queryKeys } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { foodItemsShape, updateFoodItem } from '../lib/queries/food'
 import { fieldScopedCache } from '../lib/queries/field-scoped'
 import { mutationKeys } from '../lib/queries/keys'
@@ -52,10 +53,7 @@ export function useListFood(listId: string) {
   // metadata every optimistic write passes through untouched.
   const foodCache = fieldScopedCache(qc, queryKeys.listFood(listId), foodItemsShape)
 
-  const query = useQuery({
-    queryKey: queryKeys.listFood(listId),
-    queryFn: () => fetchListFood(listId),
-  })
+  const query = useQuery(queries.listFood(listId))
   const food = query.data ?? EMPTY_LIST_FOOD
 
   // foodGramsFor sums items alone - never across their slot associations,

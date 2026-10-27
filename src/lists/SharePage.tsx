@@ -1,9 +1,9 @@
 import { Suspense, lazy, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchSharedList, queryKeys } from '../lib/queries'
+import { queries } from '../lib/queries/options'
 import { groupListItemsByCategory } from '../lib/grouping'
-import type { Category, ListItemWithGear, SharedListResponse } from '../lib/types'
+import type { Category, ListItemWithGear } from '../lib/types'
 import {
   getShareWeightUnit,
   setShareWeightUnit,
@@ -68,11 +68,7 @@ export default function SharePage() {
   // data is undefined while loading, null for "not a shared list" (the
   // fetcher maps ONLY the 404 to null), and the share otherwise. Real
   // outages (network, 5xx) reject and land in isLoadingError below.
-  const { data: share, isPending, isLoadingError } = useQuery<SharedListResponse | null>({
-    queryKey: queryKeys.sharedList(slug),
-    queryFn: () => fetchSharedList(slug!),
-    enabled: Boolean(slug),
-  })
+  const { data: share, isPending, isLoadingError } = useQuery(queries.sharedList(slug))
   useDocumentTitle(share?.list.name ?? null)
 
   // Failure, then loading, then not-found (AGENTS.md), because "List not
