@@ -4,11 +4,11 @@ import { waitFor } from '@testing-library/react'
 import type { Category, GearItem, ListItemWithGear } from '../lib/types'
 import {
   clearToasts,
-  deferred,
   renderHookWithClient,
   testQueryClient,
   shownToasts,
 } from '../test/mutation-hook-harness'
+import { deferred } from '../test/deferred'
 
 // The gear/category write mutations were inline in ListDetailPage (which has no
 // component test), so this locks what the extraction exposed. Only the network

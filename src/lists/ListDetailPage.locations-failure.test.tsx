@@ -14,6 +14,7 @@ import {
   renderListDetailPage,
   stubViewport,
 } from './test/list-detail-harness'
+import { deferred } from '../test/deferred'
 
 // What a FAILED packing-locations query is allowed to do to the page.
 //
@@ -76,9 +77,8 @@ const h = vi.hoisted(() => ({
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
 // owner id, which no test in this file asserts on.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -89,32 +89,11 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // guard under test lives in the page's own onDragEnd rather than in the pure
 // planner. Mocking DndContext to expose that handler is the only way to reach
 // it - the same passthrough pattern the gear bulk-actions suite uses.
-vi.mock('@dnd-kit/core', async () => {
-  const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
-  return {
-    ...actual,
-    DndContext: ({ children, onDragEnd }: {
-      children: ReactNode
-      onDragEnd?: (e: unknown) => void
-    }) => (
-      <div>
-        <button
-          type="button"
-          onClick={() => onDragEnd?.({
-            active: { id: makeDnDId('item', 'li-2') },
-            over: { id: makeDnDId('item', 'li-1') },
-          })}
-        >
-          fire drag end
-        </button>
-        {children}
-      </div>
-    ),
-    DragOverlay: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    useSensor: vi.fn(),
-    useSensors: vi.fn(() => []),
-  }
-})
+vi.mock('@dnd-kit/core', async () =>
+  (await import('../test/dnd-kit-mock')).mockDndKitCore(() => ({
+    active: { id: makeDnDId('item', 'li-2') },
+    over: { id: makeDnDId('item', 'li-1') },
+  })))
 
 vi.mock('@dnd-kit/sortable', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')
@@ -314,10 +293,8 @@ describe('a pack reorder in flight', () => {
   })
 
   it('locks the packing menus until it settles, then re-arms', async () => {
-    let resolveReorder!: (v: undefined) => void
-    h.reorderPackListItems.mockImplementation(
-      () => new Promise<undefined>((resolve) => { resolveReorder = resolve }),
-    )
+    const reorder = deferred<undefined>()
+    h.reorderPackListItems.mockImplementation(() => reorder.promise)
     await renderDetail(`/lists/${listId}/pack`)
     // Same anchor as the drag test above: fire only once locations RESOLVED
     // empty, or the drag is refused for the unrelated still-loading reason.
@@ -334,7 +311,7 @@ describe('a pack reorder in flight', () => {
     await waitFor(() => expect(trigger).toBeDisabled())
 
     // And it is pending-scoped, not a latch: settling re-arms the menu.
-    resolveReorder(undefined)
+    reorder.resolve(undefined)
     await waitFor(() => expect(trigger).toBeEnabled())
   })
 })

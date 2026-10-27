@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { Category, GearItem } from '../lib/types'
 import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
+import { deferred } from '../test/deferred'
 
 // ListDetailPage's edit-gear dialog is a two-stage async save - gear first, then the
 // per-list patch - and a dialog the user can dismiss at any point during it. Three
@@ -62,27 +63,10 @@ const listItem = makeListItem({
   packingLocationId: null,
 })
 
-type Deferred = {
-  promise: Promise<unknown>
-  resolve: (value?: unknown) => void
-  reject: (reason?: unknown) => void
-}
-
-function deferred(): Deferred {
-  let resolve!: (value?: unknown) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<unknown>((res, rej) => {
-    resolve = res as (value?: unknown) => void
-    reject = rej
-  })
-  promise.catch(() => {})
-  return { promise, resolve, reject }
-}
-
 // Wait for the page's continuation on a settled request and let React flush. See the
 // identical helper in GearLibraryPage.save-errors.test.tsx for why a bare waitFor is
 // not enough when the assertion is an absence.
-async function settle(d: Deferred): Promise<void> {
+async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
   await act(async () => {
     await d.promise.catch(() => {})
   })
@@ -102,9 +86,8 @@ const h = vi.hoisted(() => ({
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why). The session is read here only for the last-list pointer's
 // owner id, which no test in this file asserts on.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()
@@ -205,7 +188,7 @@ describe('the phone row tap editor', () => {
 
 describe('the edit-gear dialog save', () => {
   it('reports an unconfirmed gear write inline, keeps the draft, and does not go on to the list write', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateGearItem.mockReturnValue(d.promise)
     await renderDetail()
     openEditor()
@@ -229,7 +212,7 @@ describe('the edit-gear dialog save', () => {
   it('reports a partial save when the gear write lands and the list write does not', async () => {
     // The message differs from the one above because the DB state differs, and that
     // distinction is the whole reason this is a two-stage save rather than one call.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateListItem.mockReturnValue(d.promise)
     await renderDetail()
     openEditor()
@@ -261,7 +244,7 @@ describe('the edit-gear dialog save', () => {
     // The dialog stays dismissable while saving. Without the identity guard the
     // catch would re-open it - remounted, so blank, discarding the very draft the
     // error is inviting the user to retry.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateGearItem.mockReturnValue(d.promise)
     await renderDetail()
     openEditor()
@@ -279,7 +262,7 @@ describe('the edit-gear dialog save', () => {
   })
 
   it('a success arriving after the dialog was reopened does not close the new one', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateGearItem.mockReturnValue(d.promise)
     await renderDetail()
     openEditor()
@@ -288,7 +271,7 @@ describe('the edit-gear dialog save', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     openEditor()
 
-    d.resolve()
+    d.resolve(undefined)
     await settle(d)
 
     expect(screen.getByRole('dialog', { name: 'Edit item' })).toBeInTheDocument()
@@ -300,7 +283,7 @@ describe('the edit-gear dialog save', () => {
     // the form, reading it would disable a dialog the user is typing in for a write
     // that has nothing to do with it. The outstanding write here is the row's own
     // quick status change, still pending when the user opens the editor.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateGearItem.mockReturnValue(d.promise)
     await renderDetail()
 
@@ -314,7 +297,7 @@ describe('the edit-gear dialog save', () => {
     expect(screen.queryByRole('button', { name: 'Saving…' })).not.toBeInTheDocument()
     expect(nameField()).toBeEnabled()
 
-    d.resolve()
+    d.resolve(undefined)
     await settle(d)
   })
 })

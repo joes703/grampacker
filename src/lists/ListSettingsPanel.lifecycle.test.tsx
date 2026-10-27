@@ -20,6 +20,7 @@ import Modal from '../components/Modal'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import { showToast } from '../lib/toast'
 import type { List } from '../lib/types'
+import { deferred } from '../test/deferred'
 
 const q = vi.hoisted(() => ({
   fetchLists: vi.fn(),
@@ -86,13 +87,6 @@ const LIST: List = {
   sortOrder: 0,
   createdAt: '2026-01-01',
   updatedAt: '2026-01-01',
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (error: unknown) => void
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
-  return { promise, resolve, reject }
 }
 
 // ListDetailPage's shape, reduced: the panel exists only while its list does,

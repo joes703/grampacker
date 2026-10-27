@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SetStateAction } from 'react'
 import { runGuardedSave } from './guarded-save'
 import { showToast } from './toast'
+import { deferred } from '../test/deferred'
 
 vi.mock('./toast', () => ({ showToast: vi.fn() }))
 
@@ -20,14 +21,6 @@ function cell<T>(initial: T) {
       typeof action === 'function' ? (action as (prev: T) => T)(box.value) : action
   }
   return { box, set }
-}
-
-function deferred() {
-  let resolve!: () => void
-  const promise = new Promise<void>((res) => {
-    resolve = res
-  })
-  return { promise, resolve }
 }
 
 describe('runGuardedSave', () => {

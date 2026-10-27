@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import type { QueryKey } from '@tanstack/react-query'
+import { deferred } from '../../test/deferred'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -240,14 +241,6 @@ describe('makeOptimisticDelete', () => {
 // safe - and so it passed happily against the buggy code. A regression test that
 // cannot fail on the bug is decoration.
 describe('an in-flight refetch cannot clobber an optimistic CRUD write', () => {
-  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-    let resolve!: (value: T) => void
-    const promise = new Promise<T>((r) => {
-      resolve = r
-    })
-    return { promise, resolve }
-  }
-
   const CACHED: Row[] = [
     { id: 'A', name: 'a', categoryId: null },
     { id: 'B', name: 'b', categoryId: null },

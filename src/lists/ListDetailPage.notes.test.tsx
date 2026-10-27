@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { showToast } from '../lib/toast'
 import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
+import { deferred } from '../test/deferred'
 
 // Notes can be long, and the editor is the only copy of what the user typed.
 // So a save that fails must leave the editor open with the text in it, and
@@ -21,24 +22,7 @@ const list = makeList({
   updatedAt: '2026-07-01T00:00:00.000Z',
 })
 
-type Deferred = {
-  promise: Promise<unknown>
-  resolve: (value?: unknown) => void
-  reject: (reason?: unknown) => void
-}
-
-function deferred(): Deferred {
-  let resolve!: (value?: unknown) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<unknown>((res, rej) => {
-    resolve = res as (value?: unknown) => void
-    reject = rej
-  })
-  promise.catch(() => {})
-  return { promise, resolve, reject }
-}
-
-async function settle(d: Deferred): Promise<void> {
+async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
   await act(async () => {
     await d.promise.catch(() => {})
   })
@@ -56,9 +40,8 @@ const h = vi.hoisted(() => ({
 
 // See test/list-detail-harness.tsx: a real better-auth session atom outlives
 // the jsdom environment and fails CI after the tests pass.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/toast', () => ({ showToast: vi.fn() }))
 
@@ -92,7 +75,7 @@ afterEach(() => {
 
 describe('saving list notes', () => {
   it('keeps the editor open with the typed text, and says so, when the save fails', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateList.mockReturnValue(d.promise)
     const textarea = await openNotesEditor()
 
@@ -110,7 +93,7 @@ describe('saving list notes', () => {
   })
 
   it('closes the editor only once the save is confirmed', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateList.mockReturnValue(d.promise)
     const textarea = await openNotesEditor()
 
@@ -128,7 +111,7 @@ describe('saving list notes', () => {
   })
 
   it('keeps text typed while the save was in flight', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateList.mockReturnValue(d.promise)
     const textarea = await openNotesEditor()
 
@@ -145,7 +128,7 @@ describe('saving list notes', () => {
   })
 
   it('reports by toast when the user canceled before the save failed', async () => {
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateList.mockReturnValue(d.promise)
     const textarea = await openNotesEditor()
 
@@ -165,7 +148,7 @@ describe('saving list notes', () => {
   it('does not reopen the editor until a canceled save has settled', async () => {
     // A second save would take over the first one's callbacks, and the
     // first one's failure would go unreported.
-    const d = deferred()
+    const d = deferred<unknown>()
     h.updateList.mockReturnValue(d.promise)
     const textarea = await openNotesEditor()
 

@@ -66,6 +66,7 @@ vi.mock('../components/ConfirmDialog', () => ({
 }))
 
 import { useGearImportFlow } from './use-gear-import-flow'
+import { deferred } from '../test/deferred'
 
 function Harness({ onBeforeOpen }: { onBeforeOpen: () => void }) {
   const { openImportExplainer, importUi } = useGearImportFlow({
@@ -119,10 +120,8 @@ describe('useGearImportFlow onBeforeOpen', () => {
     // The stacking sequence: confirm the import, dismiss the preview while
     // the POST is out, open another dialog on the page, then let the import
     // reject. The error dialog must close the page's dialog on its way in.
-    let reject!: (err: Error) => void
-    api.importGearItems.mockImplementation(
-      () => new Promise<void>((_resolve, r) => { reject = r }),
-    )
+    const importCall = deferred()
+    api.importGearItems.mockImplementation(() => importCall.promise)
     const onBeforeOpen = vi.fn()
     renderHarness(onBeforeOpen)
 
@@ -136,7 +135,7 @@ describe('useGearImportFlow onBeforeOpen', () => {
     expect(screen.queryByText('confirm-import')).toBeNull()
     expect(onBeforeOpen).toHaveBeenCalledTimes(1)
 
-    await act(async () => reject(new Error('boom')))
+    await act(async () => importCall.reject(new Error('boom')))
     expect(await screen.findByText(/Import error: boom/)).toBeInTheDocument()
     expect(onBeforeOpen).toHaveBeenCalledTimes(2)
   })

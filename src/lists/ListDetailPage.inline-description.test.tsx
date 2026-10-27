@@ -66,9 +66,8 @@ const h = vi.hoisted(() => ({
 
 // Keeps better-auth's session atom from mounting (test/list-detail-harness.tsx
 // explains why); only the last-list pointer reads it.
-vi.mock('../lib/auth-client', () => ({
-  authClient: { useSession: () => ({ data: { user: { id: 'owner-1' } }, isPending: false }) },
-}))
+vi.mock('../lib/auth-client', async () =>
+  (await import('../test/auth-client-mock')).signedInAuthClient)
 
 vi.mock('../lib/queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/queries')>()

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import { deferred } from '../../test/deferred'
 
 vi.mock('../toast', () => ({
   showToast: vi.fn(),
@@ -370,14 +371,6 @@ describe('makeOptimisticGearItemsBulkCategoryMove', async () => {
 // lost on any one of them independently, and a rollback context assembled across a
 // moving set of caches restores a state that never existed.
 describe('an in-flight refetch cannot clobber the gear fan-out', () => {
-  function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
-    let resolve!: (value: T) => void
-    const promise = new Promise<T>((r) => {
-      resolve = r
-    })
-    return { promise, resolve }
-  }
-
   it('the optimistic write survives on the gear cache AND every affected list', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const g1 = gear({ id: 'g1', name: 'Tent' })
