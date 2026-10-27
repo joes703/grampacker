@@ -532,7 +532,7 @@ export default function GearLibraryPage() {
               on the list toolbar; Settings deliberately has none). Visible
               at every viewport, never gated on libraryReady: the preference
               is device-local and the zero-data account needs it most. */}
-          <UnitSegmentedControl idPrefix="gear-toolbar" />
+          <UnitSegmentedControl />
 
           {/* Right cluster — New item + Options. Shown only at >=lg; below
               lg the MobileGearActionBar's Add slot and Options modal own

@@ -1,10 +1,8 @@
+import { useId } from 'react'
 import { useWeightUnit } from '../lib/use-weight-unit'
 import type { WeightUnit } from '../lib/weight'
 
 type CommonProps = {
-  /** Visual ID prefix for the two radio inputs so multiple instances on the
-   *  same page get distinct ids. Defaults to "wuc" if not provided. */
-  idPrefix?: string
   /** Optional label rendered above the control.
    *  SharePage omits the label since the segmented chrome reads on its own. */
   label?: string
@@ -31,12 +29,13 @@ type ViewProps = CommonProps & {
 // segmented control. Touch + click both work because the labels are wired
 // via `for=` to the inputs.
 export function UnitSegmentedControlView({
-  idPrefix = 'wuc',
   label,
   hint,
   value,
   onValueChange,
 }: ViewProps) {
+  // useId keeps two instances on one page (toolbar and panel) apart.
+  const idPrefix = useId()
   const groupName = `${idPrefix}-units`
   const metricId = `${idPrefix}-metric`
   const imperialId = `${idPrefix}-imperial`

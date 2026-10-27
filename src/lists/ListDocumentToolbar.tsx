@@ -62,7 +62,7 @@ export default function ListDocumentToolbar({
               <span className="hidden sm:inline">Print</span>
             </button>
           )}
-          <UnitSegmentedControl idPrefix="list-toolbar" />
+          <UnitSegmentedControl />
         </div>
 
         <div className="flex items-center gap-2">
