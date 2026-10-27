@@ -167,12 +167,13 @@ export default function Modal({
       // focus:outline-none suppresses any UA focus ring on the dialog
       // itself when we focus it after showModal() — the dialog is a
       // focus sink, not a visible target.
-      // print:hidden: an open modal <dialog> is in the TOP LAYER, so it
+      // print:hidden!: an open modal <dialog> is in the TOP LAYER, so it
       // paints over the document on paper as well as on screen. Covers
-      // every dialog - ConfirmDialog, MobileOptionsModal, Settings.
+      // every dialog. Important, because the left sheet's open:flex has a
+      // more specific selector than print:hidden and would otherwise win.
       // The left sheet uses open:flex, not flex: display set on a closed
       // <dialog> would show it.
-      className={`${placement === 'left' ? LEFT_SHEET : CENTERED} p-0 shadow-lg backdrop:bg-black/40 focus:outline-none print:hidden ${className ?? ''}`}
+      className={`${placement === 'left' ? LEFT_SHEET : CENTERED} p-0 shadow-lg backdrop:bg-black/40 focus:outline-none print:hidden! ${className ?? ''}`}
     >
       {header && (
         <div className="flex items-center justify-between border-b border-gray-100 px-6 pt-5 pb-3">
