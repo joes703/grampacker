@@ -42,17 +42,10 @@ export type PackingData = {
 
 export function buildPackingJson(input: {
   lists: List[]
-  allItems: ListItemWithGear[]
+  itemsByListId: ReadonlyMap<string, ListItemWithGear[]>
   packingLocationsByListId: ReadonlyMap<string, PackingLocation[]>
   foodByListId: ReadonlyMap<string, ListFoodResponse>
 }): PackingData {
-  const itemsByListId = new Map<string, ListItemWithGear[]>()
-  for (const item of input.allItems) {
-    const bucket = itemsByListId.get(item.listId)
-    if (bucket) bucket.push(item)
-    else itemsByListId.set(item.listId, [item])
-  }
-
   return {
     version: PACKING_DATA_VERSION,
     lists: input.lists.map((list) => ({
@@ -67,7 +60,7 @@ export function buildPackingJson(input: {
         })),
       // Emitted in pack order, per location, so the file reads the way the
       // Pack view does rather than needing the consumer to re-sort.
-      items: (itemsByListId.get(list.id) ?? [])
+      items: (input.itemsByListId.get(list.id) ?? [])
         .toSorted((a, b) => a.packSortOrder - b.packSortOrder)
         .map((item) => ({
           listItemId: item.id,

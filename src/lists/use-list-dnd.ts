@@ -282,16 +282,11 @@ export function useListDnd({
       return [node.location.id, ...node.children.flatMap(collect)]
     }),
   )
-  const foodByLocation = new Map<string | null, FoodItemResponse[]>()
-  for (const food of packFoodItems) {
-    const key =
-      food.packingLocationId !== null && renderedLocationIds.has(food.packingLocationId)
-        ? food.packingLocationId
-        : null
-    const bucket = foodByLocation.get(key)
-    if (bucket) bucket.push(food)
-    else foodByLocation.set(key, [food])
-  }
+  const foodByLocation = Map.groupBy(packFoodItems, (food) =>
+    food.packingLocationId !== null && renderedLocationIds.has(food.packingLocationId)
+      ? food.packingLocationId
+      : null,
+  )
 
   // Click-to-place. The plan is computed against the array the SECTION
   // rendered, handed back by the slot that was activated - never rebuilt from

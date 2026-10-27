@@ -23,23 +23,15 @@ export type TakeoutInput = {
 export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
   const { categories, gearItems, lists, allItems, packingLocationsByListId, foodByListId } =
     input
+  const itemsByListId = Map.groupBy(allItems, (item) => item.listId)
   const files: Record<string, string> = {}
   files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
   files['food.json'] = JSON.stringify(buildFoodJson({ lists, foodByListId }), null, 2)
   files['packing.json'] = JSON.stringify(
-    buildPackingJson({ lists, allItems, packingLocationsByListId, foodByListId }),
+    buildPackingJson({ lists, itemsByListId, packingLocationsByListId, foodByListId }),
     null,
     2,
   )
-
-  // Group items by their list once, then emit one CSV per list. A manual
-  // group keeps this off Map.groupBy (avoids leaning on the lib target).
-  const itemsByListId = new Map<string, ListItemWithGear[]>()
-  for (const item of allItems) {
-    const bucket = itemsByListId.get(item.listId)
-    if (bucket) bucket.push(item)
-    else itemsByListId.set(item.listId, [item])
-  }
 
   // Slugify list names for filenames, disambiguating collisions in list
   // order: the first "Trip" is trip.csv, the next trip-2.csv. A name that
