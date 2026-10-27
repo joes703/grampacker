@@ -69,16 +69,35 @@ export function gramsToLbOzParts(grams: number): { lb: number; oz: number } {
 export const WEIGHT_UNIT_EVENT = 'weight-unit-change'
 export const WEIGHT_UNIT_KEY = 'weightUnit'
 
+// localStorage THROWS (not just fails) in Safari private mode and with site
+// data blocked. The unit is read on every page that shows a weight, so reads
+// fall back to the default and writes are ignored.
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Storage is blocked: the unit stays at its default.
+  }
+}
+
 export function getWeightUnit(): WeightUnit {
   // localStorage is a trust boundary — anything could be in there. Validate
   // explicitly and fall back to the default for null, missing, or any
   // unexpected string.
-  const raw = localStorage.getItem(WEIGHT_UNIT_KEY)
+  const raw = readStorage(WEIGHT_UNIT_KEY)
   return raw === 'g' || raw === 'oz' ? raw : 'g'
 }
 
 export function setWeightUnit(unit: WeightUnit): void {
-  localStorage.setItem(WEIGHT_UNIT_KEY, unit)
+  writeStorage(WEIGHT_UNIT_KEY, unit)
   // Notify same-tab subscribers. Cross-tab updates ride the native `storage`
   // event automatically — no manual dispatch needed there.
   if (typeof window !== 'undefined') {
@@ -113,11 +132,11 @@ export function getShareWeightUnit(): WeightUnit {
   // own key is missing or corrupt.) A signed-in owner opening their own share
   // link therefore starts in their usual units - the isolation is one-way,
   // read-through but never write-through.
-  const raw = localStorage.getItem(SHARE_WEIGHT_UNIT_KEY)
+  const raw = readStorage(SHARE_WEIGHT_UNIT_KEY)
   if (raw === 'g' || raw === 'oz') return raw
   return getWeightUnit()
 }
 
 export function setShareWeightUnit(unit: WeightUnit): void {
-  localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, unit)
+  writeStorage(SHARE_WEIGHT_UNIT_KEY, unit)
 }

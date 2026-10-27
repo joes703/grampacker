@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, it, expect } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import {
   SHARE_WEIGHT_UNIT_KEY,
   WEIGHT_UNIT_KEY,
@@ -136,5 +136,31 @@ describe('share weight unit isolation', () => {
     localStorage.setItem(SHARE_WEIGHT_UNIT_KEY, 'stones')
     localStorage.setItem(WEIGHT_UNIT_KEY, 'furlongs')
     expect(getShareWeightUnit()).toBe('g')
+  })
+})
+
+// Safari private mode and browsers with site data blocked THROW on
+// localStorage access. The unit preference is read on every page that shows a
+// weight, so a throw here would take those pages down.
+describe('weight unit with blocked storage', () => {
+  const blocked = {
+    getItem: () => {
+      throw new DOMException('blocked', 'SecurityError')
+    },
+    setItem: () => {
+      throw new DOMException('blocked', 'SecurityError')
+    },
+  }
+  beforeEach(() => vi.stubGlobal('localStorage', blocked))
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads fall back to grams', () => {
+    expect(getWeightUnit()).toBe('g')
+    expect(getShareWeightUnit()).toBe('g')
+  })
+
+  it('writes do not throw', () => {
+    expect(() => setWeightUnit('oz')).not.toThrow()
+    expect(() => setShareWeightUnit('oz')).not.toThrow()
   })
 })
