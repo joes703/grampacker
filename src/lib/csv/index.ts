@@ -12,7 +12,7 @@
 // are not re-exported here; consumers import them directly from
 // '../lib/csv/import-plan' to keep this barrel to the format adapters.
 
-export { toCsv, downloadCsv, parseCsv, MAX_CSV_ROWS } from './core'
+export { toCsv, downloadBlob, downloadCsv, parseCsv, slugifyFilename, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
 export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'

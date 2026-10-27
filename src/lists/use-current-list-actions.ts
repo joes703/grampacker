@@ -14,7 +14,7 @@ import {
 } from '../lib/queries'
 import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
-import { listItemsToCsv, downloadCsv } from '../lib/csv'
+import { listItemsToCsv, downloadCsv, slugifyFilename } from '../lib/csv'
 import { optimisticListPlaceholder } from '../lib/optimistic-list-placeholder'
 import { showToast } from '../lib/toast'
 import { forgetLastListPathTo } from '../lib/last-list-path'
@@ -176,10 +176,7 @@ export function useCurrentListActions() {
           qc.fetchQuery(queries.categories()),
         ])
         const csv = listItemsToCsv(items, categories)
-        downloadCsv(
-          `${list.name.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'list'}.csv`,
-          csv,
-        )
+        downloadCsv(`${slugifyFilename(list.name)}.csv`, csv)
       } catch {
         // Non-optimistic action with no snap-back: surface feedback and
         // consume so the fire-and-forget call sites cannot reject.

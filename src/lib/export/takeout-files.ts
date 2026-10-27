@@ -1,4 +1,4 @@
-import { gearItemsToCsv, listItemsToCsv } from '../csv'
+import { gearItemsToCsv, listItemsToCsv, slugifyFilename } from '../csv'
 import type { Category, GearItem, List, ListItemWithGear, PackingLocation } from '../types'
 import type { ListFoodResponse } from '../../../shared/food'
 import { buildFoodJson } from './food-json'
@@ -47,8 +47,7 @@ export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
   const seen = new Map<string, number>()
   for (const list of lists) {
     const items = itemsByListId.get(list.id) ?? []
-    const base =
-      list.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') || 'list'
+    const base = slugifyFilename(list.name)
     const count = seen.get(base) ?? 0
     seen.set(base, count + 1)
     const filename = count === 0 ? `${base}.csv` : `${base}-${count + 1}.csv`

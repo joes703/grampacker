@@ -3,6 +3,7 @@ import { Download } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { queries } from '../lib/queries/options'
 import { buildTakeoutFiles, exportTimestamp } from '../lib/export/takeout-files'
+import { downloadBlob } from '../lib/csv'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 
 // "Download all data" control for the settings page: builds a zip client-
@@ -80,13 +81,10 @@ export default function DownloadAllData() {
       }
 
       const zipped = zipSync(files)
-      const blob = new Blob([new Uint8Array(zipped)], { type: 'application/zip' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `grampacker-export-${exportTimestamp()}.zip`
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(
+        `grampacker-export-${exportTimestamp()}.zip`,
+        new Blob([new Uint8Array(zipped)], { type: 'application/zip' }),
+      )
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Download failed')
     } finally {

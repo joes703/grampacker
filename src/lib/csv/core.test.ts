@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCsv, toCsv } from './core'
+import { parseCsv, slugifyFilename, toCsv } from './core'
 
 describe('parseCsv', () => {
   it('parses a basic CSV with a header and two data rows', () => {
@@ -129,5 +129,17 @@ describe('toCsv formula-injection escaping', () => {
     // Only the first character matters to spreadsheet formula parsers,
     // so "a=b" is safe and must round-trip unescaped.
     expect(dataRow(toCsv([{ name: 'a=b' }]))).toBe('a=b')
+  })
+})
+
+// One rule for every exported file name, so a list downloads under the same
+// name alone and inside the full export.
+describe('slugifyFilename', () => {
+  it.each([
+    ['My Trip!', 'my-trip'],
+    ['  Big   Bend -- 2026 ', 'big-bend-2026'],
+    ['!!!', 'list'],
+  ])('%j -> %j', (name, expected) => {
+    expect(slugifyFilename(name)).toBe(expected)
   })
 })

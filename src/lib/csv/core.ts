@@ -55,14 +55,23 @@ export function toCsv(rows: Record<string, string | number | boolean | null | un
   return lines.join('\r\n')
 }
 
-export function downloadCsv(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+// A list name as a file name: letters and digits, with each run of anything
+// else as one dash and no dash at either end; "list" when nothing is left.
+export function slugifyFilename(name: string): string {
+  return name.replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') || 'list'
+}
+
+export function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+export function downloadCsv(filename: string, content: string): void {
+  downloadBlob(filename, new Blob([content], { type: 'text/csv;charset=utf-8;' }))
 }
 
 // Minimal RFC-4180-compliant CSV parser (no external dependency).
