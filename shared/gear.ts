@@ -45,6 +45,11 @@ export const MAX_NAME_LENGTH = 256
 // Upper bound (grams) for a single item's weight; drafts clamp to this.
 export const MAX_ITEM_WEIGHT_GRAMS = 100000
 
+// A weight draft kept between 0 and MAX_ITEM_WEIGHT_GRAMS before it is sent.
+export function clampWeightGrams(grams: number): number {
+  return Math.max(0, Math.min(grams, MAX_ITEM_WEIGHT_GRAMS))
+}
+
 // Exported for the list import, which creates gear-library rows (categories
 // and gear) and must hold them to these same bounds.
 export const categoryNameSchema = z.string().trim().min(1).max(MAX_CATEGORY_NAME)

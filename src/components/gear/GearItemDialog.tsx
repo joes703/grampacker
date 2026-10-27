@@ -9,9 +9,10 @@ import InlineCreateCategory from '../InlineCreateCategory'
 import Modal from '../Modal'
 import PrimaryButton from '../PrimaryButton'
 import WeightInput from '../WeightInput'
-import { MAX_COST, MAX_ITEM_WEIGHT_GRAMS, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_LIST_ITEM_QUANTITY } from '../../lib/caps'
+import { MAX_COST, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_LIST_ITEM_QUANTITY } from '../../lib/caps'
 import { clampQuantity } from '../../../shared/lists'
 import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
+import { clampWeightGrams } from '../../../shared/gear'
 
 export type GearPatch = {
   name: string
@@ -110,7 +111,7 @@ export default function GearItemDialog({
     const gearPatch: GearPatch = {
       name: name.trim(),
       description: description.trim() || null,
-      weightGrams: Math.max(0, Math.min(weightGrams, MAX_ITEM_WEIGHT_GRAMS)),
+      weightGrams: clampWeightGrams(weightGrams),
       categoryId: categoryId,
       // Blank / NaN / negative -> null (unknown), never 0.
       cost: !isFinite(parsedCost) || parsedCost < 0
