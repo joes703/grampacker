@@ -36,4 +36,14 @@ describe('GearItemDialog cost', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
     expect(onSave.mock.calls[1]?.[0]).toMatchObject({ cost: null })
   })
+
+  it('clears the cost error once the cost is corrected', () => {
+    renderNew()
+    fireEvent.change(screen.getByLabelText(/Cost/), { target: { value: '100000000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/Cost/), { target: { value: '10' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })

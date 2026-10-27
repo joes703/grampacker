@@ -278,7 +278,10 @@ export default function GearItemDialog({
                   step="0.01"
                   placeholder=""
                   value={cost}
-                  onChange={(e) => setCost(e.target.value)}
+                  onChange={(e) => {
+                    setCost(e.target.value)
+                    setCostError(null)
+                  }}
                   className="w-full min-w-0 rounded-lg border border-gray-300 pl-6 pr-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
