@@ -34,4 +34,41 @@ describe('useCsvFileInput', () => {
     await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringMatching(/Couldn't read this file/)))
     expect(onParsed).not.toHaveBeenCalled()
   })
+
+  // A defect in the parser or the caller's handler must still reach the user,
+  // not become an unhandled promise rejection (AGENTS.md: every rejected
+  // promise has an owner).
+  it('reports a parser that throws, and leaves nothing unhandled', async () => {
+    const onError = vi.fn()
+    const escaped: unknown[] = []
+    const onRejection = (reason: unknown) => escaped.push(reason)
+    // This tier's tsconfig has no node types; reach process structurally.
+    const proc = (
+      globalThis as unknown as {
+        process: {
+          on: (event: 'unhandledRejection', h: (reason: unknown) => void) => void
+          off: (event: 'unhandledRejection', h: (reason: unknown) => void) => void
+        }
+      }
+    ).process
+    proc.on('unhandledRejection', onRejection)
+    try {
+      function Throwing() {
+        const { inputRef, onChange } = useCsvFileInput(
+          () => {
+            throw new Error('parser defect')
+          },
+          { onParsed: vi.fn(), onError },
+        )
+        return <input ref={inputRef} type="file" data-testid="file" onChange={onChange} />
+      }
+      const { getByTestId } = render(<Throwing />)
+      pick(getByTestId('file'), new File(['a'], 'gear.csv'))
+      await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.stringMatching(/Couldn't import this file/)))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(escaped).toEqual([])
+    } finally {
+      proc.off('unhandledRejection', onRejection)
+    }
+  })
 })

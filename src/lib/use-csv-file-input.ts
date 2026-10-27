@@ -37,18 +37,25 @@ export function useCsvFileInput<T>(
     const filename = file.name
     // The promise is owned here: a read failure (corrupt file, permission
     // denied, removed media) is reported, or the import surface would wait
-    // forever with nothing shown.
-    file.text().then(
-      (text) => {
-        const parsed = parser(text)
-        if (typeof parsed === 'string') handlers.onError(parsed)
-        else handlers.onParsed(parsed, filename)
-      },
-      () =>
-        handlers.onError(
-          "Couldn't read this file. It may be corrupt or your browser may have blocked file access. Try a different file.",
-        ),
-    )
+    // forever with nothing shown; a throw from the parser or the caller's
+    // handler is reported too, never left unhandled.
+    file
+      .text()
+      .then(
+        (text) => {
+          const parsed = parser(text)
+          if (typeof parsed === 'string') handlers.onError(parsed)
+          else handlers.onParsed(parsed, filename)
+        },
+        () =>
+          handlers.onError(
+            "Couldn't read this file. It may be corrupt or your browser may have blocked file access. Try a different file.",
+          ),
+      )
+      .catch((error: unknown) => {
+        console.error('CSV import failed', error)
+        handlers.onError("Couldn't import this file. Please try again.")
+      })
   }
 
   const openPicker = useCallback(() => {
