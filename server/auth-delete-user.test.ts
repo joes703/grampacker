@@ -1,4 +1,4 @@
-import { app, env, testDb } from './test/node-env'
+import { app, env } from './test/node-env'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeSessionStale, signUpVerifiedUser } from './test/auth-helpers'
 import { apiRequest } from './test/api-helpers'
@@ -44,9 +44,7 @@ const APP_TABLES = ['categories', 'gear_items', 'lists', 'list_items', 'passkey'
 const AUTH_CHILD_TABLES = ['session'] as const
 
 async function userIdOf(email: string): Promise<string> {
-  const row = await testDb.prepare('select id from user where email = ?')
-    .bind(email)
-    .first<{ id: string }>()
+  const row = (env.DB.prepare('select id from user where email = ?').get(email) as { id: string } | undefined)
   if (!row) throw new Error(`no user row for ${email}`)
   return row.id
 }
@@ -54,14 +52,10 @@ async function userIdOf(email: string): Promise<string> {
 async function rowCounts(userId: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
   for (const table of [...APP_TABLES, ...AUTH_CHILD_TABLES]) {
-    const r = await testDb.prepare(`select count(*) as n from ${table} where user_id = ?`)
-      .bind(userId)
-      .first<{ n: number }>()
+    const r = (env.DB.prepare(`select count(*) as n from ${table} where user_id = ?`).get(userId) as { n: number } | undefined)
     out[table] = r?.n ?? -1
   }
-  const u = await testDb.prepare('select count(*) as n from user where id = ?')
-    .bind(userId)
-    .first<{ n: number }>()
+  const u = (env.DB.prepare('select count(*) as n from user where id = ?').get(userId) as { n: number } | undefined)
   out.user = u?.n ?? -1
   return out
 }
@@ -120,11 +114,9 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
     userData: { id: userId, name: '', displayName: '' },
     context: null,
   })
-  await testDb.prepare(
+  env.DB.prepare(
     'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
-  )
-    .bind(`${userId}-pkver`, token, value, Date.now() + 300_000)
-    .run()
+  ).run(`${userId}-pkver`, token, value, Date.now() + 300_000)
 }
 
 // A PENDING MAGIC LINK: `value` is JSON carrying `$.email` and NO user id at
@@ -136,28 +128,24 @@ async function seedPasskeyChallenge(userId: string): Promise<void> {
 // `value`, so the prefix does not affect what it finds.
 async function seedPendingMagicLink(email: string): Promise<void> {
   const token = crypto.randomUUID().replace(/-/g, '')
-  await testDb.prepare(
+  env.DB.prepare(
     'insert into verification (id, identifier, value, expires_at) values (?, ?, ?, ?)',
-  )
-    .bind(
+  ).run(
       `ml-${token}`,
       `magic-link:${token}`,
       JSON.stringify({ type: 'magic-link', email, name: '' }),
       Date.now() + 300_000,
     )
-    .run()
 }
 
 // Count every verification artifact attributable to a user, matching the purge's
 // own predicate (passkey ceremony by user id, pending magic link by email).
 async function verificationCount(userId: string, email: string): Promise<number> {
-  const r = await testDb.prepare(
+  const r = (env.DB.prepare(
     `select count(*) as n from verification
      where (json_valid(value) and json_extract(value, '$.userData.id') = ?)
         or (json_valid(value) and json_extract(value, '$.email') = ?)`,
-  )
-    .bind(userId, email)
-    .first<{ n: number }>()
+  ).get(userId, email) as { n: number } | undefined)
   return r?.n ?? -1
 }
 
@@ -200,7 +188,7 @@ describe('POST /api/auth/delete-user', () => {
     // status it asserts. These tests are about deletion semantics, not rate
     // limiting, so reset the limiter before each so each starts with a full
     // budget (every test makes at most two delete-user calls).
-    await testDb.prepare('delete from rate_limits').run()
+    env.DB.prepare('delete from rate_limits').run()
 
     email = `del-${crypto.randomUUID()}@example.com`
     otherEmail = `keep-${crypto.randomUUID()}@example.com`
@@ -295,11 +283,9 @@ describe('POST /api/auth/delete-user', () => {
     )
 
     expect((await deleteAccount(cookie, userId)).status).toBe(200)
-    const left = await testDb.prepare(
+    const left = (env.DB.prepare(
       'select count(*) as n from list_items where user_id = ?',
-    )
-      .bind(userId)
-      .first<{ n: number }>()
+    ).get(userId) as { n: number } | undefined)
     expect(left?.n).toBe(0)
   })
 
@@ -425,11 +411,9 @@ describe('POST /api/auth/delete-user', () => {
     expect(stale.status).toBe(302)
     expect(stale.headers.get('location')).toContain('error=INVALID_TOKEN')
     expect(stale.headers.get('set-cookie')).toBeNull()
-    const resurrected = await testDb.prepare(
+    const resurrected = (env.DB.prepare(
       'select count(*) as n from user where lower(email) = lower(?)',
-    )
-      .bind(email)
-      .first<{ n: number }>()
+    ).get(email) as { n: number } | undefined)
     expect(resurrected?.n, 'user rows for the deleted address').toBe(0)
 
     // The similar address is a different account and its link still works.

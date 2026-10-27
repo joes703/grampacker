@@ -1,4 +1,4 @@
-import { testDb } from '../test/node-env'
+import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import { FOOD_ITEM_CAP } from '../../shared/food'
 import { PACK_RANK_MAX } from '../../shared/lists'
@@ -301,12 +301,10 @@ describe('the food half of the pack-order permutation and its parents', () => {
   async function snapshot(cookie: string, listId: string) {
     const gear = await apiRequest(cookie, 'GET', `/api/lists/${listId}/items`)
     expect(gear.status).toBe(200)
-    const food = await testDb.prepare(
+    const food = (env.DB.prepare(
       'select * from list_food_items where list_id = ? order by id',
-    )
-      .bind(listId)
-      .all()
-    return { gear: await gear.json(), food: food.results }
+    ).all(listId) as Record<string, unknown>[])
+    return { gear: await gear.json(), food }
   }
 
   it("404s a food id from ANOTHER OWNED list, gear half valid, zero writes", async () => {
@@ -366,7 +364,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const gearValues = Array.from({ length: 300 }, (_, i) =>
       `('${userId}-g-${i}', '${userId}', 'Seed gear ${i}', 100, ${i}, 0, 0)`)
     for (let i = 0; i < gearValues.length; i += 50) {
-      await testDb.prepare(
+      env.DB.prepare(
         'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
           gearValues.slice(i, i + 50).join(','),
       ).run()
@@ -374,7 +372,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const itemValues = Array.from({ length: 300 }, (_, i) =>
       `('${userId}-li-${i}', '${userId}', '${list.id}', '${userId}-g-${i}', 1, 0, 0, 0, 0, ${i}, ${i}, 0, 0)`)
     for (let i = 0; i < itemValues.length; i += 40) {
-      await testDb.prepare(
+      env.DB.prepare(
         'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
           itemValues.slice(i, i + 40).join(','),
       ).run()
@@ -382,7 +380,7 @@ describe('a full-cohort union reorder at the caps', () => {
     const foodValues = Array.from({ length: 200 }, (_, i) =>
       `('${userId}-f-${i}', '${userId}', '${list.id}', 'Seed food ${i}', 100, 1, ${i}, 0, 0, ${300 + i}, 0, 0)`)
     for (let i = 0; i < foodValues.length; i += 40) {
-      await testDb.prepare(
+      env.DB.prepare(
         'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ' +
           foodValues.slice(i, i + 40).join(','),
       ).run()
@@ -427,14 +425,14 @@ describe('index-safety validation heals degraded rank states', () => {
     const list = await createList(cookie, 'Trip')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-tg', '${userId}', 'Stove', 100, 0, 0, 0)`,
     ).run()
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-tli', '${userId}', '${list.id}', '${userId}-tg', 1, 0, 0, 0, 0, 0, 0, 0, 0)`,
     ).run()
     // The TIE: food also at rank 0 in the same (Unassigned) cohort.
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, is_packed, is_ready, pack_sort_order, created_at, updated_at) values ('${userId}-tf', '${userId}', '${list.id}', 'Oats', 100, 1, 0, 0, 0, 0, 0, 0)`,
     ).run()
 
@@ -487,10 +485,10 @@ describe('location deletion near the rank ceiling', () => {
     const location = await createPackingLocation(cookie, list.id, 'Bag')
     const me = await apiRequest(cookie, 'GET', '/api/me')
     const { id: userId } = (await me.json()) as { id: string }
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ('${userId}-cg', '${userId}', 'Legacy', 100, 0, 0, 0)`,
     ).run()
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ('${userId}-cli', '${userId}', '${list.id}', '${userId}-cg', 1, 0, 0, 0, 0, 0, 999999700, 0, 0)`,
     ).run()
     // 299 bag gear rows (the 300-item list cap minus the legacy row) plus
@@ -500,7 +498,7 @@ describe('location deletion near the rank ceiling', () => {
     const bagGearValues = Array.from({ length: 299 }, (_, i) =>
       `('${userId}-bg-${i}', '${userId}', 'Bag gear ${i}', 100, ${i + 1}, 0, 0)`)
     for (let i = 0; i < bagGearValues.length; i += 50) {
-      await testDb.prepare(
+      env.DB.prepare(
         'insert into gear_items (id, user_id, name, weight_grams, sort_order, created_at, updated_at) values ' +
           bagGearValues.slice(i, i + 50).join(','),
       ).run()
@@ -508,12 +506,12 @@ describe('location deletion near the rank ceiling', () => {
     const bagItemValues = Array.from({ length: 299 }, (_, i) =>
       `('${userId}-bli-${i}', '${userId}', '${list.id}', '${userId}-bg-${i}', 1, 0, 0, 0, 0, ${i + 1}, ${i}, 0, 0)`)
     for (let i = 0; i < bagItemValues.length; i += 40) {
-      await testDb.prepare(
+      env.DB.prepare(
         'insert into list_items (id, user_id, list_id, gear_item_id, quantity, is_worn, is_consumable, is_packed, is_ready, sort_order, pack_sort_order, created_at, updated_at) values ' +
           bagItemValues.slice(i, i + 40).join(','),
       ).run()
     }
-    await testDb.prepare(
+    env.DB.prepare(
       `update list_items set packing_location_id = '${location.id}' where user_id = '${userId}' and id like '${userId}-bli-%'`,
     ).run()
     const food = await createFood(cookie, list.id, 'Oats')
@@ -648,10 +646,9 @@ describe('list_food_items guards below the API', () => {
   }
 
   function insertFood(userId: string, row: FoodRow) {
-    return testDb.prepare(
+    return env.DB.prepare(
       'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, is_per_meal, sort_order, is_packed, is_ready, packing_location_id, pack_sort_order, created_at, updated_at) values (?, ?, ?, ?, 100, 1, ?, 0, 0, 0, ?, ?, 0, 0)',
-    )
-      .bind(
+    ).run(
         row.id,
         userId,
         row.listId,
@@ -660,72 +657,67 @@ describe('list_food_items guards below the API', () => {
         row.locationId ?? null,
         row.rank,
       )
-      .run()
   }
 
   function setRank(id: string, rank: number) {
-    return testDb.prepare('update list_food_items set pack_sort_order = ? where id = ?')
-      .bind(rank, id)
-      .run()
+    return env.DB.prepare('update list_food_items set pack_sort_order = ? where id = ?').run(rank, id)
   }
 
   it("refuses a location that is not on the food's own list", async () => {
     const { userId, list, otherList, location } = await ownerWithTwoLists('fg-loc@example.com')
 
     // Another of the SAME user's lists: ownership alone would allow it.
-    await expect(
+    expect(() =>
       insertFood(userId, { id: `${userId}-x`, listId: otherList.id, locationId: location.id, rank: 0 }),
-    ).rejects.toThrow(/packing location does not belong to this list/)
-    await expect(
+    ).toThrow(/packing location does not belong to this list/)
+    expect(() =>
       insertFood(userId, { id: `${userId}-y`, listId: list.id, locationId: 'nonexistent', rank: 0 }),
-    ).rejects.toThrow(/packing location does not belong to this list/)
+    ).toThrow(/packing location does not belong to this list/)
 
-    await insertFood(userId, { id: `${userId}-z`, listId: otherList.id, rank: 0 })
-    await expect(
-      testDb.prepare('update list_food_items set packing_location_id = ? where id = ?')
-        .bind(location.id, `${userId}-z`)
-        .run(),
-    ).rejects.toThrow(/packing location does not belong to this list/)
+    insertFood(userId, { id: `${userId}-z`, listId: otherList.id, rank: 0 })
+    expect(() =>
+      env.DB.prepare('update list_food_items set packing_location_id = ? where id = ?').run(location.id, `${userId}-z`),
+    ).toThrow(/packing location does not belong to this list/)
   })
 
   it('refuses a duplicate rank within a cohort, and only within it', async () => {
     const { userId, list, location } = await ownerWithTwoLists('fg-dup@example.com')
 
-    await insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 5 })
-    await expect(
+    insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 5 })
+    expect(() =>
       insertFood(userId, { id: `${userId}-u2`, listId: list.id, rank: 5 }),
-    ).rejects.toThrow(/UNIQUE constraint failed/)
+    ).toThrow(/UNIQUE constraint failed/)
 
     // The same rank in a DIFFERENT cohort (a location) is fine...
-    await insertFood(userId, { id: `${userId}-l1`, listId: list.id, locationId: location.id, rank: 5 })
+    insertFood(userId, { id: `${userId}-l1`, listId: list.id, locationId: location.id, rank: 5 })
     // ...but not twice inside that location.
-    await expect(
+    expect(() =>
       insertFood(userId, { id: `${userId}-l2`, listId: list.id, locationId: location.id, rank: 5 }),
-    ).rejects.toThrow(/UNIQUE constraint failed/)
+    ).toThrow(/UNIQUE constraint failed/)
   })
 
   it('INSERT accepts only 0..PACK_RANK_MAX', async () => {
     const { userId, list } = await ownerWithTwoLists('fg-insert@example.com')
 
-    await expect(
+    expect(() =>
       insertFood(userId, { id: `${userId}-neg`, listId: list.id, rank: -1 }),
-    ).rejects.toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
-    await expect(
+    ).toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
+    expect(() =>
       insertFood(userId, { id: `${userId}-over`, listId: list.id, rank: PACK_RANK_MAX + 1 }),
-    ).rejects.toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
-    await insertFood(userId, { id: `${userId}-max`, listId: list.id, rank: PACK_RANK_MAX })
+    ).toThrow(/food pack_sort_order out of range \(0\.\.1000000000\)/)
+    insertFood(userId, { id: `${userId}-max`, listId: list.id, rank: PACK_RANK_MAX })
   })
 
   it('UPDATE also allows the -FOOD_ITEM_CAP scratch band that parking uses', async () => {
     const { userId, list } = await ownerWithTwoLists('fg-update@example.com')
     const id = `${userId}-row`
-    await insertFood(userId, { id, listId: list.id, rank: 0 })
+    insertFood(userId, { id, listId: list.id, rank: 0 })
 
-    await setRank(id, -FOOD_ITEM_CAP)
-    await expect(setRank(id, -FOOD_ITEM_CAP - 1)).rejects.toThrow(
+    setRank(id, -FOOD_ITEM_CAP)
+    expect(() => setRank(id, -FOOD_ITEM_CAP - 1)).toThrow(
       /food pack_sort_order out of range \(-200\.\.1000000000\)/,
     )
-    await expect(setRank(id, PACK_RANK_MAX + 1)).rejects.toThrow(
+    expect(() => setRank(id, PACK_RANK_MAX + 1)).toThrow(
       /food pack_sort_order out of range \(-200\.\.1000000000\)/,
     )
   })
@@ -736,18 +728,16 @@ describe('list_food_items guards below the API', () => {
     // the trigger. The bag's rows keep their relative order, offset past the
     // Unassigned food maximum.
     const { userId, list, location } = await ownerWithTwoLists('fg-orphan@example.com')
-    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: 0 })
-    await insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 3 })
-    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
-    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 2 })
+    insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: 0 })
+    insertFood(userId, { id: `${userId}-u1`, listId: list.id, rank: 3 })
+    insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 2 })
 
-    await testDb.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+    env.DB.prepare('delete from packing_locations where id = ?').run(location.id)
 
-    const { results } = await testDb.prepare(
+    const results = env.DB.prepare(
       'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
-    )
-      .bind(list.id)
-      .all()
+    ).all(list.id)
     expect(results).toEqual([
       { id: `${userId}-b0`, loc: null, rank: 4 },
       { id: `${userId}-b1`, loc: null, rank: 6 },
@@ -761,17 +751,15 @@ describe('list_food_items guards below the API', () => {
     // range, so the trigger falls back to renumbering Unassigned then the bag
     // from 0.
     const { userId, list, location } = await ownerWithTwoLists('fg-orphan-ceil@example.com')
-    await insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: PACK_RANK_MAX })
-    await insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
-    await insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 1 })
+    insertFood(userId, { id: `${userId}-u0`, listId: list.id, rank: PACK_RANK_MAX })
+    insertFood(userId, { id: `${userId}-b0`, listId: list.id, locationId: location.id, rank: 0 })
+    insertFood(userId, { id: `${userId}-b1`, listId: list.id, locationId: location.id, rank: 1 })
 
-    await testDb.prepare('delete from packing_locations where id = ?').bind(location.id).run()
+    env.DB.prepare('delete from packing_locations where id = ?').run(location.id)
 
-    const { results } = await testDb.prepare(
+    const results = env.DB.prepare(
       'select id, packing_location_id as loc, pack_sort_order as rank from list_food_items where list_id = ? order by id',
-    )
-      .bind(list.id)
-      .all()
+    ).all(list.id)
     expect(results).toEqual([
       { id: `${userId}-b0`, loc: null, rank: 1 },
       { id: `${userId}-b1`, loc: null, rank: 2 },
@@ -783,8 +771,8 @@ describe('list_food_items guards below the API', () => {
     // 0024 made the flag mandatory so no food row is ever weighed under an
     // unstated assumption about what its quantity means.
     const { userId, list } = await ownerWithTwoLists('fg-mode@example.com')
-    await expect(
+    expect(() =>
       insertFood(userId, { id: `${userId}-null`, listId: list.id, rank: 0, isPerMeal: null }),
-    ).rejects.toThrow(/NOT NULL constraint failed: list_food_items\.is_per_meal/)
+    ).toThrow(/NOT NULL constraint failed: list_food_items\.is_per_meal/)
   })
 })

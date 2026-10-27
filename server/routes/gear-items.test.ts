@@ -1,4 +1,4 @@
-import { testDb } from '../test/node-env'
+import { env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import {
   categoryResponseSchema,
@@ -281,7 +281,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('seed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -299,11 +299,11 @@ describe('/api/gear-items authorization matrix', () => {
     expect(over.status).toBe(422)
 
     // ...and the DB trigger backstops writes that bypass the repo.
-    await expect(
-      testDb.prepare(
+    expect(() =>
+      env.DB.prepare(
         `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ('bypass', '${userId}', 'Bypass', 0, 'active', 0, 0, 0)`,
       ).run(),
-    ).rejects.toThrow(/cap/)
+    ).toThrow(/cap/)
   })
 
   it('import: categories + items land atomically with appended sort orders', async () => {
@@ -403,7 +403,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 499 }, (_, i) => {
       return `('capseed-${i}', '${userId}', 'Seed item ${i}', 0, 'active', ${i}, 0, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into gear_items (id, user_id, name, weight_grams, status, sort_order, created_at, updated_at) values ${values}`,
     ).run()
 
@@ -429,7 +429,7 @@ describe('/api/gear-items authorization matrix', () => {
     const values = Array.from({ length: 3 }, (_, i) => {
       return `('manycat-${i}', '${userId}', 'Category ${i}', ${i}, 0)`
     }).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       `insert into categories (id, user_id, name, sort_order, created_at) values ${values}`,
     ).run()
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { app, testDb } from '../test/node-env'
+import { app, env } from '../test/node-env'
 import { apiRequest, getListFood } from '../test/api-helpers'
 import { signUpVerifiedUser } from '../test/auth-helpers'
 import type { ListFoodResponse, FoodItemResponse } from '../../shared/food'
@@ -70,9 +70,7 @@ describe('food: day grid', () => {
     const { cookie } = await signUpVerifiedUser('food-3@example.com', 'F3')
     const listId = await createListId(cookie, 'Trip')
     await setDays(cookie, listId, 5)
-    await testDb.prepare('delete from list_food_slots where list_id = ? and day_number = 3')
-      .bind(listId)
-      .run()
+    env.DB.prepare('delete from list_food_slots where list_id = ? and day_number = 3').run(listId)
     expect((await getListFood(cookie, listId)).slots).toHaveLength(12)
 
     expect((await setDays(cookie, listId, 5)).status).toBe(200)
@@ -204,17 +202,13 @@ describe('food: ownership and list scoping', () => {
 // byte-for-byte after the request.
 describe('food: the matrix cells a status alone would not prove', () => {
   async function foodRows(listId: string) {
-    const items = await testDb.prepare(
+    const items = (env.DB.prepare(
       'select * from list_food_items where list_id = ? order by id',
-    )
-      .bind(listId)
-      .all()
-    const links = await testDb.prepare(
+    ).all(listId) as Record<string, unknown>[])
+    const links = (env.DB.prepare(
       'select * from list_food_item_slots where list_id = ? order by food_item_id, slot_id',
-    )
-      .bind(listId)
-      .all()
-    return { items: items.results, links: links.results }
+    ).all(listId) as Record<string, unknown>[])
+    return { items, links }
   }
 
   async function scheduledItem(cookie: string, listId: string) {
@@ -430,11 +424,9 @@ describe('food: item updates', () => {
     // orphaned link would never show in the response: count the rows.
     const linkCount = async () =>
       (
-        await testDb.prepare(
+        (env.DB.prepare(
           'select count(*) as n from list_food_item_slots where food_item_id = ?',
-        )
-          .bind(created.id)
-          .first<{ n: number }>()
+        ).get(created.id) as { n: number } | undefined)
       )?.n
     expect(await linkCount()).toBe(1)
 
@@ -656,7 +648,7 @@ describe('the food item cap (200 per list)', () => {
       (_, i) =>
         `('${userId}-fseed-${i}', '${userId}', '${listId}', 'Seed ${i}', 100, 1, ${i}, ${i}, 0, 0)`,
     ).join(',')
-    await testDb.prepare(
+    env.DB.prepare(
       'insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, pack_sort_order, created_at, updated_at) values ' +
         values,
     ).run()
@@ -680,11 +672,11 @@ describe('the food item cap (200 per list)', () => {
       error: 'Food item limit reached (200 per list)',
     })
 
-    await expect(
-      testDb.prepare(
+    expect(() =>
+      env.DB.prepare(
         `insert into list_food_items (id, user_id, list_id, name, weight_grams, quantity, sort_order, created_at, updated_at) values ('${userId}-bypass', '${userId}', '${listId}', 'Bypass', 1, 1, 999, 0, 0)`,
       ).run(),
-    ).rejects.toThrow(/cap/)
+    ).toThrow(/cap/)
   })
 })
 

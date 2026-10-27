@@ -1,4 +1,4 @@
-import { app, testDb } from '../test/node-env'
+import { app, env } from '../test/node-env'
 import { describe, expect, it } from 'vitest'
 import { API_BODY_LIMIT_BYTES, IMPORT_BODY_LIMIT_BYTES } from './body-limit'
 
@@ -39,9 +39,9 @@ describe('api body limit', () => {
       },
     )
     expect(res.status).toBe(413)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       'select count(*) as n from rate_limits',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(row?.n).toBe(0)
   })
 

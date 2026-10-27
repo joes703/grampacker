@@ -1,4 +1,4 @@
-import { app, testDb, TEST_ORIGIN } from './node-env'
+import { app, env, TEST_ORIGIN } from './node-env'
 import { lastEmailTo } from '../email/console'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
@@ -115,14 +115,12 @@ export async function makeSessionStale(cookie: string): Promise<void> {
   if (!sessionToken) throw new Error('cannot age a cookie with no token')
 
   const staleMs = Date.now() - 1000 * 60 * 60 * 48 // 48h: twice freshAge
-  const { meta } = await testDb.prepare(
+  const { changes } = env.DB.prepare(
     'update session set created_at = ? where token = ?',
-  )
-    .bind(staleMs, sessionToken)
-    .run()
+  ).run(staleMs, sessionToken)
   // Fail loudly. A silent no-op here would make a freshness test pass against a
   // session that was never actually stale - the worst kind of green.
-  if (meta.changes !== 1) {
-    throw new Error(`expected to age exactly 1 session, aged ${meta.changes}`)
+  if (changes !== 1) {
+    throw new Error(`expected to age exactly 1 session, aged ${changes}`)
   }
 }

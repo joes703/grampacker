@@ -1,5 +1,5 @@
 import { createApp } from '../index'
-import { app, env, testDb, TEST_ORIGIN } from '../test/node-env'
+import { app, env, TEST_ORIGIN } from '../test/node-env'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAuth } from '../auth'
 import { createDb } from '../db'
@@ -33,9 +33,7 @@ const GLOBAL_KEY = 'magic-send-global:all'
 const TEST_AUTH_SECRET = 'test-only-secret-at-least-32-chars-long!'
 
 async function globalCount(): Promise<number> {
-  const row = await testDb.prepare('select count as c from rate_limits where key = ?')
-    .bind(GLOBAL_KEY)
-    .first<{ c: number }>()
+  const row = (env.DB.prepare('select count as c from rate_limits where key = ?').get(GLOBAL_KEY) as { c: number } | undefined)
   return row?.c ?? 0
 }
 
@@ -106,9 +104,7 @@ async function signInCeremony(ip: string): Promise<[Response, Response]> {
 // "was charged", and conflating them is how a test keeps passing after the
 // thing it guards stops being metered at all.
 async function passkeyBucketCount(ip: string): Promise<number> {
-  const row = await testDb.prepare('select count from rate_limits where key = ?')
-    .bind(`passkey-sign-in:${ip}`)
-    .first<{ count: number }>()
+  const row = (env.DB.prepare('select count from rate_limits where key = ?').get(`passkey-sign-in:${ip}`) as { count: number } | undefined)
   return row?.count ?? 0
 }
 
@@ -339,14 +335,11 @@ describe('auth rate limiting', () => {
     // it: better-auth creates the `verification` row BEFORE it calls
     // sendMagicLink, so without an early refusal a drained quota would turn every
     // further request into a free DB write.
-    const rowsBefore = await testDb.prepare('select count(*) as n from verification')
-      .first<{ n: number }>()
+    const rowsBefore = (env.DB.prepare('select count(*) as n from verification').get() as { n: number } | undefined)
 
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
 
     const blocked = await sendMagicLink('198.51.163.1', 'quota-429@example.com')
     expect(blocked.status).toBe(429)
@@ -357,11 +350,10 @@ describe('auth rate limiting', () => {
     // No mail...
     expect(lastEmailTo('quota-429@example.com')).toBeUndefined()
     // ...and, the actual point: better-auth never ran, so no token row was written.
-    const rowsAfter = await testDb.prepare('select count(*) as n from verification')
-      .first<{ n: number }>()
+    const rowsAfter = (env.DB.prepare('select count(*) as n from verification').get() as { n: number } | undefined)
     expect(rowsAfter?.n).toBe(rowsBefore?.n)
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('the CHARGE in sendMagicLink refuses with a real 429, not a 500', async () => {
@@ -378,11 +370,9 @@ describe('auth rate limiting', () => {
     // runs. Calling the endpoint directly does exactly that - and it is also the
     // path a concurrent burst takes at the quota boundary (peek sees a free slot,
     // charge finds none).
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT, Date.now())
 
     const email = 'callback-429@example.com'
     const res = await createAuth(env, createDb(env.DB)).api.signInMagicLink({
@@ -395,7 +385,7 @@ describe('auth rate limiting', () => {
     expect(Number(res.headers.get('Retry-After'))).toBeGreaterThan(0)
     expect(lastEmailTo(email)).toBeUndefined()
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('the global quota holds exactly under a concurrent burst', { timeout: 30000 }, async () => {
@@ -404,13 +394,11 @@ describe('auth rate limiting', () => {
     // settles is whether the authoritative charge still holds the line: with N
     // slots left and 2N simultaneous sends, EXACTLY N may send. Over-admission
     // here would mean the peek had become the gate.
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
     const slack = 6
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT - slack, Date.now())
-      .run()
+    ).run(GLOBAL_KEY, MAGIC_SEND_GLOBAL_LIMIT - slack, Date.now())
 
     // Distinct IPs and addresses so neither of the other two buckets interferes.
     const results = await Promise.all(
@@ -421,7 +409,7 @@ describe('auth rate limiting', () => {
     expect(results.filter((r) => r.status === 200).length).toBe(slack)
     expect(results.filter((r) => r.status === 429).length).toBe(slack)
 
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('a refused send does NOT spend global mail budget (charge order)', async () => {
@@ -472,11 +460,9 @@ describe('auth rate limiting', () => {
     }
 
     const keyExists = async (suffix: string) => {
-      const row = await testDb.prepare(
+      const row = (env.DB.prepare(
         'select count(*) as n from rate_limits where key = ?',
-      )
-        .bind(`magic-send-email:${suffix}`)
-        .first<{ n: number }>()
+      ).get(`magic-send-email:${suffix}`) as { n: number } | undefined)
       return (row?.n ?? 0) > 0
     }
 
@@ -493,11 +479,9 @@ describe('auth rate limiting', () => {
     // the pepper), so a DB read leaks nothing.
     const email = 'private@example.com'
     await sendMagicLink('198.51.102.1', email)
-    const hit = await testDb.prepare(
+    const hit = (env.DB.prepare(
       "select count(*) as n from rate_limits where key like '%' || ? || '%'",
-    )
-      .bind(email)
-      .first<{ n: number }>()
+    ).get(email) as { n: number } | undefined)
     expect(hit?.n).toBe(0)
   })
 
@@ -586,11 +570,9 @@ describe('auth rate limiting', () => {
     expect((await signIn(ip)).status).toBe(429)
 
     // Rewind the stored window past expiry instead of waiting five minutes.
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(PASSKEY_SIGN_IN_WINDOW_MS + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(PASSKEY_SIGN_IN_WINDOW_MS + 1000, `passkey-sign-in:${ip}`)
 
     const afterExpiry = await signIn(ip)
     expect(afterExpiry.status).not.toBe(429)
@@ -605,11 +587,9 @@ describe('auth rate limiting', () => {
     // split is exact - a lost update would show up as an extra allow.
     expect(results.filter((r) => r.status !== 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
     expect(results.filter((r) => r.status === 429).length).toBe(PASSKEY_SIGN_IN_LIMIT)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       'select count from rate_limits where key = ?',
-    )
-      .bind(`passkey-sign-in:${ip}`)
-      .first<{ count: number }>()
+    ).get(`passkey-sign-in:${ip}`) as { count: number } | undefined)
     expect(row?.count).toBe(PASSKEY_SIGN_IN_LIMIT * 2)
   })
 
@@ -627,9 +607,9 @@ describe('auth rate limiting', () => {
       expect((await post()).status).not.toBe(429)
     }
     expect((await post()).status).toBe(429)
-    const row = await testDb.prepare(
+    const row = (env.DB.prepare(
       "select count from rate_limits where key = 'sign-in:local'",
-    ).first<{ count: number }>()
+    ).get() as { count: number } | undefined)
     expect(row?.count).toBe(SIGN_IN_LIMIT + 1)
   })
 
@@ -681,11 +661,9 @@ describe('auth rate limiting', () => {
 
     // It really COUNTS, not merely "is subject to" - proven on the row, since a
     // 404 looks the same whether or not the limiter ran.
-    const charged = await testDb.prepare(
+    const charged = (env.DB.prepare(
       'select count from rate_limits where key = ?',
-    )
-      .bind(`sign-in:${ip}`)
-      .first<{ count: number }>()
+    ).get(`sign-in:${ip}`) as { count: number } | undefined)
     expect(charged?.count).toBe(1)
 
     // Exhausted on the same bucket the OPTIONS lands in. The passkey ceremony
@@ -702,28 +680,26 @@ describe('auth rate limiting', () => {
 
   it('a new window sweeps buckets expired for every scope, keeps active ones', async () => {
     const now = Date.now()
-    await testDb.prepare(
+    env.DB.prepare(
       'insert into rate_limits (key, count, window_start) values (?, 5, ?), (?, 3, ?)',
-    )
-      .bind(
+    ).run(
         'sign-in:stale-ip',
         now - 25 * 60 * 60 * 1000, // > MAX_WINDOW_MS ago: expired for any scope
         'sign-up:fresh-ip',
         now - 60 * 1000, // active
       )
-      .run()
 
     // First request for an unseen key starts a new window -> sweep runs.
     await signIn('203.0.113.11')
 
-    const stale = await testDb.prepare(
+    const stale = (env.DB.prepare(
       "select 1 as one from rate_limits where key = 'sign-in:stale-ip'",
-    ).first()
-    const fresh = await testDb.prepare(
+    ).get() as Record<string, unknown> | undefined)
+    const fresh = (env.DB.prepare(
       "select 1 as one from rate_limits where key = 'sign-up:fresh-ip'",
-    ).first()
-    expect(stale).toBeNull()
-    expect(fresh).not.toBeNull()
+    ).get() as Record<string, unknown> | undefined)
+    expect(stale).toBeUndefined()
+    expect(fresh).toBeDefined()
   })
 
   it('challenge-generating GETs are limited and stop writing challenges', async () => {
@@ -745,15 +721,15 @@ describe('auth rate limiting', () => {
         '/api/auth/passkey/generate-authenticate-options',
         { headers: { 'x-forwarded-for': ip } },
       )
-    const start = await testDb.prepare(
+    const start = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     for (let i = 0; i < PASSKEY_SIGN_IN_LIMIT; i++) {
       expect((await challenge()).status).toBe(200)
     }
-    const before = await testDb.prepare(
+    const before = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     // The allowed calls really DID write challenge rows. Without this the
     // before/after comparison below could hold at zero-equals-zero and prove
     // nothing at all - it would pass just as happily if the endpoint had
@@ -769,9 +745,9 @@ describe('auth rate limiting', () => {
     expect(Number.isInteger(retryAfter)).toBe(true)
     expect(retryAfter).toBeGreaterThan(0)
     expect(retryAfter).toBeLessThanOrEqual(PASSKEY_SIGN_IN_WINDOW_MS / 1000)
-    const after = await testDb.prepare(
+    const after = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(after?.n).toBe(before?.n)
   })
 
@@ -816,11 +792,9 @@ describe('auth rate limiting', () => {
 
     // Roll the window so the sweep actually fires on the next request.
     await signIn(ip)
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
 
     const res = await createApp({ ...env, DB: brokenSweep }).request(
       '/api/auth/passkey/generate-authenticate-options',
@@ -848,35 +822,29 @@ describe('auth rate limiting', () => {
     const ip = '203.0.113.64'
     // An abandoned challenge: options written, never consumed.
     expect((await signIn(ip)).status).toBe(200)
-    const stranded = await testDb.prepare(
+    const stranded = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(stranded!.n).toBeGreaterThan(0)
 
     // Age every row past its expiry rather than waiting five minutes.
-    await testDb.prepare('update verification set expires_at = ?')
-      .bind(Date.now() - 60_000)
-      .run()
+    env.DB.prepare('update verification set expires_at = ?').run(Date.now() - 60_000)
 
     // Force a NEW window on some bucket, which is what triggers the sweep.
-    await testDb.prepare(
+    env.DB.prepare(
       'update rate_limits set window_start = window_start - ? where key = ?',
-    )
-      .bind(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
-      .run()
+    ).run(24 * 60 * 60 * 1000 + 1000, `passkey-sign-in:${ip}`)
     expect((await signIn(ip)).status).toBe(200)
 
     // The expired rows are gone - but the challenge that request just wrote is
     // NOT, so the sweep is bounded by expiry rather than clearing the table.
-    const live = await testDb.prepare(
+    const live = (env.DB.prepare(
       'select count(*) as n from verification where expires_at < ?',
-    )
-      .bind(Date.now())
-      .first<{ n: number }>()
+    ).get(Date.now()) as { n: number } | undefined)
     expect(live!.n).toBe(0)
-    const remaining = await testDb.prepare(
+    const remaining = (env.DB.prepare(
       'select count(*) as n from verification',
-    ).first<{ n: number }>()
+    ).get() as { n: number } | undefined)
     expect(remaining!.n).toBeGreaterThan(0)
   })
 
@@ -918,23 +886,19 @@ describe('rate-limit windows', () => {
   const db = createDb(env.DB)
 
   async function bucket(key: string) {
-    return testDb.prepare('select count, window_start from rate_limits where key = ?')
-      .bind(key)
-      .first<{ count: number; window_start: number }>()
+    return (env.DB.prepare('select count, window_start from rate_limits where key = ?').get(key) as { count: number; window_start: number } | undefined)
   }
 
   async function seed(key: string, count: number, windowStart: number) {
-    await testDb.prepare(
+    env.DB.prepare(
       'insert or replace into rate_limits (key, count, window_start) values (?, ?, ?)',
-    )
-      .bind(key, count, windowStart)
-      .run()
+    ).run(key, count, windowStart)
   }
 
   afterEach(async () => {
     vi.restoreAllMocks()
     vi.useRealTimers()
-    await testDb.prepare('delete from rate_limits where key = ?').bind(GLOBAL_KEY).run()
+    env.DB.prepare('delete from rate_limits where key = ?').run(GLOBAL_KEY)
   })
 
   it('a full bucket stays full until exactly windowStart + window, then starts a new window', async () => {
