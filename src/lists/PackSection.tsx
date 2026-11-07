@@ -133,6 +133,10 @@ function PackSection({
     <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
   )
 
+  const completeMark = complete && (
+    <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
+  )
+
   return (
     <div className={FLAT_TABLE_SURFACE}>
       {/* A container's header row holds its real checkboxes, so its labels
@@ -172,11 +176,12 @@ function PackSection({
               </span>
             </PackChecks>
           ) : (
-            <PackColumnLabels>{titleText}</PackColumnLabels>
+            <PackColumnLabels>
+              {titleText}
+              {completeMark}
+            </PackColumnLabels>
           )}
-          {complete && (
-            <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
-          )}
+          {containerItem && completeMark}
           {titleAction && <span className="ml-auto flex shrink-0 items-center">{titleAction}</span>}
         </div>
         {containerItem ? (
