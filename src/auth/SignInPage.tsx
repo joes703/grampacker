@@ -34,13 +34,13 @@ export default function SignInPage() {
         setError(
           sendError.code === 'VALIDATION_ERROR'
             ? 'Enter a valid email address.'
-            : authErrorMessage(sendError, "Couldn't send the link. Please try again."),
+            : authErrorMessage(sendError, "Couldn't confirm the link was sent. Check your email before trying again."),
         )
         return
       }
       setSent(true)
     } catch {
-      setError("Couldn't send the link. Please try again.")
+      setError("Couldn't confirm the link was sent. Check your email before trying again.")
     } finally {
       setSending(false)
     }

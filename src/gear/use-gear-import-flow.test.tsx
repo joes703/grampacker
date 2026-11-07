@@ -98,6 +98,20 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('useGearImportFlow failed import', () => {
+  it('asks the user to check before retrying when the outcome is unknown', async () => {
+    api.importGearItems.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderHarness(vi.fn())
+
+    act(() => csv.onParsed!([], 'gear.csv'))
+    fireEvent.click(screen.getByText('confirm-import'))
+
+    expect(
+      await screen.findByText(/Couldn't confirm the import\. Check your inventory before trying again\./),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('useGearImportFlow onBeforeOpen', () => {
   it('fires when the explainer opens, and when a parse result opens a dialog', () => {
     const onBeforeOpen = vi.fn()

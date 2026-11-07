@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { parseListCsv, nameFromCsvFilename, type ListCsvRow } from '../lib/csv'
+import { importErrorMessage } from '../lib/import-error'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import { useListImportMutation } from './use-list-import-mutation'
 import ListImportPreviewDialog from './ListImportPreviewDialog'
@@ -101,8 +102,7 @@ export function useListImportFlow({ onBeforeOpen }: { onBeforeOpen?: () => void 
                   onBeforeOpen?.()
                   setState({
                     type: 'error',
-                    message:
-                      err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+                    message: importErrorMessage(err, 'lists'),
                   })
                 },
               },

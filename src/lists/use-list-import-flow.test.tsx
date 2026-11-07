@@ -108,6 +108,19 @@ describe('useListImportFlow explainer', () => {
   })
 })
 
+describe('useListImportFlow failed import', () => {
+  it('asks the user to check before retrying when the outcome is unknown', () => {
+    render(<Harness onBeforeOpen={vi.fn()} />)
+    act(() => csv.onParsed!([], 'trip.csv'))
+    fireEvent.click(screen.getByText('confirm-import'))
+    act(() => mut.lastCallbacks!.onError!(new TypeError('Failed to fetch')))
+
+    expect(
+      screen.getByText(/Couldn't confirm the import\. Check your lists before trying again\./),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('useListImportFlow onBeforeOpen', () => {
   it('fires before the parse result opens the preview or parse-error dialog', () => {
     const onBeforeOpen = vi.fn()

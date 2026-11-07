@@ -102,12 +102,12 @@ describe('SignInPage', () => {
     {
       name: 'a returned error with no message',
       answer: () => Promise.resolve({ data: null, error: { status: 500 } }),
-      copy: "Couldn't send the link. Please try again.",
+      copy: "Couldn't confirm the link was sent. Check your email before trying again.",
     },
     {
       name: 'a thrown request',
       answer: () => Promise.reject(new Error('offline')),
-      copy: "Couldn't send the link. Please try again.",
+      copy: "Couldn't confirm the link was sent. Check your email before trying again.",
     },
   ])('shows the error, not "check your email", for $name', async ({ answer, copy }) => {
     auth.magicLink.mockImplementationOnce(answer)

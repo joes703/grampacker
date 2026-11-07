@@ -4,6 +4,7 @@ import { queryKeys, importGearItems } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
 import { parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { assertGearImportWithinCaps, planGearImport } from '../lib/csv/import-plan'
+import { importErrorMessage } from '../lib/import-error'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import type { Category, GearItem } from '../lib/types'
 import ImportPreviewDialog from '../components/ImportPreviewDialog'
@@ -92,7 +93,7 @@ export function useGearImportFlow({
       onBeforeOpen?.()
       setState({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+        message: importErrorMessage(err, 'inventory'),
       })
     },
   })
