@@ -114,7 +114,7 @@ export function useGearImportFlow({
           <div className="p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-3">Import gear inventory</h2>
             <p className="text-sm text-gray-600 mb-3">
-              Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
+              Adds gear directly to your inventory without creating a list. Useful for importing an existing inventory of gear you own.
             </p>
             <p className="text-sm text-gray-600 mb-3">
               Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.

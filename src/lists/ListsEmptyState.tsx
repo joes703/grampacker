@@ -46,7 +46,7 @@ export default function ListsEmptyState() {
       <div className="w-full max-w-md text-center">
         <h2 className="text-xl font-semibold text-gray-900">Create your first list</h2>
         <p className="mt-2 text-sm text-gray-500">
-          Lists let you build packing lists from your gear library and track total weight.
+          Lists let you build packing lists from your gear inventory and track total weight.
         </p>
         <div className="mt-6 flex gap-2">
           <input

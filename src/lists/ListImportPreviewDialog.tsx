@@ -24,7 +24,7 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
       titleSuffix=" into a new list"
       notesAbove={
         <p className="text-xs text-gray-500 mt-0.5">
-          New items will be added to your gear library. Items already in the library won't be duplicated.
+          New items will be added to your gear inventory. Items already in the inventory won't be duplicated.
           {wornCount > 0 && ` ${wornCount} worn.`}
           {consumCount > 0 && ` ${consumCount} consumable.`}
         </p>
@@ -32,7 +32,7 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
       notesBelow={
         pricedCount > 0 ? (
           <p className="mt-1 text-xs text-gray-500">
-            Prices apply only to newly added gear. Items already in your library keep the price you already set.
+            Prices apply only to newly added gear. Items already in your inventory keep the price you already set.
           </p>
         ) : undefined
       }

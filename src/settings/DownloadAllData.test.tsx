@@ -120,7 +120,7 @@ describe('DownloadAllData', () => {
     const files = zipSync.mock.calls[0]![0]
     expect(Object.keys(files).sort()).toEqual([
       'food.json',
-      'gear-library.csv',
+      'gear-inventory.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
       'packing.json',
@@ -182,8 +182,8 @@ describe('DownloadAllData', () => {
       expect(vi.mocked(fetcher).mock.calls.map(([id]) => id).sort()).toEqual(['l-1', 'l-2'])
     }
     // And the file holds the server's version.
-    const gearFile = zipSync.mock.calls[0]?.[0]['gear-library.csv']
-    if (!gearFile) throw new Error('the zip has no gear-library.csv')
+    const gearFile = zipSync.mock.calls[0]?.[0]['gear-inventory.csv']
+    if (!gearFile) throw new Error('the zip has no gear-inventory.csv')
     const gearCsv = new TextDecoder().decode(gearFile)
     expect(gearCsv).toContain('Tarp')
     expect(gearCsv).not.toContain('Old tarp')
