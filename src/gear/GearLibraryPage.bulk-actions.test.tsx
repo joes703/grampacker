@@ -264,6 +264,34 @@ describe('GearLibraryPage bulk success handling', () => {
     expect(screen.queryByText(/No gear matches/)).not.toBeInTheDocument()
   })
 
+  it('while searching, hides categories with no matches and counts the matches', async () => {
+    h.reorderableItems.mockReturnValue([
+      category({ id: 'c1', name: 'Shelter' }),
+      category({ id: 'c2', name: 'Cooking' }),
+    ])
+    h.fetchGearItems.mockResolvedValue([
+      gear({ id: 'g1', name: 'Tent', categoryId: 'c1' }),
+      gear({ id: 'g2', name: 'Stove', categoryId: 'c2' }),
+    ])
+    renderPage()
+    expect(await screen.findByText('2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(2)
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: 'tent' },
+    })
+
+    expect(await screen.findByText('1 of 2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(1)
+
+    // Spaces alone are not a search, the same rule as the no-matches message.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: '   ' },
+    })
+    expect(await screen.findByText('2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(2)
+  })
+
   it('shows a first-run empty state when there are no categories or gear items', async () => {
     h.reorderableItems.mockReturnValue([])
     h.fetchGearItems.mockResolvedValue([])
