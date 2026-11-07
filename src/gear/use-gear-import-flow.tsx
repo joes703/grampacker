@@ -8,6 +8,7 @@ import { useCsvFileInput } from '../lib/use-csv-file-input'
 import type { Category, GearItem } from '../lib/types'
 import ImportPreviewDialog from '../components/ImportPreviewDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import CsvHeaderLine from '../components/CsvHeaderLine'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { SECONDARY_BUTTON } from '../components/flat-table-styles'
@@ -115,9 +116,10 @@ export function useGearImportFlow({
             <p className="text-sm text-gray-600 mb-3">
               Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
             </p>
-            <p className="text-sm text-gray-600 mb-5">
+            <p className="text-sm text-gray-600 mb-3">
               Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
             </p>
+            <CsvHeaderLine />
             <div className="flex justify-end gap-2">
               <button
                 type="button"

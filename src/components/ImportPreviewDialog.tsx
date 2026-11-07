@@ -103,7 +103,7 @@ export default function ImportPreviewDialog<R extends BaseRow>({
               <tr key={i} className="hover:bg-gray-50">
                 {/* Slightly narrower name cap when the extra columns need
                     the room. */}
-                <td className={`px-4 py-1.5 font-normal text-gray-900 ${extraColumns.length > 0 ? 'max-w-[160px]' : 'max-w-[180px]'} truncate`}>
+                <td className={`px-4 py-1.5 font-normal text-gray-900 ${extraColumns.length > 0 ? 'max-w-[140px] sm:max-w-[160px]' : 'max-w-[180px]'} truncate`}>
                   {row.name}
                 </td>
                 <td

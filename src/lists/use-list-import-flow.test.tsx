@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ListCsvRow } from '../lib/csv'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { shimDialog } from './test/list-detail-harness'
+import { CSV_HEADER_LINE, type ListCsvRow } from '../lib/csv'
 
 // Pins the hook's one coordination duty: every route that OPENS one of its
 // dialogs must fire onBeforeOpen first, so the page can close its own dialog
@@ -15,6 +16,7 @@ import type { ListCsvRow } from '../lib/csv'
 const csv = vi.hoisted(() => ({
   onParsed: undefined as ((rows: ListCsvRow[], filename: string) => void) | undefined,
   onError: undefined as ((message: string) => void) | undefined,
+  openPicker: vi.fn(),
 }))
 vi.mock('../lib/use-csv-file-input', () => ({
   useCsvFileInput: (
@@ -26,7 +28,7 @@ vi.mock('../lib/use-csv-file-input', () => ({
   ) => {
     csv.onParsed = handlers.onParsed
     csv.onError = handlers.onError
-    return { inputRef: { current: null }, onChange: vi.fn(), openPicker: vi.fn() }
+    return { inputRef: { current: null }, onChange: vi.fn(), openPicker: csv.openPicker }
   },
 }))
 
@@ -62,15 +64,48 @@ vi.mock('../components/ConfirmDialog', () => ({
 
 import { useListImportFlow } from './use-list-import-flow'
 
+beforeAll(shimDialog)
+
 function Harness({ onBeforeOpen }: { onBeforeOpen: () => void }) {
-  const { importUi } = useListImportFlow({ onBeforeOpen })
-  return <>{importUi}</>
+  const { openImportExplainer, importUi } = useListImportFlow({ onBeforeOpen })
+  return (
+    <>
+      <button type="button" onClick={openImportExplainer}>open-explainer</button>
+      {importUi}
+    </>
+  )
 }
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   mut.lastCallbacks = undefined
+})
+
+describe('useListImportFlow explainer', () => {
+  it('shows the CSV row first and opens the file picker on Continue', () => {
+    const onBeforeOpen = vi.fn()
+    render(<Harness onBeforeOpen={onBeforeOpen} />)
+
+    fireEvent.click(screen.getByText('open-explainer'))
+    expect(onBeforeOpen).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(CSV_HEADER_LINE)).toBeInTheDocument()
+    expect(csv.openPicker).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(csv.openPicker).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(CSV_HEADER_LINE)).toBeNull()
+  })
+
+  it('Cancel closes it without opening the file picker', () => {
+    render(<Harness onBeforeOpen={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('open-explainer'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(csv.openPicker).not.toHaveBeenCalled()
+    expect(screen.queryByText(CSV_HEADER_LINE)).toBeNull()
+  })
 })
 
 describe('useListImportFlow onBeforeOpen', () => {

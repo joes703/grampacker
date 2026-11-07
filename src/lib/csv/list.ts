@@ -37,6 +37,12 @@ function toBool(v: string | undefined): boolean {
   return s === '1' || s === 'yes' || s === 'true' || s === 'worn' || s === 'consumable'
 }
 
+// The first row to copy for a hand-built CSV. The Lighterpack column order with
+// cost, like our own export: 0 in `cost` means free and blank means unknown,
+// where 0 in Lighterpack's `price` means unknown (see parseCostFromColumn).
+export const CSV_HEADER_LINE =
+  'Item Name,Category,desc,qty,weight,unit,url,cost,worn,consumable'
+
 // Parses a Lighterpack-style CSV into list import rows.
 // Accepts: Item Name, Category, desc, qty, weight, unit, url, price, worn, consumable
 // Also accepts our own list export format. The shared preamble (size gate,

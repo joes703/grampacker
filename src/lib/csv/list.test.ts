@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './index'
+import { CSV_HEADER_LINE, listItemsToCsv, parseListCsv, nameFromCsvFilename } from './index'
 import type { Category, GearItem, ListItemWithGear } from '../types'
 import { MAX_LIST_ITEM_QUANTITY } from '../caps'
 
@@ -428,5 +428,32 @@ describe('nameFromCsvFilename', () => {
 
   it('keeps non-csv extensions intact (only .csv is stripped)', () => {
     expect(nameFromCsvFilename('gear.txt')).toBe('gear.txt')
+  })
+})
+
+describe('CSV_HEADER_LINE', () => {
+  it('names every column the list import reads', () => {
+    const parsed = parseListCsv(
+      `${CSV_HEADER_LINE}\r\nTarp,Shelter,Silnylon,2,10,oz,https://example.test,120,Worn,`,
+    )
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp',
+      categoryName: 'Shelter',
+      description: 'Silnylon',
+      quantity: 2,
+      weightGrams: 283.5,
+      cost: 120,
+      isWorn: true,
+      isConsumable: false,
+      weightUnreadable: false,
+      quantityUnreadable: false,
+    })
+  })
+
+  it('uses cost, so 0 means free and blank means unknown', () => {
+    const parsed = parseListCsv(`${CSV_HEADER_LINE}\r\nFree,,,1,1,g,,0,,\r\nUnknown,,,1,1,g,,,,`)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => r.cost)).toEqual([0, null])
   })
 })
