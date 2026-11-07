@@ -1,6 +1,6 @@
 import { parseCsv, MAX_CSV_ROWS } from './core'
 import { parseCostFromColumn } from './money'
-import { toGrams } from './units'
+import { toGrams, weightIsUnreadable } from './units'
 import { MAX_NAME_LENGTH } from '../caps'
 
 // The parse preamble and base fields both importers (gear library and list)
@@ -79,6 +79,7 @@ export function commonRowFields(
   name: string
   description: string | null
   weightGrams: number
+  weightUnreadable: boolean
   categoryName: string
   cost: number | null
 } {
@@ -87,6 +88,7 @@ export function commonRowFields(
     name: (row[cols.nameKey] ?? '').trim().slice(0, MAX_NAME_LENGTH),
     description: cols.descKey ? (row[cols.descKey] || null) : null,
     weightGrams: toGrams(row[cols.weightKey] ?? '0', unit),
+    weightUnreadable: weightIsUnreadable(row[cols.weightKey] ?? '', unit),
     categoryName: cols.catKey ? (row[cols.catKey] ?? '') : '',
     cost: cols.costKey ? parseCostFromColumn(row[cols.costKey], cols.costKind) : null,
   }

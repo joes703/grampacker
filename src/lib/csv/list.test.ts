@@ -111,6 +111,38 @@ describe('list csv round-trip', () => {
     expect(parsed.map((r) => r.quantity)).toEqual([1, 6, 2, MAX_LIST_ITEM_QUANTITY, MAX_LIST_ITEM_QUANTITY, 1, 1, 1])
   })
 
+  it('flags a weight or quantity it had to replace, and leaves blanks alone', () => {
+    const csv = [
+      'name,weight,unit,qty',
+      'Good,10,g,2',
+      'Blank,,,',
+      'Bad weight,abc,g,1',
+      'Bad unit,5,kgs,1',
+      'Zero qty,10,g,0',
+      'Text qty,10,g,two',
+      'Part qty,10,g,1.5',
+      'Big qty,10,g,10000',
+    ].join('\r\n')
+    const parsed = parseListCsv(csv)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => [r.name, !!r.weightUnreadable, !!r.quantityUnreadable])).toEqual([
+      ['Good', false, false],
+      ['Blank', false, false],
+      ['Bad weight', true, false],
+      ['Bad unit', true, false],
+      ['Zero qty', false, true],
+      ['Text qty', false, true],
+      ['Part qty', false, true],
+      ['Big qty', false, true],
+    ])
+  })
+
+  it('reads its own export with nothing flagged', () => {
+    const parsed = parseListCsv(listItemsToCsv(items, categories))
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.some((r) => r.weightUnreadable || r.quantityUnreadable)).toBe(false)
+  })
+
   it('preserves user-visible fields across serialize -> parse', () => {
     const csv = listItemsToCsv(items, categories)
     const parsed = parseListCsv(csv)

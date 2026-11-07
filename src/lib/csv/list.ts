@@ -1,7 +1,8 @@
 import type { Category, ListItemWithGear } from '../types'
 import { toCsv } from './core'
 import { commonRowFields, parseCsvWithCommonColumns } from './parse-common'
-import { clampQuantity } from '../../../shared/lists'
+import { quantityIsUnreadable } from './units'
+import { MAX_LIST_ITEM_QUANTITY, clampQuantity } from '../../../shared/lists'
 
 // Parse output. The CSV column HEADERS keep the Lighterpack shape, but the
 // parsed TS row is camelCase because every consumer speaks camelCase.
@@ -11,6 +12,10 @@ export type ListCsvRow = {
   name: string
   description: string | null
   weightGrams: number
+  // The preview shows these two in red. Never sent to the server: the planner
+  // builds its own request objects.
+  weightUnreadable?: boolean
+  quantityUnreadable?: boolean
   categoryName: string
   quantity: number
   isWorn: boolean
@@ -57,6 +62,9 @@ export function parseListCsv(text: string): ListCsvRow[] | string {
       return {
         ...commonRowFields(row, cols),
         quantity:     qtyKey ? clampQuantity(row[qtyKey] ?? '1') : 1,
+        quantityUnreadable: qtyKey
+          ? quantityIsUnreadable(row[qtyKey] ?? '', MAX_LIST_ITEM_QUANTITY)
+          : false,
         isWorn:       bothSet ? false : isWorn,
         isConsumable: bothSet ? false : isConsumable,
       }

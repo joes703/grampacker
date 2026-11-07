@@ -499,3 +499,12 @@ describe('parseGearCsv row cap (MAX_CSV_ROWS)', () => {
     expect((parsed as unknown[]).length).toBe(MAX_CSV_ROWS)
   })
 })
+
+describe('parseGearCsv unreadable weights', () => {
+  it('flags a weight it had to replace, and leaves a blank alone', () => {
+    const parsed = parseGearCsv('name,weight,unit\r\nGood,10,g\r\nBlank,,\r\nBad,abc,g')
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => !!r.weightUnreadable)).toEqual([false, false, true])
+    expect(parsed[2]?.weightGrams).toBe(0)
+  })
+})
