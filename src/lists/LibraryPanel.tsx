@@ -34,7 +34,6 @@ type Props = {
   membershipUnknown?: boolean
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
-  onRemove: (item: GearItem) => void
   /** Creates a gear item AND this list's row for it in one atomic call.
    *
    *  The control lives in the picker rather than in a section footer because
@@ -56,7 +55,7 @@ type Props = {
   createDisabledReason?: string
 }
 
-export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onRemove, onCreateNew, createDisabledReason }: Props) {
+export default function LibraryPanel({ gearItems, categories, listItemGearIds, membershipUnknown = false, weightUnit, onAdd, onCreateNew, createDisabledReason }: Props) {
   const [search, setSearch] = useState('')
   // Stable toggle: it goes straight to the memoized LibraryCategoryGroup as
   // onToggle, where a fresh closure would defeat React.memo.
@@ -195,7 +194,6 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
                   listItemGearIds={listItemGearIds}
                   weightUnit={weightUnit}
                   onAdd={onAdd}
-                  onRemove={onRemove}
                   regionId={`library-cat-${category?.id ?? 'uncategorized'}`}
                 />
               )
@@ -214,7 +212,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
 // cascade into every gear-picker category. Memo's shallow compare works
 // here because all props are reference-stable: `onToggle` is the parent's
 // useCallback'd toggleCollapse, `toggleKey` is a primitive string, and
-// listItemGearIds / onAdd / onRemove come from the page-level memoized
+// listItemGearIds / onAdd come from the page-level memoized
 // sharedGroupProps. The earlier inline `onToggle={() => toggleCollapse(id)}`
 // shape would have defeated the memo by minting a fresh closure every render.
 const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
@@ -226,7 +224,6 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
   listItemGearIds,
   weightUnit,
   onAdd,
-  onRemove,
   regionId,
 }: {
   name: string
@@ -237,7 +234,6 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
   listItemGearIds: Set<string>
   weightUnit: WeightUnit
   onAdd: (item: GearItem) => void
-  onRemove: (item: GearItem) => void
   regionId: string
 }) {
   return (
@@ -266,7 +262,9 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
         </span>
       </div>
 
-      {/* Items - pure picker rows. Activate to add/remove on the active list. */}
+      {/* Items - pure picker rows. Click to add to the active list. A row already on the
+          list does nothing: removal drops its quantity and worn/consumable
+          settings, so it lives in the list row's own menu. */}
       {!collapsed && (
         <div id={regionId}>
           {items.map((item) => {
@@ -275,11 +273,16 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => (inList ? onRemove(item) : onAdd(item))}
-                title={inList ? 'Remove from list' : 'Add to list'}
-                aria-label={inList ? `Remove ${item.name} from list` : `Add ${item.name} to list`}
-                // Hover/focus background is uniform across in-list and
-                // available rows. The in-list state is signalled by the
+                onClick={() => {
+                  if (!inList) onAdd(item)
+                }}
+                // aria-disabled, not disabled: a click that adds the item
+                // turns this row in-list, and a disabled button would drop
+                // keyboard focus at that moment.
+                aria-disabled={inList}
+                title={inList ? 'On this list' : 'Add to list'}
+                aria-label={inList ? `${item.name} is on this list` : `Add ${item.name} to list`}
+                // The in-list state is signalled by the
                 // check mark and the dimmed name below, never by a rest
                 // background: an earlier pass added a soft-blue rest tint
                 // to in-list rows, and toggling that bg class on click
@@ -293,7 +296,9 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                 // narrower than the main list, and the row has only name +
                 // weight, so the uniform px-3 inset reads cleaner. py-0
                 // lets the row's min-h-7 (28px) own the desktop height.
-                className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-100`}
+                className={`${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 text-left focus:outline-none focus:bg-gray-100 ${
+                  inList ? 'cursor-default' : 'hover:bg-gray-50'
+                }`}
               >
                 {/* The in-list signal, and the PRIMARY one. A text-color step
                     (gray-900 -> gray-600) was carrying this alone and could
@@ -327,8 +332,7 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
                     focus:bg-gray-100, and gray-500 on gray-100 is 4.39:1 -
                     under the 4.5:1 floor by a hair, and a hair still fails.
                     gray-600 is 6.87:1 there. (The old gray-300 weight was
-                    1.41:1: a picker row is operable in every state, so nothing
-                    here is exempt as an inactive control.)
+                    1.41:1.)
 
                     The consequence is that the weight cannot dim when an item is
                     already in the list - gray-600 is the contrast floor, so

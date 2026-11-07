@@ -534,15 +534,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
     [],
   )
 
-  const onLibraryRemove = useCallback(
-    (item: GearItem) => {
-      const li = readListItems().find((l) => l.gearItemId === item.id)
-      if (li) requestRemoveListItem(li)
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the query cache at call time; requestRemoveListItem is stable
-    [],
-  )
-
   // Stable callback for the sections' "+ Add new item" row. It takes the
   // categoryId, so ONE memoized handler serves every section.
   const onAddNewItem = useCallback(
@@ -567,7 +558,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
         membershipUnknown={listItemsQuery.data === undefined}
         weightUnit={weightUnit}
         onAdd={onLibraryAdd}
-        onRemove={onLibraryRemove}
         // The modal asks for the category (this caller has no section
         // context); null means the user kept Uncategorized. In Pack the item
         // lands Unassigned once the list has bags, or by category while it

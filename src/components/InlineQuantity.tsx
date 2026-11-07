@@ -7,6 +7,8 @@ import {
   MOBILE_ROW_CONTROL_MIN_TARGET,
 } from './flat-table-styles'
 import { clampQuantity } from '../../shared/lists'
+import { isOutOfLimits, quantityLimitMessage } from '../lib/number-limits'
+import { showToast } from '../lib/toast'
 
 // Click-to-edit quantity, the sibling of InlineWeight. It is shared so that
 // any row needing an editable quantity reuses this
@@ -69,8 +71,14 @@ export default function InlineQuantity({
   }, [editing])
 
   function commit() {
-    // Clamp rather than reject: the server's range check is the real gate, and
-    // an out-of-range draft should not be able to strand the row in edit mode.
+    // Refused, not capped: the old number stays. The editor still closes, so a
+    // bad number cannot strand the row in edit mode.
+    if (isOutOfLimits(inputRef.current)) {
+      showToast(quantityLimitMessage(max), { type: 'error' })
+      setDraft(String(quantity))
+      setEditing(false)
+      return
+    }
     const clamped = clampQuantity(draft, max)
     if (clamped !== quantity && onSave) onSave(clamped)
     setEditing(false)

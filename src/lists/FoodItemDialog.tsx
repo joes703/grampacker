@@ -98,8 +98,8 @@ export default function FoodItemDialog({
 
   const quantityValue = Number(quantity)
   // The server's own schema, so a rejection is not the first the user hears
-  // of a bound. Weight needs no check here: WeightInput clamps to
-  // MAX_ITEM_WEIGHT_GRAMS, which is the food weight schema's max.
+  // of a bound. Weight needs no check here: WeightInput sets the food weight
+  // schema's max on its field, and the browser refuses the submit past it.
   //
   // Quantity validity stands on its own: the summary reads it, and judging
   // it by whole-form validity made clearing the NAME change the carried
@@ -300,25 +300,23 @@ export default function FoodItemDialog({
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
           <div className="flex items-center gap-2">
-            <PrimaryButton type="submit" disabled={busy || !valid}>
-              {busy ? 'Saving…' : mode.kind === 'add' ? 'Add food' : 'Save'}
-            </PrimaryButton>
+            {mode.kind === 'edit' && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDelete(mode.item.id)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Remove from plan
+              </button>
+            )}
+            <span className="flex-1" aria-hidden="true" />
             <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
               Cancel
             </button>
-            {mode.kind === 'edit' && (
-              <>
-                <span className="flex-1" aria-hidden="true" />
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onDelete(mode.item.id)}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  Remove from plan
-                </button>
-              </>
-            )}
+            <PrimaryButton type="submit" disabled={busy || !valid}>
+              {busy ? 'Saving…' : mode.kind === 'add' ? 'Add food' : 'Save'}
+            </PrimaryButton>
           </div>
         </div>
       </form>

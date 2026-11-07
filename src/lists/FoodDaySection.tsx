@@ -16,7 +16,7 @@ import {
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import TotalWeightValue from '../components/TotalWeightValue'
-import { foodGramsAtOneMeal } from '../lib/weight-breakdown'
+import { foodGramsAtMeal } from '../lib/weight-breakdown'
 import { MEAL_LABELS } from './FoodMealGrid'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 import type { WeightUnit } from '../lib/weight'
@@ -90,10 +90,9 @@ export function FoodPlanRow({ item, weightUnit, busy, onEdit, indent }: FoodPlan
       <span className={`${FOOD_PLAN_COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-600`}>
         {item.quantity}
       </span>
-      {/* The full stash weight at each occurrence (weight × this meal's
-          count) - never multiplied by the schedule. */}
+      {/* This meal's weight. A shared item shows its share. */}
       <span className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
-        <ItemWeightValue grams={item.weightGrams * item.quantity} unit={weightUnit} />
+        <ItemWeightValue grams={foodGramsAtMeal(item)} unit={weightUnit} />
       </span>
     </button>
   )
@@ -121,26 +120,11 @@ export default function FoodDaySection({
   onAddToSlots,
   onEditItem,
 }: Props) {
-  // The day total. The dedupe is conditional on the item's kind.
-  //
-  // A PER-MEAL item at both breakfast and lunch is two units: you eat one at
-  // each, and the day weighs both. Deduping it would under-report, making a
-  // five-lunch plan look like one packet.
-  //
-  // A SHARED stash at both meals is still ONE stash - a 500 g bag picked at
-  // twice weighs 500 g for the day, not 1000. That case keeps the dedupe, and
-  // it is the case the "scheduling never multiplies" contract was protecting.
-  let dayGrams = 0
-  const countedShared = new Set<string>()
-  for (const slot of slots) {
-    for (const item of itemsBySlot.get(slot.id) ?? []) {
-      if (!item.isPerMeal) {
-        if (countedShared.has(item.id)) continue
-        countedShared.add(item.id)
-      }
-      dayGrams += item.weightGrams * item.quantity
-    }
-  }
+  // The day total: what each of the day's meals weighs. A shared item adds one
+  // share per meal, so the day totals add up to the trip total.
+  const dayGrams = slots
+    .flatMap((slot) => itemsBySlot.get(slot.id) ?? [])
+    .reduce((grams, item) => grams + foodGramsAtMeal(item), 0)
 
   // A day with nothing planned collapses to a header-only card, with no meal
   // lines and no "total 0 g", so an unplanned trip is not a wall of
@@ -211,7 +195,10 @@ export default function FoodDaySection({
                   <span
                     className={`${FOOD_PLAN_COL_WEIGHT} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}
                   >
-                    <ItemWeightValue grams={foodGramsAtOneMeal(slotItems)} unit={weightUnit} />
+                    <ItemWeightValue
+                      grams={slotItems.reduce((grams, item) => grams + foodGramsAtMeal(item), 0)}
+                      unit={weightUnit}
+                    />
                   </span>
                 )}
               </div>

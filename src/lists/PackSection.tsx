@@ -3,7 +3,7 @@ import { Check } from 'lucide-react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import {
-  COL_ICON,
+  packIconSlot,
   COL_QTY,
   COL_WEIGHT,
   FLAT_TABLE_EYEBROW,
@@ -11,12 +11,14 @@ import {
   FLAT_TABLE_HEADER_TITLE_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
+  PACK_NAME_FIT,
   PRINT_UNTRUNCATE,
   ROW_CONTROL_TARGET,
+  ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
 import ItemRow from './ItemRow'
 import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
-import { PackChecks } from './PackRowFrame'
+import { PackChecks, PackColumnLabels } from './PackRowFrame'
 import { ConsumableIcon, WornIcon } from './list-item-flags'
 import { buildRowProps, SectionHeader, type SharedPackSectionProps } from './section-parts'
 
@@ -121,15 +123,42 @@ function PackSection({
       rowAction: renderRowAction?.(item),
     })
 
+  // The rows' drag-grip column, for a header with no grip of its own. Without
+  // it the R and P labels sit left of the checkboxes they name. Worn rows
+  // have no grip, so the Worn header leaves it out.
+  const leadingStub = (
+    <span aria-hidden="true" className={`shrink-0 ${ROW_LEADING_CONTROL_TARGET} print:hidden`} />
+  )
+  const titleText = titleContent ?? (
+    <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
+  )
+
+  const completeMark = complete && (
+    <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
+  )
+
   return (
     <div className={FLAT_TABLE_SURFACE}>
+      {/* A container's header row holds its real checkboxes, so its labels
+          take a strip of their own, in the same columns. */}
+      {containerItem && (
+        <div
+          data-testid="pack-column-labels"
+          className="flex items-center gap-2 lg:gap-2.5 print:gap-1 px-2 lg:px-3 print:px-1 pt-1 print:break-after-avoid"
+        >
+          {leadingStub}
+          <div className="flex flex-1 min-w-0 items-center gap-2 lg:gap-2.5 print:gap-1">
+            <PackColumnLabels />
+          </div>
+        </div>
+      )}
       {/* The gaps are PackRowFrame's (gap-2 lg:gap-2.5 print:gap-1): every
           trailing column adds one gap, so a narrower header gap walks the Qty
           label off the row quantities one gap per column. Mobile tightens
           the padding to px-2, since the extra column slots squeeze the
           header. */}
       <SectionHeader spacing="gap-2 lg:gap-2.5 print:gap-1 px-2 lg:px-3 print:px-1 py-0">
-        {headerLeading}
+        {headerLeading ?? (wornSection ? null : leadingStub)}
         <div className="flex flex-1 min-w-0 items-center gap-2 lg:gap-2.5 print:gap-1">
           {containerItem ? (
             <PackChecks
@@ -138,7 +167,7 @@ function PackSection({
               isReady={containerItem.isReady}
               onUpdate={(patch) => handlers.onUpdate?.(containerItem.id, patch)}
             >
-              <span className={`truncate ${PRINT_UNTRUNCATE} ${
+              <span className={`${PACK_NAME_FIT} ${PRINT_UNTRUNCATE} ${
                 containerItem.isPacked
                   ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
                   : FLAT_TABLE_HEADER_TITLE
@@ -147,21 +176,20 @@ function PackSection({
               </span>
             </PackChecks>
           ) : (
-            titleContent ?? (
-              <span className={`truncate ${PRINT_UNTRUNCATE} ${complete ? FLAT_TABLE_HEADER_TITLE_MUTED : FLAT_TABLE_HEADER_TITLE}`}>{name}</span>
-            )
+            <PackColumnLabels>
+              {titleText}
+              {completeMark}
+            </PackColumnLabels>
           )}
-          {complete && (
-            <Check size={14} className="shrink-0 text-green-600 print:hidden" aria-label="All packed" />
-          )}
+          {containerItem && completeMark}
           {titleAction && <span className="ml-auto flex shrink-0 items-center">{titleAction}</span>}
         </div>
         {containerItem ? (
           <>
-            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+            <span className={packIconSlot(containerItem.isWorn)}>
               {containerItem.isWorn && <WornIcon />}
             </span>
-            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+            <span className={packIconSlot(containerItem.isConsumable)}>
               {containerItem.isConsumable && <ConsumableIcon />}
             </span>
             <span className={`${COL_QTY} text-center ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
@@ -171,8 +199,8 @@ function PackSection({
           </>
         ) : (
           <>
-            <div className={COL_ICON} />
-            <div className={COL_ICON} />
+            <div className={packIconSlot(false)} />
+            <div className={packIconSlot(false)} />
             <div className={`${COL_QTY} text-center ${FLAT_TABLE_EYEBROW}`}>Qty</div>
             <div className={`hidden lg:block ${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW} print:hidden`}>
               Weight

@@ -14,5 +14,5 @@
 export { downloadBlob, downloadCsv, slugifyFilename, MAX_CSV_ROWS } from './core'
 export { gearItemsToCsv, parseGearCsv } from './gear'
 export type { GearCsvRow } from './gear'
-export { listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
+export { CSV_HEADER_LINE, listItemsToCsv, parseListCsv, nameFromCsvFilename } from './list'
 export type { ListCsvRow } from './list'

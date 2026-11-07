@@ -42,8 +42,36 @@ describe('ListImportPreviewDialog', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows red numbers and a count for values it could not read', () => {
+    render(
+      <ListImportPreviewDialog
+        rows={[
+          row({ name: 'A', weightGrams: 0, weightUnreadable: true }),
+          row({ name: 'B', quantity: 1, quantityUnreadable: true }),
+          row({ name: 'C', weightGrams: 75, quantity: 4 }),
+        ]}
+        saving={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText("2 values couldn't be read. The red numbers are what will be imported."),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('A weight, could not be read')).toHaveClass('text-red-600')
+    expect(screen.getByLabelText('B quantity, could not be read')).toHaveClass('text-red-600')
+    expect(screen.getByText('75 g')).not.toHaveClass('text-red-600')
+    expect(screen.getByText('4')).not.toHaveClass('text-red-600')
+  })
+
+  it('says nothing when every value was read', () => {
+    render(<ListImportPreviewDialog rows={[row()]} saving={false} onConfirm={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.queryByText(/couldn't be read/)).toBeNull()
+  })
+
   const PRICE_NOTICE =
-    'Prices apply only to newly added gear. Items already in your library keep the price you already set.'
+    'Prices apply only to newly added gear. Items already in your inventory keep the price you already set.'
 
   it('explains that prices only apply to newly added gear', () => {
     // The rule is invisible otherwise: a matched row silently keeps its
@@ -102,7 +130,7 @@ describe('ListImportPreviewDialog', () => {
 
     // Dedup subhead + per-flag counts in one paragraph.
     expect(
-      screen.getByText(/Items already in the library won't be duplicated\. 1 worn\. 1 consumable\./),
+      screen.getByText(/Items already in the inventory won't be duplicated\. 1 worn\. 1 consumable\./),
     ).toBeInTheDocument()
     // Flags column: purple W for worn, orange C for consumable.
     expect(screen.getByText('W')).toBeInTheDocument()
