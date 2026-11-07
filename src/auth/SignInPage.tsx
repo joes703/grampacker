@@ -29,7 +29,13 @@ export default function SignInPage() {
     try {
       const { error: sendError } = await authClient.signIn.magicLink({ email })
       if (sendError) {
-        setError(authErrorMessage(sendError, "Couldn't send the link. Please try again."))
+        // The browser passes a@b and the server does not. The email is the only
+        // field this call sends, so its validation error is about the email.
+        setError(
+          sendError.code === 'VALIDATION_ERROR'
+            ? 'Enter a valid email address.'
+            : authErrorMessage(sendError, "Couldn't send the link. Please try again."),
+        )
         return
       }
       setSent(true)
@@ -125,7 +131,7 @@ export default function SignInPage() {
         </>
       )}
 
-      <form onSubmit={(e) => void handleSendLink(e)} className="space-y-4" noValidate>
+      <form onSubmit={(e) => void handleSendLink(e)} className="space-y-4">
         <div>
           <label className={LABEL} htmlFor="email">
             Email

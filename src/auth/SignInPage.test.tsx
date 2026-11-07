@@ -84,9 +84,20 @@ describe('SignInPage', () => {
       copy: 'Too many attempts. Please wait a bit and try again.',
     },
     {
+      // The browser lets a@b through and the server does not. Its own text reads
+      // "[body.email] Invalid email address".
+      name: 'an address the server rejects',
+      answer: () =>
+        Promise.resolve({
+          data: null,
+          error: { status: 400, code: 'VALIDATION_ERROR', message: '[body.email] Invalid email address' },
+        }),
+      copy: 'Enter a valid email address.',
+    },
+    {
       name: "a returned error with the server's message",
-      answer: () => Promise.resolve({ data: null, error: { status: 400, message: 'Invalid email' } }),
-      copy: 'Invalid email',
+      answer: () => Promise.resolve({ data: null, error: { status: 403, message: 'Invalid origin' } }),
+      copy: 'Invalid origin',
     },
     {
       name: 'a returned error with no message',
@@ -105,6 +116,16 @@ describe('SignInPage', () => {
 
     expect(await screen.findByText(copy)).toBeInTheDocument()
     expect(screen.queryByText(SENT)).not.toBeInTheDocument()
+  })
+
+  it('leaves a malformed address to the browser, which blocks the send', async () => {
+    renderAt('/sign-in')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Email'), 'notanemail')
+    await user.click(screen.getByRole('button', { name: /link/i }))
+
+    expect((screen.getByLabelText('Email') as HTMLInputElement).validity.typeMismatch).toBe(true)
+    expect(auth.magicLink).not.toHaveBeenCalled()
   })
 
   it('stays on the page with the error when the passkey sign-in returns one', async () => {
