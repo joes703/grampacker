@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import WeightInput from './WeightInput'
@@ -170,6 +170,39 @@ describe('WeightInput', () => {
 
     expect(onChange).toHaveBeenLastCalledWith(0)
     expect((input as HTMLInputElement).value).toBe('')
+  })
+
+  it('sets the limit on the field in the unit shown', async () => {
+    const user = userEvent.setup()
+    const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
+    const input = getByLabelText('Weight') as HTMLInputElement
+
+    expect(input.max).toBe('100000')
+    await user.click(getByRole('button', { name: /switch to ounces/ }))
+    expect(input.max).toBe('3527.4')
+  })
+
+  it('keeps an over-limit number over the limit when the unit changes', async () => {
+    // The toggle used to redraw the field from the capped weight, which
+    // turned 999999 into a valid 3527.4 oz that could then be saved.
+    const user = userEvent.setup()
+    const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
+    const input = getByLabelText('Weight') as HTMLInputElement
+
+    await user.type(input, '999999')
+    await user.click(getByRole('button', { name: /switch to ounces/ }))
+
+    expect(input.validity.rangeOverflow).toBe(true)
+  })
+
+  it('keeps a negative number negative when the unit changes', () => {
+    const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
+    const input = getByLabelText('Weight') as HTMLInputElement
+
+    fireEvent.change(input, { target: { value: '-5' } })
+    fireEvent.click(getByRole('button', { name: /switch to ounces/ }))
+
+    expect(input.validity.rangeUnderflow).toBe(true)
   })
 
   it('honors an oz display preference when first mounted', async () => {

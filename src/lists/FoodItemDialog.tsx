@@ -98,8 +98,8 @@ export default function FoodItemDialog({
 
   const quantityValue = Number(quantity)
   // The server's own schema, so a rejection is not the first the user hears
-  // of a bound. Weight needs no check here: WeightInput clamps to
-  // MAX_ITEM_WEIGHT_GRAMS, which is the food weight schema's max.
+  // of a bound. Weight needs no check here: WeightInput sets the food weight
+  // schema's max on its field, and the browser refuses the submit past it.
   //
   // Quantity validity stands on its own: the summary reads it, and judging
   // it by whole-form validity made clearing the NAME change the carried

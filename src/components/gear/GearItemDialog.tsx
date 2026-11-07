@@ -83,7 +83,9 @@ export default function GearItemDialog({
   // the <input type="date"> contract — no parsing needed.
   const [purchaseDate, setPurchaseDate] = useState(item?.purchaseDate ?? '')
   const [status, setStatus] = useState<GearStatus>(item?.status ?? DEFAULT_GEAR_STATUS)
-  const [quantity, setQuantity] = useState(listContext?.quantity ?? 1)
+  // The typed text, so a bad number stays on screen for the browser to refuse.
+  const [quantity, setQuantity] = useState(String(listContext?.quantity ?? 1))
+  const qtyNum = clampQuantity(quantity)
   const { worn, consumable, toggleWorn, toggleConsumable } = useWornConsumableFlags({
     isWorn: listContext?.isWorn ?? false,
     isConsumable: listContext?.isConsumable ?? false,
@@ -124,7 +126,7 @@ export default function GearItemDialog({
     }
     const listPatch: ListContextPatch | null = listContext
       ? {
-          quantity: clampQuantity(quantity),
+          quantity: qtyNum,
           isWorn: worn,
           isConsumable: consumable,
         }
@@ -333,8 +335,8 @@ export default function GearItemDialog({
                 <div className="inline-flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    disabled={quantity <= 1}
+                    onClick={() => setQuantity(String(Math.max(1, qtyNum - 1)))}
+                    disabled={qtyNum <= 1}
                     aria-label="Decrease quantity"
                     className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -347,15 +349,13 @@ export default function GearItemDialog({
                     min={1}
                     max={MAX_LIST_ITEM_QUANTITY}
                     value={quantity}
-                    onChange={(e) =>
-                      setQuantity(clampQuantity(e.target.value))
-                    }
+                    onChange={(e) => setQuantity(e.target.value)}
                     className="w-16 h-11 rounded-lg border border-gray-300 px-2 text-center text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(MAX_LIST_ITEM_QUANTITY, q + 1))}
-                    disabled={quantity >= MAX_LIST_ITEM_QUANTITY}
+                    onClick={() => setQuantity(String(Math.min(MAX_LIST_ITEM_QUANTITY, qtyNum + 1)))}
+                    disabled={qtyNum >= MAX_LIST_ITEM_QUANTITY}
                     aria-label="Increase quantity"
                     className="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >

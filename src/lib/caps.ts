@@ -6,8 +6,8 @@
 //   - the zod request schemas in shared/gear.ts -> the name/description/
 //     weight/quantity bounds below.
 // These constants are client-side UX guards that mirror those limits so
-// the app can preflight, disable controls, and clamp drafts with a
-// specific, friendly message BEFORE a write hits the server. They do NOT
+// the app can preflight, disable controls, and refuse a bad number with a
+// message BEFORE a write hits the server. They do NOT
 // replace the authoritative enforcement; keep them in sync with it.
 //
 
@@ -26,11 +26,11 @@ export {
 // both defined once in shared/gear.ts next to the schemas that use them.
 export { CATEGORY_CAP, GEAR_ITEM_CAP } from '../../shared/gear'
 
-// Upper bound (grams) for a single item's weight; drafts clamp to this.
+// Upper bound (grams) for a single item's weight.
 // Defined in shared/gear.ts next to weightGramsSchema.
 export { MAX_COST, MAX_ITEM_WEIGHT_GRAMS } from '../../shared/gear'
 
-// Upper bound for a list item's quantity; drafts clamp to this. Consumed by
+// Upper bound for a list item's quantity. Consumed by
 // GearItemDialog's list-context field, Quick Add, CSV import and the row's
 // inline editor.
 //
