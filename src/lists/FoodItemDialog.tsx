@@ -300,25 +300,23 @@ export default function FoodItemDialog({
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
           <div className="flex items-center gap-2">
-            <PrimaryButton type="submit" disabled={busy || !valid}>
-              {busy ? 'Saving…' : mode.kind === 'add' ? 'Add food' : 'Save'}
-            </PrimaryButton>
+            {mode.kind === 'edit' && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDelete(mode.item.id)}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Remove from plan
+              </button>
+            )}
+            <span className="flex-1" aria-hidden="true" />
             <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
               Cancel
             </button>
-            {mode.kind === 'edit' && (
-              <>
-                <span className="flex-1" aria-hidden="true" />
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onDelete(mode.item.id)}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  Remove from plan
-                </button>
-              </>
-            )}
+            <PrimaryButton type="submit" disabled={busy || !valid}>
+              {busy ? 'Saving…' : mode.kind === 'add' ? 'Add food' : 'Save'}
+            </PrimaryButton>
           </div>
         </div>
       </form>
