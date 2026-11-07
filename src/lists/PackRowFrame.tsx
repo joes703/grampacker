@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import {
+  FLAT_TABLE_EYEBROW,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
@@ -97,6 +98,23 @@ export function PackChecks({
         <PrintCheckboxSquare variant="packed" checked={isPacked} />
         {children}
       </label>
+    </>
+  )
+}
+
+// The R and P column labels, then whatever follows them. Sits next to
+// PackChecks and has the same shape on purpose: a fixed cell, then a flex cell
+// with the second column and the name, so the labels stay over the checkboxes.
+// print:w-3.5 follows the print squares.
+export function PackColumnLabels({ children }: { children?: ReactNode }) {
+  const label = `w-4 print:w-3.5 shrink-0 text-center ${FLAT_TABLE_EYEBROW}`
+  return (
+    <>
+      <span title="Ready" className={label}>R</span>
+      <div className="flex flex-1 min-w-0 items-center gap-1.5">
+        <span title="Packed" className={label}>P</span>
+        {children}
+      </div>
     </>
   )
 }
