@@ -11,12 +11,14 @@ import { MAX_DESC_LENGTH } from '../lib/caps'
 // The gear-library import and the list import share it. What genuinely
 // differs comes in as props: the
 // title suffix, the caller's note lines around the shared long-description
-// warning, and the list import's extra Flags column.
+// warning, and the list import's extra Qty and Flags columns.
 
 // What every importable CSV row carries; the warning count reads description.
 type BaseRow = {
   name: string
   weightGrams: number
+  weightUnreadable?: boolean
+  quantityUnreadable?: boolean
   categoryName?: string | null
   description?: string | null
 }
@@ -30,8 +32,8 @@ type Props<R extends BaseRow> = {
   // renders between them, so a caller can keep its established ordering.
   notesAbove?: ReactNode
   notesBelow?: ReactNode
-  // Optional trailing table column (the list import's Flags).
-  extraColumn?: { header: string; cell: (row: R) => ReactNode }
+  // Optional trailing table columns (the list import's Qty and Flags).
+  extraColumns?: { header: string; cell: (row: R) => ReactNode }[]
   saving: boolean
   onConfirm: (rows: R[]) => void
   onClose: () => void
@@ -42,7 +44,7 @@ export default function ImportPreviewDialog<R extends BaseRow>({
   titleSuffix = '',
   notesAbove,
   notesBelow,
-  extraColumn,
+  extraColumns = [],
   saving,
   onConfirm,
   onClose,
@@ -50,6 +52,10 @@ export default function ImportPreviewDialog<R extends BaseRow>({
   const longDescriptionCount = rows.filter(
     (r) => (r.description?.length ?? 0) > MAX_DESC_LENGTH,
   ).length
+  const unreadableCount = rows.reduce(
+    (count, r) => count + (r.weightUnreadable ? 1 : 0) + (r.quantityUnreadable ? 1 : 0),
+    0,
+  )
   const title = `Import ${rows.length} item${rows.length !== 1 ? 's' : ''}${titleSuffix}`
 
   return (
@@ -64,6 +70,11 @@ export default function ImportPreviewDialog<R extends BaseRow>({
         <div>
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
           {notesAbove}
+          {unreadableCount > 0 && (
+            <p className="mt-1 text-xs text-red-700">
+              {unreadableCount} {unreadableCount === 1 ? "value couldn't be read" : "values couldn't be read"}. The red numbers are what will be imported.
+            </p>
+          )}
           {longDescriptionCount > 0 && (
             <p className="mt-1 text-xs text-amber-700">
               {longDescriptionCount} description{longDescriptionCount === 1 ? '' : 's'} longer than {MAX_DESC_LENGTH.toLocaleString()} characters will be shortened on import.
@@ -82,22 +93,29 @@ export default function ImportPreviewDialog<R extends BaseRow>({
               <th className="px-4 py-2 text-left">Name</th>
               <th className="px-3 py-2 text-right">Weight</th>
               <th className="px-3 py-2 text-left">Category</th>
-              {extraColumn && <th className="px-3 py-2 text-center">{extraColumn.header}</th>}
+              {extraColumns.map((column) => (
+                <th key={column.header} className="px-3 py-2 text-center">{column.header}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map((row, i) => (
               <tr key={i} className="hover:bg-gray-50">
-                {/* Slightly narrower name cap when the extra column needs
-                    the room - the widths both copies already used. */}
-                <td className={`px-4 py-1.5 font-normal text-gray-900 ${extraColumn ? 'max-w-[160px]' : 'max-w-[180px]'} truncate`}>
+                {/* Slightly narrower name cap when the extra columns need
+                    the room. */}
+                <td className={`px-4 py-1.5 font-normal text-gray-900 ${extraColumns.length > 0 ? 'max-w-[140px] sm:max-w-[160px]' : 'max-w-[180px]'} truncate`}>
                   {row.name}
                 </td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{formatItemWeight(row.weightGrams, 'g')}</td>
+                <td
+                  aria-label={row.weightUnreadable ? `${row.name} weight, could not be read` : undefined}
+                  className={`px-3 py-1.5 text-right tabular-nums ${row.weightUnreadable ? 'font-medium text-red-600' : 'text-gray-600'}`}
+                >
+                  {formatItemWeight(row.weightGrams, 'g')}
+                </td>
                 <td className="px-3 py-1.5 text-gray-500">{row.categoryName || '--'}</td>
-                {extraColumn && (
-                  <td className="px-3 py-1.5 text-center text-xs">{extraColumn.cell(row)}</td>
-                )}
+                {extraColumns.map((column) => (
+                  <td key={column.header} className="px-3 py-1.5 text-center text-xs">{column.cell(row)}</td>
+                ))}
               </tr>
             ))}
           </tbody>

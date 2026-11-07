@@ -276,6 +276,14 @@ describe('removing gear from Pack view', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
+  it('says what the R and P columns mean at the top of Pack', async () => {
+    stubViewport(1280)
+    h.fetchListItems.mockResolvedValue([listItem])
+    await renderDetail(`/lists/${listId}/pack`)
+
+    expect(screen.getByText('R = ready, P = packed.')).toBeInTheDocument()
+  })
+
   // Worn rows sit outside the packing tree, so they never receive the packing
   // kebab. Without their own affordance the Worn section is the one place in
   // Pack you cannot drop an item from.

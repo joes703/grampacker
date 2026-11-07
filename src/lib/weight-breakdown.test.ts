@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   baseGramsForCategory,
   computeListWeightBreakdown,
+  foodGramsAtMeal,
   foodGramsFor,
   consumableGramsForCategory,
   wornGramsForCategory,
@@ -226,6 +227,20 @@ describe('wornGramsForCategory', () => {
 })
 
 describe('food weight', () => {
+  it('adds up to the trip weight across every meal, whatever the mix', () => {
+    const shared = { weightGrams: 350, quantity: 1, isPerMeal: false, slotIds: ['a', 'b', 'c'], unitCount: 1 }
+    const perMeal = { weightGrams: 90, quantity: 2, isPerMeal: true, slotIds: ['a', 'b'], unitCount: 4 }
+    const twoJars = { weightGrams: 100, quantity: 2, isPerMeal: false, slotIds: ['a', 'b', 'c'], unitCount: 2 }
+    const onNoMeal = { weightGrams: 60, quantity: 1, isPerMeal: true, slotIds: [], unitCount: 1 }
+    const items = [shared, perMeal, twoJars, onNoMeal]
+
+    const shown = items.reduce(
+      (grams, item) => grams + foodGramsAtMeal(item) * Math.max(item.slotIds.length, 1),
+      0,
+    )
+    expect(shown).toBeCloseTo(foodGramsFor(items), 6)
+  })
+
   const GEAR = {
     items: [
       listItem({ id: 'a', categoryId: 'cat-1', weightGrams: 1200 }),

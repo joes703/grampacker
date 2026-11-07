@@ -134,7 +134,7 @@ export default function DesktopListsPanel({
 
   // The whole CSV import surface (hidden input, preview, error dialog) in
   // one shared hook; onBeforeOpen keeps this panel's dialog union exclusive.
-  const { openImportPicker, importUi } = useListImportFlow({
+  const { openImportExplainer, importUi } = useListImportFlow({
     onBeforeOpen: () => setDialog(null),
   })
 
@@ -216,7 +216,7 @@ export default function DesktopListsPanel({
                 icon={<Upload size={13} />}
                 onClick={() => {
                   close()
-                  openImportPicker()
+                  openImportExplainer()
                 }}
               >
                 Import CSV

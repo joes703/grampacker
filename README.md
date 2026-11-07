@@ -5,7 +5,7 @@ contract; `SECURITY.md` is the security posture.
 
 Pack-weight planning for backpacking. Live at [grampacker.app](https://grampacker.app).
 
-Build a gear library, assemble gear into trip lists, see what the pack weighs,
+Build a gear inventory, assemble gear into trip lists, see what the pack weighs,
 and share a read-only view of a list.
 
 ## Stack

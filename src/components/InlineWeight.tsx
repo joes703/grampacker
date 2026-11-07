@@ -5,6 +5,8 @@ import { FLAT_TABLE_NUMERIC_TEXT, INLINE_EDIT_FOCUS_RING } from './flat-table-st
 import ItemWeightValue from './ItemWeightValue'
 import WeightInput from './WeightInput'
 import { clampWeightGrams } from '../../shared/gear'
+import { isOutOfLimits, WEIGHT_LIMIT_MESSAGE } from '../lib/number-limits'
+import { showToast } from '../lib/toast'
 
 // Click-to-edit weight, the one inline control shared by every surface that
 // shows a weight: the Category row, the Pack row, and the gear library row.
@@ -62,6 +64,13 @@ export default function InlineWeight({
   }, [editing])
 
   function commit() {
+    // Refused, not capped: the old number stays. The editor still closes, so a
+    // bad number cannot strand the row in edit mode.
+    if (isOutOfLimits(inputRef.current)) {
+      showToast(WEIGHT_LIMIT_MESSAGE, { type: 'error' })
+      cancel()
+      return
+    }
     const clamped = clampWeightGrams(draftGrams)
     if (clamped !== grams && onSave) onSave(clamped)
     setEditing(false)

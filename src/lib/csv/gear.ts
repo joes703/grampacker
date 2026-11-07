@@ -11,6 +11,9 @@ export type GearCsvRow = {
   name: string
   description: string | null
   weightGrams: number
+  // The preview shows this weight in red. Never sent to the server: the planner
+  // builds its own request objects.
+  weightUnreadable?: boolean
   categoryName: string
   cost: number | null
   purchaseDate: string | null

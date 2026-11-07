@@ -9,6 +9,14 @@ import {
 } from '../lib/weight'
 import { MAX_ITEM_WEIGHT_GRAMS } from '../lib/caps'
 
+// The weight limit in the unit on screen. toFixed, not a floor: 3527.4 oz
+// converts back to exactly the gram limit.
+const MAX_OZ = Number(gramsToOz(MAX_ITEM_WEIGHT_GRAMS).toFixed(1))
+
+function maxForUnit(unit: WeightUnit): number {
+  return unit === 'g' ? MAX_ITEM_WEIGHT_GRAMS : MAX_OZ
+}
+
 // Number input + g/oz unit toggle. Storage is grams to one decimal place; the
 // component converts and snaps at the input boundary. The initial unit follows the
 // user's display preference (lib/weight.getWeightUnit). Toggling the unit
@@ -106,6 +114,10 @@ export default function WeightInput({
   }
 
   function toggleUnit() {
+    // A bad number holds the toggle still. Converting could round it back into
+    // range (100001 g is 3527.4 oz, -0.1 g is -0.0 oz), and it could then be saved.
+    const typed = parseFloat(draft)
+    if (typed < 0 || typed > maxForUnit(unit)) return
     const nextUnit: WeightUnit = unit === 'g' ? 'oz' : 'g'
     setDraft(formatDraft(lastEmitted.current, nextUnit))
     setUnit(nextUnit)
@@ -128,6 +140,9 @@ export default function WeightInput({
         type="number"
         inputMode="decimal"
         min={0}
+        // In a form the browser refuses to submit past this and says why. The
+        // inline editors read the same limit: lib/number-limits.
+        max={maxForUnit(unit)}
         step={0.1}
         value={draft}
         // Carries the "0" a zero weight does not print, so an empty field

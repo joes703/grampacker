@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gearItemsToCsv, parseGearCsv, MAX_CSV_ROWS } from './index'
+import { CSV_HEADER_LINE, gearItemsToCsv, parseGearCsv, MAX_CSV_ROWS } from './index'
 import type { Category, GearItem } from '../types'
 
 // camelCase DTO builders: these ARE the API response shapes, with no user_id.
@@ -499,3 +499,27 @@ describe('parseGearCsv row cap (MAX_CSV_ROWS)', () => {
     expect((parsed as unknown[]).length).toBe(MAX_CSV_ROWS)
   })
 })
+
+describe('parseGearCsv unreadable weights', () => {
+  it('flags a weight it had to replace, and leaves a blank alone', () => {
+    const parsed = parseGearCsv('name,weight,unit\r\nGood,10,g\r\nBlank,,\r\nBad,abc,g')
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed.map((r) => !!r.weightUnreadable)).toEqual([false, false, true])
+    expect(parsed[2]?.weightGrams).toBe(0)
+  })
+})
+
+describe('CSV_HEADER_LINE in the gear import', () => {
+  it('reads the columns gear keeps', () => {
+    const parsed = parseGearCsv(`${CSV_HEADER_LINE}\r\nTarp,Shelter,Silnylon,2,10,oz,,120,Worn,`)
+    if (typeof parsed === 'string') throw new Error(parsed)
+    expect(parsed[0]).toMatchObject({
+      name: 'Tarp',
+      categoryName: 'Shelter',
+      description: 'Silnylon',
+      weightGrams: 283.5,
+      cost: 120,
+    })
+  })
+})
+

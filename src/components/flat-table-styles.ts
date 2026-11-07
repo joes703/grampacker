@@ -250,6 +250,17 @@ export const ROW_LEADING_CONTROL_TARGET =
 // columns that may diverge.
 export const COL_ICON = 'shrink-0 w-6' // worn/consumable/kebab slot
 export const COL_QTY = 'shrink-0 w-10' // pack-row quantity
+// A Pack row's worn or consumable slot. An empty one takes no room below lg,
+// where the name needs it. The quantity stays put: it is measured from the
+// right edge of the row. Paper and lg keep the slot, so columns line up there.
+export const packIconSlot = (filled: boolean): string =>
+  `${COL_ICON} items-center justify-center ${
+    filled ? 'inline-flex' : 'hidden lg:inline-flex print:inline-flex'
+  }`
+// A Pack name: up to two lines on a phone, so a checklist can be read. One line
+// at lg, where the row has room.
+export const PACK_NAME_FIT =
+  'line-clamp-2 [overflow-wrap:anywhere] lg:block lg:truncate lg:[-webkit-line-clamp:none] print:block print:[-webkit-line-clamp:none]'
 export const COL_QTY_EDIT = 'shrink-0 w-12' // edit-row InlineQuantity
 export const COL_QTY_MOBILE = 'shrink-0 w-8'
 export const COL_WEIGHT = 'shrink-0 w-24' // desktop weight cell

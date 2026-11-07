@@ -10,7 +10,7 @@ type Props = {
 
 // The list-import flavor of the shared ImportPreviewDialog: the
 // into-a-new-list title, the library-dedup and price notes, and the
-// worn/consumable Flags column.
+// quantity and worn/consumable Flags columns.
 export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClose }: Props) {
   const wornCount = rows.filter((r) => r.isWorn).length
   const consumCount = rows.filter((r) => r.isConsumable).length
@@ -24,7 +24,7 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
       titleSuffix=" into a new list"
       notesAbove={
         <p className="text-xs text-gray-500 mt-0.5">
-          New items will be added to your gear library. Items already in the library won't be duplicated.
+          New items will be added to your gear inventory. Items already in the inventory won't be duplicated.
           {wornCount > 0 && ` ${wornCount} worn.`}
           {consumCount > 0 && ` ${consumCount} consumable.`}
         </p>
@@ -32,19 +32,32 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
       notesBelow={
         pricedCount > 0 ? (
           <p className="mt-1 text-xs text-gray-500">
-            Prices apply only to newly added gear. Items already in your library keep the price you already set.
+            Prices apply only to newly added gear. Items already in your inventory keep the price you already set.
           </p>
         ) : undefined
       }
-      extraColumn={{
-        header: 'Flags',
-        cell: (row) => (
-          <>
-            {row.isWorn && <span className="text-purple-600 mr-1">W</span>}
-            {row.isConsumable && <span className="text-orange-600">C</span>}
-          </>
-        ),
-      }}
+      extraColumns={[
+        {
+          header: 'Qty',
+          cell: (row) => (
+            <span
+              aria-label={row.quantityUnreadable ? `${row.name} quantity, could not be read` : undefined}
+              className={`tabular-nums ${row.quantityUnreadable ? 'font-medium text-red-600' : 'text-gray-600'}`}
+            >
+              {row.quantity}
+            </span>
+          ),
+        },
+        {
+          header: 'Flags',
+          cell: (row) => (
+            <>
+              {row.isWorn && <span className="text-purple-600 mr-1">W</span>}
+              {row.isConsumable && <span className="text-orange-600">C</span>}
+            </>
+          ),
+        },
+      ]}
       saving={saving}
       onConfirm={onConfirm}
       onClose={onClose}

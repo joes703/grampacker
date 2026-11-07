@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import QuickEditItemModal from './QuickEditItemModal'
 import type { GearItem, ListItemWithGear } from '../lib/types'
@@ -107,6 +107,21 @@ describe('QuickEditItemModal', () => {
       { name: 'Wind shirt XL', weightGrams: 150 },
       { quantity: 2, isWorn: true, isConsumable: false },
     )
+  })
+
+  it.each([
+    ['Weight', '999999'],
+    ['Quantity', '0'],
+    ['Quantity', '10000'],
+  ])('does not save or carry over %s %s', async (label, value) => {
+    const { onSave, onMoreDetails } = renderModal()
+    fireEvent.change(screen.getByLabelText(label), { target: { value } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.click(screen.getByRole('button', { name: 'More details' }))
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(onMoreDetails).not.toHaveBeenCalled()
   })
 
   it('reports a save failure inline', () => {

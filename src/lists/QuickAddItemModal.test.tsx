@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import QuickAddItemModal from './QuickAddItemModal'
 import type { Category } from '../lib/types'
@@ -76,5 +76,20 @@ describe('QuickAddItemModal category selection', () => {
   it('renders no selector when the caller has an implicit category', () => {
     render(<QuickAddItemModal onSubmit={vi.fn()} onClose={vi.fn()} />)
     expect(screen.queryByLabelText('Category')).toBeNull()
+  })
+})
+
+describe('QuickAddItemModal limits', () => {
+  it.each([
+    ['Weight', '999999'],
+    ['Quantity', '0'],
+  ])('does not add an item with %s %s', async (label, value) => {
+    const onSubmit = vi.fn()
+    render(<QuickAddItemModal onSubmit={onSubmit} onClose={vi.fn()} />)
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Spork')
+    fireEvent.change(screen.getByLabelText(new RegExp(`^${label}`)), { target: { value } })
+    await userEvent.click(screen.getByRole('button', { name: /^Add/ }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })

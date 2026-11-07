@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Shirt, UtensilsCrossed, XCircle } from 'lucide-react'
 import RowIconButton from '../components/RowIconButton'
 import WeightInput from '../components/WeightInput'
@@ -9,6 +10,8 @@ import {
 } from '../components/flat-table-styles'
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
+import { isOutOfLimits, quantityLimitMessage, WEIGHT_LIMIT_MESSAGE } from '../lib/number-limits'
+import { showToast } from '../lib/toast'
 import { useCommitOnce } from '../lib/use-commit-once'
 
 type Props = {
@@ -39,6 +42,23 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   } = useQuickAddForm()
 
   const commitOnce = useCommitOnce()
+  const quantityRef = useRef<HTMLInputElement>(null)
+  const weightRef = useRef<HTMLInputElement>(null)
+
+  // Runs BEFORE commitOnce. A refusal only raises a toast, so nothing here
+  // re-renders, and a used-up guard would eat the next Enter or Escape. The row
+  // stays open, because closing it would lose the typed name.
+  function refuseOutOfLimits(): boolean {
+    if (isOutOfLimits(weightRef.current)) {
+      showToast(WEIGHT_LIMIT_MESSAGE, { type: 'error' })
+      return true
+    }
+    if (isOutOfLimits(quantityRef.current)) {
+      showToast(quantityLimitMessage(MAX_LIST_ITEM_QUANTITY), { type: 'error' })
+      return true
+    }
+    return false
+  }
 
   function commit() {
     const data = buildData()
@@ -51,7 +71,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
     // must not consume the once-guard: nothing re-renders on that path,
     // and a consumed guard would eat the next Escape until a keystroke
     // re-armed it.
-    if (e.key === 'Enter' && name.trim()) commitOnce(commit)
+    if (e.key === 'Enter' && name.trim() && !refuseOutOfLimits()) commitOnce(commit)
     if (e.key === 'Escape') commitOnce(onCancel)
   }
 
@@ -61,6 +81,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
   // shouldn't commit yet.
   function handleRowBlur(e: React.FocusEvent<HTMLDivElement>) {
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    if (name.trim() && refuseOutOfLimits()) return
     commitOnce(() => {
       if (name.trim()) commit()
       else onCancel()
@@ -123,6 +144,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       />
 
       <input
+        ref={quantityRef}
         type="number"
         min={1}
         max={MAX_LIST_ITEM_QUANTITY}
@@ -133,6 +155,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
         className={`shrink-0 w-12 rounded border border-blue-400 px-1 py-0.5 text-right tabular-nums ${INLINE_EDIT_FOCUS_RING}`}
       />
       <WeightInput
+        inputRef={weightRef}
         grams={weightGrams}
         onChange={setWeightGrams}
         onKeyDown={handleKey}

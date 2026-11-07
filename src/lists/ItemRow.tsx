@@ -12,6 +12,7 @@ import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import {
   COL_ICON,
+  packIconSlot,
   COL_QTY,
   COL_QTY_EDIT,
   COL_QTY_MOBILE,
@@ -169,10 +170,10 @@ export default function ItemRow({
           </span>
         }
       >
-        <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+        <span className={packIconSlot(item.isWorn)}>
           {item.isWorn && <WornIcon />}
         </span>
-        <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+        <span className={packIconSlot(item.isConsumable)}>
           {item.isConsumable && <ConsumableIcon />}
         </span>
         <span className={`${COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
