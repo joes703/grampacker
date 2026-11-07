@@ -3,7 +3,7 @@ import { Check } from 'lucide-react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import {
-  COL_ICON,
+  packIconSlot,
   COL_QTY,
   COL_WEIGHT,
   FLAT_TABLE_EYEBROW,
@@ -11,6 +11,7 @@ import {
   FLAT_TABLE_HEADER_TITLE_MUTED,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_SURFACE,
+  PACK_NAME_FIT,
   PRINT_UNTRUNCATE,
   ROW_CONTROL_TARGET,
   ROW_LEADING_CONTROL_TARGET,
@@ -139,7 +140,7 @@ function PackSection({
       {containerItem && (
         <div
           data-testid="pack-column-labels"
-          className="flex items-center gap-2 lg:gap-2.5 print:gap-1 px-2 lg:px-3 print:px-1 pt-1 break-after-avoid"
+          className="flex items-center gap-2 lg:gap-2.5 print:gap-1 px-2 lg:px-3 print:px-1 pt-1 print:break-after-avoid"
         >
           {leadingStub}
           <div className="flex flex-1 min-w-0 items-center gap-2 lg:gap-2.5 print:gap-1">
@@ -162,7 +163,7 @@ function PackSection({
               isReady={containerItem.isReady}
               onUpdate={(patch) => handlers.onUpdate?.(containerItem.id, patch)}
             >
-              <span className={`truncate ${PRINT_UNTRUNCATE} ${
+              <span className={`${PACK_NAME_FIT} ${PRINT_UNTRUNCATE} ${
                 containerItem.isPacked
                   ? `${FLAT_TABLE_HEADER_TITLE_MUTED} line-through print:text-gray-900 print:no-underline`
                   : FLAT_TABLE_HEADER_TITLE
@@ -180,10 +181,10 @@ function PackSection({
         </div>
         {containerItem ? (
           <>
-            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+            <span className={packIconSlot(containerItem.isWorn)}>
               {containerItem.isWorn && <WornIcon />}
             </span>
-            <span className={`${COL_ICON} inline-flex items-center justify-center`}>
+            <span className={packIconSlot(containerItem.isConsumable)}>
               {containerItem.isConsumable && <ConsumableIcon />}
             </span>
             <span className={`${COL_QTY} text-center ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
@@ -193,8 +194,8 @@ function PackSection({
           </>
         ) : (
           <>
-            <div className={COL_ICON} />
-            <div className={COL_ICON} />
+            <div className={packIconSlot(false)} />
+            <div className={packIconSlot(false)} />
             <div className={`${COL_QTY} text-center ${FLAT_TABLE_EYEBROW}`}>Qty</div>
             <div className={`hidden lg:block ${COL_WEIGHT} text-right ${FLAT_TABLE_EYEBROW} print:hidden`}>
               Weight

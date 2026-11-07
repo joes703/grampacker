@@ -43,11 +43,13 @@ export default function ListDocumentToolbar({
   return (
     <div className="flex flex-col gap-1 print:hidden">
       <div data-testid="list-toolbar-title-row" className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1">
+        {/* A row of its own on a phone: beside the controls, the name was cut to
+            a letter or two. */}
+        <div className="flex min-w-0 w-full sm:w-auto sm:flex-1">
           <CurrentListHeader list={list} />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto sm:ml-0 flex items-center gap-2">
           {mode === 'pack' && (
             <button
               type="button"

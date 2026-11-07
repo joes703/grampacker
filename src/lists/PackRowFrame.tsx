@@ -5,6 +5,7 @@ import {
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  PACK_NAME_FIT,
   PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import PackModeCheckbox from './PackModeCheckbox'
@@ -123,7 +124,7 @@ export function PackColumnLabels({ children }: { children?: ReactNode }) {
 // line-through pairs with the shell's bg-gray-50 to read as completed
 // without celebrating; print restores plain black on the blank checklist.
 function packedNameClass(isPacked: boolean): string {
-  return `block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
+  return `w-full ${PACK_NAME_FIT} ${PRINT_UNTRUNCATE} font-normal ${
     isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
   }`
 }
