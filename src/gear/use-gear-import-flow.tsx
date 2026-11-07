@@ -4,10 +4,12 @@ import { queryKeys, importGearItems } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
 import { parseGearCsv, type GearCsvRow } from '../lib/csv'
 import { assertGearImportWithinCaps, planGearImport } from '../lib/csv/import-plan'
+import { importErrorMessage } from '../lib/import-error'
 import { useCsvFileInput } from '../lib/use-csv-file-input'
 import type { Category, GearItem } from '../lib/types'
 import ImportPreviewDialog from '../components/ImportPreviewDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import CsvHeaderLine from '../components/CsvHeaderLine'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { SECONDARY_BUTTON } from '../components/flat-table-styles'
@@ -91,7 +93,7 @@ export function useGearImportFlow({
       onBeforeOpen?.()
       setState({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Could not import CSV. Try again.',
+        message: importErrorMessage(err, 'inventory'),
       })
     },
   })
@@ -113,11 +115,12 @@ export function useGearImportFlow({
           <div className="p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-3">Import gear inventory</h2>
             <p className="text-sm text-gray-600 mb-3">
-              Adds gear directly to your library without creating a list. Useful for importing an existing inventory of gear you own.
+              Adds gear directly to your inventory without creating a list. Useful for importing an existing inventory of gear you own.
             </p>
-            <p className="text-sm text-gray-600 mb-5">
+            <p className="text-sm text-gray-600 mb-3">
               Quantity, worn, and consumable settings from the CSV are ignored. Those apply to list items, not the inventory itself.
             </p>
+            <CsvHeaderLine />
             <div className="flex justify-end gap-2">
               <button
                 type="button"

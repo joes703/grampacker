@@ -264,6 +264,34 @@ describe('GearLibraryPage bulk success handling', () => {
     expect(screen.queryByText(/No gear matches/)).not.toBeInTheDocument()
   })
 
+  it('while searching, hides categories with no matches and counts the matches', async () => {
+    h.reorderableItems.mockReturnValue([
+      category({ id: 'c1', name: 'Shelter' }),
+      category({ id: 'c2', name: 'Cooking' }),
+    ])
+    h.fetchGearItems.mockResolvedValue([
+      gear({ id: 'g1', name: 'Tent', categoryId: 'c1' }),
+      gear({ id: 'g2', name: 'Stove', categoryId: 'c2' }),
+    ])
+    renderPage()
+    expect(await screen.findByText('2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(2)
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: 'tent' },
+    })
+
+    expect(await screen.findByText('1 of 2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(1)
+
+    // Spaces alone are not a search, the same rule as the no-matches message.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search gear' }), {
+      target: { value: '   ' },
+    })
+    expect(await screen.findByText('2 items')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Delete category' })).toHaveLength(2)
+  })
+
   it('shows a first-run empty state when there are no categories or gear items', async () => {
     h.reorderableItems.mockReturnValue([])
     h.fetchGearItems.mockResolvedValue([])
@@ -271,7 +299,7 @@ describe('GearLibraryPage bulk success handling', () => {
     renderPage()
 
     expect(await screen.findByText('No gear yet')).toBeInTheDocument()
-    expect(screen.getByText('Add your first item, import a CSV, or create a category to start organizing your gear library.')).toBeInTheDocument()
+    expect(screen.getByText('Add your first item, import a CSV, or create a category to start organizing your gear inventory.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Import CSV' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New category' })).toBeInTheDocument()

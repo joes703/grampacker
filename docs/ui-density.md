@@ -210,7 +210,7 @@ Weight is edited with one control, `src/components/InlineWeight.tsx`, on
 every surface that shows a weight: the List view row and the Pack row
 (`ItemRow`), Pack food rows (`SortableFoodRow`), and the gear library row
 (`GearItemRow`). Do not write another one: separate copies of its state
-(draft, prop sync, focus, clamp, commit once) drift apart.
+(draft, prop sync, focus, limit check, commit once) drift apart.
 
 - Omit `onSave` for read-only: the public share, and food rows in Pack (food
   weight is edited in the Food view).
@@ -324,6 +324,15 @@ them. Header and row therefore use the same `COL_*` width token
 `COL_PRICE`, `COL_DATE`. One token per COLUMN, not per width: two columns
 with the same width today may differ later. The tokens set only width and
 `shrink-0`; alignment and typography are added at the call site.
+
+A Pack row's worn and consumable slots use `packIconSlot(filled)`, which adds
+display and alignment to `COL_ICON`. An empty slot takes no room below `lg`, so
+the name can use it, and `PACK_NAME_FIT` lets that name run to two lines there.
+The Qty column does not move: it is measured from the right edge of the row.
+
+Pack's R and P column labels are `PackColumnLabels`, beside `PackChecks` and in
+the same shape, so they sit over the checkboxes. A container section's header
+row holds its real checkboxes, so its labels take a strip above that row.
 
 `ROW_HOVER_REVEAL` hides an in-row drag grip until the row is hovered or the
 grip has focus. It is for desktop only; below `lg` the call site passes `''`,
@@ -456,6 +465,10 @@ inline variants, each used in one place and not made into tokens:
   (`FOOD_PLAN_COL_QTY`, `FOOD_PLAN_COL_WEIGHT`), which match the category
   columns but may differ later. The Not scheduled table (`FoodView`) uses the
   same `FoodPlanColumnLabels` and `FoodPlanRow`.
+- A plan row's Weight is what that meal carries (`foodGramsAtMeal`). A shared
+  item is divided across its meals, so the days plus the Not scheduled table add
+  up to the trip total. Display only: pack weight still comes from
+  `foodGramsFor`.
 - A plan row's Qty is the count at THAT meal (`quantity`). The List and Pack
   food rows show `unitCount`, the count for the whole trip. Same label,
   different number on purpose: each table answers its own page's question.

@@ -195,6 +195,8 @@ export default function PackDocument({
 
   return (
     <>
+      {/* Paper has its own Ready and Packed legend in the print header. */}
+      {total > 0 && <p className="text-xs text-gray-500 print:hidden">R = ready, P = packed.</p>}
       {total > 0 && (
         <div className="print:hidden">
           {/* The pack is gear plus food: a progress bar that ignored food

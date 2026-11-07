@@ -49,7 +49,6 @@ describe('gear picker search control', () => {
       listItemGearIds: new Set<string>(),
       weightUnit: 'g' as const,
       onAdd: vi.fn(),
-      onRemove: vi.fn(),
     }
     render(
       <>
@@ -82,7 +81,6 @@ describe('creating a new item from the picker', () => {
     listItemGearIds: new Set<string>(),
     weightUnit: 'g' as const,
     onAdd: vi.fn(),
-    onRemove: vi.fn(),
   }
 
   it('offers no New item control when the host passes no handler', () => {
@@ -147,19 +145,24 @@ describe('gear picker shows plainly what is already on the list', () => {
     { ...item, id: 'gear-2', name: 'Quilt' },
   ]
 
-  it('offers remove for included gear and add for gear outside the list', () => {
+  it('adds gear outside the list, and does nothing for gear already on it', async () => {
+    const onAdd = vi.fn()
+    const user = userEvent.setup()
     render(
       <LibraryPanel
         gearItems={both}
         categories={[category]}
         listItemGearIds={new Set(['gear-1'])}
         weightUnit="g"
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
+        onAdd={onAdd}
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Remove Tarp from list' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Add Quilt to list' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Tarp is on this list' }))
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Add Quilt to list' }))
+    expect(onAdd).toHaveBeenCalledTimes(1)
   })
 })

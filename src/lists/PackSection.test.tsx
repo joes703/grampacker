@@ -28,6 +28,27 @@ describe('PackSection header', () => {
     expect(container.querySelectorAll('[id^="cat-region-"]')).toHaveLength(0)
   })
 
+  it('labels the two checkbox columns R and P in the section header', () => {
+    render(<PackSection name="Main pack" items={[itemNamed('item-1', 'Tarp')]} weightUnit="g" isBelowLg={false} />)
+    expect(screen.getByText('R')).toHaveAttribute('title', 'Ready')
+    expect(screen.getByText('P')).toHaveAttribute('title', 'Packed')
+  })
+
+  // A container's header row holds its own two checkboxes, so the labels get
+  // a strip of their own above that row.
+  it('labels the columns above a container header too', () => {
+    const { container } = render(
+      <PackSection
+        name="Backpack"
+        containerItem={itemNamed('pack', 'Backpack')}
+        items={[itemNamed('bag', 'Sleeping bag')]}
+        weightUnit="g"
+        isBelowLg={false}
+      />,
+    )
+    expect(container.querySelector('[data-testid="pack-column-labels"]')).toHaveTextContent('RP')
+  })
+
   it('marks a section complete only when every row is packed', () => {
     // The header shows no packed/total count (the progress bars carry it);
     // the packed tally drives the "All packed" mark, so that pins it.

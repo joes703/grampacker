@@ -99,7 +99,7 @@ export default function ListsPage() {
   // CSV-import-into-a-new-list: hidden input, preview dialog and error
   // dialog all live in the shared flow hook. onBeforeOpen closes this page's
   // own dialog union so the two state machines cannot both hold a surface.
-  const { openImportPicker, importUi } = useListImportFlow({
+  const { openImportExplainer, importUi } = useListImportFlow({
     onBeforeOpen: () => setDialog(null),
   })
 
@@ -182,7 +182,7 @@ export default function ListsPage() {
             <div className="hidden lg:flex items-center gap-2">
               <button
                 type="button"
-                onClick={openImportPicker}
+                onClick={openImportExplainer}
                 title="Import a CSV as a new list"
                 className={LIST_HEADER_ACTION_CLASS}
               >
@@ -340,7 +340,7 @@ export default function ListsPage() {
           inside the component itself, so desktop never renders it. */}
       <MobileListsActionBar
         onNewList={() => setDialog({ type: 'creating', draft: '' })}
-        onImportCsv={openImportPicker}
+        onImportCsv={openImportExplainer}
       />
     </div>
   )

@@ -76,9 +76,11 @@ function SummaryStrip({ breakdown }: { breakdown: WeightBreakdown }) {
   // All four buckets, always rendered - a 0 g Worn stat stays put rather
   // than appearing when a flag flips, so the layout never shifts under a
   // tap. Worn sits beside Base because both describe gear you take that
-  // the pack total does not carry on your back the same way.
+  // the pack total does not carry on your back the same way. Two columns on a
+  // phone: a compound weight such as 10 lb 3.8 oz does not fit in a quarter of
+  // its width.
   return (
-    <div className={`grid grid-cols-4 divide-x divide-gray-100 ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`}>
+    <div className={`grid grid-cols-2 sm:grid-cols-4 sm:divide-x divide-gray-100 ${TABLE_RADIUS} ${TABLE_BORDER} ${TABLE_SURFACE_BG}`}>
       <Stat label="Base" grams={breakdown.baseGrams} unit={weightUnit} />
       <Stat label="Worn" grams={breakdown.wornGrams} unit={weightUnit} />
       <Stat label="Consumable" grams={breakdown.consumableGrams} unit={weightUnit} />

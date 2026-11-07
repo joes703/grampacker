@@ -47,3 +47,37 @@ describe('GearItemDialog cost', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+describe('weight and quantity limits', () => {
+  it('leaves an over-limit weight in the field and does not save', () => {
+    const onSave = renderNew()
+    const weight = screen.getByLabelText(/Weight/)
+    fireEvent.change(weight, { target: { value: '999999' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save|Add/ }))
+
+    expect(weight).toHaveValue(999999)
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('leaves a bad quantity as typed, does not save, and saves once it is fixed', () => {
+    const onSave = vi.fn()
+    render(
+      <GearItemDialog
+        categories={[]}
+        listContext={{ quantity: 3, isWorn: false, isConsumable: false }}
+        onSave={onSave}
+        onClose={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: 'Tent' } })
+    const quantity = screen.getByLabelText('Quantity')
+    fireEvent.change(quantity, { target: { value: '0' } })
+    expect(quantity).toHaveValue(0)
+    fireEvent.click(screen.getByRole('button', { name: /Save|Add/ }))
+    expect(onSave).not.toHaveBeenCalled()
+
+    fireEvent.change(quantity, { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save|Add/ }))
+    expect(onSave.mock.calls[0]?.[1]).toMatchObject({ quantity: 5 })
+  })
+})

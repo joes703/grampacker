@@ -236,9 +236,9 @@ export default function GearLibraryPage() {
   function handleExport() {
     try {
       const csv = gearItemsToCsv(allItems, categories)
-      downloadCsv('gear-library.csv', csv)
+      downloadCsv('gear-inventory.csv', csv)
     } catch {
-      showToast("Couldn't export the gear library. Please try again.", { type: 'error' })
+      showToast("Couldn't export the gear inventory. Please try again.", { type: 'error' })
     }
   }
 
@@ -384,13 +384,15 @@ export default function GearLibraryPage() {
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────────
-  // After removing category chips, search is the only narrowing filter on
-  // the page. Empty categories still render as section headers so the user
-  // can use them as drop targets / "+ Add item" affordances.
-  const groups = useMemo(
-    () => groupGearItemsByCategory(searchFiltered, categories),
-    [searchFiltered, categories],
-  )
+  // Search is the only narrowing filter on the page. Without one, empty
+  // categories still render as section headers so the user can use them as drop
+  // targets / "+ Add item" affordances. While searching they would only be
+  // noise between the matches.
+  const searching = search.trim() !== ''
+  const groups = useMemo(() => {
+    const all = groupGearItemsByCategory(searchFiltered, categories)
+    return searching ? all.filter((group) => group.items.length > 0) : all
+  }, [searchFiltered, categories, searching])
 
   // Stable list of every collapsible key currently rendered — real category
   // ids plus '__uncategorized__' when that bucket is non-empty. Mirrors the
@@ -461,7 +463,9 @@ export default function GearLibraryPage() {
       <div className="mb-6 space-y-3">
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold text-gray-900">Gear</h1>
-          <span className="text-sm text-gray-500">{allItems.length} items</span>
+          <span className="text-sm text-gray-500">
+            {searching ? `${searchFiltered.length} of ${allItems.length}` : allItems.length} items
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
           {/* Search — fills the remaining mobile-row width (flex-1
@@ -599,7 +603,7 @@ export default function GearLibraryPage() {
           onImport={openImportExplainer}
           onCreateCategory={() => setDialog(openNewCategory())}
         />
-      ) : search.trim() !== '' && searchFiltered.length === 0 ? (
+      ) : searching && searchFiltered.length === 0 ? (
         <p className="text-sm text-gray-500">
           No gear matches &ldquo;{search}&rdquo;.
         </p>
@@ -888,7 +892,7 @@ function GearLibraryEmptyState({
     <section className="rounded-lg border border-dashed border-gray-300 bg-white px-5 py-8 text-center">
       <h2 className="text-base font-semibold text-gray-900">No gear yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-        Add your first item, import a CSV, or create a category to start organizing your gear library.
+        Add your first item, import a CSV, or create a category to start organizing your gear inventory.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         <button

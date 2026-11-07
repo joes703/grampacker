@@ -216,7 +216,10 @@ export default function QuickEditItemModal({
           <div className="flex items-center gap-2 pt-1">
             <button
               type="button"
-              onClick={() =>
+              onClick={(e) => {
+                // This button skips the form's submit, so it asks the browser
+                // for the same check. The drafts it carries are capped.
+                if (!e.currentTarget.form?.reportValidity()) return
                 onMoreDetails(
                   { name, weightGrams },
                   listItem
@@ -227,7 +230,7 @@ export default function QuickEditItemModal({
                       }
                     : null,
                 )
-              }
+              }}
               disabled={saving}
               className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >

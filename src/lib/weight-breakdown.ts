@@ -178,17 +178,25 @@ export function consumableGramsForCategory(
  * whole app exists to produce.
  */
 /**
- * Weight at ONE SITTING - what a single meal's row adds up to.
+ * What one item weighs at ONE MEAL on the Food tab.
  *
- * `quantity`, not `unitCount`: unitCount is the whole trip's worth, and a
- * lunch does not weigh five lunches. For a shared stash this is the whole
- * stash, the same as it has always been, which is why the DAY total below has
- * to dedupe shared items and must NOT dedupe per-meal ones.
+ * A per-meal item is its whole weight at each meal. A shared item is divided
+ * across the meals it is in: a 350 g jar at three lunches is about 117 g at
+ * each. Summed over an item's meals this gives its trip weight, so the days
+ * plus the Not-scheduled table add up to foodGramsFor. An item on no meal
+ * shows its whole weight in the Not-scheduled table.
+ *
+ * Display only. Pack weight comes from foodGramsFor, and this value is not
+ * rounded, so the caller's sum stays exact.
  */
-export function foodGramsAtOneMeal(
-  items: readonly { weightGrams: number; quantity: number }[],
-): number {
-  return items.reduce((grams, item) => grams + item.weightGrams * item.quantity, 0)
+export function foodGramsAtMeal(item: {
+  weightGrams: number
+  quantity: number
+  isPerMeal: boolean
+  slotIds: readonly string[]
+}): number {
+  const whole = item.weightGrams * item.quantity
+  return item.isPerMeal ? whole : whole / Math.max(item.slotIds.length, 1)
 }
 
 export function foodGramsFor(

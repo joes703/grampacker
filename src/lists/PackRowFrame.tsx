@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import {
+  FLAT_TABLE_EYEBROW,
   FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_ROW,
   FLAT_TABLE_ROW_PADDING,
+  PACK_NAME_FIT,
   PRINT_UNTRUNCATE,
 } from '../components/flat-table-styles'
 import PackModeCheckbox from './PackModeCheckbox'
@@ -101,11 +103,28 @@ export function PackChecks({
   )
 }
 
+// The R and P column labels, then whatever follows them. Sits next to
+// PackChecks and has the same shape on purpose: a fixed cell, then a flex cell
+// with the second column and the name, so the labels stay over the checkboxes.
+// print:w-3.5 follows the print squares.
+export function PackColumnLabels({ children }: { children?: ReactNode }) {
+  const label = `w-4 print:w-3.5 shrink-0 text-center ${FLAT_TABLE_EYEBROW}`
+  return (
+    <>
+      <span title="Ready" className={label}>R</span>
+      <div className="flex flex-1 min-w-0 items-center gap-1.5">
+        <span title="Packed" className={label}>P</span>
+        {children}
+      </div>
+    </>
+  )
+}
+
 // The packed-name treatment: calmer than a green tint - gray-500 +
 // line-through pairs with the shell's bg-gray-50 to read as completed
 // without celebrating; print restores plain black on the blank checklist.
 function packedNameClass(isPacked: boolean): string {
-  return `block w-full truncate ${PRINT_UNTRUNCATE} font-normal ${
+  return `w-full ${PACK_NAME_FIT} ${PRINT_UNTRUNCATE} font-normal ${
     isPacked ? 'text-gray-500 line-through print:text-gray-900 print:no-underline' : 'text-gray-900'
   }`
 }

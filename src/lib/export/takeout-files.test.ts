@@ -82,10 +82,10 @@ describe('buildTakeoutFiles', () => {
     const files = buildTakeoutFiles({ categories, gearItems, lists: [], allItems: [], ...noPacking })
     expect(Object.keys(files).sort()).toEqual([
       'food.json',
-      'gear-library.csv',
+      'gear-inventory.csv',
       'packing.json',
     ])
-    expect(files['gear-library.csv']).toBe(gearItemsToCsv(gearItems, categories))
+    expect(files['gear-inventory.csv']).toBe(gearItemsToCsv(gearItems, categories))
   })
 
   it('emits one lists/<slug>.csv per list, grouping items by listId', () => {
@@ -106,7 +106,7 @@ describe('buildTakeoutFiles', () => {
 
     expect(Object.keys(files).sort()).toEqual([
       'food.json',
-      'gear-library.csv',
+      'gear-inventory.csv',
       'lists/thru-hike.csv',
       'lists/weekend-trip.csv',
       'packing.json',

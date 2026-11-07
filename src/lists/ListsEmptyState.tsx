@@ -17,7 +17,7 @@ export default function ListsEmptyState() {
 
   // The whole CSV import surface (hidden input, preview, error dialog) in
   // one shared hook; the data path inside it invalidates and navigates.
-  const { openImportPicker, importUi } = useListImportFlow()
+  const { openImportExplainer, importUi } = useListImportFlow()
 
   // THE create path - the same optimistic placeholder, append-slot snapshot
   // and navigate-on-success every other surface uses. Do not hand-roll a
@@ -46,7 +46,7 @@ export default function ListsEmptyState() {
       <div className="w-full max-w-md text-center">
         <h2 className="text-xl font-semibold text-gray-900">Create your first list</h2>
         <p className="mt-2 text-sm text-gray-500">
-          Lists let you build packing lists from your gear library and track total weight.
+          Lists let you build packing lists from your gear inventory and track total weight.
         </p>
         <div className="mt-6 flex gap-2">
           <input
@@ -79,7 +79,7 @@ export default function ListsEmptyState() {
 
         <button
           type="button"
-          onClick={openImportPicker}
+          onClick={openImportExplainer}
           className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           <Upload size={14} /> Import CSV

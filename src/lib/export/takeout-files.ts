@@ -26,7 +26,7 @@ export function buildTakeoutFiles(input: TakeoutInput): Record<string, string> {
     input
   const itemsByListId = Map.groupBy(allItems, (item) => item.listId)
   const files: Record<string, string> = {}
-  files['gear-library.csv'] = gearItemsToCsv(gearItems, categories)
+  files['gear-inventory.csv'] = gearItemsToCsv(gearItems, categories)
   files['food.json'] = JSON.stringify(buildFoodJson({ lists, foodByListId }), null, 2)
   files['packing.json'] = JSON.stringify(
     buildPackingJson({ lists, itemsByListId, packingLocationsByListId, foodByListId }),

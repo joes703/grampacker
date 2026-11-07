@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ApiError } from '../lib/api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GearCsvRow } from '../lib/csv'
 
@@ -42,6 +43,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // The planner is not under test; it just has to want a POST so the
 // mutation's error route is reachable.
 vi.mock('../lib/csv/import-plan', () => ({
+  ImportCapError: class extends Error {},
   planGearImport: () => ({ newItems: [{ name: 'Stove' }], newCategories: [] }),
   assertGearImportWithinCaps: () => {},
 }))
@@ -98,6 +100,20 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('useGearImportFlow failed import', () => {
+  it('asks the user to check before retrying when the outcome is unknown', async () => {
+    api.importGearItems.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderHarness(vi.fn())
+
+    act(() => csv.onParsed!([], 'gear.csv'))
+    fireEvent.click(screen.getByText('confirm-import'))
+
+    expect(
+      await screen.findByText(/Couldn't confirm the import\. Check your inventory before trying again\./),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('useGearImportFlow onBeforeOpen', () => {
   it('fires when the explainer opens, and when a parse result opens a dialog', () => {
     const onBeforeOpen = vi.fn()
@@ -135,7 +151,7 @@ describe('useGearImportFlow onBeforeOpen', () => {
     expect(screen.queryByText('confirm-import')).toBeNull()
     expect(onBeforeOpen).toHaveBeenCalledTimes(1)
 
-    await act(async () => importCall.reject(new Error('boom')))
+    await act(async () => importCall.reject(new ApiError(422, 'boom')))
     expect(await screen.findByText(/Import error: boom/)).toBeInTheDocument()
     expect(onBeforeOpen).toHaveBeenCalledTimes(2)
   })

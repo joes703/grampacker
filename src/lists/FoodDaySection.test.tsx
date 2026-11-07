@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import FoodDaySection from './FoodDaySection'
+import FoodDaySection, { FoodPlanRow } from './FoodDaySection'
 import type { FoodItemResponse, FoodSlotResponse } from '../../shared/food'
 
 afterEach(cleanup)
@@ -107,6 +107,21 @@ describe('FoodDaySection food lines', () => {
     expect(props.onEditItem).toHaveBeenCalledWith('i1')
   })
 
+  it('shows the whole weight of a shared item that is on no meal', () => {
+    // The Not-scheduled table renders this row. Dividing by zero meals would
+    // show nothing useful, and the item is still in the pack.
+    render(
+      <FoodPlanRow
+        item={item({ id: 'jar', name: 'Peanut butter', weightGrams: 350, isPerMeal: false })}
+        weightUnit="g"
+        busy={false}
+        onEdit={vi.fn()}
+        indent={false}
+      />,
+    )
+    expect(screen.getByLabelText('350 g')).toBeInTheDocument()
+  })
+
   it('tags a shared stash "one container"; a per-meal item carries no tag', () => {
     renderDay({
       itemsBySlot: new Map([
@@ -150,7 +165,7 @@ describe('FoodDaySection food lines', () => {
         ],
       ]),
     })
-    // 240 g (trail mix) + 100 g (jerky) = 340 g subtotal, via foodGramsAtOneMeal.
+    // 240 g (trail mix) + 100 g (jerky) = 340 g subtotal.
     expect(within(mealGroup('Lunch day 1')).getByLabelText('340 g')).toBeInTheDocument()
   })
 
@@ -164,17 +179,17 @@ describe('FoodDaySection food lines', () => {
 })
 
 describe('FoodDaySection day total', () => {
-  // The day total's dedupe is CONDITIONAL, and these two tests are
-  // the whole difference. Getting this wrong in either direction is a wrong
-  // pack weight: dedupe everything and a per-meal item under-reports, dedupe
-  // nothing and a shared bag is counted once per meal it is picked at.
-  it('counts a SHARED stash once however many of the day it spans', () => {
+  // A shared item is divided across its meals, so rows, meal subtotals and day
+  // totals all add up to the trip total. Two meals of the same day are two
+  // shares of it. See foodGramsAtMeal.
+  it('gives a day one share of a SHARED item per meal it is in that day', () => {
     const shared = item({
       id: 'shared',
       name: 'Trail mix',
       weightGrams: 500,
       quantity: 1,
       isPerMeal: false,
+      slotIds: ['b1', 'l1', 'l2', 'l3'],
     })
     renderDay({
       itemsBySlot: new Map([
@@ -182,9 +197,39 @@ describe('FoodDaySection day total', () => {
         ['l1', [shared]],
       ]),
     })
+    expect(within(mealGroup('Breakfast day 1')).getByLabelText('125 g')).toBeInTheDocument()
+    expect(within(mealGroup('Lunch day 1')).getByLabelText('125 g')).toBeInTheDocument()
     const totalRow = screen.getByText('Total').closest('div')!
-    expect(within(totalRow).getByLabelText('500 g')).toBeInTheDocument()
-    expect(screen.queryByLabelText('1000 g')).not.toBeInTheDocument()
+    expect(within(totalRow).getByLabelText('250 g')).toBeInTheDocument()
+  })
+
+  it('shows a 350 g jar at three lunches as about 117 g on each', () => {
+    const jar = item({
+      id: 'jar',
+      name: 'Peanut butter',
+      weightGrams: 350,
+      quantity: 1,
+      isPerMeal: false,
+      slotIds: ['l1', 'l2', 'l3'],
+    })
+    renderDay({ itemsBySlot: new Map([['l1', [jar]]]) })
+    expect(within(mealGroup('Lunch day 1')).getByLabelText('116.7 g')).toBeInTheDocument()
+    const totalRow = screen.getByText('Total').closest('div')!
+    expect(within(totalRow).getByLabelText('116.7 g')).toBeInTheDocument()
+  })
+
+  it('divides a shared item in the meal subtotal too', () => {
+    const jar = item({
+      id: 'jar',
+      name: 'Peanut butter',
+      weightGrams: 300,
+      quantity: 1,
+      isPerMeal: false,
+      slotIds: ['l1', 'l2', 'l3'],
+    })
+    const jerky = item({ id: 'jerky', name: 'Jerky', weightGrams: 90 })
+    renderDay({ itemsBySlot: new Map([['l1', [jar, jerky]]]) })
+    expect(within(mealGroup('Lunch day 1')).getByLabelText('190 g')).toBeInTheDocument()
   })
 
   it('counts a PER-MEAL item once for every meal of the day it is in', () => {

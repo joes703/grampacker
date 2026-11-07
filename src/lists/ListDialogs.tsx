@@ -215,12 +215,12 @@ export default function ListDialogs({
         <ConfirmDialog
           title={dialog.location ? 'Remove container from list' : 'Remove from list'}
           message={dialog.location
-            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also removes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. The gear item stays in your library.`
+            ? `"${dialog.item.gearItem.name}" is being used as a packing container. Removing it from this list also removes the "${dialog.location.name}" container, and anything packed inside it moves to Unassigned. The gear item stays in your inventory.`
             // Fail-safe wording: the packing locations did not load, so we
             // cannot say whether this row is a container. Claiming it is
             // would be a guess; saying nothing would spring the container
             // removal on the user unannounced.
-            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also removes that container and moves its contents to Unassigned. The gear item stays in your library.`}
+            : `Couldn't check whether "${dialog.item.gearItem.name}" is being used as a packing container. If it is, removing it also removes that container and moves its contents to Unassigned. The gear item stays in your inventory.`}
           confirmLabel="Remove"
           dangerous
           onCancel={() => setDialog(dialog.returnDialog ?? null)}
