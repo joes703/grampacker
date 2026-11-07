@@ -285,6 +285,10 @@ export function planListImport(
   return { newCategories, newGear, items, reusedGearCount }
 }
 
+// A cap check refused the import before any request went out, so nothing was
+// imported and the message says what to fix (lib/import-error).
+export class ImportCapError extends Error {}
+
 // The account-wide cap checks both import kinds share (both can create gear
 // AND categories; the messages were a twin block kept in step by hand).
 // They run BEFORE the POST so a rejected over-cap import never reaches the
@@ -297,12 +301,12 @@ function assertAccountCaps(
   existingCategoryCount: number,
 ): void {
   if (existingGearCount + newGearCount > GEAR_ITEM_CAP) {
-    throw new Error(
+    throw new ImportCapError(
       `This import would add ${newGearCount} new gear item${newGearCount === 1 ? '' : 's'} to your ${existingGearCount} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Reduce the new entries or delete unused gear from your inventory.`,
     )
   }
   if (existingCategoryCount + newCategoryCount > CATEGORY_CAP) {
-    throw new Error(
+    throw new ImportCapError(
       `This import would add ${newCategoryCount} new categor${newCategoryCount === 1 ? 'y' : 'ies'} to your ${existingCategoryCount} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
     )
   }
@@ -329,7 +333,7 @@ export function assertListImportWithinCaps(
   existingCategoryCount: number,
 ): void {
   if (plan.items.length > LIST_ITEM_CAP) {
-    throw new Error(
+    throw new ImportCapError(
       `A single list can hold at most ${LIST_ITEM_CAP} items; this file has ${plan.items.length}. Split it across multiple lists.`,
     )
   }

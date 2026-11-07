@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { shimDialog } from './test/list-detail-harness'
+import { ApiError } from '../lib/api'
 import { CSV_HEADER_LINE, type ListCsvRow } from '../lib/csv'
 
 // Pins the hook's one coordination duty: every route that OPENS one of its
@@ -149,7 +150,7 @@ describe('useListImportFlow onBeforeOpen', () => {
     expect(screen.queryByText('confirm-import')).toBeNull()
     expect(onBeforeOpen).toHaveBeenCalledTimes(1)
 
-    act(() => mut.lastCallbacks!.onError!(new Error('boom')))
+    act(() => mut.lastCallbacks!.onError!(new ApiError(422, 'boom')))
     expect(screen.getByText(/Import error: boom/)).toBeInTheDocument()
     expect(onBeforeOpen).toHaveBeenCalledTimes(2)
   })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
+import { ImportCapError } from './csv/import-plan'
 import { importErrorMessage } from './import-error'
 
 const UNSURE = "Couldn't confirm the import. Check your lists before trying again."
@@ -10,6 +11,9 @@ describe('importErrorMessage', () => {
     ['a server failure', new ApiError(500, 'Internal Server Error')],
     ['a dropped connection', new TypeError('Failed to fetch')],
     ['something that is not an Error', 'nope'],
+    // A success response that arrived broken: the import did commit.
+    ['a response cut off mid-way', new SyntaxError('Unexpected end of JSON input')],
+    ['a response in the wrong shape', new Error('Invalid input')],
   ])('asks the user to check first after %s', (_label, err) => {
     expect(importErrorMessage(err, 'lists')).toBe(UNSURE)
   })
@@ -23,7 +27,7 @@ describe('importErrorMessage', () => {
   // Nothing was imported, and these say what to fix.
   it.each([
     ['a server refusal', new ApiError(422, 'Too many items')],
-    ['a cap check before the request', new Error('This import would go over the limit.')],
+    ['a cap check before the request', new ImportCapError('This import would go over the limit.')],
   ])('keeps the message after %s', (_label, err) => {
     expect(importErrorMessage(err, 'lists')).toBe(err.message)
   })

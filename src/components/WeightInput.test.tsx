@@ -182,27 +182,31 @@ describe('WeightInput', () => {
     expect(input.max).toBe('3527.4')
   })
 
-  it('keeps an over-limit number over the limit when the unit changes', async () => {
-    // The toggle used to redraw the field from the capped weight, which
-    // turned 999999 into a valid 3527.4 oz that could then be saved.
+  // Converting could round a bad number back into range: 100001 g is 3527.4 oz,
+  // and -0.1 g is -0.0 oz. So a bad number holds the toggle still.
+  it.each(['999999', '100001', '-5', '-0.1'])('does not change units while %s g is in the field', (value) => {
+    const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
+    const input = getByLabelText('Weight') as HTMLInputElement
+
+    fireEvent.change(input, { target: { value } })
+    fireEvent.click(getByRole('button', { name: /switch to ounces/ }))
+
+    expect(input.value).toBe(value)
+    expect(input.validity.valid).toBe(false)
+    expect(getByRole('button', { name: /switch to ounces/ })).toBeInTheDocument()
+  })
+
+  it('does not change units while an over-limit ounce number is in the field', async () => {
     const user = userEvent.setup()
     const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
     const input = getByLabelText('Weight') as HTMLInputElement
 
-    await user.type(input, '999999')
     await user.click(getByRole('button', { name: /switch to ounces/ }))
+    fireEvent.change(input, { target: { value: '3527.5' } })
+    await user.click(getByRole('button', { name: /switch to grams/ }))
 
+    expect(input.value).toBe('3527.5')
     expect(input.validity.rangeOverflow).toBe(true)
-  })
-
-  it('keeps a negative number negative when the unit changes', () => {
-    const { getByLabelText, getByRole } = render(<ControlledWeightInput />)
-    const input = getByLabelText('Weight') as HTMLInputElement
-
-    fireEvent.change(input, { target: { value: '-5' } })
-    fireEvent.click(getByRole('button', { name: /switch to ounces/ }))
-
-    expect(input.validity.rangeUnderflow).toBe(true)
   })
 
   it('honors an oz display preference when first mounted', async () => {
