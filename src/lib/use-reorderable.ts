@@ -9,6 +9,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { parseDnDId } from './dnd-ids'
 import { assignSortOrderSlots } from './grouping'
+import { isUnconfirmed } from './unconfirmed-id'
 import { makeOptimisticReorder } from './queries/optimistic'
 import { mutationKeys } from './queries/keys'
 
@@ -54,14 +55,14 @@ import { mutationKeys } from './queries/keys'
 // be ignored. Extracted so the validation algebra is testable without
 // mounting React or dnd-kit.
 //
-// Rejection cases — matches what every reorder page hand-rolled before:
+// Rejection cases:
 //   1. no over id (drop landed outside any droppable)
 //   2. active id === over id (no-op drop on self)
 //   3. activeId fails to parse, or parsed kind != dndKind
 //   4. overId fails to parse, or parsed kind != dndKind
-//   5. activeId not in items (stale id; cache moved on between drag
-//      start and drop)
-//   6. overId not in items (same)
+//   5. activeId not among the confirmed items (stale id, or an unconfirmed
+//      placeholder)
+//   6. overId not among the confirmed items (same)
 //   7. oldIndex === newIndex (item already at target slot after some
 //      intermediate reorder)
 //
@@ -98,13 +99,17 @@ export function planReorder<T extends { id: string; sortOrder: number }>({
   const overParsed = parseDnDId(String(overId))
   if (!overParsed || overParsed.kind !== dndKind) return { ok: false }
 
-  const oldIndex = items.findIndex((i) => i.id === activeParsed.id)
+  // A pending create's placeholder shares this cache, but the server rejects
+  // a payload naming any id it does not own, so it would fail the whole drag.
+  // Dragging it, or dropping onto it, plans nothing.
+  const confirmed = items.filter((i) => !isUnconfirmed(i.id))
+  const oldIndex = confirmed.findIndex((i) => i.id === activeParsed.id)
   if (oldIndex === -1) return { ok: false }
-  const newIndex = items.findIndex((i) => i.id === overParsed.id)
+  const newIndex = confirmed.findIndex((i) => i.id === overParsed.id)
   if (newIndex === -1) return { ok: false }
   if (oldIndex === newIndex) return { ok: false }
 
-  const reordered = arrayMove(items, oldIndex, newIndex)
+  const reordered = arrayMove(confirmed, oldIndex, newIndex)
   return { ok: true, updates: assignSortOrderSlots(reordered) }
 }
 

@@ -129,7 +129,7 @@ export function buildPackingTree(
 }
 
 // The items that back a location: every cached location's container, whether
-// the server has confirmed it or it is still an optimistic temp- row. Each one
+// the server has confirmed it or it is still unconfirmed. Each one
 // renders as its section's header, never as a row in a bag, from the moment
 // the promotion is applied to the cache.
 function deriveContainerItemIds(locations: PackingLocation[]): Set<string> {

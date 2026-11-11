@@ -10,7 +10,7 @@ import {
   makeOptimisticGearItemDelete,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { randomTempId } from '../lib/random-temp-id'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 import type { GearItem } from '../lib/types'
 
 // Input shapes are derived from the gear query helpers, not from the dialog
@@ -44,7 +44,7 @@ export function useGearItemActions(allItems: GearItem[]) {
       optimistic: (data) => {
         const now = new Date().toISOString()
         return {
-          id: `temp-${randomTempId()}`,
+          id: unconfirmedId(),
           categoryId: data.categoryId ?? null,
           name: data.name,
           description: data.description ?? null,

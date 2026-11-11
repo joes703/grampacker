@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { makeDnDId } from '../lib/dnd-ids'
 import { mutationKeys } from '../lib/queries/keys'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 import type { Category, GearItem } from '../lib/types'
 
 // A within-category drag while search is narrowing the library.
@@ -223,5 +224,50 @@ describe('a gear drag within a category', () => {
       qc.getMutationCache().findAll({ mutationKey: mutationKeys.reorderGearItems() }),
     ).toHaveLength(0)
     expect(h.reorderGearItems).not.toHaveBeenCalled()
+  })
+})
+
+// A pending create's placeholder is in the gear cache beside the rows being
+// dragged. The server rejects a reorder naming an id it does not own, so the
+// placeholder must stay out of the payload, and dragging it plans nothing.
+describe('a gear drag while a create is pending', () => {
+  const pending = gear(unconfirmedId(), 'Stove', 3)
+
+  beforeEach(() => {
+    h.fetchGearItems.mockResolvedValue([tent, guylines, tarp, pending])
+  })
+
+  it('permutes the confirmed rows only', async () => {
+    renderPage()
+    await screen.findByText('Stove')
+
+    fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
+
+    await waitFor(() => expect(h.reorderGearItems).toHaveBeenCalledTimes(1))
+    expect(h.reorderGearItems.mock.calls[0]?.[0]).toEqual([
+      { id: guylines.id, sortOrder: 0 },
+      { id: tarp.id, sortOrder: 1 },
+      { id: tent.id, sortOrder: 2 },
+    ])
+  })
+
+  it('plans nothing for a drag of the placeholder or onto it', async () => {
+    renderPage()
+    await screen.findByText('Stove')
+
+    h.drag.activeId = pending.id
+    fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
+    h.drag.activeId = tent.id
+    h.drag.overId = pending.id
+    fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
+    // A control drag fired last. A mutation reaches its mutationFn after an
+    // await, so "not called yet" would pass against code with no guard. Had
+    // either drag above planned a reorder, it would reach the server first.
+    h.drag.overId = tarp.id
+    fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
+
+    await waitFor(() => expect(h.reorderGearItems).toHaveBeenCalled())
+    expect(h.reorderGearItems).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(h.reorderGearItems.mock.calls[0]?.[0])).not.toContain(pending.id)
   })
 })

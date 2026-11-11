@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { makeDnDId } from './dnd-ids'
 import { makeOptimisticReorder } from './queries/optimistic'
 import { planReorder } from './use-reorderable'
+import { unconfirmedId } from './unconfirmed-id'
 
 const locations = [
   { id: 'loc-pack', sortOrder: -1 },
@@ -62,5 +63,48 @@ describe('planReorder after a delete left a gap', () => {
     qc.setQueryData(['categories'], categories)
     const reorder = makeOptimisticReorder<(typeof categories)[number]>(qc, ['categories'])
     expect(() => plan.ok && reorder.onMutate(plan.updates)).not.toThrow()
+  })
+})
+
+// A pending create's placeholder sits in the same cache as the rows being
+// dragged. The server rejects a reorder whose payload names any id it does not
+// own, so one placeholder in the payload would fail the whole drag.
+describe('planReorder while a create is pending', () => {
+  const pending = { id: unconfirmedId(), sortOrder: 2 }
+  const rows = [
+    { id: 'shelter', sortOrder: 0 },
+    { id: 'kitchen', sortOrder: 1 },
+    pending,
+  ]
+
+  it('moves the confirmed rows and leaves the placeholder out of the payload', () => {
+    const plan = planReorder({
+      activeId: makeDnDId('category', 'shelter'),
+      overId: makeDnDId('category', 'kitchen'),
+      items: rows,
+      dndKind: 'category',
+    })
+    expect(plan).toEqual({
+      ok: true,
+      updates: [
+        { id: 'kitchen', sortOrder: 0 },
+        { id: 'shelter', sortOrder: 1 },
+      ],
+    })
+  })
+
+  it('plans nothing for a drop onto the placeholder or a drag of it', () => {
+    expect(planReorder({
+      activeId: makeDnDId('category', 'shelter'),
+      overId: makeDnDId('category', pending.id),
+      items: rows,
+      dndKind: 'category',
+    })).toEqual({ ok: false })
+    expect(planReorder({
+      activeId: makeDnDId('category', pending.id),
+      overId: makeDnDId('category', 'shelter'),
+      items: rows,
+      dndKind: 'category',
+    })).toEqual({ ok: false })
   })
 })

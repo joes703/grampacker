@@ -13,6 +13,7 @@ import { MAX_COST, MAX_NAME_LENGTH, MAX_DESC_LENGTH, MAX_LIST_ITEM_QUANTITY } fr
 import { clampQuantity } from '../../../shared/lists'
 import { useWornConsumableFlags } from '../../lists/use-worn-consumable-flags'
 import { clampWeightGrams } from '../../../shared/gear'
+import { confirmedRows } from '../../lib/unconfirmed-id'
 
 type GearPatch = {
   name: string
@@ -240,7 +241,7 @@ export default function GearItemDialog({
                 className={`w-full ${FORM_INPUT}`}
               >
                 <option value="">Uncategorized</option>
-                {categories.map((c) => (
+                {confirmedRows(categories).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Category } from '../lib/types'
+import { confirmedRows } from '../lib/unconfirmed-id'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { FORM_INPUT, SECONDARY_BUTTON } from '../components/flat-table-styles'
@@ -25,7 +26,7 @@ export default function BulkMoveCategoryDialog({ categories, count, onMove, onCl
           className={`w-full ${FORM_INPUT}`}
         >
           <option value="">Uncategorized</option>
-          {categories.map((c) => (
+          {confirmedRows(categories).map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>

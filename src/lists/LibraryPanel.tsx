@@ -20,6 +20,7 @@ import QuickAddItemModal from './QuickAddItemModal'
 import { type AddItemData } from './use-quick-add-form'
 import { useToggleSet } from '../lib/use-toggle-set'
 import { filterGearBySearch } from '../lib/gear-search'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 
 type Props = {
   gearItems: GearItem[]
@@ -269,17 +270,20 @@ const LibraryCategoryGroup = memo(function LibraryCategoryGroup({
         <div id={regionId}>
           {items.map((item) => {
             const inList = listItemGearIds.has(item.id)
+            // A create still pending on the Gear page (the cache is shared)
+            // has no server row, so adding it would send an unknown id.
+            const pending = isUnconfirmed(item.id)
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  if (!inList) onAdd(item)
+                  if (!inList && !pending) onAdd(item)
                 }}
                 // aria-disabled, not disabled: a click that adds the item
                 // turns this row in-list, and a disabled button would drop
                 // keyboard focus at that moment.
-                aria-disabled={inList}
+                aria-disabled={inList || pending}
                 title={inList ? 'On this list' : 'Add to list'}
                 aria-label={inList ? `${item.name} is on this list` : `Add ${item.name} to list`}
                 // The in-list state is signalled by the

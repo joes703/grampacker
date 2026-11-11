@@ -7,6 +7,7 @@ import { GripVertical, PackageOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { MAX_PACKING_LOCATION_NAME } from '../lib/caps'
 import { makeDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import KebabMenu from '../components/KebabMenu'
 import InlineRenameInput from '../components/InlineRenameInput'
 import RowIconButton from '../components/RowIconButton'
@@ -36,9 +37,9 @@ export function useSortableLocationSection({
   const { outerRef, outerStyle, isOver, handleProps } = useSortableRow({
     kind: 'packing-location',
     id: location.id,
-    // A temp- id is an optimistic row the server has not confirmed. Dragging
-    // it would address a location that does not exist yet.
-    disabled: reorderPending || location.id.startsWith('temp-'),
+    // An unconfirmed location has no server row yet; dragging it would
+    // address a location that does not exist.
+    disabled: reorderPending || isUnconfirmed(location.id),
   })
 
   return {
@@ -92,7 +93,7 @@ export function useSortableContainerSection({
     isOver,
   } = useSortable({
     id: makeDnDId('packing-location', location.id),
-    disabled: reorderPending || location.id.startsWith('temp-'),
+    disabled: reorderPending || isUnconfirmed(location.id),
   })
   const {
     attributes: nestingAttributes,

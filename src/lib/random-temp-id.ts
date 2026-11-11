@@ -10,11 +10,8 @@
 // hyphens. Math.random fallback isn't included — every browser this
 // codebase otherwise supports has crypto.getRandomValues.
 //
-// Used by optimistic-update sites that need a synthetic id before the
-// server's authoritative id arrives. The "temp-" prefix is NOT applied
-// here (the optimistic-list-placeholder helper deliberately uses bare
-// uuids per its DB-validity guardrail; the gear/list-item callers prefix
-// at the call site).
+// Callers: unconfirmedId (./unconfirmed-id.ts) for optimistic rows, and the
+// CSV import plan.
 export function randomTempId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
