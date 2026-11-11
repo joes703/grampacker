@@ -140,7 +140,7 @@ function NotesEdit({
         ref={textareaRef}
         value={draft}
         maxLength={MAX_DESC_LENGTH}
-        placeholder="Add notes about this packing list. Markdown supported."
+        placeholder="Notes for this list. You can use Markdown."
         onChange={(e) => {
           draftRef.current = e.target.value
           setDraft(e.target.value)

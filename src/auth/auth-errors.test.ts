@@ -4,7 +4,7 @@ import { authErrorMessage } from './auth-errors'
 describe('authErrorMessage', () => {
   it('maps 429 to the rate limit copy regardless of server message', () => {
     expect(authErrorMessage({ status: 429, message: 'Too many requests' }, 'x')).toBe(
-      'Too many attempts. Please wait a bit and try again.',
+      'Too many attempts. Try again later.',
     )
   })
 

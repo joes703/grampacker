@@ -89,7 +89,7 @@ describe('PrivacyPanel', () => {
     const user = userEvent.setup()
 
     expect(
-      screen.getByText(/New lists start as drafts\. A shared draft shows visitors a work-in-progress note\./),
+      screen.getByText(/New lists start as drafts\. People who open a shared draft see a note that the list is not finished\./),
     ).toBeInTheDocument()
     const draft = screen.getByRole('switch', { name: 'Draft' })
     expect(draft).toHaveAttribute('aria-checked', 'true')

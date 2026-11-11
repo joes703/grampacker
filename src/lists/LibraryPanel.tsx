@@ -157,7 +157,7 @@ export default function LibraryPanel({ gearItems, categories, listItemGearIds, m
         {membershipUnknown ? (
           <PickerEmptyState
             heading="Couldn't load this list's items."
-            body="Adding gear is unavailable until it loads, so nothing gets added twice."
+            body="You can add gear after the list's items load. This prevents adding an item twice."
           />
         ) : groups.length === 0 ? (
           // Whether the user is searching for something not in their library

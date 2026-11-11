@@ -44,9 +44,9 @@ describe('SettingsModal passkey guidance', () => {
     h.supported = false
     render(<SettingsModal open onClose={() => {}} />)
 
-    expect(screen.getByText(/This browser doesn't support passkeys/)).toBeInTheDocument()
+    expect(screen.getByText(/This browser does not support passkeys/)).toBeInTheDocument()
     expect(
-      screen.queryByText('Sign in without waiting for an email'),
+      screen.queryByText('Sign in with your fingerprint, face or PIN'),
     ).not.toBeInTheDocument()
   })
 
@@ -54,7 +54,7 @@ describe('SettingsModal passkey guidance', () => {
     render(<SettingsModal open onClose={() => {}} />)
 
     expect(
-      screen.getByText('Sign in without waiting for an email'),
+      screen.getByText('Sign in with your fingerprint, face or PIN'),
     ).toBeInTheDocument()
   })
 })

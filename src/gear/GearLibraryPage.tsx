@@ -894,7 +894,7 @@ function GearLibraryEmptyState({
     <section className="rounded-lg border border-dashed border-gray-300 bg-white px-5 py-8 text-center">
       <h2 className="text-base font-semibold text-gray-900">No gear yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-        Add your first item, import a CSV, or create a category to start organizing your gear inventory.
+        Add each item with its weight, or import a CSV file.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         <button

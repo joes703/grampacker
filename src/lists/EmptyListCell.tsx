@@ -20,7 +20,7 @@ export default function EmptyListCell({ onMobileAdd }: Props) {
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-gray-900">Add gear to this list</h2>
           <p className="mt-1 hidden lg:block text-sm text-gray-500">
-            Use the gear picker on the left to pull items from your gear.
+            Add items from your gear with the panel on the left.
           </p>
           <p className="mt-1 lg:hidden text-sm text-gray-500">
             Tap{' '}
@@ -31,7 +31,7 @@ export default function EmptyListCell({ onMobileAdd }: Props) {
             >
               Add
             </button>
-            {' '}to pull items from your gear.
+            {' '}to add items from your gear.
           </p>
         </div>
       </div>

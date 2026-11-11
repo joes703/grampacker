@@ -47,7 +47,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 async function openNotesEditor(): Promise<HTMLTextAreaElement> {
   await renderListDetailPage(`/lists/${listId}`, ['/lists/:id'])
   fireEvent.click(await screen.findByRole('button', { name: 'Edit notes' }))
-  return screen.getByPlaceholderText(/Add notes about this packing list/) as HTMLTextAreaElement
+  return screen.getByPlaceholderText(/Notes for this list/) as HTMLTextAreaElement
 }
 
 beforeEach(() => {
@@ -81,7 +81,7 @@ describe('saving list notes', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Couldn't confirm your notes were saved. Please try again.",
     )
-    expect(screen.getByPlaceholderText(/Add notes about this packing list/)).toHaveValue(
+    expect(screen.getByPlaceholderText(/Notes for this list/)).toHaveValue(
       'Permit pickup at Lone Pine',
     )
   })
@@ -100,7 +100,7 @@ describe('saving list notes', () => {
     d.resolve({ ...list, description: 'Permit pickup at Lone Pine' })
     await settle(d)
 
-    expect(screen.queryByPlaceholderText(/Add notes about this packing list/)).toBeNull()
+    expect(screen.queryByPlaceholderText(/Notes for this list/)).toBeNull()
     expect(h.updateList).toHaveBeenCalledWith(listId, { description: 'Permit pickup at Lone Pine' })
   })
 
@@ -115,7 +115,7 @@ describe('saving list notes', () => {
     d.resolve({ ...list, description: 'Permit pickup at Lone Pine' })
     await settle(d)
 
-    expect(screen.getByPlaceholderText(/Add notes about this packing list/)).toHaveValue(
+    expect(screen.getByPlaceholderText(/Notes for this list/)).toHaveValue(
       'Permit pickup at Lone Pine, before 10 am',
     )
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
@@ -136,7 +136,7 @@ describe('saving list notes', () => {
       "Couldn't confirm your notes were saved. Please try again.",
       { type: 'error' },
     )
-    expect(screen.queryByPlaceholderText(/Add notes about this packing list/)).toBeNull()
+    expect(screen.queryByPlaceholderText(/Notes for this list/)).toBeNull()
   })
 
   it('does not reopen the editor until a canceled save has settled', async () => {

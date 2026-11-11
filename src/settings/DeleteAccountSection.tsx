@@ -158,8 +158,8 @@ export default function DeleteAccountSection() {
   return (
     <form onSubmit={(e) => void submit(e)} className="max-w-md space-y-3">
       <p className="text-sm text-gray-600">
-        Permanently delete your account and everything in it - gear, lists,
-        and passkeys. This cannot be undone.
+        Permanently deletes your account and everything in it: gear, lists,
+        food plans and passkeys. This cannot be undone.
       </p>
       <div>
         <FormLabel htmlFor="del-confirm">

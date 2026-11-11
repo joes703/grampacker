@@ -199,8 +199,8 @@ export default function PrivacyPanel({ list }: Props) {
           />
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          New lists start as drafts. A shared draft shows visitors a
-          work-in-progress note.
+          New lists start as drafts. People who open a shared draft see a
+          note that the list is not finished.
         </p>
       </div>
     </>
