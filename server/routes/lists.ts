@@ -343,8 +343,16 @@ listRoutes.put('/:id/items/pack-order', async (c) => {
   // An id that is not on this list (or not this user's) is indistinguishable
   // from a list that does not exist, deliberately - the same 404 either way,
   // so the response never confirms that someone else's item id is real.
-  if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
-  return c.json({ error: 'Invalid request body' }, 400)
+  // Every case returns, and noImplicitReturns is on, so a new repo reason
+  // fails the build here instead of inheriting the 400.
+  switch (result.reason) {
+    case 'not_found':
+      return c.json({ error: 'Not found' }, 404)
+    case 'cross_cohort':
+    case 'rank_not_index_safe':
+    case 'worn_row':
+      return c.json({ error: 'Invalid request body' }, 400)
+  }
 })
 
 listRoutes.post('/:id/items/reset-packed', async (c) => {

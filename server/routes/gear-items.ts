@@ -19,8 +19,10 @@ import { requireSession, type SessionVars } from '../middleware/session'
 import { dollarsToCents } from './money'
 import type {
   CreateGearItemInput,
+  CreateGearResult,
   ImportGearResult,
   UpdateGearItemPatch,
+  UpdateGearResult,
 } from '../repos/gear-items'
 import type { AppDeps } from '../env'
 
@@ -37,9 +39,31 @@ import type { AppDeps } from '../env'
 //                                        category, all-or-nothing
 //   PATCH  /api/gear-items/:id         - session - own row or 404
 //   DELETE /api/gear-items/:id         - session - own row or 404
-// The import failure map, in the same exhaustive-switch pattern as the
-// write-failure maps in lists.ts: a new repo reason fails the build instead
-// of falling through to a wrong default. cap_exceeded here is the GEAR cap.
+// The failure maps, in the same exhaustive-switch pattern as the write-failure
+// maps in lists.ts: a new repo reason fails the build instead of falling
+// through to a wrong default. cap_exceeded here is the GEAR cap.
+function createGearFailure(
+  result: Extract<CreateGearResult, { ok: false }>,
+): { status: 400 | 422; error: string } {
+  switch (result.reason) {
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'cap_exceeded':
+      return { status: 422, error: LIMIT_REACHED.gearItem }
+  }
+}
+
+function updateGearFailure(
+  result: Extract<UpdateGearResult, { ok: false }>,
+): { status: 400 | 404; error: string } {
+  switch (result.reason) {
+    case 'invalid_category':
+      return { status: 400, error: 'Invalid category' }
+    case 'not_found':
+      return { status: 404, error: 'Not found' }
+  }
+}
+
 function importGearFailure(
   result: Extract<ImportGearResult, { ok: false }>,
 ): { status: 400 | 422; error: string } {
@@ -96,10 +120,8 @@ gearItemRoutes.post('/', async (c) => {
     .get('repos')
     .gearItems.create(toCreateInput(parsed.data))
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    return c.json({ error: LIMIT_REACHED.gearItem }, 422)
+    const { status, error } = createGearFailure(result)
+    return c.json({ error }, status)
   }
   return c.json(toGearItemResponse(result.row), 201)
 })
@@ -188,10 +210,8 @@ gearItemRoutes.patch('/:id', async (c) => {
     .get('repos')
     .gearItems.update(c.req.param('id'), toUpdatePatch(parsed.data))
   if (!result.ok) {
-    if (result.reason === 'invalid_category') {
-      return c.json({ error: 'Invalid category' }, 400)
-    }
-    return c.json({ error: 'Not found' }, 404)
+    const { status, error } = updateGearFailure(result)
+    return c.json({ error }, status)
   }
   return c.json(toGearItemResponse(result.row))
 })
