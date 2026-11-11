@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { makeDnDId } from '../lib/dnd-ids'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 function item(
   id: string,
@@ -266,4 +267,48 @@ describe('deriveFilteredItemIds', () => {
       deriveFilteredItemIds(all, { showUnpackedOnly: true, showUnreadyOnly: true }),
     ).toEqual(new Set(['packed', 'ready', 'both']))
   })
+})
+
+// A pending add's placeholder sits in the list-items cache beside the rows
+// being dragged. The server rejects a reorder naming an id it does not own,
+// so the placeholder must never reach a payload, in any view.
+describe('reorder planning while an add is pending', () => {
+  const pending = item(unconfirmedId(), 9, { packSortOrder: 9 })
+  const first = item('first', 1)
+  const second = item('second', 2)
+  const rows = [first, second, pending]
+
+  for (const [mode, groupingKind] of [
+    ['edit', 'category'],
+    ['pack', 'category'],
+    ['pack', 'location'],
+  ] as const) {
+    it(`${mode} view, ${groupingKind} grouping: a sibling drag leaves the placeholder out`, () => {
+      const plan = planListItemReorder({
+        activeId: makeDnDId('item', first.id),
+        overId: makeDnDId('item', second.id),
+        items: rows,
+        groupingKind,
+        mode,
+        locations,
+        hiddenItemIds: new Set(),
+      })
+      expect(plan).not.toBeNull()
+      expect(JSON.stringify(plan)).not.toContain(pending.id)
+    })
+
+    it(`${mode} view, ${groupingKind} grouping: dragging the placeholder or onto it plans nothing`, () => {
+      const plan = (activeId: string, overId: string) => planListItemReorder({
+        activeId: makeDnDId('item', activeId),
+        overId: makeDnDId('item', overId),
+        items: rows,
+        groupingKind,
+        mode,
+        locations,
+        hiddenItemIds: new Set(),
+      })
+      expect(plan(pending.id, first.id)).toBeNull()
+      expect(plan(first.id, pending.id)).toBeNull()
+    })
+  }
 })

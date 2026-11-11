@@ -7,6 +7,8 @@ import ItemRow from './ItemRow'
 import SortableItemRow from './SortableItemRow'
 import PackItemRow from './PackItemRow'
 import { expectNameCanShrink } from '../test/row-shrink'
+import { buildRowProps } from './section-parts'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 afterEach(() => {
   cleanup()
@@ -183,5 +185,64 @@ describe('ItemRow mobile name', () => {
       <ItemRow item={item} weightUnit="g" isBelowLg {...extra} />,
     )
     expectNameCanShrink(screen.getByText('Backpack'), container.firstElementChild as HTMLElement)
+  })
+})
+
+// A pending add's row is in the cache, so it renders, but it has no server row
+// yet: any write naming its id fails. The handlers every row gets come from
+// buildRowProps, so a pending row gets none, and the wrapper locks its drag.
+describe('a row whose add is still pending', () => {
+  const pending: ListItemWithGear = { ...item, id: unconfirmedId() }
+  const handlers = {
+    onUpdate: vi.fn(),
+    onDelete: vi.fn(),
+    onSaveGearName: vi.fn(),
+    onSaveGearDescription: vi.fn(),
+    onSaveGearWeight: vi.fn(),
+    onEditGearItem: vi.fn(),
+    onSetGearStatus: vi.fn(),
+  }
+  const props = (packMode: boolean) => buildRowProps(pending, {
+    ...handlers,
+    weightUnit: 'g',
+    isBelowLg: false,
+    packMode,
+    reorderPending: false,
+    rowAction: <button type="button">Move Backpack</button>,
+  })
+
+  it('gets no write handlers and no row action', () => {
+    const built = props(true)
+    const actions = [
+      built.onUpdate, built.onSaveName, built.onSaveDescription, built.onSaveWeight,
+      built.onDelete, built.onEditGearItem, built.onSetGearStatus, built.rowAction,
+    ]
+    expect(actions.filter((value) => value !== undefined)).toEqual([])
+  })
+
+  it('in Pack: the ticks and the grip are disabled and there is no move menu', () => {
+    render(<SortableItemRow {...props(true)} />)
+    expect(screen.getByRole('checkbox', { name: 'Mark Backpack ready' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reorder Backpack' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Move Backpack' })).toBeNull()
+  })
+
+  it('in Edit: the grip is disabled and there is no edit button', () => {
+    render(<SortableItemRow {...props(false)} />)
+    expect(screen.getByRole('button', { name: 'Reorder Backpack' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull()
+  })
+
+  it('a confirmed row keeps its handlers (control)', () => {
+    const confirmed = buildRowProps(item, {
+      ...handlers,
+      weightUnit: 'g',
+      isBelowLg: false,
+      packMode: true,
+      reorderPending: false,
+    })
+    expect(confirmed.onUpdate).toBeTypeOf('function')
+    render(<SortableItemRow {...confirmed} />)
+    expect(screen.getByRole('checkbox', { name: 'Mark Backpack ready' })).toBeEnabled()
   })
 })

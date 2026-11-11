@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import QuickAddItemModal from './QuickAddItemModal'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 import type { Category } from '../lib/types'
 
 // jsdom implements <dialog> without its modal methods, and the quick-add form
@@ -91,5 +92,24 @@ describe('QuickAddItemModal limits', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Add/ }))
 
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+// A category whose create is still pending has no server row, so a quick add
+// into it would send an id the server does not know.
+describe('QuickAddItemModal pending category', () => {
+  it('does not offer a category whose create is still pending', () => {
+    render(
+      <QuickAddItemModal
+        categories={[
+          ...categories,
+          { id: unconfirmedId(), name: 'Stoves', sortOrder: 2, createdAt: '2024-01-01' },
+        ]}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    const select = screen.getByLabelText('Category') as HTMLSelectElement
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Uncategorized', 'Shelter', 'Kitchen'])
   })
 })

@@ -86,18 +86,23 @@ export function useCurrentListActions() {
   // assigns the persisted slot from its own max+1, which matches this
   // snapshot whenever the cache is fresh; the settled refetch reconciles any
   // race.
+  const createInsert = makeOptimisticInsert<List, CreateListVars>({
+    qc,
+    queryKey: queryKeys.lists(),
+    optimistic: ({ name, sortOrder }) => optimisticListPlaceholder({ name, sortOrder }),
+  })
   const createListMut = useMutation({
     mutationKey: mutationKeys.createList(),
     mutationFn: ({ name }: CreateListVars) => createList(name),
     meta: { errorToast: CREATE_FAILED_COPY },
-    ...makeOptimisticInsert<List, CreateListVars>({
-      qc,
-      queryKey: queryKeys.lists(),
-      optimistic: ({ name, sortOrder }) => optimisticListPlaceholder({ name, sortOrder }),
-    }),
-    // Navigate on the SERVER row's id, never the placeholder's - the
-    // placeholder id points at a list that doesn't exist server-side.
-    onSuccess: (created) => void navigate(`/lists/${created.id}`),
+    ...createInsert,
+    // Swap the server row in first, then navigate to it: the new page then
+    // finds the list in the cache instead of starting on "List not found".
+    // Navigate on the SERVER row's id; the placeholder's names no list.
+    onSuccess: async (created, vars, ctx) => {
+      await createInsert.onSuccess(created, vars, ctx)
+      void navigate(`/lists/${created.id}`)
+    },
   })
 
   // Hook-owned submit wrapper: snapshot the append sortOrder from the live

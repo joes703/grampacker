@@ -1,6 +1,7 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import type { FoodItemResponse } from '../../shared/food'
 import { parseDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import type { ListItemWithGear } from '../lib/types'
 import {
   assignUnionPackRankSlots,
@@ -201,7 +202,7 @@ function planUnionDrop(
 export function planPackingRowDragEnd(
   activeId: string,
   overId: string | undefined,
-  items: ListItemWithGear[],
+  cachedItems: ListItemWithGear[],
   foodItems: FoodItemResponse[],
   validLocationIds: ReadonlySet<string>,
   containerItemIdByLocation: ReadonlyMap<string, string> = new Map(),
@@ -214,6 +215,10 @@ export function planPackingRowDragEnd(
    *  every cached id is trusted. */
   renderedLocationIds?: ReadonlySet<string>,
 ): PackingRowDragPlan | null {
+  // A pending add's placeholder has no server row. Dropping it from the rows
+  // here, before both planners, keeps it out of every reorder cohort and stops
+  // it being moved to another bag or to Unassigned.
+  const items = cachedItems.filter((item) => !isUnconfirmed(item.id))
   const normalize = (locationId: string | null) =>
     locationId === null ||
     renderedLocationIds === undefined ||

@@ -5,12 +5,12 @@ import {
   makeOptimisticInsert,
   nextSortOrder,
 } from './queries'
-import { randomTempId } from './random-temp-id'
+import { unconfirmedId } from './unconfirmed-id'
 import type { Category } from './types'
 
 // The one add-category mutation recipe. The gear page's category actions and
 // the list page's gear actions each drive createCategory with the identical
-// optimistic insert (temp id, next sort slot from the cached rows, same
+// optimistic insert (unconfirmed id, next sort slot from the cached rows, same
 // placeholder shape); this builder keeps them from drifting. Each caller
 // supplies its own inline mutationKey (the keys are distinct on purpose, so
 // per-surface isMutating matchers keep working, and lint requires the key
@@ -23,7 +23,7 @@ export function addCategoryMutationOptions(
   qc: QueryClient,
   categories: Category[],
 ): Omit<
-  UseMutationOptions<Category, Error, string, { previous: Category[] | undefined }>,
+  UseMutationOptions<Category, Error, string, { placeholderId: string }>,
   'mutationKey'
 > {
   return {
@@ -32,7 +32,7 @@ export function addCategoryMutationOptions(
       qc,
       queryKey: queryKeys.categories(),
       optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
+        id: unconfirmedId(),
         name,
         sortOrder: nextSortOrder(categories),
         createdAt: new Date().toISOString(),

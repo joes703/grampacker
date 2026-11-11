@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { pickListAfterDelete } from './pick-list-after-delete'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 // Pure-helper coverage for the delete-current-list successor rule used by
 // DesktopListsPanel. The shape this codebase historically gets wrong is
@@ -49,5 +50,13 @@ describe('pickListAfterDelete', () => {
     // We should NOT navigate to a stale neighbor that happened to share
     // an index; bounce to /lists instead.
     expect(pickListAfterDelete(lists, 'z', 'z')).toBe('/lists')
+  })
+
+  it('skips a list whose create is still pending', () => {
+    // No list has the placeholder's id yet; landing on it would show "List
+    // not found". The next confirmed neighbor, then the previous, wins.
+    const pending = { id: unconfirmedId() }
+    expect(pickListAfterDelete([{ id: 'a' }, { id: 'b' }, pending], 'b', 'b')).toBe('/lists/a')
+    expect(pickListAfterDelete([{ id: 'a' }, pending], 'a', 'a')).toBe('/lists')
   })
 })

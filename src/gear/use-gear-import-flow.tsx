@@ -13,6 +13,7 @@ import CsvHeaderLine from '../components/CsvHeaderLine'
 import Modal from '../components/Modal'
 import PrimaryButton from '../components/PrimaryButton'
 import { SECONDARY_BUTTON } from '../components/flat-table-styles'
+import { confirmedRows } from '../lib/unconfirmed-id'
 
 // The CSV-import-into-the-library flow: the explainer, hidden file input,
 // parse wiring, the preview dialog, the import POST and the error dialog -
@@ -69,7 +70,11 @@ export function useGearImportFlow({
   const importItems = useMutation({
     mutationKey: mutationKeys.importGearItems(),
     mutationFn: async (rows: GearCsvRow[]) => {
-      const plan = planGearImport(rows, categories, allItems)
+      // Planned against confirmed rows only: matching a row to a create that
+      // is still pending would send its unconfirmed id (the server rejects
+      // the import) or skip the row as a duplicate of a create that may
+      // still fail. The cap preflight below still counts every cached row.
+      const plan = planGearImport(rows, confirmedRows(categories), confirmedRows(allItems))
       if (plan.newItems.length === 0) return
       // Preflight BOTH caps (gear and categories) against existing + new,
       // like the list import always did - the thrown message lands in the

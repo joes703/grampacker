@@ -17,6 +17,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { FoodItemResponse, ListFoodResponse } from '../../shared/food'
 import { parseDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import type { ListDetailMode } from './list-detail-mode'
 import {
   buildContainerMoveExclusions,
@@ -218,14 +219,14 @@ export function useListDnd({
   // explicit memos in the page - the rule accepts those, because their
   // inputs are query data the analysis can follow.
 
-  // temp- ids are optimistic rows the server has not confirmed. They are not
-  // valid drop destinations: a move would name a location that does not exist.
+  // Unconfirmed locations are not valid drop destinations: a move would name
+  // a location that does not exist.
   const realLocations = packingLocations.filter(
-    (location) => !location.id.startsWith('temp-'),
+    (location) => !isUnconfirmed(location.id),
   )
   const realLocationIds = new Set(realLocations.map((location) => location.id))
   // Confirmed locations only: this answers a DESTINATION question (a container
-  // cannot be dropped into its own bag), and a temp- bag is never a valid
+  // cannot be dropped into its own bag), and an unconfirmed bag is never a valid
   // destination. The planner also folds these ids into its reorder exclusions,
   // but that is a subset of packingReorderExclusions below, which covers
   // pending containers too.

@@ -6,6 +6,7 @@ import type { GearStatus } from '../lib/gear-status'
 import type { ListItemPatch } from '../lib/queries'
 import type { WeightUnit } from '../lib/weight'
 import { FLAT_TABLE_HEADER } from '../components/flat-table-styles'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import type { ItemRowProps } from './ItemRow'
 
 // What CategoryTable (List view and the public share) and PackSection (every
@@ -97,6 +98,18 @@ export function buildRowProps(
     rowAction?: ReactNode
   },
 ): RowProps {
+  // A pending add's row has no server row yet, so every write naming it would
+  // fail. It renders read-only, the way the share view renders every row,
+  // until the server row replaces it (makeOptimisticInsert).
+  if (isUnconfirmed(item.id)) {
+    return {
+      item,
+      weightUnit: section.weightUnit,
+      isBelowLg: section.isBelowLg,
+      packMode: section.packMode,
+      reorderPending: section.reorderPending,
+    }
+  }
   const gearId = item.gearItem.id
   const {
     onUpdate,
