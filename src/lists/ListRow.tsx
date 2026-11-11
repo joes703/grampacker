@@ -15,6 +15,7 @@ import {
 import { useCommitOnce } from '../lib/use-commit-once'
 import { useListCardSortable, LIST_RENAME_INPUT_CLASS } from './list-card-sortable'
 import { formatRelativeDate } from '../lib/dates'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 
 // The one lists-surface row, shared by /lists (variant 'page') and the
 // desktop lists panel on /lists/:id (variant 'panel'), so the rename-inline
@@ -85,7 +86,7 @@ export function SortableListRow(
   const { outerRef, outerStyle, dragHandle } = useListCardSortable({
     listId: props.list.id,
     listName: props.list.name,
-    disabled: props.actions.renaming || props.reorderPending,
+    disabled: props.actions.renaming || props.reorderPending || isUnconfirmed(props.list.id),
     gripIconSize: props.variant === 'page' ? 16 : undefined,
   })
   return (
@@ -108,6 +109,9 @@ export function ListRow({
   outerStyle,
   dragHandle,
 }: ListRowProps) {
+  // A pending create's row: no list has its id yet, so it is not a link and
+  // has no menu until makeOptimisticInsert swaps in the server row.
+  const pending = isUnconfirmed(list.id)
   // Page chrome: a flex strip inside the shared bordered container. No
   // hover-shadow - the container is the visual anchor. Density routes
   // through MOBILE/DESKTOP_ROW_HEIGHT instead of FLAT_TABLE_ROW because the
@@ -121,6 +125,13 @@ export function ListRow({
     variant === 'page'
       ? `relative flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-2 px-3 py-2 hover:bg-gray-50`
       : `${FLAT_TABLE_ROW} w-full gap-2 px-3 py-0 ${isCurrent ? 'bg-blue-50' : ''} hover:bg-gray-100`
+
+  const nameClass =
+    variant === 'page'
+      ? 'min-w-0 flex-1 truncate rounded text-sm font-medium text-gray-900 focus:outline-none focus:underline focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1'
+      : `min-w-0 flex-1 truncate ${FLAT_TABLE_BODY_TEXT} ${
+          isCurrent ? 'font-medium text-gray-900' : 'font-normal text-gray-700'
+        } focus:outline-none focus:underline`
 
   // Renaming swaps the name link for an input. The kebab is hidden during
   // rename to keep the focused control unambiguous; Enter / Escape / blur
@@ -141,27 +152,31 @@ export function ListRow({
   }
 
   return (
-    <li ref={outerRef as React.Ref<HTMLLIElement>} style={outerStyle} className={rowClass}>
+    <li
+      ref={outerRef as React.Ref<HTMLLIElement>}
+      style={pending ? { ...outerStyle, opacity: 0.6 } : outerStyle}
+      className={rowClass}
+    >
       {dragHandle}
 
       {/* Name is the primary click target; takes whatever flex room the
           meta and kebab leave behind. truncate caps long names rather than
           wrapping the row. A Link (not a button) so middle-click /
           cmd-click open in a new tab. */}
-      <Link
-        to={`/lists/${list.id}`}
-        className={
-          variant === 'page'
-            ? 'min-w-0 flex-1 truncate rounded text-sm font-medium text-gray-900 focus:outline-none focus:underline focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1'
-            : `min-w-0 flex-1 truncate ${FLAT_TABLE_BODY_TEXT} ${
-                isCurrent ? 'font-medium text-gray-900' : 'font-normal text-gray-700'
-              } focus:outline-none focus:underline`
-        }
-        aria-label={`Open ${list.name}`}
-        aria-current={variant === 'panel' && isCurrent ? 'page' : undefined}
-      >
-        {list.name}
-      </Link>
+      {pending ? (
+        <span className={nameClass} aria-busy="true">
+          {list.name}
+        </span>
+      ) : (
+        <Link
+          to={`/lists/${list.id}`}
+          className={nameClass}
+          aria-label={`Open ${list.name}`}
+          aria-current={variant === 'panel' && isCurrent ? 'page' : undefined}
+        >
+          {list.name}
+        </Link>
+      )}
       {list.isDraft && <DraftBadge className="ml-2 shrink-0" />}
 
       {variant === 'page' && now !== undefined && <RowMeta list={list} now={now} />}
@@ -174,7 +189,7 @@ export function ListRow({
         icon={variant === 'page' ? <MoreVertical size={16} /> : undefined}
         ariaLabel="List options"
         menuLabel={`${list.name} actions`}
-        disabled={!actions}
+        disabled={!actions || pending}
       >
         {({ close }) =>
           actions ? (

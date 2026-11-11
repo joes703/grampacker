@@ -83,7 +83,7 @@ export function useListItemActions(
       optimistic: (item) => {
         const now = new Date().toISOString()
         return {
-          // Replaced by the server row on settled refetch.
+          // Replaced by the server row when the POST answers.
           id: unconfirmedId(),
           listId,
           gearItemId: item.id,

@@ -10,8 +10,8 @@
 // hyphens. Math.random fallback isn't included — every browser this
 // codebase otherwise supports has crypto.getRandomValues.
 //
-// Callers: unconfirmedId (./unconfirmed-id.ts) for optimistic rows, the
-// list-create placeholder, which needs a bare uuid, and the CSV import plan.
+// Callers: unconfirmedId (./unconfirmed-id.ts) for optimistic rows, and the
+// CSV import plan.
 export function randomTempId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
