@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import type { Category, GearItem } from '../lib/types'
 import { renderListDetailPage, shimDialog, stubViewport } from './test/list-detail-harness'
 import { deferred } from '../test/deferred'
+import { showToast } from '../lib/toast'
 
 // ListDetailPage's edit-gear dialog is a two-stage async save - gear first, then the
 // per-list patch - and a dialog the user can dismiss at any point during it. Three
@@ -71,6 +72,12 @@ async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
     await d.promise.catch(() => {})
   })
 }
+
+// Spied, not rendered: the subject is WHICH surface reports a failure.
+vi.mock('../lib/toast', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/toast')>()),
+  showToast: vi.fn(),
+}))
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),
@@ -258,6 +265,12 @@ describe('the edit-gear dialog save', () => {
 
     expect(screen.queryByRole('dialog', { name: 'Edit item' })).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // Not resurrected, but not silent either: with the dialog gone, the
+    // failure becomes a toast.
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
+      { type: 'error' },
+    )
   })
 
   it('a success arriving after the dialog was reopened does not close the new one', async () => {

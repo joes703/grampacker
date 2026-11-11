@@ -9,6 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { ReactNode } from 'react'
 import type { Category, GearItem } from '../lib/types'
 import { deferred } from '../test/deferred'
+import { showToast } from '../lib/toast'
 
 // What this file is for: the gear library's OWN writes - add/edit/delete an item,
 // add/delete a category, create a list from a selection - all failed silently. (The
@@ -40,6 +41,13 @@ async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
     await d.promise.catch(() => {})
   })
 }
+
+// Spied, not rendered: no toast viewport is mounted here, and the subject is
+// WHICH surface reports a failure.
+vi.mock('../lib/toast', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/toast')>()),
+  showToast: vi.fn(),
+}))
 
 const h = vi.hoisted(() => ({
   addItemAsync: vi.fn<(patch: unknown) => Promise<unknown>>(),
@@ -347,6 +355,33 @@ describe('GearItemDialog save failures', () => {
 
     expect(screen.queryByRole('dialog', { name: 'New item' })).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // Not resurrected, but not silent either: the dialog that would have shown
+    // the error is gone, so the failure becomes a toast.
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
+      { type: 'error' },
+    )
+  })
+
+  it('an edit rejection arriving after the user closed the dialog is toasted', async () => {
+    const d = deferred<unknown>()
+    h.editItemAsync.mockReturnValue(d.promise)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Tent' }))
+    fireEvent.change(nameField(), { target: { value: 'Tarp' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Edit item' })).not.toBeInTheDocument()
+
+    d.reject(new Error('offline'))
+    await settle(d)
+
+    expect(screen.queryByRole('dialog', { name: 'Edit item' })).not.toBeInTheDocument()
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm those changes saved. Try again, or refresh to check.",
+      { type: 'error' },
+    )
   })
 
   it('a rejection does not stamp its error onto a different dialog opened since', async () => {
@@ -370,6 +405,11 @@ describe('GearItemDialog save failures', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Edit item' })).toBeInTheDocument()
     expect(nameField().value).toBe('Tent')
+    // The create's own failure still reaches the user.
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
+      { type: 'error' },
+    )
   })
 })
 
@@ -749,6 +789,10 @@ describe('sessions ended by something other than their own close button', () => 
 
     expect(screen.queryByRole('dialog', { name: 'Create list from selection' })).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't confirm the list was created. Refresh before retrying, in case it was.",
+      { type: 'error' },
+    )
   })
 })
 
