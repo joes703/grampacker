@@ -148,24 +148,34 @@ function makeSettled(opts: CommonOpts) {
   }
 }
 
-// Insert one row into the cached array. The mutationFn runs in parallel;
-// when it resolves, the settled refetch replaces the temp row with the
-// server row (the temp id and the server id won't match, but the refetch
-// rewrites the whole array so the temp row drops out and the real row
-// takes its place). The placeholder is appended to the end of the array,
-// whatever its sortOrder.
+// Insert one row into the cached array: a placeholder with an unconfirmed id
+// (src/lib/unconfirmed-id.ts) at once, then the server row when the POST
+// answers. The placeholder is appended to the end of the array, whatever its
+// sortOrder.
+//
+// Every step after onMutate works on the CURRENT cache, never on a snapshot.
+// Overlapping creates and refetches change the rows between onMutate and the
+// response: a sibling create may have swapped in its server row, a refetch may
+// already hold this create's server row, or may have dropped the placeholder.
+// So the error path removes only this placeholder (restoring a snapshot would
+// also erase a sibling's confirmed row), and the success path removes the
+// placeholder and adds the server row only if it is absent.
+//
+// Swapping on success, not waiting for the settled refetch, is what makes the
+// row usable as soon as the server confirms it: the placeholder's id names no
+// server row, so every action on it fails until it is replaced.
+type InsertContext = { placeholderId: string }
+
 export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts: CommonOpts & {
-  // Build the optimistic placeholder row from the mutation input. The id
-  // should be a client-generated temp id (e.g. crypto.randomUUID()). The
-  // settled refetch replaces it with the server row. Other fields should
-  // match what the server will return so the UI doesn't flash on settle.
+  // Build the placeholder row from the mutation input. Its id must come from
+  // unconfirmedId(). Other fields should match what the server will return so
+  // the UI doesn't flash on settle.
   optimistic: (input: TInput) => TList
 }) {
   const { qc, queryKey, optimistic } = opts
   return {
-    onMutate: async (input: TInput): Promise<OptimisticContext<TList>> => {
+    onMutate: async (input: TInput): Promise<InsertContext> => {
       await qc.cancelQueries({ queryKey })
-      const previous = qc.getQueryData<TList[]>(queryKey)
       const next = optimistic(input)
       // An ABSENT cache is left absent, exactly as makeOptimisticUpdate leaves
       // it. Seeding one here fabricates a collection the user never loaded:
@@ -180,9 +190,24 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
         if (!curr) return curr
         return [...curr, next]
       })
-      return { previous }
+      return { placeholderId: next.id }
     },
-    onError: makeRollback<TList>(opts),
+    onError: (_err: unknown, _input: TInput, ctx: InsertContext | undefined) => {
+      if (!ctx) return
+      qc.setQueryData<TList[]>(queryKey, (curr) =>
+        curr?.filter((row) => row.id !== ctx.placeholderId),
+      )
+    },
+    onSuccess: async (created: TList, _input: TInput, ctx: InsertContext | undefined) => {
+      // A refetch still running started before the commit; landing after
+      // this write, it would drop the server row until the settled refetch.
+      await qc.cancelQueries({ queryKey })
+      qc.setQueryData<TList[]>(queryKey, (curr) => {
+        if (!curr) return curr
+        const rest = ctx ? curr.filter((row) => row.id !== ctx.placeholderId) : curr
+        return rest.some((row) => row.id === created.id) ? rest : [...rest, created]
+      })
+    },
     onSettled: makeSettled(opts),
   }
 }

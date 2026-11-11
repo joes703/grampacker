@@ -3,6 +3,7 @@ import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
 import { makeDnDId } from '../lib/dnd-ids'
 import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 function item(
   id: string,
@@ -334,6 +335,37 @@ describe('planPackingRowDragEnd over the union', () => {
         ],
       },
     })
+  })
+})
+
+// A pending add's placeholder has no server row: no reorder may name it, and
+// it cannot be moved to another bag.
+describe('planPackingRowDragEnd while an add is pending', () => {
+  const first = item('first', 'loc-a', 2)
+  const second = item('second', 'loc-a', 8)
+  const pending = item(unconfirmedId(), 'loc-a', 9)
+  const rows = [first, second, pending]
+  const plan = (activeId: string, overId: string) => planPackingRowDragEnd(
+    activeId,
+    overId,
+    rows,
+    noFood,
+    validLocationIds,
+    noContainerItems,
+    noExcludedLocations,
+  )
+
+  it('a sibling reorder leaves the placeholder out of the payload', () => {
+    const result = plan(makeDnDId('packing-item', first.id), makeDnDId('packing-item', second.id))
+    expect(result?.kind).toBe('reorder')
+    expect(JSON.stringify(result)).not.toContain(pending.id)
+  })
+
+  it('plans nothing for the placeholder: reorder, move to a bag, or move to Unassigned', () => {
+    expect(plan(makeDnDId('packing-item', pending.id), makeDnDId('packing-item', first.id))).toBeNull()
+    expect(plan(makeDnDId('packing-item', first.id), makeDnDId('packing-item', pending.id))).toBeNull()
+    expect(plan(makeDnDId('packing-item', pending.id), makeDnDId('packing-location', 'loc-b'))).toBeNull()
+    expect(plan(makeDnDId('packing-item', pending.id), makeDnDId('packing-location', 'unassigned'))).toBeNull()
   })
 })
 

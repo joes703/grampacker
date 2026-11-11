@@ -1,3 +1,5 @@
+import { isUnconfirmed } from '../lib/unconfirmed-id'
+
 // Pure successor chooser for the delete-current-list flow.
 //
 // When the user deletes the list they're currently viewing, the optimistic
@@ -7,8 +9,8 @@
 // spot BEFORE issuing the mutation so the user lands somewhere useful.
 //
 // Resolution rule (deleting the currently open list):
-//   1. next visible list in current sort order
-//   2. previous visible list in current sort order
+//   1. next visible confirmed list in current sort order
+//   2. previous visible confirmed list in current sort order
 //   3. /lists (the no-lists fallback)
 //
 // Deleting a non-current list returns null so the caller stays put.
@@ -24,12 +26,14 @@ export function pickListAfterDelete<T extends { id: string }>(
   currentListId: string,
 ): string | null {
   if (deletedId !== currentListId) return null
-  const idx = lists.findIndex((l) => l.id === deletedId)
+  // A pending create's row is never a landing spot: no list has its id yet.
+  const candidates = lists.filter((l) => l.id === deletedId || !isUnconfirmed(l.id))
+  const idx = candidates.findIndex((l) => l.id === deletedId)
   // idx === -1: the deleted row is already absent from the snapshot the
   // caller passed in. Treat the same as "no successor available" so the
   // caller hits the /lists fallback rather than navigating to a stale id.
-  const next = idx >= 0 ? lists[idx + 1] : undefined
-  const prev = idx > 0 ? lists[idx - 1] : undefined
+  const next = idx >= 0 ? candidates[idx + 1] : undefined
+  const prev = idx > 0 ? candidates[idx - 1] : undefined
   const successor = next ?? prev
   if (successor) return `/lists/${successor.id}`
   return '/lists'

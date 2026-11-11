@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import GearItemDialog from './GearItemDialog'
+import { unconfirmedId } from '../../lib/unconfirmed-id'
 import { shimDialog } from '../../lists/test/list-detail-harness'
 
 beforeAll(shimDialog)
@@ -79,5 +80,24 @@ describe('weight and quantity limits', () => {
     fireEvent.change(quantity, { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: /Save|Add/ }))
     expect(onSave.mock.calls[0]?.[1]).toMatchObject({ quantity: 5 })
+  })
+})
+
+// A category whose create is still pending has no server row, so saving an
+// item into it would send an id the server does not know.
+describe('GearItemDialog category options', () => {
+  it('does not offer a category whose create is still pending', () => {
+    render(
+      <GearItemDialog
+        categories={[
+          { id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2026-06-06' },
+          { id: unconfirmedId(), name: 'Stoves', sortOrder: 1, createdAt: '2026-06-06' },
+        ]}
+        onSave={vi.fn()}
+        onClose={() => {}}
+      />,
+    )
+    const select = screen.getByLabelText(/Category/) as HTMLSelectElement
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Uncategorized', 'Shelter'])
   })
 })

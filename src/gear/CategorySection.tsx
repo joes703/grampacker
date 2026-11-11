@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2, Check, X } fro
 import type { Category, GearItem } from '../lib/types'
 import type { WeightUnit } from '../lib/weight'
 import { makeDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import { useSortableRow, type SortableHandleProps } from '../lib/use-sortable-row'
 import { SortableGearItemRow } from './GearItemRow'
 import InlineRenameInput from '../components/InlineRenameInput'
@@ -76,6 +77,9 @@ function CategorySectionInner(
   } = props
 
   const [renaming, setRenaming] = useState(false)
+  // A pending create's section has no server row, so rename and delete would
+  // name an id the server does not know.
+  const pending = category ? isUnconfirmed(category.id) : false
   const [renameDraft, setRenameDraft] = useState(category?.name ?? '')
 
   function commitRename() {
@@ -153,7 +157,7 @@ function CategorySectionInner(
             className={`flex-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-medium ${INLINE_EDIT_FOCUS_RING}`}
           />
         ) : (
-          category && !selectMode ? (
+          category && !selectMode && !pending ? (
             <button
               type="button"
               onClick={() => {
@@ -224,7 +228,7 @@ function CategorySectionInner(
                 {!category && <span className={COL_ICON} />}
               </div>
             )}
-            {category && (
+            {category && !pending && (
               <CategoryKebab
                 onRename={() => {
                   setRenameDraft(category.name)
@@ -338,15 +342,18 @@ export const SortableCategorySection = memo(function SortableCategorySection(
   props: CategorySectionProps & { id: string; reorderPending?: boolean },
 ) {
   const { id, reorderPending, ...rest } = props
+  // A pending create's section has no server row to reorder; the inner
+  // section also drops its rename and options for the same reason.
+  const pending = isUnconfirmed(id)
   const { outerRef, outerStyle, handleProps } = useSortableRow({
     kind: 'category',
     id,
-    disabled: reorderPending,
+    disabled: reorderPending || pending,
   })
 
   return (
-    <div ref={outerRef} style={outerStyle}>
-      <CategorySectionInner {...rest} dragHandleProps={handleProps} />
+    <div ref={outerRef} style={pending ? { ...outerStyle, opacity: 0.6 } : outerStyle}>
+      <CategorySectionInner {...rest} dragHandleProps={pending ? undefined : handleProps} />
     </div>
   )
 })

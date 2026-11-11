@@ -1,5 +1,6 @@
 import { GripVertical } from 'lucide-react'
 import { useSortableRow } from '../lib/use-sortable-row'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import RowIconButton from '../components/RowIconButton'
 import { ROW_HOVER_REVEAL } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
@@ -38,10 +39,14 @@ export default function SortableItemRow({
 }: Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'> & {
   dndKind?: 'item' | 'packing-item'
 }) {
+  // A pending add's row cannot be dragged: no reorder or move may name it.
+  // buildRowProps already gave it no handlers.
+  const unconfirmed = isUnconfirmed(props.item.id)
+  const dragDisabled = props.reorderPending || unconfirmed
   const { outerRef, outerStyle, handleProps } = useSortableRow({
     kind: dndKind,
     id: props.item.id,
-    disabled: props.reorderPending,
+    disabled: dragDisabled,
   })
 
   // Every viewport drives reorder from a dedicated in-row grip. It sits inside
@@ -58,7 +63,7 @@ export default function SortableItemRow({
     <RowIconButton
       touchSafe
       {...handleProps}
-      disabled={props.reorderPending}
+      disabled={dragDisabled}
       variant="dragHandle"
       ariaLabel={
         packing
@@ -76,7 +81,7 @@ export default function SortableItemRow({
       {...props}
       dragHandle={handle}
       outerRef={outerRef}
-      outerStyle={outerStyle}
+      outerStyle={unconfirmed ? { ...outerStyle, opacity: 0.6 } : outerStyle}
     />
   )
 }

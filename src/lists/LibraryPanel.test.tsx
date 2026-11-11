@@ -4,6 +4,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Category, GearItem } from '../lib/types'
 import LibraryPanel from './LibraryPanel'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 // jsdom implements <dialog> without its modal methods, and the quick-add form
 // is a Modal. Same shim the ListDetailPage suites use.
@@ -164,5 +165,28 @@ describe('gear picker shows plainly what is already on the list', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add Quilt to list' }))
     expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+})
+
+// The gear cache is shared with the Gear page, so a create still pending
+// there shows here too. Adding it would send an id the server does not know.
+describe('a gear item whose create is still pending', () => {
+  it('is not offered for adding', async () => {
+    const onAdd = vi.fn()
+    const pending: GearItem = { ...item, id: unconfirmedId(), name: 'Stove' }
+    render(
+      <LibraryPanel
+        gearItems={[item, pending]}
+        categories={[category]}
+        listItemGearIds={new Set<string>()}
+        weightUnit="g"
+        onAdd={onAdd}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: /Stove/ })
+    expect(row).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(row)
+    expect(onAdd).not.toHaveBeenCalled()
   })
 })

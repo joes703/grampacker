@@ -9,6 +9,7 @@ import { showToast } from '../lib/toast'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
 import { deferred } from '../test/deferred'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 
 // Hoisted spies so both the mock factories and the test bodies share the same
 // fn instances. (vi.mock is hoisted above imports; vi.hoisted lets the
@@ -256,6 +257,29 @@ describe('useCurrentListActions - createListMut', () => {
     expect(q.createList).toHaveBeenCalledWith('New')
     await act(async () => { finish({ ...LIST, id: 'new-id', name: 'New' }) })
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
+  })
+
+  // The placeholder's id names no server row, so the row must be recognizable
+  // as unconfirmed (drags and row actions skip it), and the server row must
+  // already be in the cache when the page navigates to it.
+  it('marks the placeholder unconfirmed and swaps in the server row before navigating', async () => {
+    let finish: (row: List) => void = () => {}
+    q.createList.mockReturnValueOnce(new Promise<List>((resolve) => { finish = resolve }))
+    const { result } = renderHook(() => useCurrentListActions(), { wrapper })
+    act(() => { lastQc.setQueryData(['lists'], [{ ...LIST, id: 'a', sortOrder: 0 }]) })
+    let idsAtNavigate: string[] | undefined
+    navigateSpy.mockImplementationOnce(() => {
+      idsAtNavigate = lastQc.getQueryData<List[]>(['lists'])?.map((row) => row.id)
+    })
+
+    act(() => { result.current.submitCreateList('New') })
+    await waitFor(() => expect(q.createList).toHaveBeenCalled())
+    const placeholder = lastQc.getQueryData<List[]>(['lists'])?.find((row) => row.name === 'New')
+    expect(isUnconfirmed(placeholder?.id ?? '')).toBe(true)
+
+    await act(async () => { finish({ ...LIST, id: 'new-id', name: 'New' }) })
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/lists/new-id'))
+    expect(idsAtNavigate).toEqual(['a', 'new-id'])
   })
 
   it('drops a repeat submit while a create is in flight, then accepts the next one', async () => {

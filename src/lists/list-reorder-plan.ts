@@ -1,5 +1,6 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import { parseDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import { assignPackRankSlots, assignSortOrderSlots } from '../lib/grouping'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
@@ -37,7 +38,7 @@ export function deriveFilteredItemIds(
 export function planListItemReorder({
   activeId,
   overId,
-  items,
+  items: cachedItems,
   groupingKind,
   mode,
   locations,
@@ -58,6 +59,10 @@ export function planListItemReorder({
   | { kind: 'pack'; updates: ReorderPackPayload }
   | { kind: 'list'; updates: { id: string; sortOrder: number }[] }
   | null {
+  // A pending add's placeholder is in the cache but has no server row; the
+  // server rejects a reorder naming it, so it never joins a cohort, and a
+  // drag of it or onto it plans nothing.
+  const items = cachedItems.filter((item) => !isUnconfirmed(item.id))
   if (groupingKind === 'location') {
     const excludedItemIds = derivePackReorderExclusions(items, locations)
     for (const itemId of hiddenItemIds) excludedItemIds.add(itemId)

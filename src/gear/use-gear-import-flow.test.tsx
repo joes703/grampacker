@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ApiError } from '../lib/api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GearCsvRow } from '../lib/csv'
+import type { Category, GearItem } from '../lib/types'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 // Pins the hook's one coordination duty, same as the list flow's test
 // (src/lists/use-list-import-flow.test.tsx): every route that OPENS one of
@@ -41,9 +43,12 @@ vi.mock('../lib/queries', async (importOriginal) => {
 
 // The planner is not under test; it just has to want a POST so the
 // mutation's error route is reachable.
+const plan = vi.hoisted(() => ({
+  planGearImport: vi.fn(() => ({ newItems: [{ name: 'Stove' }], newCategories: [] })),
+}))
 vi.mock('../lib/csv/import-plan', () => ({
   ImportCapError: class extends Error {},
-  planGearImport: () => ({ newItems: [{ name: 'Stove' }], newCategories: [] }),
+  planGearImport: plan.planGearImport,
   assertGearImportWithinCaps: () => {},
 }))
 
@@ -69,10 +74,18 @@ vi.mock('../components/ConfirmDialog', () => ({
 import { useGearImportFlow } from './use-gear-import-flow'
 import { deferred } from '../test/deferred'
 
-function Harness({ onBeforeOpen }: { onBeforeOpen: () => void }) {
+function Harness({
+  onBeforeOpen,
+  categories = [],
+  allItems = [],
+}: {
+  onBeforeOpen: () => void
+  categories?: Category[]
+  allItems?: GearItem[]
+}) {
   const { openImportExplainer, importUi } = useGearImportFlow({
-    categories: [],
-    allItems: [],
+    categories,
+    allItems,
     onBeforeOpen,
   })
   return (
@@ -83,13 +96,16 @@ function Harness({ onBeforeOpen }: { onBeforeOpen: () => void }) {
   )
 }
 
-function renderHarness(onBeforeOpen: () => void) {
+function renderHarness(
+  onBeforeOpen: () => void,
+  library: { categories?: Category[]; allItems?: GearItem[] } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <Harness onBeforeOpen={onBeforeOpen} />
+      <Harness onBeforeOpen={onBeforeOpen} {...library} />
     </QueryClientProvider>,
   )
 }
@@ -153,5 +169,42 @@ describe('useGearImportFlow onBeforeOpen', () => {
     await act(async () => importCall.reject(new ApiError(422, 'boom')))
     expect(await screen.findByText(/Import error: boom/)).toBeInTheDocument()
     expect(onBeforeOpen).toHaveBeenCalledTimes(2)
+  })
+})
+
+// A gear item or category whose create is still pending is in the library the
+// import plans against. Matching a CSV row to it would put its unconfirmed id
+// in the request (the server rejects the import), or skip the row as a
+// duplicate of a create that may still fail.
+describe('useGearImportFlow while a create is pending', () => {
+  it('plans against confirmed rows only', async () => {
+    api.importGearItems.mockResolvedValue(undefined)
+    const confirmedCategory: Category = { id: 'cat-1', name: 'Shelter', sortOrder: 0, createdAt: '2026-01-01' }
+    const pendingCategory: Category = { id: unconfirmedId(), name: 'Kitchen', sortOrder: 1, createdAt: '2026-01-01' }
+    const gear = (id: string, name: string): GearItem => ({
+      id,
+      categoryId: null,
+      name,
+      description: null,
+      weightGrams: 80,
+      cost: null,
+      purchaseDate: null,
+      status: 'active',
+      sortOrder: 0,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    })
+    renderHarness(vi.fn(), {
+      categories: [confirmedCategory, pendingCategory],
+      allItems: [gear('g-1', 'Tent'), gear(unconfirmedId(), 'Stove')],
+    })
+
+    act(() => csv.onParsed!([], 'gear.csv'))
+    fireEvent.click(screen.getByText('confirm-import'))
+
+    await waitFor(() => expect(plan.planGearImport).toHaveBeenCalledTimes(1))
+    const [, categories, items] = plan.planGearImport.mock.calls[0] as unknown as [unknown, Category[], GearItem[]]
+    expect(categories.map((c) => c.name)).toEqual(['Shelter'])
+    expect(items.map((i) => i.name)).toEqual(['Tent'])
   })
 })

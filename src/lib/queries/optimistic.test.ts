@@ -41,7 +41,7 @@ describe('makeOptimisticInsert', () => {
     ])
   })
 
-  it('rolls back on error to the pre-apply snapshot', async () => {
+  it('removes its placeholder on error', async () => {
     const initial: Row[] = [{ id: 'A', name: 'a', categoryId: null }]
     const { qc, key } = makeClient(initial)
     const helper = makeOptimisticInsert<Row, { name: string }>({
@@ -90,6 +90,87 @@ describe('makeOptimisticInsert', () => {
     expect(qc.getQueryData<Row[]>(key)).toEqual([
       { id: 'temp-1', name: 'b', categoryId: null },
     ])
+  })
+})
+
+// The placeholder's id names no server row, so it must leave the cache as soon
+// as the POST answers, and the server row must take its place. Overlapping
+// creates and refetches mean the cache at that moment is not the cache
+// onMutate saw, so each step works on the CURRENT rows.
+describe('makeOptimisticInsert reconciles against the current cache', () => {
+  const row = (id: string, name = id): Row => ({ id, name, categoryId: null })
+  let n = 0
+  const helperFor = (qc: QueryClient, key: QueryKey) =>
+    makeOptimisticInsert<Row, { name: string }>({
+      qc,
+      queryKey: key,
+      optimistic: (input) => row(`temp-${++n}`, input.name),
+    })
+  const ids = (qc: QueryClient, key: QueryKey) =>
+    qc.getQueryData<Row[]>(key)?.map((r) => r.id)
+
+  it('swaps the placeholder for the server row when the POST answers', async () => {
+    const { qc, key } = makeClient([row('A')])
+    const helper = helperFor(qc, key)
+    const ctx = await helper.onMutate({ name: 'b' })
+    await helper.onSuccess(row('S', 'b'), { name: 'b' }, ctx)
+    expect(qc.getQueryData<Row[]>(key)).toEqual([row('A'), row('S', 'b')])
+  })
+
+  for (const order of ['first-then-second', 'second-then-first'] as const) {
+    it(`keeps both server rows when two creates answer ${order}`, async () => {
+      const { qc, key } = makeClient([row('A')])
+      const helper = helperFor(qc, key)
+      const first = await helper.onMutate({ name: 'one' })
+      const second = await helper.onMutate({ name: 'two' })
+      const answers = [
+        () => helper.onSuccess(row('S1', 'one'), { name: 'one' }, first),
+        () => helper.onSuccess(row('S2', 'two'), { name: 'two' }, second),
+      ]
+      if (order === 'second-then-first') answers.reverse()
+      for (const answer of answers) await answer()
+      expect(ids(qc, key)?.sort()).toEqual(['A', 'S1', 'S2'])
+    })
+  }
+
+  it('a failed create keeps a sibling create that already succeeded', async () => {
+    const { qc, key } = makeClient([row('A')])
+    const helper = helperFor(qc, key)
+    const failing = await helper.onMutate({ name: 'one' })
+    const succeeding = await helper.onMutate({ name: 'two' })
+    await helper.onSuccess(row('S2', 'two'), { name: 'two' }, succeeding)
+    helper.onError(new Error('boom'), { name: 'one' }, failing)
+    expect(ids(qc, key)).toEqual(['A', 'S2'])
+  })
+
+  it('does not duplicate a server row a refetch already brought in', async () => {
+    const { qc, key } = makeClient([row('A')])
+    const helper = helperFor(qc, key)
+    const ctx = await helper.onMutate({ name: 'b' })
+    // A refetch landed between the commit and the response: it has the
+    // server row and no placeholder.
+    qc.setQueryData<Row[]>(key, [row('A'), row('S', 'b')])
+    await helper.onSuccess(row('S', 'b'), { name: 'b' }, ctx)
+    expect(ids(qc, key)).toEqual(['A', 'S'])
+  })
+
+  it('still adds the server row when a refetch dropped the placeholder first', async () => {
+    const { qc, key } = makeClient([row('A')])
+    const helper = helperFor(qc, key)
+    const ctx = await helper.onMutate({ name: 'b' })
+    // A refetch from before the commit: no placeholder, no server row.
+    qc.setQueryData<Row[]>(key, [row('A')])
+    await helper.onSuccess(row('S', 'b'), { name: 'b' }, ctx)
+    expect(ids(qc, key)).toEqual(['A', 'S'])
+  })
+
+  it('leaves an unloaded cache unloaded when the POST answers', async () => {
+    const qc = new QueryClient()
+    const key = ['rows'] as const
+    const helper = helperFor(qc, key)
+    const ctx = await helper.onMutate({ name: 'b' })
+    await helper.onSuccess(row('S', 'b'), { name: 'b' }, ctx)
+    expect(qc.getQueryData<Row[]>(key)).toBeUndefined()
   })
 })
 

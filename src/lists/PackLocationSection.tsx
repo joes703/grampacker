@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { FoodItemResponse } from '../../shared/food'
 import type { ListItemWithGear } from '../lib/types'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import PackSection from './PackSection'
 import type { SharedPackSectionProps } from './section-parts'
 import type { PackingTreeLocation } from './packing-tree'
@@ -92,7 +93,7 @@ function PackPlainSection({
   })
   // An optimistic location has no server row yet, so rename and delete have
   // nothing to address.
-  const confirmed = !location.id.startsWith('temp-')
+  const confirmed = !isUnconfirmed(location.id)
   // A location can be item-backed while its backing ROW is out of view: a worn
   // container item is extracted into the Worn section, so buildPackingTree
   // resolves containerItem to null and this plain component renders instead of
@@ -164,7 +165,7 @@ function PackContainerSection({
       reorderPending: locationReorderPending,
       movePending,
     })
-  const confirmed = !location.id.startsWith('temp-')
+  const confirmed = !isUnconfirmed(location.id)
 
   return (
     <div className={nestClass(depth)}>

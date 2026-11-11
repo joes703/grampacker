@@ -16,7 +16,7 @@ import { mutationKeys } from '../lib/queries/keys'
 import { showToast } from '../lib/toast'
 import { nextUnionPackRankFor } from './pack-rows'
 import type { FoodItemResponse } from '../../shared/food'
-import { randomTempId } from '../lib/random-temp-id'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 import type { GearItem, ListItemWithGear } from '../lib/types'
 import { type AddItemData } from './use-quick-add-form'
 
@@ -83,9 +83,8 @@ export function useListItemActions(
       optimistic: (item) => {
         const now = new Date().toISOString()
         return {
-          // Temp id replaced by the server row on settled refetch. The
-          // randomTempId() suffix avoids any collision with real ids.
-          id: `temp-${randomTempId()}`,
+          // Replaced by the server row when the POST answers.
+          id: unconfirmedId(),
           listId,
           gearItemId: item.id,
           // The DTO embeds the FULL gear response, and GearItem IS that

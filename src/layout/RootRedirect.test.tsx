@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router'
 import type { List } from '../lib/types'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 // A controllable session: RootRedirect reads authClient.useSession() only to
 // get the owner id it scopes the cached-path read to. A rerender with a new
@@ -140,6 +141,23 @@ describe('RootRedirect', () => {
     // list was chosen.
     await waitFor(() => expect(screen.getByText('detail:newest')).toBeInTheDocument())
     expect(fetchLists).toHaveBeenCalledTimes(1)
+  })
+
+  // A pending create is in the lists cache with the newest updatedAt, but no
+  // list has its id yet: landing on it shows "List not found".
+  it('slow path: never picks a list whose create is still pending', async () => {
+    vi.mocked(fetchLists).mockResolvedValue([
+      makeList({ id: 'older', updatedAt: '2026-01-01T00:00:00Z' }),
+      makeList({ id: unconfirmedId(), updatedAt: '2026-06-01T00:00:00Z' }),
+    ])
+    renderAt()
+    expect(await screen.findByText('detail:older')).toBeInTheDocument()
+  })
+
+  it('slow path: only a pending list -> the lists page', async () => {
+    vi.mocked(fetchLists).mockResolvedValue([makeList({ id: unconfirmedId() })])
+    renderAt()
+    expect(await screen.findByText('lists-page')).toBeInTheDocument()
   })
 
   it('empty account: zero lists -> redirects to the lists empty state', async () => {

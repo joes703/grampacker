@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import type { Category, GearItem } from '../lib/types'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 const h = vi.hoisted(() => ({
   bulkDeleteMutate: vi.fn<(ids: string[], options?: { onSuccess?: () => void }) => void>(),
@@ -90,9 +91,13 @@ vi.mock('./BulkActionsToolbar', () => ({
     onClose: () => void
     onDelete: () => void
     onMoveToCategory: () => void
+    onSelectAll: () => void
+    selectableTotal: number
   }) => (
     <div>
       <p>{props.selectedCount} selected</p>
+      <p>{props.selectableTotal} selectable</p>
+      <button type="button" onClick={props.onSelectAll}>Select all</button>
       <button type="button" onClick={props.onClose}>Exit selection mode</button>
       <button type="button" onClick={props.onDelete} disabled={props.busy}>Bulk delete</button>
       <button type="button" onClick={props.onMoveToCategory} disabled={props.busy}>Move selected</button>
@@ -400,6 +405,25 @@ describe('GearLibraryPage bulk success handling', () => {
       await selectOneItem()
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
     })
+  })
+
+  // A pending create's placeholder has no server row, so a bulk delete that
+  // named it would fail. Select-all takes confirmed rows only.
+  it('select-all leaves out a gear item whose create is still pending', async () => {
+    const pending = gear({ id: unconfirmedId(), name: 'Stove' })
+    h.fetchGearItems.mockResolvedValue([gear(), pending])
+    renderPage()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Select' })).toBeEnabled(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+
+    expect(screen.getByText('1 selectable')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(h.bulkDeleteMutate).toHaveBeenCalledWith(['g1'], expect.anything())
   })
 
   it('asks before a bulk delete, and Cancel deletes nothing', async () => {

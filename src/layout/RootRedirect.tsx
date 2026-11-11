@@ -4,6 +4,7 @@ import { authClient } from '../lib/auth-client'
 import { queries } from '../lib/queries/options'
 import { readLastListPath } from '../lib/last-list-path'
 import type { List } from '../lib/types'
+import { confirmedRows } from '../lib/unconfirmed-id'
 import AppLoading from '../components/AppLoading'
 
 // Authenticated landing for `/`. There is no home page: pick the most-
@@ -62,12 +63,13 @@ export default function RootRedirect() {
   // timestamps is lexicographic-equivalent to chronological. Single-pass
   // reduce avoids the spread+sort allocation; intent reads as "find max"
   // rather than "sort everything and take first." `lists` is undefined on
-  // a failed fetch, so optional-chain to null and let /lists surface it.
-  const mostRecent =
-    lists?.reduce<List | null>(
-      (best, l) => (best === null || l.updatedAt.localeCompare(best.updatedAt) > 0 ? l : best),
-      null,
-    ) ?? null
+  // a failed fetch, so it reduces to null and /lists surfaces it.
+  // confirmedRows: a create still pending is in this cache, but no list has
+  // its id yet, so landing on it would show "List not found".
+  const mostRecent = confirmedRows(lists ?? []).reduce<List | null>(
+    (best, l) => (best === null || l.updatedAt.localeCompare(best.updatedAt) > 0 ? l : best),
+    null,
+  )
   if (!mostRecent) return <Navigate to="/lists" replace />
   return <Navigate to={`/lists/${mostRecent.id}`} replace />
 }
