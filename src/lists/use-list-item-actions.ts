@@ -47,10 +47,10 @@ type MoveItemVars = {
 // every burst re-converges with server truth - see the mutation for the
 // full lifecycle rationale.
 //
-// The page keeps: the addingNewItemRef double-fire guard (a UI/event concern),
-// dialog orchestration, DnD/reorder, gear/category/notes/ready-checks mutations,
-// and all UI state. `listItems` is read for the next sort slot and the add
-// optimistic placeholder, mirroring the prior inline closures. The SERVER
+// The page keeps: dialog orchestration, DnD/reorder,
+// gear/category/notes/ready-checks mutations, and all UI state. The Quick Add
+// double-fire guard is addNewItemOnce, below. `listItems` is read for the
+// next sort slot and the add optimistic placeholder. The SERVER
 // assigns the persisted sortOrder on every create; the client-side slot only
 // positions the placeholder where the server row will land.
 export function useListItemActions(

@@ -28,8 +28,7 @@ import { mutationKeys } from './queries/keys'
 //   If the SortableContext rendered items prop-drilled from a parent
 //   useQuery, React could split the local state and the parent observer
 //   into separate commits, the drop animation runs against the old DOM
-//   order, and the dropped row visibly snaps back before jumping. This
-//   is the b8624ec / 703a936 race class.
+//   order, and the dropped row visibly snaps back before jumping.
 //
 //   The structural fix is that the component rendering SortableContext
 //   subscribes to the cache itself, in the same component as setActiveId.
@@ -40,8 +39,8 @@ import { mutationKeys } from './queries/keys'
 //   For surfaces that don't use this hook (today: list-item rows within
 //   category on /lists/:id, and gear-item rows within category on /gear),
 //   the rule remains narrated in src/lib/queries/optimistic.ts (the
-//   corollary on makeOptimisticReorder) and in CLAUDE.md. The hook
-//   enforces the rule structurally only where it is used.
+//   corollary on makeOptimisticReorder). The hook enforces the rule
+//   structurally only where it is used.
 //
 // Multi-kind pages (e.g. GearLibraryPage owns both category reorder and
 // gear-item reorder under one DndContext) instantiate one hook per

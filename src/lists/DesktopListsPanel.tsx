@@ -109,8 +109,8 @@ export default function DesktopListsPanel({
   // reorderLists with makeOptimisticReorder, activeId, and the
   // handleDragStart/Cancel/End shape — lives in useReorderable. The hook
   // owning the lists subscription is the structural fix for the
-  // cross-component snap-back race (commit b8624ec); see
-  // src/lib/use-reorderable.ts for the full rationale.
+  // cross-component snap-back race; see src/lib/use-reorderable.ts for the
+  // full rationale.
   const {
     items: lists,
     activeItem: activeList,

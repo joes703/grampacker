@@ -10,7 +10,8 @@ import { FLAT_TABLE_BODY_TEXT_MUTED } from './flat-table-styles'
 //
 // Share-path constraint: ItemRow renders on the anonymous share page, so
 // nothing in this module may import @dnd-kit (the emitted share bundle is
-// the check - see docs/testing-and-ci.md section 2 notes on the share seam).
+// the check - see docs/testing-and-ci.md, "Deleting or moving tests", on the
+// public share's dependencies).
 
 // Desktop name + description as two FIXED proportional columns, name :
 // description = 3 : 2, so every description in a table starts at the same

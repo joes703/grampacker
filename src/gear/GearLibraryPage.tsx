@@ -587,8 +587,7 @@ export default function GearLibraryPage() {
           so a cold load with the browser offline parks at fetchStatus 'paused'
           and reports isLoading FALSE with zero rows. That fell through to the
           empty state below, which greeted an offline user who owns 200 items
-          with the brand-new-user onboarding pitch. Same class of bug as PR 4.1
-          on /lists. */}
+          with the brand-new-user onboarding pitch. /lists gates the same way. */}
       {gearItemsFailed || categoriesFailed ? (
         <StatusPanel
           title="Couldn't load your gear"

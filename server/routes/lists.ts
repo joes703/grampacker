@@ -65,9 +65,11 @@ import type { AppDeps } from '../env'
 //                                                list only, all-or-nothing;
 //                                                writes pack_sort_order. 400
 //                                                on a payload spanning two
-//                                                cohorts, not a permutation of
-//                                                current ranks, or naming a
-//                                                worn row
+//                                                cohorts, a rank that is not
+//                                                index-safe (a duplicate, or
+//                                                one held by an untouched row;
+//                                                a free rank is allowed), or
+//                                                naming a worn row
 //   POST   /api/lists/:id/items/reset-packed   - session - own list or 404
 //   POST   /api/lists/:id/items/reset-ready    - session - own list or 404
 //   PATCH  /api/lists/:id/items/:itemId        - session - item must belong

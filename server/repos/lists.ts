@@ -442,8 +442,8 @@ export function createListsRepo(db: Db, userId: string) {
                     quantity: item.quantity,
                     isWorn: item.isWorn,
                     isConsumable: item.isConsumable,
-                    // The original CSV row index; dropped empty-name rows
-                    // leave intentional gaps (old-repo parity).
+                    // The original CSV row index. Dropped empty-name rows
+                    // leave gaps, which are harmless: only the order counts.
                     sortOrder: item.sortOrder,
                     // Everything imported lands Unassigned, so the whole file
                     // is one cohort and this dense rank orders it.

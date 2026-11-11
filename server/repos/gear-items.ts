@@ -310,8 +310,8 @@ export function createGearItemsRepo(db: Db, userId: string) {
     },
 
     // Bulk ops are all-or-nothing: one non-owned id rejects the whole call
-    // with zero writes (stricter than the old RLS silent-skip; the UI never
-    // legitimately sends foreign ids).
+    // with zero writes, rather than skipping it. The UI never legitimately
+    // sends foreign ids.
     async bulkDelete(ids: string[]): Promise<boolean> {
       return db.transaction(
         (tx) => {

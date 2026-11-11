@@ -9,7 +9,7 @@ import { createApp } from '../index'
 // One database per test FILE. Vitest runs every file in its own module
 // graph, so this module - and the in-memory database it opens - is created
 // fresh for each file and shared by the tests inside it
-// (docs/testing-and-ci.md section 5). openSqlite sets the production pragmas,
+// (docs/testing-and-ci.md, "Isolation"). openSqlite sets the production pragmas,
 // foreign keys included.
 const sqlite = openSqlite(':memory:')
 applyMigrations(sqlite)
