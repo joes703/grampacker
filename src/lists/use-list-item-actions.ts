@@ -11,6 +11,7 @@ import {
   type ListItemPatch,
 } from '../lib/queries'
 import { arrayShape, fieldScopedCache } from '../lib/queries/field-scoped'
+import { burstRefetch } from '../lib/queries/burst-refetch'
 import { mutationKeys } from '../lib/queries/keys'
 import { showToast } from '../lib/toast'
 import { nextUnionPackRankFor } from './pack-rows'
@@ -39,13 +40,8 @@ type MoveItemVars = {
 // mutation wrapper is fresh each render but `.mutate` is stable. Do NOT wrap
 // these in callbacks here; that would defeat the memo boundary.
 //
-// `updateItem` carries a sibling-in-flight invalidation gate with
-// last-one-out semantics: two parallel updates (e.g. tapping Packed then
-// Ready quickly) each carry their own PATCH; letting an early settle
-// invalidate would race a sibling write and overwrite its optimistic value
-// with stale server data. The LAST update to settle DOES invalidate, so
-// every burst re-converges with server truth - see the mutation for the
-// full lifecycle rationale.
+// `updateItem` refetches once per burst of parallel updates, after the last
+// one settles (src/lib/queries/burst-refetch.ts) - see the mutation.
 //
 // The page keeps: dialog orchestration, DnD/reorder,
 // gear/category/notes/ready-checks mutations, and all UI state. The Quick Add
@@ -125,34 +121,26 @@ export function useListItemActions(
   // a drag, so there is no drop animation that needs the write to land in
   // the same tick - the reason reorder alone stays sync.
   //
-  // mutationKey drives the last-one-out invalidation gate in onSettled. Two
-  // parallel updateItem calls (e.g. tapping Packed then Ready in quick
-  // succession) each carry their own PATCH; an invalidate fired while a
-  // sibling is still pending can refetch stale server data over the
-  // sibling's optimistic write. In TanStack Query v5, onSettled runs before
-  // the settling mutation leaves the pending set, so the settling mutation
-  // counts ITSELF in qc.isMutating - the "siblings still pending" check is
-  // therefore `> 1`, and exactly one invalidate fires per burst, after the
-  // final PATCH settles. That trailing refetch is what re-converges the
-  // cache with server truth when something external raced the optimistic
-  // writes (e.g. the edit-gear dialog saves gear first, whose fan-out
-  // invalidation refetches this list mid-save).
+  // Two parallel updateItem calls (e.g. tapping Packed then Ready in quick
+  // succession) each carry their own PATCH, and the burst refetches once,
+  // after the last one settles (src/lib/queries/burst-refetch.ts). That
+  // trailing refetch also re-converges the cache when something external
+  // raced the optimistic writes (e.g. the edit-gear dialog saves gear first,
+  // whose fan-out invalidation refetches this list mid-save).
   const updateMutKey = mutationKeys.updateListItem(listId)
+  const updateBurst = burstRefetch(qc, updateMutKey, queryKeys.listItems(listId))
   const updateItem = useMutation({
     mutationKey: updateMutKey,
     mutationFn: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
       updateListItem(listId, itemId, patch),
-    onMutate: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) =>
-      listItemsCache.patchRow(itemId, patch),
+    onMutate: ({ itemId, patch }: { itemId: string; patch: ListItemPatch }) => {
+      updateBurst.start()
+      return listItemsCache.patchRow(itemId, patch)
+    },
     onError: (_err, { itemId }, prevFields) => {
       if (prevFields) listItemsCache.restoreRow(itemId, prevFields)
     },
-    onSettled: () => {
-      // `> 1` = true siblings still pending (the settling mutation counts
-      // itself); the last one out invalidates once for the whole burst.
-      if (qc.isMutating({ mutationKey: updateMutKey }) > 1) return
-      void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
-    },
+    onSettled: () => updateBurst.settle(),
   })
 
   // Moving an item between packing locations: the write behind both a

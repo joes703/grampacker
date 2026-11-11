@@ -289,3 +289,36 @@ describe('useListFlagToggle overlapping flips', () => {
     expect(listInvalidations()).toBe(1)
   })
 })
+
+describe('useListFlagToggle overlapping flips, settling together', () => {
+  // TanStack runs onSettled BEFORE it marks the mutation settled, so two flips
+  // whose responses land in the same tick can each still count two pending.
+  it('refetches the lists once when both flips settle in the same tick', async () => {
+    const draft = deferred<List>()
+    const share = deferred<List>()
+    vi.mocked(updateList)
+      .mockReturnValueOnce(draft.promise)
+      .mockReturnValueOnce(share.promise)
+    const qc = freshClient()
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const listInvalidations = () =>
+      invalidate.mock.calls.filter(
+        ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(queryKeys.lists()),
+      ).length
+    render(
+      <QueryClientProvider client={qc}>
+        <Probe targets={[list]} />
+        <Probe targets={[list]} flag="isDraft" />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'draft-list-1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'flip-list-1' }))
+    await waitFor(() => expect(updateList).toHaveBeenCalledTimes(2))
+
+    draft.resolve({ ...list, isDraft: false })
+    share.resolve({ ...list, isDraft: false, isShared: true })
+    await waitFor(() => expect(qc.isMutating()).toBe(0))
+    expect(listInvalidations()).toBe(1)
+  })
+})

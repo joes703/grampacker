@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys, updateList } from '../lib/queries'
 import { arrayShape, fieldScopedCache } from '../lib/queries/field-scoped'
+import { burstRefetch } from '../lib/queries/burst-refetch'
 import { mutationKeys } from '../lib/queries/keys'
 import type { List } from '../lib/types'
 
@@ -30,27 +31,27 @@ type ToggleVars = { id: string; flag: Flag; value: boolean }
 //   - Rollback is field-scoped (src/lib/queries/field-scoped.ts): a failed
 //     flip rewinds only its own fields, onto the row as it is now. Restoring
 //     the whole array would also undo an overlapping flip that succeeded.
-//   - Last one out refetches: while another flip is pending, a refetch could
-//     land stale server data over its optimistic value. The settling mutation
-//     counts itself in isMutating, hence `> 1`.
+//   - Overlapping flips refetch once, after the last one settles
+//     (src/lib/queries/burst-refetch.ts): while another flip is pending, a
+//     refetch could land stale server data over its optimistic value.
 export function useListFlagToggle(flag: Flag) {
   const qc = useQueryClient()
   const listsCache = fieldScopedCache(qc, queryKeys.lists(), arrayShape<List>())
+  const flipBurst = burstRefetch(qc, mutationKeys.toggleListFlag(), queryKeys.lists())
 
   const mut = useMutation({
     mutationKey: mutationKeys.toggleListFlag(),
     mutationFn: ({ id, value }: ToggleVars) => updateList(id, { [flag]: value }),
     // The server bumps updatedAt on every PATCH, so "updated X ago" tracks
     // the flip; the settled refetch reconciles.
-    onMutate: ({ id, value }: ToggleVars) =>
-      listsCache.patchRow(id, { [flag]: value, updatedAt: new Date().toISOString() }),
+    onMutate: ({ id, value }: ToggleVars) => {
+      flipBurst.start()
+      return listsCache.patchRow(id, { [flag]: value, updatedAt: new Date().toISOString() })
+    },
     onError: (_err, { id }, prevFields) => {
       if (prevFields) listsCache.restoreRow(id, prevFields)
     },
-    onSettled: () => {
-      if (qc.isMutating({ mutationKey: mutationKeys.toggleListFlag() }) > 1) return
-      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
-    },
+    onSettled: () => flipBurst.settle(),
   })
 
   function toggle(target: List) {

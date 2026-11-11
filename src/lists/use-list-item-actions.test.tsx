@@ -188,11 +188,9 @@ describe('useListItemActions', () => {
     it('last-one-out gate: no invalidate while a sibling is pending, exactly one after the final settle', async () => {
       // The gate replaces the default "invalidate on every settle": a refetch
       // fired while a sibling update-list-item mutation is still pending could
-      // land stale server data over the sibling's optimistic write. In TanStack
-      // Query v5 a mutation dispatches its `success` state AFTER
-      // options.onSettled runs, so qc.isMutating({ mutationKey }) counts the
-      // settling mutation ITSELF - the "siblings pending" check is `> 1`. The
-      // LAST settle invalidates once for the whole burst; that trailing refetch
+      // land stale server data over the sibling's optimistic write
+      // (src/lib/queries/burst-refetch.ts). The LAST settle invalidates once
+      // for the whole burst; that trailing refetch
       // is what re-converges the cache with server truth when something
       // external raced the optimistic writes (e.g. the edit-gear dialog's
       // gear-save fan-out refetching this list mid-save).
@@ -229,6 +227,38 @@ describe('useListItemActions', () => {
       await waitFor(() =>
         expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1),
       )
+    })
+
+    // onSettled runs BEFORE TanStack marks the mutation settled, so two
+    // updates whose responses land in the same tick can each still count two
+    // pending. The burst must still end in exactly one refetch.
+    it('last-one-out gate: exactly one invalidate when both updates settle in the same tick', async () => {
+      const updateA = deferred()
+      const updateB = deferred()
+      h.updateListItem
+        .mockImplementationOnce(() => updateA.promise)
+        .mockImplementationOnce(() => updateB.promise)
+      const qc = makeQc()
+      qc.setQueryData<ListItemWithGear[]>(
+        ['list-items', LIST_ID],
+        [item({ id: 'a' }), item({ id: 'b' })],
+      )
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+      const a = renderWith(qc)
+      const b = renderWith(qc)
+
+      await act(async () => {
+        a.current.updateItem.mutate({ itemId: 'a', patch: { isPacked: true } })
+        b.current.updateItem.mutate({ itemId: 'b', patch: { isReady: true } })
+      })
+      await waitFor(() => expect(h.updateListItem).toHaveBeenCalledTimes(2))
+
+      await act(async () => {
+        updateA.resolve()
+        updateB.resolve()
+      })
+      await waitFor(() => expect(qc.isMutating()).toBe(0))
+      expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1)
     })
 
     it('field-scoped rollback: a failing patch restores only its own fields, composing with a concurrent sibling on the SAME item', async () => {

@@ -33,12 +33,12 @@ export const queryKeys = {
 //
 // A key is not decoration. Two things in TanStack Query 5 switch on it:
 //
-//  1. Mutation filters match by PREFIX, not equality. use-list-item-actions
-//     gates its last-one-out invalidation on
-//     `qc.isMutating({mutationKey: updateListItem(listId)}) > 1`, so a key that
-//     STARTS WITH another key's elements would silently join that burst gate and
-//     suppress an invalidation - a stale-cache bug with no error anywhere. No
-//     key here may be a prefix of another, which keys.test.ts asserts.
+//  1. Mutation filters match by PREFIX, not equality. The double-fire guards
+//     (addNewItemOnce, submitCreateList) and the list flag lock ask
+//     `qc.isMutating({mutationKey: ...})`, so a key that STARTS WITH another
+//     key's elements would silently join that guard and drop a real write - a
+//     bug with no error anywhere. No key here may be a prefix of another,
+//     which keys.test.ts asserts.
 //  2. setMutationDefaults is prefix-matched, and a MutationObserver RESETS when
 //     its key changes. The app sets no mutation defaults today, so the first is
 //     latent; the second is why every key below is static for the lifetime of a
