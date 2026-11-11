@@ -214,7 +214,7 @@ export function useListItemActions(
   // it invalidates the gear and this list's items when it settles. On failure
   // too: it is a non-idempotent POST, and a rejection does not prove nothing
   // was created, so the refetch shows a create that did commit and the copy
-  // says to check before retrying (AGENTS.md Traps). cost/purchaseDate are out
+  // says to check before retrying (docs/client.md "Failures the user can see"). cost/purchaseDate are out
   // of scope for Quick Add and fixed at null by the server.
   const addNewItem = useMutation({
     mutationKey: mutationKeys.addNewListItem(listId),

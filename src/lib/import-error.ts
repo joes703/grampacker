@@ -6,7 +6,7 @@ import { ImportCapError } from './csv/import-plan'
 // and a refusal from the server. After anything else the import may have gone
 // through (a server failure, a dropped connection, a success response that
 // arrived broken), and retrying could create a duplicate, so the user is told to
-// check first (AGENTS.md "Traps").
+// check first (docs/client.md "Failures the user can see").
 export function importErrorMessage(err: unknown, checkPlace: 'lists' | 'inventory'): string {
   if (err instanceof ImportCapError) return err.message
   if (err instanceof ApiError && err.status < 500) return err.message

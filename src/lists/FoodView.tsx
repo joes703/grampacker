@@ -161,7 +161,7 @@ export default function FoodView({ listId }: { listId: string }) {
   // while it is on screen, toast after it is gone). Error copy never claims
   // the write did not happen: a lost response can follow a commit, so it says
   // "couldn't confirm" and tells the user to check before retrying
-  // (AGENTS.md's ambiguous-write rule) - except the two create rejections the
+  // (docs/client.md "Failures the user can see") - except the two create rejections the
   // server actually decided (the cap 422 and the validation 400), which are
   // certain and keep their specific messages.
   const foodItemCreateMut = useMutation({
@@ -260,7 +260,7 @@ export default function FoodView({ listId }: { listId: string }) {
     foodItemDeleteMut.isPending
   const foodBusy = checkingDays || foodDaysMut.isPending || dialogBusy
 
-  // Same three-state gate every reader uses (AGENTS.md): a fabricated empty
+  // Same three-state gate every reader uses (docs/client.md "Loading is not empty"): a fabricated empty
   // food object under live controls would let a day change write against
   // real rows. FoodDocument only renders on resolved data.
   if (listFoodQuery.isLoadingError) {

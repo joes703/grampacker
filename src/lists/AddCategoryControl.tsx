@@ -40,8 +40,8 @@ export default function AddCategoryControl({ onCreate, onCreated }: Props) {
       setEditing(false)
       onCreated(category)
     } catch {
-      // A rejection does not prove the category was not created (AGENTS.md
-      // "Traps"), so the copy says confirm, not failed.
+      // A rejection does not prove the category was not created (docs/client.md
+      // "Failures the user can see"), so the copy says confirm, not failed.
       setError("Couldn't confirm the category was created. Try again, or check the Gear page.")
     } finally {
       inFlight.current = false

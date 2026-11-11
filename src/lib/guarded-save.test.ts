@@ -74,7 +74,7 @@ describe('runGuardedSave', () => {
     expect(dialog.box.value?.saveError).toBeNull()
   })
 
-  // AGENTS.md: a failure the user cannot see is not reported. The dialog stays
+  // docs/client.md: a failure the user cannot see is not reported. The dialog stays
   // closable while saving, so a failure can outlive it; it must still reach
   // the user, as a toast instead of an inline error.
   it('a failure while the attempt is open is shown inline, not toasted', async () => {
@@ -190,7 +190,7 @@ describe('runGuardedSave', () => {
     expect(saving.box.value).toBeNull()
   })
 
-  // AGENTS.md: every rejected promise has an owner. A rejection escaping
+  // docs/client.md: every rejected promise has an owner. A rejection escaping
   // `run` is a defect in the caller, but the user still learns the save may
   // not have happened, and nothing is left unhandled.
   it('reports a rejection escaping run, clears the saving slot, and leaves nothing unhandled', async () => {

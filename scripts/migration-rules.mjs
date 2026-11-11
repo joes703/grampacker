@@ -7,7 +7,7 @@ export const describe = (error) => (error instanceof Error ? error.message : Str
 
 // What a NEW migration may not contain.
 // DROP COLUMN / DROP INDEX / DROP TRIGGER are allowed: they do not rebuild the
-// table (see AGENTS.md "Migrations" for when).
+// table (see docs/server.md "Migrations" for when).
 //
 // Matched against the RAW file - comments and strings included. Nothing is
 // stripped first, because every attempt to strip comments while respecting
@@ -126,7 +126,7 @@ export const checkShippedUnchanged = ({ git, log }) => {
       `migration immutability: REFUSED - this pull request changes ${refused.length} ` +
         `migration file(s) that main already holds:\n${refused.map((p) => `  ${p}`).join('\n')}\n` +
         'Production applied these by name and will never re-run them; add a new ' +
-        'migration instead (AGENTS.md).',
+        'migration instead (docs/server.md "Migrations").',
     )
     return 1
   }

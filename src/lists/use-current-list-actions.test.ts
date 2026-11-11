@@ -294,7 +294,7 @@ describe('useCurrentListActions - createListMut', () => {
     act(() => { result.current.submitCreateList('New') })
     await waitFor(() => expect(result.current.createListMut.isError).toBe(true))
     // A rejected response does not prove the non-idempotent POST did not
-    // commit (AGENTS.md "Traps"), so the copy must advise checking before a
+    // commit (docs/client.md "Failures the user can see"), so the copy must advise checking before a
     // retry, not invite one.
     expect(showToast).toHaveBeenCalledWith(
       "Couldn't confirm the list was created. Refresh to check before trying again.",

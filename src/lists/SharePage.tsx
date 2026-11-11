@@ -71,7 +71,7 @@ export default function SharePage() {
   const { data: share, isPending, isLoadingError } = useQuery(queries.sharedList(slug))
   useDocumentTitle(share?.list.name ?? null)
 
-  // Failure, then loading, then not-found (AGENTS.md), because "List not
+  // Failure, then loading, then not-found (docs/client.md "Loading is not empty"), because "List not
   // found" is a claim only a settled answer supports.
   // isLoadingError, not isError: v5 sets isError after a failed BACKGROUND
   // refetch too, while keeping the data, and that must not replace a

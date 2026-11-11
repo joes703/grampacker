@@ -65,7 +65,7 @@ export default function PrivacyPanel({ list }: Props) {
   // Invalidate and let the new row arrive - on failure too, because a rejected
   // request does not prove the server did not rotate, and the old link shown
   // may already be dead. The rotate is a non-idempotent POST, so the copy
-  // advises checking before retrying (AGENTS.md "Traps").
+  // advises checking before retrying (docs/client.md "Failures the user can see").
   const resetMut = useMutation({
     mutationKey: mutationKeys.rotateShareLink(),
     mutationFn: (id: string) => rotateShareLink(id),

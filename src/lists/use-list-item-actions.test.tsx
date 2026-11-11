@@ -493,8 +493,8 @@ describe('useListItemActions', () => {
     })
 
     // Quick Add is a non-idempotent POST: a rejection does not prove nothing
-    // was created, so the copy must not invite a blind retry (AGENTS.md
-    // Traps), and the caches refetch so a create that did commit shows up.
+    // was created, so the copy must not invite a blind retry (docs/client.md
+    // "Failures the user can see"), and the caches refetch so a create that did commit shows up.
     it('on failure, says the add is unconfirmed and refetches both caches', async () => {
       h.quickAddListItem.mockRejectedValueOnce(new Error('boom'))
       const { qc, result } = setup()

@@ -83,7 +83,7 @@ const FORBIDDEN_KEYS = new Set([
   'isReady',
   // Both flags are retired: not on any DTO, not accepted on PATCH, columns
   // left in place because dropping one rebuilds `lists` and a rebuild
-  // cascade-deletes list_items (AGENTS.md). Kept in this denylist so a
+  // cascade-deletes list_items (docs/server.md "Migrations"). Kept in this denylist so a
   // future projection cannot quietly reintroduce either.
   'readyChecksEnabled',
   'groupWorn',

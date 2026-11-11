@@ -18,8 +18,8 @@ Sign-in is passwordless: magic link or passkey. There is no email/password path,
 and that absence is deliberate.
 
 - Dependency rationale and upgrade notes: [STACK.md](./STACK.md)
-  (`package.json` is authoritative for versions; `AGENTS.md` holds the binding
-  supply-chain rules)
+  (`package.json` is authoritative for versions; `SECURITY.md`, "Supply
+  chain", holds the binding rules)
 - What is enforced, and what is knowingly deferred: [SECURITY.md](./SECURITY.md)
 - Rules every agent follows in this repo: [AGENTS.md](./AGENTS.md)
 
@@ -32,14 +32,22 @@ ES2024 features, so it needs at least Chrome 117, Firefox 119 or Safari
 ## Development
 
 ```sh
-npm ci             # never `npm install` - it can rewrite the lockfile
+npm ci             # not `npm install`, which can rewrite the lockfile (dependency changes: SECURITY.md)
 npm run dev        # SPA + /api/* on Node + local SQLite (.data/), one process
 npm test           # unit tests + api tests
 npm run test:unit  # unit tests only
 npm run test:api   # api tests: the real app on Node against SQLite
 npm run typecheck  # tsc -b
 npm run build      # typecheck + lint + client and server production builds
+npm run test:migrations  # migration bookkeeping and safety; fetch origin/main first
+npm run db:migrate       # apply migrations to DATABASE_PATH (tsx, development)
+npm run build:server     # compile the server to dist/server
+npm run start:node       # run the compiled server, as production does
 ```
+
+The server refuses to start while migrations are pending. Production runs
+the compiled JavaScript; tsx is for local development only. The production
+image: [docs/container-image.md](./docs/container-image.md).
 
 `npm run build` runs typecheck, lint and bundle. It is NOT the whole gate -
 tests are separate (`npm run test:unit`, `npm run test:api`, and

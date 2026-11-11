@@ -29,7 +29,7 @@ import type { List } from '../lib/types'
 type CreateListVars = { name: string; sortOrder: number }
 
 // A rejected response does not prove the non-idempotent POST did not commit,
-// so the copy advises checking before a retry (AGENTS.md "Traps"). Exported
+// so the copy advises checking before a retry (docs/client.md "Failures the user can see"). Exported
 // for the surfaces (and tests) that show it inline as well as by toast.
 export const CREATE_FAILED_COPY =
   "Couldn't confirm the list was created. Refresh to check before trying again."
@@ -126,7 +126,7 @@ export function useCurrentListActions() {
   // isShared/isDraft reset) and returns the new row; navigate to it. Invalidate
   // on failure too: a rejected request does not prove the copy was not made, and
   // it is a non-idempotent POST, so the copy advises checking before retrying
-  // (AGENTS.md "Traps"). Hook-level rather than per-call, so both still run when
+  // (docs/client.md "Failures the user can see"). Hook-level rather than per-call, so both still run when
   // the caller has unmounted by the time the response lands.
   // Invalidate BEFORE navigating: the copy is not in ['lists'] yet, and a fetch
   // already in flight is what makes the new page wait rather than flash "List
