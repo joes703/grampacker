@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { queryKeys, importListFromCsv } from '../lib/queries'
 import { queries } from '../lib/queries/options'
 import { mutationKeys } from '../lib/queries/keys'
+import { confirmedRows } from '../lib/unconfirmed-id'
 import type { ListCsvRow } from '../lib/csv'
 import {
   planListImport,
@@ -43,7 +44,11 @@ export function useListImportMutation() {
         qc.fetchQuery(queries.gearItems()),
         qc.fetchQuery(queries.categories()),
       ])
-      const plan = planListImport(rows, categories, gearItems)
+      // Planned against confirmed rows only: matching a row to a create that
+      // is still pending would send its unconfirmed id, which the server's
+      // ownership check rejects. The cap preflight below still counts every
+      // cached row, since a pending create may commit.
+      const plan = planListImport(rows, confirmedRows(categories), confirmedRows(gearItems))
       // Cap preflight BEFORE the POST: the server would 422 anyway, but
       // these messages are specific and actionable where the server's are
       // generic limit errors.
