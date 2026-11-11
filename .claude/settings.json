@@ -41,15 +41,22 @@
       "Bash(git switch * --force*)",
       "Bash(git restore *)",
       "Bash(git clean *)",
-      "Bash(git add -A*)",
-      "Bash(git add --all*)",
-      "Bash(git add .)"
+      "Bash(gh pr merge*)"
     ],
     "deny": [
-      "Read(./.dev.vars)",
       "Read(./.env)",
       "Read(./.env.*)",
-      "Read(./dist/**/.dev.vars)"
+      "Read(//srv/grampacker/secrets/**)",
+      "Bash(git add -A*)",
+      "Bash(git add --all*)",
+      "Bash(git add * -A*)",
+      "Bash(git add * --all*)",
+      "Bash(git add .)",
+      "Bash(git add . *)",
+      "Bash(git add * .)",
+      "Bash(git add -- .)",
+      "Bash(codex exec*)",
+      "Bash(gh workflow run*)"
     ]
   }
 }
