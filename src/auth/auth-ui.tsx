@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import SiteFooter from '../site/SiteFooter'
 
 // The auth pages keep their own minimal styles instead of composing the
 // app's token system (src/components/flat-table-styles.ts): they render
@@ -15,22 +16,39 @@ export const PRIMARY_BUTTON =
 
 export const TEXT_LINK = 'font-medium text-blue-600 hover:underline'
 
-export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
+// `about` is the sign-in page's description of the app. It sits beside the
+// card on wide screens and below it on narrow ones, so a returning visitor
+// on a phone reaches the sign-in buttons without scrolling past it.
+export function AuthCard({
+  title,
+  about,
+  children,
+}: {
+  title: string
+  about?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+      <div className={about ? 'w-full max-w-4xl' : 'w-full max-w-sm'}>
         <h1 className="text-center text-2xl font-bold tracking-tight text-gray-900">
           grampacker
         </h1>
-        {/* The one line that says what the site is, for someone landing cold:
-            every auth page is a possible front door. */}
+        {/* Every auth page is a possible front door, so each one says what
+            the site is. */}
         <p className="mb-6 mt-1 text-center text-sm text-gray-600">
-          Pack lists and gear weights for backpacking
+          A website for backpacking gear lists
         </p>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">{title}</h2>
-          {children}
+        <div className={about ? 'flex flex-col gap-8 lg:flex-row-reverse lg:items-start' : ''}>
+          <div className={about ? 'w-full lg:max-w-sm' : ''}>
+            <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-lg font-semibold text-gray-900">{title}</h2>
+              {children}
+            </div>
+          </div>
+          {about && <div className="min-w-0 flex-1 text-sm text-gray-700">{about}</div>}
         </div>
+        <SiteFooter />
       </div>
     </main>
   )

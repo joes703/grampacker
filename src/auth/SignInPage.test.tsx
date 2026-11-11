@@ -23,7 +23,8 @@ vi.mock('../lib/auth-client', () => ({
 import SignInPage from './SignInPage'
 
 const SENT = 'Check your email'
-const BAD_LINK = 'That sign-in link is invalid, already used, or expired. Request a new one.'
+const BAD_LINK =
+  'This sign-in link does not work anymore. Each link works one time, for 5 minutes. Enter your email address to get a new link.'
 
 function renderAt(url: string) {
   render(
@@ -53,6 +54,22 @@ afterEach(() => {
 })
 
 describe('SignInPage', () => {
+  // The page is the front door for someone who has never heard of the app:
+  // it says what the app is, how an account is made without a password, and
+  // where the privacy page and the contact address are.
+  it('explains the app and passwordless sign-in, and links privacy and contact', () => {
+    renderAt('/sign-in')
+    expect(screen.getByRole('heading', { name: 'Sign in or create an account' })).toBeInTheDocument()
+    expect(screen.getByText(/shows the total weight of your pack/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'How sign-in works' })).toBeInTheDocument()
+    expect(screen.getByText(/grampacker does not use passwords/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'hello@grampacker.app' })).toHaveAttribute(
+      'href',
+      'mailto:hello@grampacker.app',
+    )
+  })
+
   it('explains a failed magic link when it bounces back with ?error=', () => {
     renderAt('/sign-in?error=INVALID_TOKEN')
     expect(screen.getByText(BAD_LINK)).toBeInTheDocument()

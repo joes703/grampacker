@@ -33,6 +33,9 @@ import { SessionCacheGuard } from './layout/session-cache-guard'
 const importAuthenticatedApp = () => import('./AuthenticatedApp')
 const AuthenticatedApp = lazy(importAuthenticatedApp)
 const SharePage = lazy(() => import('./lists/SharePage'))
+// Public, rarely opened, and reached from a footer link: kept out of the
+// entry bundle that every visitor downloads.
+const PrivacyPage = lazy(() => import('./site/PrivacyPage'))
 
 // Loading AuthenticatedApp inside the session gate is what keeps it away from
 // anonymous visitors, but taken alone it would make every signed-in visitor pay
@@ -152,6 +155,16 @@ export function AppRoutes() {
         element={
           <Suspense fallback={<AppLoading fullScreen />}>
             <SharePage />
+          </Suspense>
+        }
+      />
+      {/* Public for everyone, signed in or not: the footer links here from
+          the sign-in page, and signed-in users may want to read it too. */}
+      <Route
+        path="/privacy"
+        element={
+          <Suspense fallback={<AppLoading fullScreen />}>
+            <PrivacyPage />
           </Suspense>
         }
       />

@@ -357,9 +357,9 @@ export function authOptions(env: AppEnv, db: Db = createDb(env.DB)) {
           const url = `${env.BETTER_AUTH_URL}${MAGIC_LINK_PATH}#token=${encodeURIComponent(token)}`
           await email.send({
             to,
-            subject: 'Sign in to grampacker',
-            html: `<p>Sign in to grampacker: <a href="${url}">${url}</a></p><p>This link works once and expires in 5 minutes. If you did not request it, ignore this email.</p>`,
-            text: `Sign in to grampacker: ${url}\n\nThis link works once and expires in 5 minutes. If you did not request it, ignore this email.`,
+            subject: 'Your grampacker sign-in link',
+            html: `<p>Open this link to sign in to grampacker:<br><a href="${url}">${url}</a></p><p>The link works one time and expires after 5 minutes. If you did not ask for this email, you can ignore it.</p>`,
+            text: `Open this link to sign in to grampacker:\n${url}\n\nThe link works one time and expires after 5 minutes. If you did not ask for this email, you can ignore it.`,
           })
         },
       }),

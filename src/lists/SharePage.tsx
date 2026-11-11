@@ -287,12 +287,16 @@ export default function SharePage() {
         )}
 
 
-        {/* There is no /about page, so the footer credit points home. */}
-        <div className="mt-8 text-center">
-          <Link to="/" className="text-xs text-gray-500 hover:text-gray-600">
-            Made with grampacker
+        {/* Share links are how most people first see grampacker. "/" sends a
+            signed-out visitor to the sign-in page, which describes the app. */}
+        <p className="mt-8 text-center text-xs text-gray-500">
+          This list was made with grampacker. You can make your own gear list
+          at{' '}
+          <Link to="/" className="text-gray-600 underline hover:text-gray-700">
+            grampacker.app
           </Link>
-        </div>
+          .
+        </p>
       </div>
     </div>
   )

@@ -177,7 +177,7 @@ describe('SessionCacheGuard: bfcache', () => {
   it('does NOT reload a document that never held a session (protects the magic-link token)', () => {
     // The magic-link page is anonymous and keeps its one-shot token in memory
     // after scrubbing it from the URL. Reloading a bfcache-restored copy would
-    // discard the token and strand the user on "Broken link", so a document
+    // discard the token and strand the user on "Incomplete link", so a document
     // that never observed a session must never be reloaded here.
     h.data = null
     renderGuard()

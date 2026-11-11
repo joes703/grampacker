@@ -110,7 +110,7 @@ export function SessionCacheGuard({ children }: { children: ReactNode }) {
   // one signal that a restore happened. Reload only if this document was ever
   // authenticated: reloading a restored anonymous page would, on the magic-link
   // page, throw away the token it scrubbed from the URL and strand the user on
-  // "Broken link". Reload itself is an ordinary load (persisted === false), so
+  // "Incomplete link". Reload itself is an ordinary load (persisted === false), so
   // there is no loop.
   //
   // Registered in a LAYOUT effect for the same reason as the ref above: the
