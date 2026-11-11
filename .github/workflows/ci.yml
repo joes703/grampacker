@@ -44,8 +44,8 @@ jobs:
         run: npm test
 
       # Drizzle bookkeeping, snapshot matches schema.ts, and no table rebuild,
-      # rename or DROP TABLE in a new migration (docs/testing-and-ci.md
-      # section 7).
+      # rename or DROP TABLE in a new migration (docs/testing-and-ci.md,
+      # "Migrations").
       - name: Check (migrations)
         run: npm run test:migrations
 
@@ -59,3 +59,14 @@ jobs:
       # Offline: it does not check that the comment matches the SHA.
       - name: Check (action pins)
         run: npm run check:action-pins
+
+      # The deploy key's forced command is what stands between that key and
+      # the production server. Its parser test needs no root, network or VPS
+      # (it runs a copy against fakes), so it runs here rather than only by
+      # hand. shellcheck covers the three shell scripts by name: deploy/ also
+      # holds Compose and Caddy files, which it cannot read. The rest of
+      # docs/testing-and-ci.md "Deployment checks" stays manual.
+      - name: Check (deploy scripts)
+        run: |
+          shellcheck deploy/grampacker-deploy deploy/grampacker-deploy-ssh deploy/test-grampacker-deploy-ssh.sh
+          deploy/test-grampacker-deploy-ssh.sh

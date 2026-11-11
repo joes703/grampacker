@@ -117,9 +117,9 @@ A local number explains relative cost; it does not prove a CI saving.
   request.
 - `image.yml` builds and checks the production image on every pull request.
   A manual dispatch from `main` reruns the build, unit, API and migration
-  checks on that commit and publishes the image. The shipped-migration and
-  action-pin checks do not rerun; they ran on the pull request that brought
-  the commit to `main`.
+  checks on that commit and publishes the image. The shipped-migration,
+  action-pin and deploy-script checks do not rerun; they ran on the pull
+  request that brought the commit to `main`.
   Only when `deploy=true` does its final job use the production environment's
   SSH key to deploy that exact digest to the VPS.
 - The `production` environment admits `main` only. Its SSH key is never a
@@ -133,11 +133,10 @@ only; check by eye that each pin's tag comment matches its SHA.
 ## 9. Deployment checks
 
 The production deployment is `deploy/`: Compose, two Caddyfiles,
-`grampacker-deploy`, and the SSH forced-command wrapper. Before a change to
-those files merges, run:
+`grampacker-deploy`, and the SSH forced-command wrapper. CI runs shellcheck on
+the three shell scripts and `deploy/test-grampacker-deploy-ssh.sh` on every
+pull request. Before a change to those files merges, also run:
 
-- shellcheck on the three shell scripts;
-- `deploy/test-grampacker-deploy-ssh.sh`;
 - `docker compose config` with production-shaped and rehearsal-shaped env
   files;
 - `caddy validate` on both Caddyfiles with `caddy:2`;
