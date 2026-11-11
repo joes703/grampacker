@@ -122,9 +122,9 @@ All budgets are in `server/middleware/rate-limit.ts` and tested in
   (`get-session`, `passkey/list-user-passkeys`). better-auth GETs are not
   read-only: the passkey challenge endpoint is an anonymous GET that writes a
   row, and `magic-link/verify` is a GET that creates a user and mints a
-  session. Budgets: passkey sign-in 30/5min, sign-in 10/10min, magic-link
-  verify 10/10min, delete-user 5/10min, default 30/10min. 429 with
-  Retry-After.
+  session. Each route group has its own budget; the limits, windows and the
+  reasoning for each are the `Rule` constants in
+  `server/middleware/rate-limit.ts`. 429 with Retry-After.
 - Each charge is one atomic upsert that decides the count and the window
   together. Overlapping requests cannot lose an increment, reset one expired
   window twice, or move a newer window back. Burst tests cover this,
@@ -145,22 +145,19 @@ All budgets are in `server/middleware/rate-limit.ts` and tested in
   and a user with several passkeys can spend them by picking the wrong one a
   few times. A WebAuthn assertion needs the private key in the
   authenticator, so there is no secret to brute force, and lockout after a
-  few attempts buys nothing. The budget bounds resource cost, stated here
-  against the 10/10min sign-in budget:
+  few attempts buys nothing. The budget bounds resource cost instead; the
+  sustained and burst figures against the sign-in budget, and why the window
+  is shorter instead of the ceiling higher, are in the `PASSKEY_SIGN_IN`
+  comment in `server/middleware/rate-limit.ts`. Accepted costs:
   - `generate-authenticate-options` is an anonymous GET that writes a
-    `verification` row. Sustained challenge creation is six times higher
-    (~1,440 to ~8,640 rows/day/IP). Expiry alone does not remove rows, so
-    the sweep above is what makes this safe, not the budget.
+    `verification` row, at a higher sustained rate than sign-in allows.
+    Expiry alone does not remove rows, so the sweep above is what makes this
+    safe, not the budget.
   - A successful verification mints a session and never revokes the
-    previous one; there is no cap on concurrent sessions. Sustained minting
-    is ~180/hour/IP instead of ~30. Each one still needs a valid assertion
-    AND user verification, so this is not anonymous session minting.
-  - Worst-case BURST across a fixed-window boundary (a full limit just
-    before expiry plus a full limit after) is ~59 accepted requests close
-    together, against ~19 for sign-in, and ~119 for 60/10min. That is why
-    the window is shorter instead of the ceiling higher.
-  - After a rejection, the remaining wait is at most five minutes, not at
-    most ten. It is not a fixed five-minute wait.
+    previous one; there is no cap on concurrent sessions, and the passkey
+    budget allows more minting than sign-in. Each one still needs a valid
+    assertion AND user verification, so this is not anonymous session
+    minting.
 
   The tests pin that ten fumbled ceremonies never 429, and that both halves
   of the ceremony are charged.
