@@ -9,7 +9,7 @@ import {
   renamePackingLocation,
 } from '../lib/queries'
 import { mutationKeys } from '../lib/queries/keys'
-import { randomTempId } from '../lib/random-temp-id'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 import type { PackingLocation } from '../lib/types'
 import { nextSortOrder } from '../lib/queries/sort-keys'
 
@@ -30,7 +30,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
       qc,
       queryKey,
       optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
+        id: unconfirmedId(),
         name,
         containerListItemId: null,
         sortOrder: nextSortOrder(locations),
@@ -46,7 +46,7 @@ export function usePackingLocationActions(listId: string, locations: PackingLoca
       qc,
       queryKey,
       optimistic: ({ itemId, name }) => ({
-        id: `temp-${randomTempId()}`,
+        id: unconfirmedId(),
         name,
         containerListItemId: itemId,
         sortOrder: promotedContainerSortOrder(locations),

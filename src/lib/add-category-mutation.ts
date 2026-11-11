@@ -5,7 +5,7 @@ import {
   makeOptimisticInsert,
   nextSortOrder,
 } from './queries'
-import { randomTempId } from './random-temp-id'
+import { unconfirmedId } from './unconfirmed-id'
 import type { Category } from './types'
 
 // The one add-category mutation recipe. The gear page's category actions and
@@ -32,7 +32,7 @@ export function addCategoryMutationOptions(
       qc,
       queryKey: queryKeys.categories(),
       optimistic: (name) => ({
-        id: `temp-${randomTempId()}`,
+        id: unconfirmedId(),
         name,
         sortOrder: nextSortOrder(categories),
         createdAt: new Date().toISOString(),
