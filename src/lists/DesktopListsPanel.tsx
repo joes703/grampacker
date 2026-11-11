@@ -28,6 +28,7 @@ import {
 } from '../components/flat-table-styles'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ListRow, NewListInline, SortableListRow, type ListRowActions } from './ListRow'
+import { listRenameActions, type RenamingDialog } from './list-rename-actions'
 import { pickListAfterDelete } from './pick-list-after-delete'
 import type { List } from '../lib/types'
 import { useDragSensors } from '../lib/use-drag-sensors'
@@ -71,7 +72,7 @@ type Props = {
 // this union when it opens.
 type DialogState =
   | { type: 'creating'; draft: string }
-  | { type: 'renaming'; list: List; draft: string }
+  | RenamingDialog
   | { type: 'confirm-delete'; list: List }
 
 // Hoisted trigger for the header plus menu (KebabMenu `trigger` must be a
@@ -165,19 +166,7 @@ export default function DesktopListsPanel({
   }
 
   const rowActions = (list: List): ListRowActions => ({
-    renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
-    renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
-    onRenameDraftChange: (v) => setDialog({ type: 'renaming', list, draft: v }),
-    onStartRename: () => setDialog({ type: 'renaming', list, draft: list.name }),
-    onSubmitRename: () => {
-      if (dialog?.type !== 'renaming') return
-      const trimmed = dialog.draft.trim()
-      if (trimmed && trimmed !== list.name) {
-        renameMut.mutate({ id: list.id, name: trimmed })
-      }
-      setDialog(null)
-    },
-    onCancelRename: () => setDialog(null),
+    ...listRenameActions(list, dialog, setDialog, renameMut.mutate),
     onDuplicate: () => duplicateMut.mutate(list),
     onExport: () => void exportCsv(list),
     exporting: exportingListId === list.id,
