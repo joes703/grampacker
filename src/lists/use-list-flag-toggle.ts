@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, updateList, makeOptimisticUpdate } from '../lib/queries'
+import { queryKeys, updateList } from '../lib/queries'
+import { arrayShape, fieldScopedCache } from '../lib/queries/field-scoped'
 import { mutationKeys } from '../lib/queries/keys'
 import type { List } from '../lib/types'
 
@@ -22,24 +23,34 @@ type ToggleVars = { id: string; flag: Flag; value: boolean }
 // the same list and flag is pending anywhere in the app. TanStack marks the
 // mutation pending synchronously inside mutate(), so a second click in the
 // same tick already sees it.
+//
+// The lock is per list AND flag, so a share flip and a draft flip (or flips
+// on two lists) can overlap in the one ['lists'] cache. Two rules follow, the
+// same ones gear's updateItem uses (use-list-item-actions.ts):
+//   - Rollback is field-scoped (src/lib/queries/field-scoped.ts): a failed
+//     flip rewinds only its own fields, onto the row as it is now. Restoring
+//     the whole array would also undo an overlapping flip that succeeded.
+//   - Last one out refetches: while another flip is pending, a refetch could
+//     land stale server data over its optimistic value. The settling mutation
+//     counts itself in isMutating, hence `> 1`.
 export function useListFlagToggle(flag: Flag) {
   const qc = useQueryClient()
+  const listsCache = fieldScopedCache(qc, queryKeys.lists(), arrayShape<List>())
 
   const mut = useMutation({
     mutationKey: mutationKeys.toggleListFlag(),
     mutationFn: ({ id, value }: ToggleVars) => updateList(id, { [flag]: value }),
-    ...makeOptimisticUpdate<List, ToggleVars>({
-      qc,
-      queryKey: queryKeys.lists(),
-      id: (vars) => vars.id,
-      // The server bumps updatedAt on every PATCH, so "updated X ago" tracks
-      // the flip; the settled refetch reconciles.
-      apply: (item, vars) => ({
-        ...item,
-        [vars.flag]: vars.value,
-        updatedAt: new Date().toISOString(),
-      }),
-    }),
+    // The server bumps updatedAt on every PATCH, so "updated X ago" tracks
+    // the flip; the settled refetch reconciles.
+    onMutate: ({ id, value }: ToggleVars) =>
+      listsCache.patchRow(id, { [flag]: value, updatedAt: new Date().toISOString() }),
+    onError: (_err, { id }, prevFields) => {
+      if (prevFields) listsCache.restoreRow(id, prevFields)
+    },
+    onSettled: () => {
+      if (qc.isMutating({ mutationKey: mutationKeys.toggleListFlag() }) > 1) return
+      void qc.invalidateQueries({ queryKey: queryKeys.lists() })
+    },
   })
 
   function toggle(target: List) {
