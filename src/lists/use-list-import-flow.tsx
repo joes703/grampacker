@@ -63,7 +63,7 @@ export function useListImportFlow({ onBeforeOpen }: { onBeforeOpen?: () => void 
           <div className="p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-3">Import list</h2>
             <p className="text-sm text-gray-600 mb-3">
-              Creates a new list named after the file.
+              Creates a new list with the same name as the file.
             </p>
             <CsvHeaderLine />
             <div className="flex justify-end gap-2">

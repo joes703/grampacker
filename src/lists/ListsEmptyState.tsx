@@ -85,8 +85,8 @@ export default function ListsEmptyState() {
           <Upload size={14} /> Import CSV
         </button>
         <p className="mt-2 text-xs text-gray-500">
-          You can import a CSV file exported from LighterPack. The new list gets
-          the file's name.
+          You can import a CSV file from LighterPack. The new list has the same
+          name as the file.
         </p>
       </div>
 
