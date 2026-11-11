@@ -1,9 +1,4 @@
 // @vitest-environment jsdom
-// Type-side import for the jest-dom matchers (toBeInTheDocument, ...).
-// vitest.setup.ts registers them at runtime for every test file; this
-// import is what brings the vitest module augmentation into tsc's
-// program for THIS file, so each matcher-using test stays self-typed.
-import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -29,13 +24,8 @@ const h = vi.hoisted(() => ({
   bulkMovePending: vi.fn<() => boolean>(),
 }))
 
-vi.mock('../lib/queries', () => ({
-  queryKeys: {
-    categories: () => ['categories'],
-    gearItems: () => ['gear-items'],
-    lists: () => ['lists'],
-    listItems: (id: string) => ['list-items', id],
-  },
+vi.mock('../lib/queries', async () => ({
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
   fetchCategories: vi.fn(),
   fetchGearItems: h.fetchGearItems,
   // The page subscribes to the lists cache for the create-list dialog's

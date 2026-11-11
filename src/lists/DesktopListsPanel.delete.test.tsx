@@ -39,8 +39,8 @@ vi.mock('../lib/use-reorderable', () => ({
     handleDragEnd: vi.fn(),
   }),
 }))
-vi.mock('../lib/queries', () => ({
-  queryKeys: { lists: () => ['lists'] },
+vi.mock('../lib/queries', async () => ({
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
   fetchLists: vi.fn(),
   reorderLists: vi.fn(),
 }))

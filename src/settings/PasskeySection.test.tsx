@@ -1,9 +1,4 @@
 // @vitest-environment jsdom
-// Type-side import for the jest-dom matchers (toBeInTheDocument, ...).
-// vitest.setup.ts registers them at runtime for every test file; this
-// import is what brings the vitest module augmentation into tsc's
-// program for THIS file, so each matcher-using test stays self-typed.
-import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PasskeySection from './PasskeySection'

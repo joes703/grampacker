@@ -19,16 +19,15 @@ const KEY = ['list-items', LIST_ID] as const
 const FOOD_KEY = ['list-food', LIST_ID] as const
 
 const h = vi.hoisted(() => ({
-  queryKeys: {
-    listItems: (id: string) => ['list-items', id] as const,
-    listFood: (id: string) => ['list-food', id] as const,
-  },
   resetPackedForList: vi.fn<(listId: string) => Promise<void>>(),
   resetReadyForList: vi.fn<(listId: string) => Promise<void>>(),
 }))
 const toast = vi.hoisted(() => ({ showToast: vi.fn<(message: string, options?: unknown) => number>() }))
 
-vi.mock('../lib/queries', () => h)
+vi.mock('../lib/queries', async () => ({
+  ...h,
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
+}))
 vi.mock('../lib/toast', () => toast)
 
 import { useListResetActions } from './use-list-reset-actions'
