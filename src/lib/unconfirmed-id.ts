@@ -17,3 +17,9 @@ export function unconfirmedId(): string {
 export function isUnconfirmed(id: string): boolean {
   return id.startsWith(PREFIX)
 }
+
+// The rows a picker may offer: an option naming an unconfirmed row would send
+// its id with whatever the user saves.
+export function confirmedRows<T extends { id: string }>(rows: T[]): T[] {
+  return rows.filter((row) => !isUnconfirmed(row.id))
+}

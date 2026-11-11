@@ -10,6 +10,7 @@ import { CONSUMABLE_ICON_CLASS, WORN_ICON_CLASS } from '../lib/row-indicator-sty
 import { useQuickAddForm, type AddItemData } from './use-quick-add-form'
 import { MAX_LIST_ITEM_QUANTITY, MAX_NAME_LENGTH, MAX_DESC_LENGTH } from '../lib/caps'
 import { clampQuantity } from '../../shared/lists'
+import { confirmedRows } from '../lib/unconfirmed-id'
 
 type Props = {
   onSubmit: (data: AddItemData, categoryId: string | null) => void
@@ -124,7 +125,7 @@ export default function QuickAddItemModal({ onSubmit, onClose, categories }: Pro
                 className={`w-full ${FORM_INPUT}`}
               >
                 <option value="">Uncategorized</option>
-                {sortedCategories.map((category) => (
+                {confirmedRows(sortedCategories).map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
                   </option>
