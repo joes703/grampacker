@@ -109,26 +109,34 @@ api.get('/health', async (c) => {
 // with HTML and mask client-side typos.
 api.all('*', (c) => c.json({ error: 'Not found' }, 404))
 
-// Builds the app for one configuration. Everything a request needs that does
-// not change between requests - the Drizzle instance, the better-auth
-// instance, the dev flag, the CSRF origin, the static handlers - is built here
-// once and handed to every request as `c.env`.
+// What every request reads, built once from the configuration and handed to
+// each request as `c.env`: the Drizzle instance, the better-auth instance, the
+// CSRF origin and the rate limiter's HMAC key. Listed field by field, never
+// spread from `env`, so nothing else reaches a handler
+// (server/request-deps.test.ts).
+export function requestDeps(env: AppEnv): AppDeps {
+  const db = createDb(env.DB)
+  return {
+    db,
+    auth: createAuth(env, db),
+    origin: originOf(env.BETTER_AUTH_URL),
+    BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
+  }
+}
+
+// Builds the app for one configuration. The request dependencies, the dev
+// flag and the static handlers are built here once.
 //
 // The root app owns the security-header map and the static-asset fallback.
 // Every request, static files included, goes through it, so no response -
 // HTML shell, asset, or API - can skip the header map.
 export function createApp(env: AppEnv) {
-  const db = createDb(env.DB)
-  const deps: AppDeps = {
-    ...env,
-    db,
-    auth: createAuth(env, db),
-    dev: isDevEnvironment(env),
-    origin: originOf(env.BETTER_AUTH_URL),
-  }
+  const deps = requestDeps(env)
+  // A localhost BETTER_AUTH_URL selects the dev header set and email sender.
+  const dev = isDevEnvironment(env)
 
   const app = new Hono<{ Bindings: AppDeps }>()
-  app.use('*', securityHeaders(deps.dev))
+  app.use('*', securityHeaders(dev))
   app.route('/api', api)
   // Everything else is the SPA: static files from STATIC_DIR, and index.html
   // for client-side routes. See server/middleware/spa.ts.
