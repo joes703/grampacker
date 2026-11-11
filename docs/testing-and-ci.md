@@ -130,11 +130,10 @@ only; check by eye that each pin's tag comment matches its SHA.
 ## 9. Deployment checks
 
 The production deployment is `deploy/`: Compose, two Caddyfiles,
-`grampacker-deploy`, and the SSH forced-command wrapper. Before a change to
-those files merges, run:
+`grampacker-deploy`, and the SSH forced-command wrapper. CI runs shellcheck on
+the three shell scripts and `deploy/test-grampacker-deploy-ssh.sh` on every
+pull request. Before a change to those files merges, also run:
 
-- shellcheck on the three shell scripts;
-- `deploy/test-grampacker-deploy-ssh.sh`;
 - `docker compose config` with production-shaped and rehearsal-shaped env
   files;
 - `caddy validate` on both Caddyfiles with `caddy:2`;
