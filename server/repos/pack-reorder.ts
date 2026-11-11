@@ -33,7 +33,7 @@ export type PackReorderResult =
       reason:
         | 'not_found'
         | 'cross_cohort'
-        | 'not_a_permutation'
+        | 'rank_not_index_safe'
         | 'worn_row'
     }
 
@@ -154,15 +154,14 @@ export function createPackReorderRepo(db: Db, userId: string) {
   return {
     // packSortOrder ONLY - reorders must not bump updatedAt (product rule).
     //
-    // Validation, matching what the gear-only implementation enforced:
+    // Validation:
     //   1. every id owned by this user on this list (else not_found)
     //   2. worn gear rows rejected (they render outside the packing tree)
     //   3. the whole payload inside ONE cohort, across both tables
     //   4. incoming ranks INDEX-SAFE against the union's current ranks: no
     //      rank duplicated within a table half, and none landing on an
-    //      untouched row of the same table. A free rank is legal - this is
-    //      deliberately weaker than the permutation rule the gear-only
-    //      implementation enforced, so a payload can heal a degraded cohort
+    //      untouched row of the same table. A free rank is legal, and
+    //      deliberately so: it lets a payload heal a degraded cohort
     //      (docs/authz-matrix.md, the pack-order row)
     async reorder(
       listId: string,
@@ -279,7 +278,7 @@ function reorderInTransaction(
     !validateHalf(payload.items, gearCohortRows) ||
     !validateHalf(payload.foodItems, foodCohortRows)
   ) {
-    return { ok: false, reason: 'not_a_permutation' }
+    return { ok: false, reason: 'rank_not_index_safe' }
   }
 
   // Two phases, because SQLite checks the unique cohort index after EACH
