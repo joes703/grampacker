@@ -15,6 +15,12 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query'
 // onMutate throws, so the count stays balanced) and settle() in onSettled.
 // The count lives per QueryClient and per `burstKey`, so every hook instance
 // writing the same burst shares it.
+//
+// Two setups would unbalance it, and the app has neither today: restoring
+// persisted mutations (TanStack skips onMutate for a restored mutation but
+// still calls onSettled, so a sibling's burst would refetch early), and a
+// global MutationCache onMutate that can throw (onSettled then runs without
+// start()). Add either and this counter needs revisiting.
 const inFlight = new WeakMap<QueryClient, Map<string, number>>()
 
 export function burstRefetch(qc: QueryClient, burstKey: QueryKey, refetchKey: QueryKey) {
