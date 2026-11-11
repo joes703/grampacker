@@ -58,13 +58,15 @@ export default function PrivacyPage() {
               <li>
                 Each sign-in that is in progress. For a sign-in link, this
                 includes your email address. These records stop working after 5
-                minutes and are deleted soon after.
+                minutes. After that, they are deleted during a later sign-in by
+                anyone.
               </li>
               <li>
                 The number of recent sign-in requests from each IP address and
                 for each email address. For the email address, only a scrambled
                 form (a keyed hash) is stored. grampacker uses these numbers to
-                block repeated attempts, and deletes them after about a day.
+                block repeated attempts. When a count is more than a day old, it
+                is deleted during a later sign-in by anyone.
               </li>
             </ul>
           </Section>
@@ -121,9 +123,9 @@ export default function PrivacyPage() {
             </p>
             <p>
               Delete account deletes your account, gear, lists, passkeys and
-              sessions at once. The counts of sign-in requests are deleted
-              after about a day. Copies of your data can stay in backups for up
-              to 30 days.
+              sessions at once. Counts of sign-in requests, and any remaining
+              sign-ins in progress, are deleted later, as described above. Copies of your
+              data can stay in backups for up to 30 days.
             </p>
           </Section>
 
