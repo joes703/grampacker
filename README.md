@@ -23,7 +23,7 @@ npm run dev
 
 The dev server runs at http://localhost:5173 with a SQLite database in
 `.data/`. With no email key set, sign-in links print to the terminal. Local
-development never contacts production.
+development needs no production credentials.
 
 ## Host your own copy
 
@@ -36,11 +36,11 @@ Settings, as environment variables:
 | Variable | Needed | What it is |
 | --- | --- | --- |
 | `BETTER_AUTH_URL` | yes | The site's public URL, e.g. `https://packs.example.com` |
-| `BETTER_AUTH_SECRET` | yes | A long random string; signs sessions |
-| `RESEND_API_KEY` | yes | A [Resend](https://resend.com) API key. Without it, nobody can sign in |
-| `EMAIL_FROM` | no | The sender address for sign-in emails |
+| `BETTER_AUTH_SECRET` | yes | A random string of at least 32 characters; signs sessions |
+| `RESEND_API_KEY` | yes | A [Resend](https://resend.com) API key. Without it, no sign-in emails are sent, so new accounts cannot be created |
+| `EMAIL_FROM` | yes | The sender for sign-in emails, from a domain you verified in Resend. The default is grampacker.app's own sender |
 | `DATABASE_PATH` | no | Default `/data/grampacker.db` |
-| `PORT`, `HOST` | no | Default `3000` on `127.0.0.1` |
+| `PORT`, `HOST` | no | Default `3000` on `127.0.0.1`; the Docker image sets `HOST` to `0.0.0.0` |
 
 The server does not change the database schema. It refuses to start while a
 migration is pending, so run the image's `migrate` command first. Building,
@@ -75,7 +75,7 @@ Production runs the compiled JavaScript; tsx is for local development only.
 - Security model and known gaps: [SECURITY.md](./SECURITY.md).
 - Why each dependency is used: [STACK.md](./STACK.md).
 - Ideas put off until something triggers them: [PARKED.md](./PARKED.md).
-- Supported browsers: Chrome 117, Firefox 119, Safari 17.4 and later.
+- Supported browsers: Chrome 117, Firefox 128, Safari 17.4 and later.
 
 Report a problem: [GitHub issues](https://github.com/joes703/grampacker/issues).
 
