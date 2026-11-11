@@ -23,7 +23,7 @@ export function addCategoryMutationOptions(
   qc: QueryClient,
   categories: Category[],
 ): Omit<
-  UseMutationOptions<Category, Error, string, { previous: Category[] | undefined }>,
+  UseMutationOptions<Category, Error, string, { placeholderId: string }>,
   'mutationKey'
 > {
   return {
