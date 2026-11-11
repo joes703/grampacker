@@ -1,33 +1,53 @@
 # grampacker
 
-**Reference, not policy.** Product and setup. `AGENTS.md` is the working
-contract; `SECURITY.md` is the security posture.
+A website for backpacking gear lists:
+[grampacker.app](https://grampacker.app).
 
-Pack-weight planning for backpacking. Live at [grampacker.app](https://grampacker.app).
+Enter your gear and its weight, and grampacker shows the total weight of your
+pack, with base weight, worn weight and consumables shown separately. Pack
+mode sorts a list by where each item goes in your pack, with a Ready checkbox
+and a Packed checkbox for each item. You can print a list, plan food by day
+and meal, and share a read-only link to a list.
 
-Build a gear inventory, assemble gear into trip lists, see what the pack weighs,
-and share a read-only view of a list.
+Sign-in uses passkeys and sign-in links sent by email. There are no
+passwords.
 
-## Stack
+## Run it locally
 
-TypeScript end to end: a React SPA and Hono API served by Node, with Drizzle
-over SQLite and better-auth for sessions. Production runs as a Docker Compose
-stack with Caddy on a VPS.
+Needs Node 24.
 
-Sign-in is passwordless: magic link or passkey. There is no email/password path,
-and that absence is deliberate.
+```sh
+npm ci
+npm run dev
+```
 
-- Dependency rationale and upgrade notes: [STACK.md](./STACK.md)
-  (`package.json` is authoritative for versions; `SECURITY.md`, "Supply
-  chain", holds the binding rules)
-- What is enforced, and what is knowingly deferred: [SECURITY.md](./SECURITY.md)
-- Rules every agent follows in this repo: [AGENTS.md](./AGENTS.md)
+The dev server runs at http://localhost:5173 with a SQLite database in
+`.data/`. With no email key set, sign-in links print to the terminal. Local
+development needs no production credentials.
 
-## Supported browsers
+## Host your own copy
 
-Current Chrome, Firefox and Safari: the app uses `Map.groupBy` and other
-ES2024 features, so it needs at least Chrome 117, Firefox 119 or Safari
-17.4.
+grampacker runs as one Node process with a SQLite file. Production uses a
+Docker image behind Caddy, which provides HTTPS. Passkeys need HTTPS, and
+they stop working if the site moves to another domain.
+
+Settings, as environment variables:
+
+| Variable | Needed | What it is |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | yes | The site's public URL, e.g. `https://packs.example.com` |
+| `BETTER_AUTH_SECRET` | yes | A random string of at least 32 characters; signs sessions |
+| `RESEND_API_KEY` | yes | A [Resend](https://resend.com) API key. Without it, no sign-in emails are sent, so new accounts cannot be created |
+| `EMAIL_FROM` | yes | The sender for sign-in emails, from a domain you verified in Resend. The default is grampacker.app's own sender |
+| `DATABASE_PATH` | no | Default `/data/grampacker.db` |
+| `PORT`, `HOST` | no | Default `3000` on `127.0.0.1`; the Docker image sets `HOST` to `0.0.0.0` |
+
+The server does not change the database schema. It refuses to start while a
+migration is pending, so run the image's `migrate` command first. Building,
+running and checking the image:
+[docs/container-image.md](./docs/container-image.md). The
+[runbook for grampacker.app](./docs/vps-runbook.md) shows a full setup on one
+server, with Docker Compose and Caddy.
 
 ## Development
 
@@ -45,31 +65,20 @@ npm run build:server     # compile the server to dist/server
 npm run start:node       # run the compiled server, as production does
 ```
 
-The server refuses to start while migrations are pending. Production runs
-the compiled JavaScript; tsx is for local development only. The production
-image: [docs/container-image.md](./docs/container-image.md).
+Production runs the compiled JavaScript; tsx is for local development only.
 
-`npm run build` runs typecheck, lint and bundle. It is NOT the whole gate -
-tests are separate (`npm run test:unit`, `npm run test:api`, and
-`npm run test:migrations` when the schema changes). AGENTS.md has the full
-list; [docs/testing-and-ci.md](./docs/testing-and-ci.md) explains the test
-tiers, which one a new test belongs in, and how a merge reaches production.
+- Code layout: `src/` is the React app, `server/` the Hono API (it owns the
+  database through `server/db`), `shared/` the zod contracts both sides
+  import, and `migrations/` the SQL migrations drizzle-kit generates.
+- Rules for changes, for people and coding agents: [AGENTS.md](./AGENTS.md).
+- Test tiers and CI: [docs/testing-and-ci.md](./docs/testing-and-ci.md).
+- Security model and known gaps: [SECURITY.md](./SECURITY.md).
+- Why each dependency is used: [STACK.md](./STACK.md).
+- Ideas put off until something triggers them: [PARKED.md](./PARKED.md).
+- Supported browsers: Chrome 117, Firefox 128, Safari 17.4 and later.
 
-None of the above needs a production credential. Local development uses a
-disposable secret and database under `.data/`; it never contacts production.
+Report a problem: [GitHub issues](https://github.com/joes703/grampacker/issues).
 
-## Deployment
+## License
 
-Merging to `main` does not deploy. Production runs on a Node server with
-SQLite on a VPS; the owner deploys it from the Image workflow. Setup,
-operation and rebuild instructions are in [docs/vps-runbook.md](./docs/vps-runbook.md).
-
-## Layout
-
-- `src/` - React SPA
-- `server/` - Hono API on Node; owns the database via `server/db`
-- `shared/` - zod DTO contracts imported by both sides
-- `migrations/` - SQL migrations generated by drizzle-kit and applied by the
-  Node migration runner
-
-Deferred ideas with concrete triggers live in [PARKED.md](./PARKED.md).
+MIT. See [LICENSE](./LICENSE).
