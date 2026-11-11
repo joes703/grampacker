@@ -6,7 +6,6 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import type { ListFoodResponse } from '../../../shared/food'
 import { MobilePrimaryNavProvider } from '../../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../../layout/sidebar-drawer-context'
 
 // Shared setup for the ListDetailPage.*.test.tsx files, which mount the real
 // page. The module mocks cannot live here: vi.mock is hoisted only inside the
@@ -81,9 +80,7 @@ export function ListDetailProviders({
 }) {
   return (
     <QueryClientProvider client={client}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
+      <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
     </QueryClientProvider>
   )
 }
