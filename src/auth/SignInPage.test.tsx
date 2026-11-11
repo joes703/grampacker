@@ -27,6 +27,9 @@ vi.mock('../lib/auth-client', () => ({
 import SignInPage from './SignInPage'
 import { noteLinkSignInStart, passkeyOfferClosed, shouldOfferPasskey } from './link-sign-in-prompt'
 
+// A page that the person has not left.
+const stay = () => new AbortController().signal
+
 const SENT = 'Check your email'
 const BAD_LINK =
   'This sign-in link does not work anymore. Each link works one time, for 5 minutes. Enter your email address to get a new link.'
@@ -67,14 +70,14 @@ describe('SignInPage', () => {
   // must not be mistaken for one and offer the passkey prompt.
   it('forgets a started link sign-in', async () => {
     auth.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     renderAt('/sign-in?error=INVALID_TOKEN')
     expect(shouldOfferPasskey('session-new')).toBe(false)
 
     // Positive control: the same note, with no sign-in page, offers it.
     cleanup()
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-new')).toBe(true)
   })
 

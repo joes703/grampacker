@@ -26,20 +26,25 @@ const NONE = 'none'
 // abandoned. A healthy one takes well under a second.
 const SESSION_CHECK_MS = 3000
 
-export async function noteLinkSignInStart(): Promise<void> {
-  const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), SESSION_CHECK_MS)
+// `leave` aborts when the caller's page goes away. An aborted check writes
+// nothing: the page the person went to may already have forgotten the note
+// (SignInPage), and a late write would bring it back.
+export async function noteLinkSignInStart(leave: AbortSignal): Promise<void> {
   try {
-    const { data, error } = await authClient.getSession({
-      fetchOptions: { signal: abort.signal },
-    })
-    if (error) return
+    const signal = AbortSignal.any([leave, timeoutSignal(SESSION_CHECK_MS)])
+    const { data, error } = await authClient.getSession({ fetchOptions: { signal } })
+    if (error || signal.aborted) return
     sessionStorage.setItem(LINK_SIGN_IN, data?.session.id ?? NONE)
   } catch {
     // No note, so no prompt. The sign-in itself goes ahead.
-  } finally {
-    clearTimeout(timer)
   }
+}
+
+// Not AbortSignal.timeout: test fake timers cannot advance it.
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), ms)
+  return controller.signal
 }
 
 export function forgetLinkSignIn(): void {

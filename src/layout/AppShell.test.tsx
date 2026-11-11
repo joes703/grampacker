@@ -6,6 +6,9 @@ import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import AppShell from './AppShell'
 import { noteLinkSignInStart, passkeyOfferClosed } from '../auth/link-sign-in-prompt'
 
+// A page that the person has not left.
+const stay = () => new AbortController().signal
+
 const h = vi.hoisted(() => ({
   getSession: vi.fn<() => Promise<{ data: unknown; error: unknown }>>(),
   passkeysSupported: false,
@@ -113,7 +116,7 @@ describe('AppShell passkey prompt', () => {
   it('offers a passkey after a link sign-in created this session', async () => {
     h.passkeysSupported = true
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     render(<AppShell />, { wrapper: MemoryRouter })
 
@@ -124,7 +127,7 @@ describe('AppShell passkey prompt', () => {
     // Visiting /privacy unmounts the shell; coming back mounts it again.
     h.passkeysSupported = true
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     const { unmount } = render(<AppShell />, { wrapper: MemoryRouter })
 
     fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
@@ -141,7 +144,7 @@ describe('AppShell passkey prompt', () => {
     // Signed in, the link failed, and /sign-in sent this session back to '/'.
     h.passkeysSupported = true
     h.getSession.mockResolvedValue({ data: { session: { id: 'session-current' } }, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     render(<AppShell />, { wrapper: MemoryRouter })
 

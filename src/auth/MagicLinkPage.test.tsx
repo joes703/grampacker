@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 
 const prompt = vi.hoisted(() => ({
-  noteLinkSignInStart: vi.fn<() => Promise<void>>(),
+  noteLinkSignInStart: vi.fn<(leave: AbortSignal) => Promise<void>>(),
 }))
 
 vi.mock('./link-sign-in-prompt', () => prompt)
@@ -133,6 +133,8 @@ describe('MagicLinkPage', () => {
     fireEvent.click(signInButton())
     fireEvent.click(screen.getByRole('button', { name: 'Get a new link' }))
     await waitFor(() => expect(currentUrl()).toBe('/sign-in'))
+    // Leaving also stops the check, so it cannot write a note late.
+    expect(prompt.noteLinkSignInStart.mock.calls[0]?.[0].aborted).toBe(true)
     noted.resolve()
     await noted.promise
     await new Promise((r) => setTimeout(r, 0))

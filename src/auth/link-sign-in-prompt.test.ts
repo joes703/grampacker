@@ -19,6 +19,9 @@ import {
   shouldOfferPasskey,
 } from './link-sign-in-prompt'
 
+// A page that the person has not left.
+const stay = () => new AbortController().signal
+
 function withPasskeys(supported: boolean) {
   if (supported) {
     Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: function () {} })
@@ -41,14 +44,14 @@ afterEach(() => {
 describe('a sign-in by link, then the signed-in app', () => {
   it('offers a passkey when a new session replaced a signed-out tab', async () => {
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     expect(shouldOfferPasskey('session-new')).toBe(true)
   })
 
   it('offers a passkey when the link replaced another session', async () => {
     h.getSession.mockResolvedValue({ data: { session: { id: 'session-a' } }, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     expect(shouldOfferPasskey('session-b')).toBe(true)
   })
@@ -58,11 +61,11 @@ describe('a sign-in by link, then the signed-in app', () => {
     // which redirects A back to '/'. The session did not change, so no link
     // sign-in finished.
     h.getSession.mockResolvedValue({ data: { session: { id: 'session-a' } }, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-a')).toBe(false)
 
     // Positive control: the same note, with a new session, does offer it.
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-b')).toBe(true)
   })
 
@@ -72,7 +75,7 @@ describe('a sign-in by link, then the signed-in app', () => {
 
   it('does not offer one when the sign-in page cleared the note', async () => {
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     forgetLinkSignIn()
 
     expect(shouldOfferPasskey('session-new')).toBe(false)
@@ -80,11 +83,11 @@ describe('a sign-in by link, then the signed-in app', () => {
 
   it('writes no note when the session check fails', async () => {
     h.getSession.mockResolvedValue({ data: null, error: { status: 500 } })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-new')).toBe(false)
 
     h.getSession.mockRejectedValue(new Error('offline'))
-    await expect(noteLinkSignInStart()).resolves.toBeUndefined()
+    await expect(noteLinkSignInStart(stay())).resolves.toBeUndefined()
     expect(shouldOfferPasskey('session-new')).toBe(false)
   })
 
@@ -99,7 +102,7 @@ describe('a sign-in by link, then the signed-in app', () => {
             opts?.fetchOptions?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
           }),
       )
-      const noting = noteLinkSignInStart()
+      const noting = noteLinkSignInStart(stay())
       await vi.advanceTimersByTimeAsync(3000)
       await expect(noting).resolves.toBeUndefined()
     } finally {
@@ -108,11 +111,30 @@ describe('a sign-in by link, then the signed-in app', () => {
     expect(shouldOfferPasskey('session-new')).toBe(false)
   })
 
+  it('writes no note when the person left the page during the check', async () => {
+    // The sign-in page they went to has already forgotten any note. A late
+    // write would bring it back for a later passkey sign-in in this tab.
+    const leave = new AbortController()
+    const answer = Promise.withResolvers<{ data: unknown; error: unknown }>()
+    h.getSession.mockReturnValue(answer.promise)
+
+    const noting = noteLinkSignInStart(leave.signal)
+    leave.abort()
+    answer.resolve({ data: null, error: null })
+    await noting
+    expect(shouldOfferPasskey('session-new')).toBe(false)
+
+    // Positive control: the same answer, with the page still open, writes it.
+    h.getSession.mockResolvedValue({ data: null, error: null })
+    await noteLinkSignInStart(stay())
+    expect(shouldOfferPasskey('session-new')).toBe(true)
+  })
+
   it('keeps offering until the prompt closes, for renders React throws away', async () => {
     // A state initializer can run again after an uncommitted render. The
     // second run must give the same answer, or the prompt never opens.
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     expect(shouldOfferPasskey('session-new')).toBe(true)
     expect(shouldOfferPasskey('session-new')).toBe(true)
@@ -123,25 +145,25 @@ describe('a sign-in by link, then the signed-in app', () => {
 
   it('offers it once per browser, even after a later link sign-in', async () => {
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-1')).toBe(true)
     passkeyOfferClosed()
 
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     expect(shouldOfferPasskey('session-2')).toBe(false)
   })
 
   it('does not offer one in a browser without passkey support', async () => {
     withPasskeys(false)
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
 
     expect(shouldOfferPasskey('session-new')).toBe(false)
   })
 
   it('does not offer one when browser storage throws', async () => {
     h.getSession.mockResolvedValue({ data: null, error: null })
-    await noteLinkSignInStart()
+    await noteLinkSignInStart(stay())
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
     })
