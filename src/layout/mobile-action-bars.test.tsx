@@ -7,7 +7,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { List } from '../lib/types'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
-import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobileListActionBar from '../lists/MobileListActionBar'
 
 afterEach(cleanup)
@@ -30,9 +29,7 @@ function wrapper(pathname: string) {
     return (
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[pathname]}>
-          <SidebarDrawerProvider>
-            <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
-          </SidebarDrawerProvider>
+          <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
         </MemoryRouter>
       </QueryClientProvider>
     )
@@ -54,8 +51,7 @@ describe('mobile action-bar contracts', () => {
     expect(screen.queryByLabelText(/no action/i)).toBeNull()
   })
 
-  // Food gets destinations only: it has no drawer registration (nothing to
-  // add gear to there), so an Add would render permanently disabled, and
+  // Food gets destinations only: there is nothing to add gear to there, and
   // list admin is not a food-view concern. The exact label list fails for any
   // Add, labeled or empty.
   it.each([
@@ -63,7 +59,7 @@ describe('mobile action-bar contracts', () => {
     ['pack', ['Gear', 'Lists', 'Add']],
     ['food', ['Gear', 'Lists']],
   ] as const)('renders the deliberate %s list-mode bar', (mode, expected) => {
-    render(<MobileListActionBar list={list} mode={mode} />, {
+    render(<MobileListActionBar list={list} mode={mode} onAdd={() => {}} />, {
       wrapper: wrapper(`/lists/${list.id}`),
     })
     expect(labels('List navigation and actions')).toEqual(expected)

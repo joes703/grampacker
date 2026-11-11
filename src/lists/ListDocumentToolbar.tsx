@@ -28,8 +28,7 @@ type Props = {
 // can move them.
 //
 // The unit control is not dead weight in any mode: edit and food are weights
-// everywhere, and the pack row edits a weight at lg+ (ItemRow's pack
-// branch). List options everywhere costs nothing and keeps rename/sharing
+// everywhere, and the pack row edits a weight at lg+ (PackItemRow). List options everywhere costs nothing and keeps rename/sharing
 // one click away.
 //
 // Print needs no home in edit or food - Ctrl/Cmd-P does the same thing, and

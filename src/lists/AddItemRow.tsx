@@ -99,7 +99,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
       className={`flex ${MOBILE_ROW_HEIGHT} ${DESKTOP_ROW_HEIGHT} items-center gap-1.5 border-b border-gray-100 bg-blue-50/40 px-3 py-0 ${FLAT_TABLE_BODY_TEXT}`}
     >
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        <label className="flex-[2] min-w-0">
+        <label className="flex-[3] min-w-0">
           <span className="sr-only">Item name</span>
           <input
             autoFocus
@@ -111,7 +111,7 @@ export default function AddItemRow({ onSubmit, onCancel }: Props) {
             className={`w-full rounded border border-blue-400 px-1 py-0.5 ${FLAT_TABLE_BODY_TEXT} font-normal ${INLINE_EDIT_FOCUS_RING}`}
           />
         </label>
-        <label className="flex-[3] min-w-0">
+        <label className="flex-[2] min-w-0">
           <span className="sr-only">Description (optional)</span>
           <input
             value={description}

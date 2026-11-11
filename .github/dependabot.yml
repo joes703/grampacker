@@ -3,19 +3,15 @@
 #
 # ONE GROUP PER ECOSYSTEM, ON PURPOSE
 # -----------------------------------
-# This file used to partition npm updates by semver level (major 30 days, minor
-# 7, patch 3) and by package family. The semver partition was the mistake. A
-# group can only ever combine updates that are eligible in the SAME run, so
-# different waits per level can push related packages into separate runs.
+# Do not split npm updates by semver level or by package family. A group can
+# only combine updates that are eligible in the SAME run, so a different wait
+# per semver level pushes related packages into separate runs. Family groups
+# work only if every family is listed in advance; a missed one lets a PR move
+# react-dom without react (react-dom declares a peer of react), and CI does not
+# catch it: `npm ci` never re-resolves, and `npm install` re-resolves only when
+# package.json and the lockfile disagree.
 #
-# Grouping by family was the attempt to fix that, and it only works if every
-# family is enumerated in advance - which is how react got missed. react-dom
-# declares a peer of react ^19.2.8, a PR moved only react-dom, and CI passed
-# because the conflict was already in the lockfile: `npm ci` never re-resolves,
-# and `npm install` re-resolves only when package.json and the lockfile
-# disagree, which here they did not.
-#
-# One group per ecosystem needs no such enumeration. Everything non-major moves
+# One group per ecosystem needs no such list. Everything non-major moves
 # in a single resolution, so no family has to be known about ahead of time.
 # Majors still arrive on their own, which is where release notes get read.
 #

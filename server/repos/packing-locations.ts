@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { reorderOwnedSet } from './reorder'
-import { ownsList } from './owns-list'
+import { ownsList } from './ownership'
 import { alias } from 'drizzle-orm/sqlite-core'
 import type { Db, Tx } from '../db'
 import {

@@ -28,6 +28,7 @@ import {
 } from '../components/flat-table-styles'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ListRow, NewListInline, SortableListRow, type ListRowActions } from './ListRow'
+import { listRenameActions, type RenamingDialog } from './list-rename-actions'
 import { pickListAfterDelete } from './pick-list-after-delete'
 import type { List } from '../lib/types'
 import { useDragSensors } from '../lib/use-drag-sensors'
@@ -48,15 +49,13 @@ import { useDragSensors } from '../lib/use-drag-sensors'
 //     open list, not in the Lists switcher.
 //   - Mobile rendering. Bottom nav + /lists own that path today.
 
+// The panel reads the lists from its own cache subscription (useReorderable
+// below), never from a parent prop: the panel's setActiveId and the lists
+// cache update MUST land in the same React commit so dnd-kit's drop
+// animation measures rects against the new DOM order. It mounts only once
+// ListDetailPage has found the open list in that cache, so the cache already
+// holds data on first paint.
 type Props = {
-  // Initial seed for the local lists subscription. Lets the parent's
-  // useQuery render the first paint without a flash; once mounted, the
-  // panel subscribes to the lists cache itself (see useReorderable below)
-  // and that subscription is the source of truth. Required for DnD: the
-  // panel's setActiveId state and the lists cache update MUST land in
-  // the same React commit so dnd-kit's drop animation measures rects
-  // against the new DOM order.
-  lists: List[]
   currentListId: string
   // Wraps the panel's outer FLAT_TABLE_SURFACE element. Lets the caller
   // (ListDetailPage's left aside) size/scroll the panel without this
@@ -71,7 +70,7 @@ type Props = {
 // this union when it opens.
 type DialogState =
   | { type: 'creating'; draft: string }
-  | { type: 'renaming'; list: List; draft: string }
+  | RenamingDialog
   | { type: 'confirm-delete'; list: List }
 
 // Hoisted trigger for the header plus menu (KebabMenu `trigger` must be a
@@ -92,7 +91,6 @@ function HeaderPlusTrigger({ ref, onClick, open }: Omit<KebabTriggerProps, 'disa
 }
 
 export default function DesktopListsPanel({
-  lists: listsSeed,
   currentListId,
   className,
 }: Props) {
@@ -109,8 +107,8 @@ export default function DesktopListsPanel({
   // reorderLists with makeOptimisticReorder, activeId, and the
   // handleDragStart/Cancel/End shape — lives in useReorderable. The hook
   // owning the lists subscription is the structural fix for the
-  // cross-component snap-back race (commit b8624ec); see
-  // src/lib/use-reorderable.ts for the full rationale.
+  // cross-component snap-back race; see src/lib/use-reorderable.ts for the
+  // full rationale.
   const {
     items: lists,
     activeItem: activeList,
@@ -121,7 +119,6 @@ export default function DesktopListsPanel({
   } = useReorderable<List>({
     queryKey: queryKeys.lists(),
     queryFn: fetchLists,
-    initialData: listsSeed,
     mutationFn: reorderLists,
     dndKind: 'list-card',
     // The reorder route writes sortOrder only and preserves updatedAt
@@ -165,19 +162,7 @@ export default function DesktopListsPanel({
   }
 
   const rowActions = (list: List): ListRowActions => ({
-    renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
-    renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
-    onRenameDraftChange: (v) => setDialog({ type: 'renaming', list, draft: v }),
-    onStartRename: () => setDialog({ type: 'renaming', list, draft: list.name }),
-    onSubmitRename: () => {
-      if (dialog?.type !== 'renaming') return
-      const trimmed = dialog.draft.trim()
-      if (trimmed && trimmed !== list.name) {
-        renameMut.mutate({ id: list.id, name: trimmed })
-      }
-      setDialog(null)
-    },
-    onCancelRename: () => setDialog(null),
+    ...listRenameActions(list, dialog, setDialog, renameMut.mutate),
     onDuplicate: () => duplicateMut.mutate(list),
     onExport: () => void exportCsv(list),
     exporting: exportingListId === list.id,

@@ -1,12 +1,14 @@
 import type { FoodItemResponse } from '../../shared/food'
+import { comparePackOrder, type PackOrderKey, type ReorderPackPayload } from '../../shared/lists'
 import type { ListItemWithGear } from '../lib/types'
 
 // The union row model for Pack mode. A bag's contents are the
 // UNION of its gear rows (list_items) and its food rows (list_food_items),
 // merged into one display order. This module owns that merge and the
-// rank-slot arithmetic over it; the server's `unionOrder` / union permutation
-// in server/repos/pack-reorder.ts is the authority, and these MIRROR it so
-// the optimistic render lands where the refetch will confirm.
+// rank-slot arithmetic over it. The order itself is shared with the server
+// (comparePackOrder in shared/lists.ts); the rank arithmetic mirrors
+// server/repos/pack-reorder.ts, which is the authority, so the optimistic
+// render lands where the refetch will confirm.
 
 export type PackRow =
   | { kind: 'gear'; gear: ListItemWithGear }
@@ -24,16 +26,16 @@ export function packRowName(row: PackRow): string {
   return row.kind === 'gear' ? row.gear.gearItem.name : row.food.name
 }
 
-// Display order within a cohort: rank first, gear before food on a
-// cross-table tie (per-table unique indexes cannot rule ties out across
-// tables), id as the total-order backstop. Must match the server's
-// `unionOrder` comparator.
+// Display order within a cohort: shared/lists.ts comparePackOrder, the same
+// comparator the server's unionOrder uses.
+const orderKey = (row: PackRow): PackOrderKey => ({
+  kind: row.kind,
+  rank: packRowRank(row),
+  id: packRowId(row),
+})
+
 export function comparePackRows(a: PackRow, b: PackRow): number {
-  return (
-    packRowRank(a) - packRowRank(b) ||
-    (a.kind === b.kind ? 0 : a.kind === 'gear' ? -1 : 1) ||
-    (packRowId(a) < packRowId(b) ? -1 : packRowId(a) > packRowId(b) ? 1 : 0)
-  )
+  return comparePackOrder(orderKey(a), orderKey(b))
 }
 
 export function unionPackRows(
@@ -46,10 +48,6 @@ export function unionPackRows(
   ].sort(comparePackRows)
 }
 
-export type UnionRankUpdates = {
-  items: { id: string; packSortOrder: number }[]
-  foodItems: { id: string; packSortOrder: number }[]
-}
 
 // The union twin of assignPackRankSlots (src/lib/grouping.ts): redistribute
 // the cohort's EXISTING ranks - both tables' together - over the newly
@@ -68,7 +66,7 @@ export type UnionRankUpdates = {
 export function assignUnionPackRankSlots(
   reorderedRows: PackRow[],
   avoidRanks: ReadonlySet<number> = new Set(),
-): UnionRankUpdates {
+): ReorderPackPayload {
   const existing = reorderedRows.map(packRowRank).sort((a, b) => a - b)
   // A tie needing the dense path is EITHER a duplicate among these rows OR a
   // collision between one of their ranks and a reserved rank (a hidden or
@@ -86,7 +84,7 @@ export function assignUnionPackRankSlots(
   } else {
     slots = existing
   }
-  const updates: UnionRankUpdates = { items: [], foodItems: [] }
+  const updates: ReorderPackPayload = { items: [], foodItems: [] }
   reorderedRows.forEach((row, idx) => {
     // Non-null assertion: `slots` and `reorderedRows` have identical length
     // by construction, so slots[idx] is always defined.

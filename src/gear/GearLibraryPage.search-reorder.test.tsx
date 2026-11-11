@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import '@testing-library/jest-dom/vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -23,14 +22,8 @@ const h = vi.hoisted(() => ({
   drag: { activeId: '', overId: '' },
 }))
 
-vi.mock('../lib/queries', () => ({
-  queryKeys: {
-    categories: () => ['categories'],
-    gearItems: () => ['gear-items'],
-    lists: () => ['lists'],
-    listItems: (id: string) => ['list-items', id],
-    listItemsAll: () => ['list-items'],
-  },
+vi.mock('../lib/queries', async () => ({
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
   fetchCategories: vi.fn(),
   fetchGearItems: h.fetchGearItems,
   // The category actions hook is not mocked, so its query layer is. The

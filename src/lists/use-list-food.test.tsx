@@ -150,3 +150,73 @@ describe('useListFood', () => {
     ])
   })
 })
+
+describe('useListFood burst refetch', () => {
+  // The same burst rule as gear's updateItem (src/lib/queries/burst-refetch.ts):
+  // a refetch fired while a sibling tick is still pending can land stale
+  // server data over that sibling's optimistic write, so a burst of ticks
+  // refetches once, after the last one settles.
+  it('Packed/Ready ticks refetch once, after the last of an overlapping burst settles', async () => {
+    const first = deferred()
+    const second = deferred()
+    h.updateFoodItem
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const { qc, result } = setup([food({ id: 'f1' }), food({ id: 'f2' })])
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const foodInvalidations = () =>
+      invalidate.mock.calls.filter(
+        ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(key),
+      ).length
+
+    await act(async () => {
+      result.current.patchPackState.mutate({ foodId: 'f1', patch: { isPacked: true } })
+      result.current.patchPackState.mutate({ foodId: 'f2', patch: { isReady: true } })
+    })
+    await waitFor(() => expect(h.updateFoodItem).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      first.resolve(undefined)
+    })
+    await waitFor(() => expect(qc.isMutating()).toBe(1))
+    expect(foodInvalidations()).toBe(0)
+
+    await act(async () => {
+      second.resolve(undefined)
+    })
+    await waitFor(() => expect(qc.isMutating()).toBe(0))
+    expect(foodInvalidations()).toBe(1)
+  })
+})
+
+describe('useListFood burst refetch, settling together', () => {
+  // TanStack runs onSettled BEFORE it marks the mutation settled, so when two
+  // responses land in the same tick both onSettled calls can still count two
+  // pending mutations. The burst must still end in exactly one refetch.
+  it('refetches once when both ticks settle in the same tick', async () => {
+    const first = deferred()
+    const second = deferred()
+    h.updateFoodItem
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const { qc, result } = setup([food({ id: 'f1' }), food({ id: 'f2' })])
+    const invalidate = vi.spyOn(qc, 'invalidateQueries')
+    const foodInvalidations = () =>
+      invalidate.mock.calls.filter(
+        ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(key),
+      ).length
+
+    await act(async () => {
+      result.current.patchPackState.mutate({ foodId: 'f1', patch: { isPacked: true } })
+      result.current.patchPackState.mutate({ foodId: 'f2', patch: { isReady: true } })
+    })
+    await waitFor(() => expect(h.updateFoodItem).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      first.resolve(undefined)
+      second.resolve(undefined)
+    })
+    await waitFor(() => expect(qc.isMutating()).toBe(0))
+    expect(foodInvalidations()).toBe(1)
+  })
+})

@@ -15,8 +15,9 @@ import type { AppDeps } from '../env'
 // Prod-like origin so securityHeaders emits the full set (the test default is
 // localhost = dev mode, which omits the CSP).
 const prodEnv = { ...env, BETTER_AUTH_URL: 'https://grampacker.app' }
-// The synthetic apps below read only the dev flag.
-const prodDeps = { dev: false } as AppDeps
+// The synthetic apps below read nothing from c.env; securityHeaders(false) is
+// what selects the production headers.
+const prodDeps = {} as AppDeps
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

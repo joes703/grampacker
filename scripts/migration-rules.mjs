@@ -80,7 +80,7 @@ const journalProblem = (baseText, headText) => {
  * would describe a schema production does not have. Judged against the merge
  * base with origin/main, so a migration the branch adds can change freely.
  * No exceptions: collapsing history into a new baseline needs its own
- * reviewed, single-use exception (docs/testing-and-ci.md section 7).
+ * reviewed, single-use exception (docs/testing-and-ci.md, "Migrations").
  *
  * CI runs this on pull requests only; the "Protect main" ruleset makes a pull
  * request the only route to main.

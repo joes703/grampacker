@@ -12,10 +12,12 @@ import type { ItemRowProps } from './ItemRow'
 // Pack section) share: the row-handler props, the per-row props builder, the
 // drag seam's type, and the header frame.
 //
-// This module, CategoryTable and PackSection must NOT import @dnd-kit, by
-// value, ever. CategoryTable renders on the public share view, and a
-// read-only page has no business downloading a drag-and-drop library. That is
-// why drag arrives as the `renderRows` prop: see SortableCategoryRows.tsx.
+// This module and CategoryTable must NOT import @dnd-kit, by value, ever.
+// CategoryTable renders on the public share view (and imports this module),
+// and a read-only page has no business downloading a drag-and-drop library.
+// That is why drag arrives as the `renderRows` prop: see
+// SortableCategoryRows.tsx. PackSection uses the same seam, but Pack is
+// authenticated-only.
 
 // The props a row needs, minus the three the sortable wrapper supplies itself.
 type RowProps = Omit<ItemRowProps, 'dragHandle' | 'outerRef' | 'outerStyle'>

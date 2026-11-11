@@ -3,7 +3,7 @@ import { parseDnDId } from '../lib/dnd-ids'
 import { assignPackRankSlots, assignSortOrderSlots } from '../lib/grouping'
 import type { ListItemWithGear, PackingLocation } from '../lib/types'
 import type { ListDetailMode } from './list-detail-mode'
-import type { UnionRankUpdates } from './pack-rows'
+import type { ReorderPackPayload } from '../../shared/lists'
 import { derivePackReorderExclusions } from './packing-tree'
 import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
 
@@ -55,7 +55,7 @@ export function planListItemReorder({
   // deriveFilteredItemIds). Empty set = nothing hidden.
   hiddenItemIds: ReadonlySet<string>
 }):
-  | { kind: 'pack'; updates: UnionRankUpdates }
+  | { kind: 'pack'; updates: ReorderPackPayload }
   | { kind: 'list'; updates: { id: string; sortOrder: number }[] }
   | null {
   if (groupingKind === 'location') {
