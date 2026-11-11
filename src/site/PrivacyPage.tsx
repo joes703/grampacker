@@ -9,7 +9,11 @@ import SiteFooter, { CONTACT_EMAIL } from './SiteFooter'
 //   session's IP address and user agent (IP tracking is left on)
 // - sign-in attempt counts: server/middleware/rate-limit.ts
 // - no third-party scripts: the CSP in server/middleware/security-headers.ts
-// - one cookie: better-auth's session cookie (no cookie cache is configured)
+// - cookies: better-auth's session cookie (no cookie cache is configured),
+//   and the passkey plugin's 5-minute challenge cookie
+// - browser storage: src/lib/last-list-path.ts, src/lib/session-hint.ts and
+//   the unit preferences
+// - Download all data: src/lib/export/takeout-files.ts
 // - backups and the 30-day promise: docs/vps-runbook.md, "Backups"
 //
 // Plain words and short sentences: many readers' first language is not
@@ -38,16 +42,23 @@ export default function PrivacyPage() {
           <Section title="What grampacker stores">
             <ul className="list-disc space-y-1 pl-5">
               <li>Your email address, to send you sign-in links.</li>
+              <li>Your gear, lists, food plans, notes and settings.</li>
               <li>
-                The public key and the name of each passkey. grampacker never
-                receives the private key. It stays on your device or in your
-                password manager.
+                For each passkey: its public key, its name, and technical
+                details your device sends when you add it, such as its ID and
+                the date you added it. grampacker never receives the private
+                key. It stays on your device or in your password manager.
               </li>
-              <li>Your gear, lists, notes and settings.</li>
               <li>
-                For each browser where you are signed in: its IP address, the
-                browser name, and the time the session ends. A session ends when
-                you sign out, or 30 days after you last used it.
+                For each browser where you are signed in: its IP address, its
+                user agent (a line of text that names the browser and the
+                operating system), and the time the session ends. A session
+                ends when you sign out, or 30 days after you last used it.
+              </li>
+              <li>
+                Each sign-in that is in progress. For a sign-in link, this
+                includes your email address. These records stop working after 5
+                minutes and are deleted soon after.
               </li>
               <li>
                 The number of recent sign-in requests from each IP address and
@@ -80,9 +91,19 @@ export default function PrivacyPage() {
           <Section title="What grampacker does not do">
             <p>
               grampacker has no ads, no analytics and no tracking scripts. It
-              does not sell your data. It sets one cookie, to keep you signed in.
-              Your display settings, such as grams or ounces, are saved in your
-              browser.
+              does not sell your data.
+            </p>
+          </Section>
+
+          <Section title="Cookies and browser storage">
+            <p>
+              grampacker sets one cookie to keep you signed in. While you add
+              or use a passkey, it sets a second cookie that lasts 5 minutes.
+            </p>
+            <p>
+              Your browser also saves your display settings, such as grams or
+              ounces, the last list you opened, and a note that this browser has
+              signed in before, so the app starts faster.
             </p>
           </Section>
 
@@ -95,10 +116,14 @@ export default function PrivacyPage() {
 
           <Section title="Your data">
             <p>
-              In Settings, Download all data gives you a copy of all your data.
-              Delete account deletes your account and all of its data from the
-              database at once. If you delete your account, copies of your data
-              can stay in backups for up to 30 days.
+              In Settings, Download all data gives you a copy of your gear,
+              lists and food plans.
+            </p>
+            <p>
+              Delete account deletes your account, gear, lists, passkeys and
+              sessions at once. The counts of sign-in requests are deleted
+              after about a day. Copies of your data can stay in backups for up
+              to 30 days.
             </p>
           </Section>
 
