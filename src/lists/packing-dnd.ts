@@ -6,8 +6,8 @@ import {
   assignUnionPackRankSlots,
   packRowId,
   unionPackRows,
-  type UnionRankUpdates,
 } from './pack-rows'
+import type { ReorderPackPayload } from '../../shared/lists'
 
 export function isPackingCollisionTarget(
   activeId: string,
@@ -41,7 +41,7 @@ export function isPackingCollisionTarget(
 // kind of row.
 
 export type PackingRowDragPlan =
-  | { kind: 'reorder'; updates: UnionRankUpdates }
+  | { kind: 'reorder'; updates: ReorderPackPayload }
   | { kind: 'move-gear'; itemId: string; locationId: string | null }
   | { kind: 'move-food'; foodItemId: string; locationId: string | null }
 
@@ -84,7 +84,7 @@ function planUnionReorder(
   excludedItemIds: ReadonlySet<string>,
   excludedFoodIds: ReadonlySet<string>,
   normalize: (locationId: string | null) => string | null,
-): UnionRankUpdates | null {
+): ReorderPackPayload | null {
   if (overId === undefined || activeId === overId) return null
   const active = parsePackRowId(activeId)
   const over = parsePackRowId(overId)

@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import { appendSortOrder } from './append-sort-order'
-import { ownsList } from './owns-list'
+import { ownsList } from './ownership'
 import type { Db, Tx } from '../db'
 import {
   listFoodItemSlots,
@@ -51,17 +51,15 @@ export type ListFood = {
   items: FoodItemRow[]
 }
 
-export type FoodWriteResult<T> =
-  | { ok: true; row: T }
-  | {
-      ok: false
-      reason:
-        | 'not_found'
-        | 'cap_exceeded'
-        | 'invalid_slots'
-        | 'invalid_location'
-        | 'pack_rank_exhausted'
-    }
+// One result type per write, listing only the reasons that write produces,
+// so each route's failure map is exhaustive (server/routes/food.ts).
+export type CreateFoodItemResult =
+  | { ok: true; row: FoodItemRow }
+  | { ok: false; reason: 'not_found' | 'cap_exceeded' | 'invalid_slots' | 'pack_rank_exhausted' }
+
+export type UpdateFoodItemResult =
+  | { ok: true; row: FoodItemRow }
+  | { ok: false; reason: 'not_found' | 'invalid_slots' | 'invalid_location' | 'pack_rank_exhausted' }
 
 function isFoodItemCapError(err: unknown): boolean {
   return isTriggerAbort(err, 'food item cap exceeded')
@@ -84,15 +82,18 @@ const itemCols = {
 
 // The writes trip these database rules on purpose. Each becomes a client
 // result; anything else (a foreign key, another unique index, an unknown
-// trigger) is a defect and stays a 500.
-function classifyWriteError(
-  err: unknown,
-): 'cap_exceeded' | 'pack_rank_exhausted' | null {
+// trigger) is a defect and stays a 500. The cap applies only to an insert,
+// so only create classifies it. The pack rank range trigger means the
+// destination cohort's rank space is exhausted: the union max + 1 stepped
+// past PACK_RANK_MAX.
+function classifyCreateError(err: unknown): 'cap_exceeded' | 'pack_rank_exhausted' | null {
   if (isFoodItemCapError(err)) return 'cap_exceeded'
-  // The food pack rank range trigger: the destination cohort's rank space is exhausted,
-  // so the union max + 1 stepped past PACK_RANK_MAX.
   if (isPackRankRangeError(err)) return 'pack_rank_exhausted'
   return null
+}
+
+function classifyUpdateError(err: unknown): 'pack_rank_exhausted' | null {
+  return isPackRankRangeError(err) ? 'pack_rank_exhausted' : null
 }
 
 // Every method runs its whole read, ownership check, planning and write
@@ -304,10 +305,10 @@ export function createFoodRepo(db: Db, userId: string) {
         isPerMeal?: boolean
         slotIds: string[]
       },
-    ): Promise<FoodWriteResult<FoodItemRow>> {
+    ): Promise<CreateFoodItemResult> {
       try {
         return db.transaction(
-          (tx): FoodWriteResult<FoodItemRow> => {
+          (tx): CreateFoodItemResult => {
             if (!ownsList(tx, userId, listId)) return { ok: false, reason: 'not_found' }
             if (!ownsAllSlots(tx, listId, input.slotIds)) {
               return { ok: false, reason: 'invalid_slots' }
@@ -353,7 +354,7 @@ export function createFoodRepo(db: Db, userId: string) {
           { behavior: 'immediate' },
         )
       } catch (err) {
-        const reason = classifyWriteError(err)
+        const reason = classifyCreateError(err)
         if (reason !== null) return { ok: false, reason }
         throw err
       }
@@ -372,10 +373,10 @@ export function createFoodRepo(db: Db, userId: string) {
         isReady?: boolean
         packingLocationId?: string | null
       },
-    ): Promise<FoodWriteResult<FoodItemRow>> {
+    ): Promise<UpdateFoodItemResult> {
       try {
         return db.transaction(
-          (tx): FoodWriteResult<FoodItemRow> => {
+          (tx): UpdateFoodItemResult => {
             if (!ownsList(tx, userId, listId)) return { ok: false, reason: 'not_found' }
             if (!readItem(tx, listId, itemId)) return { ok: false, reason: 'not_found' }
 
@@ -462,7 +463,7 @@ export function createFoodRepo(db: Db, userId: string) {
           { behavior: 'immediate' },
         )
       } catch (err) {
-        const reason = classifyWriteError(err)
+        const reason = classifyUpdateError(err)
         if (reason !== null) return { ok: false, reason }
         throw err
       }

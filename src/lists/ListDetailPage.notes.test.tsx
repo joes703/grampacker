@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { makeList } from '../test/fixtures'
-import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { showToast } from '../lib/toast'
 import { renderListDetailPage, stubViewport } from './test/list-detail-harness'
 import { deferred } from '../test/deferred'
+import { settle } from '../test/settle'
 
 // Notes can be long, and the editor is the only copy of what the user typed.
 // So a save that fails must leave the editor open with the text in it, and
@@ -21,12 +21,6 @@ const list = makeList({
   isShared: false,
   updatedAt: '2026-07-01T00:00:00.000Z',
 })
-
-async function settle(d: PromiseWithResolvers<unknown>): Promise<void> {
-  await act(async () => {
-    await d.promise.catch(() => {})
-  })
-}
 
 const h = vi.hoisted(() => ({
   fetchLists: vi.fn(),

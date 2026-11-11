@@ -15,11 +15,10 @@ describe('mutationKeys', () => {
     // Guards the loop against silently testing nothing.
     expect(keys.length).toBeGreaterThan(30)
 
-    // TanStack Query matches mutation filters by PREFIX. use-list-item-actions
-    // gates its last-one-out invalidation on isMutating({mutationKey}), so a key
-    // that starts with another key's elements would silently join that burst
-    // gate and suppress an invalidation - a stale-cache bug with no error
-    // anywhere to find it by.
+    // TanStack Query matches mutation filters by PREFIX. The double-fire guards
+    // and the list flag lock ask isMutating({mutationKey}), so a key that
+    // starts with another key's elements would silently join that guard and
+    // drop a real write - a bug with no error anywhere to find it by.
     const collisions: string[] = []
     for (const a of keys) {
       for (const b of keys) {

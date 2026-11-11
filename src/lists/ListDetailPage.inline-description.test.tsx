@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { makeList, makeListItem } from '../test/fixtures'
-import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import type { Category, GearItem } from '../lib/types'

@@ -461,8 +461,8 @@ export const SECONDARY_BUTTON =
 // Popover surface
 // ---------------------------------------------------------------------------
 // Floating popover/menu chrome: rounded card with a hairline border, white
-// fill, and a soft drop shadow. Used by every kebab/portal menu, the
-// MobileMenu trigger menu, and the List options / Gear options popovers.
+// fill, and a soft drop shadow. Used by every kebab/portal menu and the
+// List options / Gear options popovers.
 //
 // Deliberately NOT folded into FLAT_TABLE_SURFACE — popovers are different
 // chrome (fixed/floating, shadowed, no overflow-hidden clipping). Both the

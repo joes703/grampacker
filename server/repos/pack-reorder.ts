@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import type { ReorderPackPayload } from '../../shared/lists'
+import { comparePackOrder, type ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db, Tx } from '../db'
 import { listFoodItems, listItems } from '../db/schema'
@@ -33,7 +33,7 @@ export type PackReorderResult =
       reason:
         | 'not_found'
         | 'cross_cohort'
-        | 'not_a_permutation'
+        | 'rank_not_index_safe'
         | 'worn_row'
     }
 
@@ -70,10 +70,9 @@ export function nextUnionPackRank(
   ), 0)`
 }
 
-// Merge a bag's two halves into display order. Shared by the repos that must
-// preserve union order when appending whole cohorts (location delete), and
-// mirrored client-side; rank first, gear before food on a cross-table tie,
-// id as the total-order backstop.
+// Merge a bag's two halves into display order (shared/lists.ts
+// comparePackOrder, the client's comparator too). Used by the repos that must
+// preserve union order when appending whole cohorts (location delete).
 export function unionOrder<
   T extends { packSortOrder: number; id: string },
 >(gear: T[], food: T[]): { kind: 'gear' | 'food'; row: T }[] {
@@ -81,11 +80,11 @@ export function unionOrder<
     ...gear.map((row) => ({ kind: 'gear' as const, row })),
     ...food.map((row) => ({ kind: 'food' as const, row })),
   ]
-  return tagged.sort(
-    (a, b) =>
-      a.row.packSortOrder - b.row.packSortOrder ||
-      (a.kind === b.kind ? 0 : a.kind === 'gear' ? -1 : 1) ||
-      (a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0),
+  return tagged.sort((a, b) =>
+    comparePackOrder(
+      { kind: a.kind, rank: a.row.packSortOrder, id: a.row.id },
+      { kind: b.kind, rank: b.row.packSortOrder, id: b.row.id },
+    ),
   )
 }
 
@@ -154,15 +153,14 @@ export function createPackReorderRepo(db: Db, userId: string) {
   return {
     // packSortOrder ONLY - reorders must not bump updatedAt (product rule).
     //
-    // Validation, matching what the gear-only implementation enforced:
+    // Validation:
     //   1. every id owned by this user on this list (else not_found)
     //   2. worn gear rows rejected (they render outside the packing tree)
     //   3. the whole payload inside ONE cohort, across both tables
     //   4. incoming ranks INDEX-SAFE against the union's current ranks: no
     //      rank duplicated within a table half, and none landing on an
-    //      untouched row of the same table. A free rank is legal - this is
-    //      deliberately weaker than the permutation rule the gear-only
-    //      implementation enforced, so a payload can heal a degraded cohort
+    //      untouched row of the same table. A free rank is legal, and
+    //      deliberately so: it lets a payload heal a degraded cohort
     //      (docs/authz-matrix.md, the pack-order row)
     async reorder(
       listId: string,
@@ -279,7 +277,7 @@ function reorderInTransaction(
     !validateHalf(payload.items, gearCohortRows) ||
     !validateHalf(payload.foodItems, foodCohortRows)
   ) {
-    return { ok: false, reason: 'not_a_permutation' }
+    return { ok: false, reason: 'rank_not_index_safe' }
   }
 
   // Two phases, because SQLite checks the unique cohort index after EACH

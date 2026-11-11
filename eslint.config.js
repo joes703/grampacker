@@ -150,16 +150,25 @@ export default tseslint.config(
       ],
     },
   },
-  // Unit-tier server tests (docs/testing-and-ci.md section 2) must not drive
-  // the full app. A misnamed API test would skip the API suite's database
-  // setup and make the tier boundary meaningless.
+  // Unit-tier server tests (docs/testing-and-ci.md, "Choosing a tier") must
+  // not drive the full app. A misnamed API test would skip the API suite's
+  // database setup and make the tier boundary meaningless.
   //
   // One block per directory depth, 0-5 (server/ is 4 deep today), so each file
   // forbids the direct spellings that reach server/index.ts from where it
   // sits - and not a sibling index.ts, such as server/email/index.ts. A
   // roundabout path (../../server/index) still gets through.
+  //
+  // The API-tier helpers are forbidden at every depth by pattern:
+  // server/test/node-env.ts opens SQLite and builds the app at module scope,
+  // and api-helpers / auth-helpers import it. The patterns live in the same
+  // options object because a later block setting this rule would REPLACE
+  // these options, not merge with them. server/node-tier-imports.node.test.ts
+  // proves both halves bite.
   ...[0, 1, 2, 3, 4, 5].map((depth) => {
     const dir = depth === 0 ? '.' : Array(depth).fill('..').join('/')
+    const message =
+      'A .node.test.ts is a unit test and must not drive the app. Name it .test.ts to run it in the API suite.'
     return {
       files: [`server/${'*/'.repeat(depth)}*.node.test.ts`],
       rules: {
@@ -168,9 +177,16 @@ export default tseslint.config(
           {
             paths: [dir, `${dir}/`, `${dir}/index`, `${dir}/index.ts`, `${dir}/index.js`].map((name) => ({
               name,
-              message:
-                'A .node.test.ts is a unit test and must not drive the app. Name it .test.ts to run it in the API suite.',
+              message,
             })),
+            patterns: [
+              {
+                group: ['node-env', 'api-helpers', 'auth-helpers'].flatMap((helper) =>
+                  ['', '.ts', '.js'].map((ext) => `**/test/${helper}${ext}`),
+                ),
+                message,
+              },
+            ],
           },
         ],
       },

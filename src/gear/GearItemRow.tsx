@@ -128,7 +128,7 @@ export default function GearItemRow({
           </div>
         )
       ) : (
-        /* Desktop branch (≥ lg) — name + description (2:3 cols), weight,
+        /* Desktop branch (≥ lg) — name + description (3:2 cols), weight,
            and a kebab menu for Edit / Delete actions. The kebab pattern
            mirrors the list page's RowKebab so both pages share one row-
            action affordance. Hidden in select mode (selection itself

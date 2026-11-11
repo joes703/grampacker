@@ -24,17 +24,18 @@ export type AppEnv = {
   STATIC_DIR: string
 }
 
-// What every request reads from `c.env`: the configuration plus what
-// createApp (server/index.ts) builds from it once, at startup. Route
-// handlers still never touch `db`: they receive user-scoped repositories
-// from the session middleware.
-export type AppDeps = AppEnv & {
+// What every request can reach as `c.env`, built once at startup by
+// requestDeps (server/index.ts). Only what a request reads: the raw SQLite
+// handle, the mail API key and the static directory stay at startup. Route
+// handlers still never touch `db`: they receive user-scoped repositories from
+// the session middleware (AGENTS.md "Invariants").
+export type AppDeps = {
   db: Db
   auth: Auth
-  // A localhost BETTER_AUTH_URL selects the dev header set and email sender.
-  dev: boolean
   // The origin the CSRF check accepts.
   origin: string
+  // Keys the rate limiter's email-bucket HMAC (server/middleware/rate-limit.ts).
+  BETTER_AUTH_SECRET: string
 }
 
 export class ConfigError extends Error {}

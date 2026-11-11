@@ -10,8 +10,8 @@ import {
 } from '../components/flat-table-styles'
 import PackModeCheckbox from './PackModeCheckbox'
 
-// The pack-mode row skeleton shared by the gear row (ItemRow's pack branch)
-// and SortableFoodRow: shell, grip slot, Ready checkbox, the wrapping label
+// The pack-mode row skeleton shared by the gear row (PackItemRow) and
+// SortableFoodRow: shell, grip slot, Ready checkbox, the wrapping label
 // that hosts Packed + name/description, and the print-only checkbox squares.
 // Sharing it keeps a pack-row density or print change in one place, and
 // keeps the checkbox column aligned across both rows.
@@ -20,9 +20,8 @@ import PackModeCheckbox from './PackModeCheckbox'
 // children so a cell on one and not the other still misaligns VISIBLY in
 // review rather than drifting silently.
 //
-// No @dnd-kit import, deliberately: ItemRow renders on the anonymous share
-// page, so this module must stay off the drag machinery; the sortable
-// wrappers inject `dragHandle` from outside.
+// The sortable wrappers inject `dragHandle` from outside, so the Worn
+// section's rows, which never drag, use the same frame without one.
 //
 // Structure rules this frame owns:
 // - The Ready checkbox sits OUTSIDE the wrapping label so that clicking the
@@ -175,13 +174,13 @@ export default function PackRowFrame({
       {dragHandle}
       <PackChecks name={name} isPacked={isPacked} isReady={isReady} onUpdate={onUpdate}>
         {statusBadge}
-        {/* Name + description at lg+ in the same 2:3 proportion as edit
+        {/* Name + description at lg+ in the same 3:2 proportion as edit
             mode. <lg keeps the single-column name-only layout. */}
         <div className="flex flex-1 min-w-0 items-center gap-3">
-          <div className="flex-[2] min-w-0">
+          <div className="flex-[3] min-w-0">
             <span className={packedNameClass(isPacked)}>{name}</span>
           </div>
-          <div className="hidden lg:block lg:flex-[3] min-w-0">{description}</div>
+          <div className="hidden lg:block lg:flex-[2] min-w-0">{description}</div>
         </div>
       </PackChecks>
       {children}

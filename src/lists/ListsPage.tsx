@@ -35,6 +35,7 @@ import {
   SortableListRow,
   type ListRowActions,
 } from './ListRow'
+import { listRenameActions, type RenamingDialog } from './list-rename-actions'
 import ListsEmptyState from './ListsEmptyState'
 import StatusPanel from '../components/StatusPanel'
 import MobileListsActionBar from './MobileListsActionBar'
@@ -47,7 +48,7 @@ import { useDragSensors } from '../lib/use-drag-sensors'
 // lives inside useListImportFlow, which closes this union when it opens.
 type DialogState =
   | { type: 'creating'; draft: string }
-  | { type: 'renaming'; list: List; draft: string }
+  | RenamingDialog
   | { type: 'confirm-delete'; list: List }
   | { type: 'share-list'; list: List }
 
@@ -229,17 +230,7 @@ export default function ListsPage() {
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (() => {
         const rowActions = (list: List): ListRowActions => ({
-          renaming: dialog?.type === 'renaming' && dialog.list.id === list.id,
-          renameDraft: dialog?.type === 'renaming' && dialog.list.id === list.id ? dialog.draft : '',
-          onRenameDraftChange: (v: string) => setDialog({ type: 'renaming', list, draft: v }),
-          onStartRename: () => setDialog({ type: 'renaming', list, draft: list.name }),
-          onSubmitRename: () => {
-            if (dialog?.type !== 'renaming') return
-            const trimmed = dialog.draft.trim()
-            if (trimmed && trimmed !== list.name) renameMut.mutate({ id: list.id, name: trimmed })
-            setDialog(null)
-          },
-          onCancelRename: () => setDialog(null),
+          ...listRenameActions(list, dialog, setDialog, renameMut.mutate),
           onShare: () => setDialog({ type: 'share-list', list }),
           onExport: () => void exportCsv(list),
           exporting: exportingListId === list.id,

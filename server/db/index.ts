@@ -14,8 +14,7 @@ import * as schema from './schema'
 
 export type Sqlite = Database.Database
 export type Db = BetterSQLite3Database<typeof schema>
-// The handle a db.transaction() callback receives. Repos that run inside a
-// transaction take `Db | Tx` so the same query code works in both places.
+// The handle a db.transaction() callback receives.
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
 
 // Opens the database file and sets the connection pragmas. They are

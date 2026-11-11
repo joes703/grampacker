@@ -95,25 +95,20 @@ export default function ListDialogs({
       attempt,
       setState: setDialog,
       setSaving: setSavingAttempt,
-      run: async (settle) => {
+      run: async (settle, fail) => {
         try {
           await updateGearItem.mutateAsync({ id: gearTarget.id, patch: gearPatch })
         } catch {
-          settle((prev) => ({
-            ...prev,
-            saveError: "Couldn't confirm those gear changes saved. Try again, or refresh to check.",
-          }))
+          fail("Couldn't confirm those gear changes saved. Try again, or refresh to check.")
           return
         }
         if (listPatch && listTarget) {
           try {
             await updateItem.mutateAsync({ itemId: listTarget.id, patch: listPatch })
           } catch {
-            settle((prev) => ({
-              ...prev,
-              saveError:
-                "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
-            }))
+            fail(
+              "Saved the gear changes, but couldn't confirm the update to this list item. Try again, or refresh to check.",
+            )
             return
           }
         }

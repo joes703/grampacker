@@ -6,7 +6,6 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import type { ListFoodResponse } from '../../../shared/food'
 import { MobilePrimaryNavProvider } from '../../layout/mobile-primary-nav-context'
-import { SidebarDrawerProvider } from '../../layout/sidebar-drawer-context'
 
 // Shared setup for the ListDetailPage.*.test.tsx files, which mount the real
 // page. The module mocks cannot live here: vi.mock is hoisted only inside the
@@ -63,7 +62,10 @@ export function shimDialog() {
   }
 }
 
-export function testQueryClient(): QueryClient {
+// No mutation error handler, unlike src/test/mutation-hook-harness.tsx's
+// testQueryClient, so a meta.errorToast does not toast here. Pass that one as
+// `client` to see the toasts production shows.
+export function bareQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -78,9 +80,7 @@ export function ListDetailProviders({
 }) {
   return (
     <QueryClientProvider client={client}>
-      <MobilePrimaryNavProvider>
-        <SidebarDrawerProvider>{children}</SidebarDrawerProvider>
-      </MobilePrimaryNavProvider>
+      <MobilePrimaryNavProvider>{children}</MobilePrimaryNavProvider>
     </QueryClientProvider>
   )
 }
@@ -92,7 +92,7 @@ export function ListDetailProviders({
 export async function renderListDetailPage(
   path: string,
   routes: readonly string[],
-  { client = testQueryClient(), beside }: { client?: QueryClient; beside?: ReactNode } = {},
+  { client = bareQueryClient(), beside }: { client?: QueryClient; beside?: ReactNode } = {},
 ): Promise<QueryClient> {
   // Imported lazily so the test file's module mocks are installed first. The
   // app's own route table, so each pattern renders what the app renders.

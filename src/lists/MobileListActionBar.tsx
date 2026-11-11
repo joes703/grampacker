@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Plus, Settings2 } from 'lucide-react'
 import type { List } from '../lib/types'
-import { useSidebarDrawer } from '../layout/sidebar-drawer-context'
 import { useSuppressMobilePrimaryNav } from '../layout/mobile-primary-nav-context'
 import { buildMobileDestinationItems } from '../layout/mobile-nav-destinations'
 import MobileOptionsModal from '../components/MobileOptionsModal'
@@ -18,15 +17,16 @@ type Props = {
    *  and remains enabled. */
   list: List | null
   mode: ListDetailMode
+  /** Opens the page's gear drawer. Not offered in Food. */
+  onAdd: () => void
 }
 
 // Mobile-only bottom action bar for List Detail. Edit uses destinations plus
 // Add and Options. The Options slot is an edit-mode shortcut, not the only
 // entry point: the document toolbar's List options button renders in every
 // mode and viewport, so pack and food lose nothing by not repeating it
-// here. Food also drops Add - it has no drawer registration (see
-// ListDetailPage's useRegisterSidebarDrawer gate), so an Add here would sit
-// permanently disabled.
+// here. Food also drops Add: there is nothing to add gear to there, and
+// ListDetailPage closes the drawer in Food.
 //
 // Pack mode is not a slot here: pack is URL state on a list
 // (/lists/:id/pack), not a global destination. The list view navigation
@@ -35,23 +35,20 @@ type Props = {
 // Visibility: this component is only rendered by ListDetailPage's authed
 // branch, so it's automatically scoped away from Gear, Lists, Settings,
 // Help, and the public /r/:slug share view.
-export default function MobileListActionBar({ list, mode }: Props) {
+export default function MobileListActionBar({ list, mode, onAdd }: Props) {
   useSuppressMobilePrimaryNav()
-  const drawer = useSidebarDrawer()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const items: MobileBottomBarItem[] = buildMobileDestinationItems()
   // Add is available in Edit and Pack, so the "I forgot the water filter"
-  // flow stays one tap from anywhere on the list. Withheld in Food: the drawer
-  // isn't registered there (nothing to add gear to), so the button would be
-  // a dead, permanently-disabled control.
+  // flow stays one tap from anywhere on the list. Withheld in Food: there is
+  // nothing to add gear to there.
   if (mode !== 'food') {
     items.push({
       type: 'button',
       label: 'Add',
       icon: <Plus size={18} />,
-      onClick: () => drawer.setOpen(true),
-      disabled: !drawer.available,
+      onClick: onAdd,
       ariaLabel: 'Add gear to list',
     })
   }

@@ -41,7 +41,6 @@ import { type AddItemData } from './use-quick-add-form'
 import { packingSortableRows, sortableRows } from './SortableCategoryRows'
 import StatusPanel from '../components/StatusPanel'
 import { useDocumentTitle } from '../lib/use-document-title'
-import { useRegisterSidebarDrawer } from '../layout/sidebar-drawer-context'
 import {
   listDocumentTitle,
   persistedListPath,
@@ -160,12 +159,13 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
   // render the pencil button conditionally (read mode only) without
   // exposing NotesEditor's internal state up through a callback.
   const [notesEditing, setNotesEditing] = useState(false)
-  // Mobile sidebar drawer - open/setOpen are owned by SidebarDrawerContext so
-  // the bottom bar's Add action can toggle the drawer from a sibling subtree.
-  // The hook sets `available` to enable that action in edit and Pack modes.
-  const { open: drawerOpen, setOpen: setDrawerOpen } = useRegisterSidebarDrawer(
-    mode === 'edit' || mode === 'pack',
-  )
+  // The gear drawer, opened by the bottom bar's Add (MobileListActionBar) and
+  // by Pack's Add gear button. Edit and Pack offer it; Food has nothing to add
+  // gear to, so switching to Food closes it, and it does not reopen by itself
+  // on the way back. Adjusted during render, React's documented pattern for
+  // state derived from a prop change.
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  if (drawerOpen && mode === 'food') setDrawerOpen(false)
   // Single discriminated union for every transient dialog/modal/inline-form
   // on this page. Mirrors the pattern in src/gear/GearLibraryPage.tsx —
   // `type` discriminator, `null` for the closed state. Folding the partial-
@@ -751,7 +751,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
                 cap and the gear picker below always has room. */}
             {mode === 'edit' && (
               <DesktopListsPanel
-                lists={lists}
                 currentListId={listId}
                 className="shrink-0 max-h-72"
               />
@@ -874,9 +873,9 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
           At lg+: pack only, for the lg-to-xl band where Pack has no aside
           (PackDocument's Add gear button opens it).
 
-          Food is excluded at every width: it has no drawer registration (see
-          useRegisterSidebarDrawer above, gated the same `edit || pack` way)
-          and MobileListActionBar pushes no Add there. */}
+          Food is excluded at every width: switching to Food closes the
+          drawer (see drawerOpen above) and MobileListActionBar pushes no
+          Add there. */}
       {((isBelowLg && mode !== 'food') || mode === 'pack') && (
         <ListSidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen} title="Add from gear">
           <div className="flex h-full flex-col">{libraryPane}</div>
@@ -900,7 +899,7 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
           mode (see MobileListActionBar). The view navigation above stays
           available independently. lg:hidden inside the bar
           itself, so desktop never renders it. */}
-      <MobileListActionBar list={list} mode={mode} />
+      <MobileListActionBar list={list} mode={mode} onAdd={() => setDrawerOpen(true)} />
 
     </div>
   )

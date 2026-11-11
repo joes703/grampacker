@@ -104,3 +104,18 @@ describe('AddItemRow limits', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('AddItemRow layout', () => {
+  // jsdom has no layout, so the proof is the sizing classes. The draft row
+  // sits among the edit rows, so its inputs use their 3:2 name : description
+  // proportion (NameDescriptionCell, pinned in ItemRowScaffold.test.tsx).
+  it('sizes the name and description inputs as 3:2 columns, like the rows around it', () => {
+    renderRow()
+    const nameLabel = screen.getByPlaceholderText('Item name').closest('label') as HTMLElement
+    const descriptionLabel = screen
+      .getByPlaceholderText('Description (optional)')
+      .closest('label') as HTMLElement
+    expect(nameLabel.className).toContain('flex-[3]')
+    expect(descriptionLabel.className).toContain('flex-[2]')
+  })
+})

@@ -8,7 +8,7 @@ import {
   type FoodItemResponse,
   type ListFoodResponse,
 } from '../../shared/food'
-import type { FoodItemRow } from '../repos/food'
+import type { CreateFoodItemResult, FoodItemRow, UpdateFoodItemResult } from '../repos/food'
 import { type SessionVars } from '../middleware/session'
 import type { AppDeps } from '../env'
 
@@ -46,6 +46,42 @@ function toFoodItemResponse(row: FoodItemRow): FoodItemResponse {
   }
 }
 
+// Exhaustive on purpose, like the write-failure maps in lists.ts: a new repo
+// reason fails the build here instead of falling through to a wrong default.
+function createFoodFailure(
+  result: Extract<CreateFoodItemResult, { ok: false }>,
+): { status: 400 | 404 | 422; error: string } {
+  switch (result.reason) {
+    case 'not_found':
+      return { status: 404, error: 'Not found' }
+    case 'cap_exceeded':
+      return { status: 422, error: LIMIT_REACHED.foodItem }
+    case 'pack_rank_exhausted':
+      return { status: 422, error: 'This bag cannot accept more items' }
+    // A slot id that is not on this list or not this user's. Rejecting beats
+    // silently dropping the placement.
+    case 'invalid_slots':
+      return { status: 400, error: 'Invalid slots' }
+  }
+}
+
+function updateFoodFailure(
+  result: Extract<UpdateFoodItemResult, { ok: false }>,
+): { status: 400 | 404 | 422; error: string } {
+  switch (result.reason) {
+    case 'not_found':
+      return { status: 404, error: 'Not found' }
+    case 'invalid_slots':
+      return { status: 400, error: 'Invalid slots' }
+    // A location id that is not on this list or not this user's. Same
+    // wording and status as the gear item PATCH uses for the same failure.
+    case 'invalid_location':
+      return { status: 400, error: 'Invalid packing location' }
+    case 'pack_rank_exhausted':
+      return { status: 422, error: 'This bag cannot accept more items' }
+  }
+}
+
 export const foodRoutes = new Hono<{
   Bindings: AppDeps
   Variables: SessionVars
@@ -77,16 +113,8 @@ foodRoutes.post('/:id/food/items', async (c) => {
 
   const result = await c.get('repos').food.createItem(c.req.param('id'), parsed.data)
   if (!result.ok) {
-    if (result.reason === 'not_found') return c.json({ error: 'Not found' }, 404)
-    if (result.reason === 'cap_exceeded') {
-      return c.json({ error: LIMIT_REACHED.foodItem }, 422)
-    }
-    if (result.reason === 'pack_rank_exhausted') {
-      return c.json({ error: 'This bag cannot accept more items' }, 422)
-    }
-    // A slot id that is not on this list or not this user's. Rejecting beats
-    // silently dropping the placement.
-    return c.json({ error: 'Invalid slots' }, 400)
+    const { status, error } = createFoodFailure(result)
+    return c.json({ error }, status)
   }
   return c.json(toFoodItemResponse(result.row), 201)
 })
@@ -99,16 +127,8 @@ foodRoutes.patch('/:id/food/items/:itemId', async (c) => {
     .get('repos')
     .food.updateItem(c.req.param('id'), c.req.param('itemId'), parsed.data)
   if (!result.ok) {
-    if (result.reason === 'invalid_slots') return c.json({ error: 'Invalid slots' }, 400)
-    // A location id that is not on this list or not this user's. Same
-    // wording and status as the gear item PATCH uses for the same failure.
-    if (result.reason === 'invalid_location') {
-      return c.json({ error: 'Invalid packing location' }, 400)
-    }
-    if (result.reason === 'pack_rank_exhausted') {
-      return c.json({ error: 'This bag cannot accept more items' }, 422)
-    }
-    return c.json({ error: 'Not found' }, 404)
+    const { status, error } = updateFoodFailure(result)
+    return c.json({ error }, status)
   }
   return c.json(toFoodItemResponse(result.row))
 })

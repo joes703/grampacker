@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import type { ListItemWithGear } from '../lib/types'
 import ItemRow from './ItemRow'
 import SortableItemRow from './SortableItemRow'
+import PackItemRow from './PackItemRow'
 import { expectNameCanShrink } from '../test/row-shrink'
 
 afterEach(() => {
@@ -84,18 +85,18 @@ describe('ItemRow', () => {
 // packing" a trip to another view. The cell has two hard constraints: it must
 // sit OUTSIDE the wrapping label (which is the toggle-packed gesture) and it
 // must not reach paper, because the printed checklist keeps its old geometry.
-describe('ItemRow pack-mode weight', () => {
+describe('PackItemRow weight', () => {
   // ItemWeightValue splits the number and its unit into separate spans for
   // column alignment and carries the readable string on an aria-label, so the
   // value is reachable by label rather than by text.
   it('shows the weight on a pack row', () => {
-    render(<ItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
+    render(<PackItemRow item={item} weightUnit="g" />)
 
     expect(screen.getByLabelText('1200 g')).toBeInTheDocument()
   })
 
   it('keeps the weight outside the label that toggles packed', () => {
-    render(<ItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
+    render(<PackItemRow item={item} weightUnit="g" />)
 
     expect(screen.getByLabelText('1200 g').closest('label')).toBeNull()
   })
@@ -108,11 +109,9 @@ describe('ItemRow pack-mode weight', () => {
     const onSaveWeight = vi.fn()
     const user = userEvent.setup()
     render(
-      <ItemRow
+      <PackItemRow
         item={item}
         weightUnit="g"
-        isBelowLg={false}
-        packMode
         onSaveWeight={onSaveWeight}
       />,
     )
@@ -133,11 +132,9 @@ describe('ItemRow pack-mode weight', () => {
     const onUpdate = vi.fn()
     const user = userEvent.setup()
     render(
-      <ItemRow
+      <PackItemRow
         item={item}
         weightUnit="g"
-        isBelowLg={false}
-        packMode
         onUpdate={onUpdate}
         onSaveWeight={vi.fn()}
       />,
@@ -148,9 +145,9 @@ describe('ItemRow pack-mode weight', () => {
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
-  // The share view passes no handler. A static weight there must stay static.
+  // A row given no save handler must not offer an editor it cannot save.
   it('leaves the weight static when no save handler is supplied', () => {
-    render(<ItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
+    render(<PackItemRow item={item} weightUnit="g" />)
 
     expect(screen.queryByRole('button', { name: /Edit weight/ })).toBeNull()
   })
@@ -162,6 +159,16 @@ describe('SortableItemRow activator', () => {
 
     const handle = screen.getByRole('button', { name: 'Reorder Backpack' })
     expect(handle).toHaveAttribute('tabindex', '0')
+  })
+  // One props object (section-parts buildRowProps) serves both rows; packMode
+  // picks which one the wrapper renders.
+  it('renders the Pack checklist row when packMode is set, and the edit row otherwise', () => {
+    render(<SortableItemRow item={item} weightUnit="g" isBelowLg={false} packMode />)
+    expect(screen.getByRole('checkbox', { name: 'Mark Backpack ready' })).toBeInTheDocument()
+    cleanup()
+
+    render(<SortableItemRow item={item} weightUnit="g" isBelowLg={false} />)
+    expect(screen.queryByRole('checkbox', { name: 'Mark Backpack ready' })).toBeNull()
   })
 })
 

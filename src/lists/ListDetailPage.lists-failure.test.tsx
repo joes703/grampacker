@@ -18,7 +18,7 @@ import { queryKeys, fetchLists } from '../lib/queries'
 import {
   ListDetailProviders,
   stubViewport,
-  testQueryClient,
+  bareQueryClient,
 } from './test/list-detail-harness'
 
 // The last-list pointer is owner-tagged: both ListDetailPage's write/self-heal
@@ -86,7 +86,7 @@ vi.mock('../lib/queries', async (importOriginal) => {
 // cannot produce that state on its own.
 async function renderDetail(seedLists?: List[]) {
   const { default: ListDetailPage } = await import('./ListDetailPage')
-  const qc = testQueryClient()
+  const qc = bareQueryClient()
   if (seedLists) qc.setQueryData(queryKeys.lists(), seedLists)
   // The probe sits outside the router, beside the page rather than inside its
   // route, so this file keeps its own render.
