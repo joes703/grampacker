@@ -38,11 +38,7 @@ vi.mock('../lib/queries', async () => {
   const optimistic = await import('../lib/queries/optimistic')
   const { nextSortOrder } = await import('../lib/queries/sort-keys')
   return {
-    queryKeys: {
-      lists: () => ['lists'],
-      listItems: (id: string) => ['list-items', id],
-      categories: () => ['categories'],
-    },
+    queryKeys: (await import('../lib/queries/keys')).queryKeys,
     updateList: q.updateList,
     duplicateList: q.duplicateList,
     deleteList: q.deleteList,

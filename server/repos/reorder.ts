@@ -14,10 +14,6 @@ import type { Tx } from '../db'
 // cannot, inside the caller's immediate transaction, but the WHERE does not
 // rely on that) is simply not updated. Callers run this inside
 // db.transaction(..., { behavior: 'immediate' }).
-//
-// An earlier comment said a generic helper "costs more in drizzle type
-// gymnastics than the dozen duplicated lines are worth"; drizzle 0.45 types
-// this signature cleanly, so that reason expired.
 export function reorderOwnedSet(
   tx: Tx,
   table: SQLiteTable,

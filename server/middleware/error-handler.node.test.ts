@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { describeError, recordAuthLog, resetLogBudget } from './error-handler'
 
 // The shape every log entry is built from. Pure: no binding, no app, so it
-// runs on Node (docs/testing-and-ci.md section 3). The other half - a REAL
+// runs on Node (docs/testing-and-ci.md, "Choosing a tier"). The other half - a REAL
 // Drizzle failure against SQLite, and better-auth's own logger calls - lives in
 // error-handler.test.ts and server/auth-error-logging.test.ts.
 

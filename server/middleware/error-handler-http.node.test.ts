@@ -10,8 +10,9 @@ import {
 import { isDevEnvironment, securityHeaders } from './security-headers'
 import type { AppDeps, AppEnv } from '../env'
 
-// Synthetic handlers read only the dev flag; false selects production headers.
-const prodEnv = { dev: false } as AppDeps
+// The synthetic apps read nothing from c.env; securityHeaders(false) below is
+// what selects the production headers.
+const prodEnv = {} as AppDeps
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

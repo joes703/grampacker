@@ -34,15 +34,18 @@ Mobile is tuned for touch, desktop for pointer scanning. Pointer users can
 read denser body text than touch users, so **mobile sizes stay unchanged
 when desktop is tuned**.
 
-| | Mobile (< lg) | Desktop (>= lg) |
-|---|---|---|
-| Row height | 44px (`min-h-11`) | 28px (`lg:min-h-7`) |
-| Header height | 44px (`min-h-11`) | 32px (`lg:min-h-8`) |
-| Row control target | 40px (`h-10 w-10`) | 28x24px (`lg:h-7 lg:w-6`) |
-| Leading control target | 40px (`h-10 w-10`) | 28x20px (`lg:h-7 lg:w-5`) |
-| Row padding | `px-2 py-2` | `lg:px-3 lg:py-0` |
-| Header padding | `px-3 py-0` | `px-3 py-0` |
-| Body text | 14px (`text-sm`) | 13px (`lg:text-[13px]`) |
+| | Mobile (< lg) | Desktop (>= lg) | Token |
+|---|---|---|---|
+| Row height | 44px | 28px | `FLAT_TABLE_ROW` |
+| Header height | 44px | 32px | `FLAT_TABLE_HEADER` |
+| Row control target | 40px | 28x24px | `ROW_CONTROL_TARGET` |
+| Leading control target | 40px | 28x20px | `ROW_LEADING_CONTROL_TARGET` |
+| Row padding | 8px all round | 12px sides, 0 top and bottom | `FLAT_TABLE_ROW_PADDING` |
+| Header padding | 12px sides, 0 top and bottom | same | `FLAT_TABLE_HEADER_PADDING` |
+| Body text | 14px | 13px | `FLAT_TABLE_BODY_TEXT` |
+
+The class strings live in the tokens (`src/components/flat-table-styles.ts`);
+this table records the sizes they are meant to produce.
 
 The desktop header is 4px taller than the desktop row, so the section
 divider reads as its own strip without looking like a card.

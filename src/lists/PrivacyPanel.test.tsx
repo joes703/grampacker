@@ -14,10 +14,8 @@ const { updateList, rotateShareLink } = vi.hoisted(() => ({
   rotateShareLink: vi.fn(),
 }))
 
-vi.mock('../lib/queries', () => ({
-  queryKeys: {
-    lists: () => ['lists'],
-  },
+vi.mock('../lib/queries', async () => ({
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
   updateList,
   rotateShareLink,
   makeOptimisticUpdate: () => ({}),

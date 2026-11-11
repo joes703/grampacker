@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SetStateAction } from 'react'
 import { runGuardedSave } from './guarded-save'
 import { showToast } from './toast'
@@ -24,6 +24,10 @@ function cell<T>(initial: T) {
 }
 
 describe('runGuardedSave', () => {
+  beforeEach(() => {
+    vi.mocked(showToast).mockClear()
+  })
+
   it('installs the attempt in both slots, then clears only the saving slot', async () => {
     const dialog = cell<Dialog | null>(null)
     const saving = cell<Dialog | null>(null)
@@ -68,6 +72,89 @@ describe('runGuardedSave', () => {
     await Promise.resolve()
     expect(dialog.box.value).toBe(reopened)
     expect(dialog.box.value?.saveError).toBeNull()
+  })
+
+  // AGENTS.md: a failure the user cannot see is not reported. The dialog stays
+  // closable while saving, so a failure can outlive it; it must still reach
+  // the user, as a toast instead of an inline error.
+  it('a failure while the attempt is open is shown inline, not toasted', async () => {
+    const dialog = cell<Dialog | null>(null)
+    const attempt: Dialog = { id: 'a', saveError: null }
+    const d = deferred()
+    runGuardedSave<Dialog>({
+      attempt,
+      setState: dialog.set,
+      run: async (_settle, fail) => {
+        await d.promise
+        fail('Could not confirm')
+      },
+    })
+    d.resolve()
+    await d.promise
+    await Promise.resolve()
+    expect(dialog.box.value).toEqual({ id: 'a', saveError: 'Could not confirm' })
+    expect(showToast).not.toHaveBeenCalled()
+  })
+
+  it('a failure landing after the attempt was closed is toasted, and nothing reopens', async () => {
+    const dialog = cell<Dialog | null>(null)
+    const attempt: Dialog = { id: 'a', saveError: null }
+    const d = deferred()
+    runGuardedSave<Dialog>({
+      attempt,
+      setState: dialog.set,
+      run: async (_settle, fail) => {
+        await d.promise
+        fail('Could not confirm')
+      },
+    })
+    dialog.set(null)
+    d.resolve()
+    await d.promise
+    await Promise.resolve()
+    expect(dialog.box.value).toBeNull()
+    expect(showToast).toHaveBeenCalledWith('Could not confirm', { type: 'error' })
+  })
+
+  it('a failure landing after the attempt was replaced is toasted, not stamped on the new dialog', async () => {
+    const dialog = cell<Dialog | null>(null)
+    const attempt: Dialog = { id: 'a', saveError: null }
+    const d = deferred()
+    runGuardedSave<Dialog>({
+      attempt,
+      setState: dialog.set,
+      run: async (_settle, fail) => {
+        await d.promise
+        fail('Could not confirm')
+      },
+    })
+    const reopened: Dialog = { id: 'a', saveError: null }
+    dialog.set(reopened)
+    d.resolve()
+    await d.promise
+    await Promise.resolve()
+    expect(dialog.box.value).toBe(reopened)
+    expect(showToast).toHaveBeenCalledWith('Could not confirm', { type: 'error' })
+  })
+
+  // An unmounted page never runs the updater, so "the updater did not apply
+  // it" must mean toast, not "already shown".
+  it('a failure after the owning component unmounted is toasted', async () => {
+    const attempt: Dialog = { id: 'a', saveError: null }
+    const d = deferred()
+    runGuardedSave<Dialog>({
+      attempt,
+      // A setter that never runs its updater, as React does after unmount.
+      setState: () => {},
+      run: async (_settle, fail) => {
+        await d.promise
+        fail('Could not confirm')
+      },
+    })
+    d.resolve()
+    await d.promise
+    await Promise.resolve()
+    expect(showToast).toHaveBeenCalledWith('Could not confirm', { type: 'error' })
   })
 
   it("an older attempt settling does not clear a newer attempt's saving slot", async () => {

@@ -39,11 +39,7 @@ vi.mock('./PrivacyPanel', () => ({ default: () => <div>sharing controls</div> })
 vi.mock('../lib/queries', async () => {
   const optimistic = await import('../lib/queries/optimistic')
   return {
-    queryKeys: {
-      lists: () => ['lists'],
-      listItems: (id: string) => ['list-items', id],
-      categories: () => ['categories'],
-    },
+    queryKeys: (await import('../lib/queries/keys')).queryKeys,
     updateList: q.updateList,
     duplicateList: q.duplicateList,
     deleteList: q.deleteList,

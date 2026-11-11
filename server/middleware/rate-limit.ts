@@ -236,7 +236,7 @@ export function emailBucketKey(secret: string, email: string): string {
 // address's bucket as well as the caller's IP.
 //
 // READ A CLONE. This is not defensive style, it is required: the route handler
-// passes the RAW request straight to better-auth (`createAuth(...).handler(
+// passes the RAW request straight to better-auth (`c.env.auth.handler(
 // c.req.raw)` in server/index.ts), which bypasses Hono's body cache entirely.
 // Calling `c.req.json()` here would populate that cache by consuming
 // `raw`'s body stream, and better-auth would then throw "Body has already been

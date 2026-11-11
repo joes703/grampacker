@@ -285,9 +285,26 @@ export type ReorderPackListItemsRequest = z.infer<
   typeof reorderPackListItemsRequestSchema
 >
 
+// The pack-order payload, gear and food halves together. The request schema
+// above validates it; the client builds it (src/lists/pack-rows.ts) and the
+// repo applies it (server/repos/pack-reorder.ts).
 export type ReorderPackPayload = {
   items: { id: string; packSortOrder: number }[]
   foodItems: { id: string; packSortOrder: number }[]
+}
+
+// Display order within a pack cohort, shared so the server (unionOrder) and
+// the client (comparePackRows) agree: rank first, gear before food on a
+// cross-table tie (per-table unique indexes cannot rule ties out across
+// tables), id as the total-order backstop.
+export type PackOrderKey = { kind: 'gear' | 'food'; rank: number; id: string }
+
+export function comparePackOrder(a: PackOrderKey, b: PackOrderKey): number {
+  return (
+    a.rank - b.rank ||
+    (a.kind === b.kind ? 0 : a.kind === 'gear' ? -1 : 1) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  )
 }
 
 

@@ -587,8 +587,7 @@ export default function GearLibraryPage() {
           so a cold load with the browser offline parks at fetchStatus 'paused'
           and reports isLoading FALSE with zero rows. That fell through to the
           empty state below, which greeted an offline user who owns 200 items
-          with the brand-new-user onboarding pitch. Same class of bug as PR 4.1
-          on /lists. */}
+          with the brand-new-user onboarding pitch. /lists gates the same way. */}
       {gearItemsFailed || categoriesFailed ? (
         <StatusPanel
           title="Couldn't load your gear"
@@ -714,7 +713,7 @@ export default function GearLibraryPage() {
               attempt,
               setState: setDialog,
               setSaving: setSavingAttempt,
-              run: async (settle) => {
+              run: async (settle, fail) => {
                 try {
                   if (attempt.type === 'edit-item') {
                     await editItem.mutateAsync({ id: attempt.item.id, patch: gearPatch })
@@ -727,20 +726,18 @@ export default function GearLibraryPage() {
                   // back, so by here the caches are already consistent and there is
                   // nothing to undo - just something to say. Catching is also what
                   // keeps this off the unhandled-rejection path.
-                  settle((prev) => ({
-                    ...prev,
-                    // Create and edit diverge, and the reason is retry safety rather
-                    // than tone. The edit is a PATCH: repeating it converges, so
-                    // "try again" is sound advice. The create is a POST that mints
-                    // an id, so if the server committed and the response was lost, a
-                    // blind retry adds the item twice - and a rejected request is
-                    // never proof the server did not commit (apiFetch also rejects
-                    // when a 200 fails DTO validation).
-                    saveError:
-                      attempt.type === 'edit-item'
-                        ? "Couldn't confirm those changes saved. Try again, or refresh to check."
-                        : "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
-                  }))
+                  // Create and edit diverge, and the reason is retry safety rather
+                  // than tone. The edit is a PATCH: repeating it converges, so
+                  // "try again" is sound advice. The create is a POST that mints
+                  // an id, so if the server committed and the response was lost, a
+                  // blind retry adds the item twice - and a rejected request is
+                  // never proof the server did not commit (apiFetch also rejects
+                  // when a 200 fails DTO validation).
+                  fail(
+                    attempt.type === 'edit-item'
+                      ? "Couldn't confirm those changes saved. Try again, or refresh to check."
+                      : "Couldn't confirm the item was created. Refresh before retrying, in case it was.",
+                  )
                 }
               },
             })
@@ -828,7 +825,7 @@ export default function GearLibraryPage() {
             runGuardedSave<DialogState>({
               attempt,
               setState: setDialog,
-              run: async (settle) => {
+              run: async (_settle, fail) => {
                 try {
                   await createListFromSelectionMut.mutateAsync({
                     name,
@@ -836,11 +833,7 @@ export default function GearLibraryPage() {
                     gearItemIds: Array.from(selectedIds),
                   })
                 } catch {
-                  settle((prev) => ({
-                    ...prev,
-                    saveError:
-                      "Couldn't confirm the list was created. Refresh before retrying, in case it was.",
-                  }))
+                  fail("Couldn't confirm the list was created. Refresh before retrying, in case it was.")
                 }
               },
             })

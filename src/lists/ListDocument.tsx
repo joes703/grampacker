@@ -167,10 +167,8 @@ export default function ListDocument({
           foodRows={food}
           weightUnit={weightUnit}
           isBelowLg={isBelowLg}
-          // CONSUMABLE, not the bare subtotal. `subtotalGrams` is the Worn
-          // section's channel and CategoryFooterWeights labels it "Worn".
-          // Food is consumable by definition, the same bucket its grams
-          // already land in upstream.
+          // CONSUMABLE, not base or worn: food is consumable by definition,
+          // the same bucket its grams already land in upstream.
           consumableSubtotalGrams={foodGrams}
           // No grip, kebab or Edit link: the rows are a read-out, authored in
           // the Food view. Both control boxes are reserved empty so this

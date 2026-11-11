@@ -1,4 +1,5 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
+import type { ReorderPackPayload } from '../../../shared/lists'
 import { showToast } from '../toast'
 
 // This module holds only the TanStack Query cache lifecycle helpers
@@ -193,8 +194,9 @@ export function makeOptimisticInsert<TList extends { id: string }, TInput>(opts:
 // Its rollback restores the WHOLE array as it was at onMutate, undoing any other
 // write to the cache that landed in the meantime, even one the server saved.
 // Where other rows are written concurrently (the list-items and food caches,
-// with their Packed/Ready ticks) roll back field-scoped instead, through
-// fieldScopedCache in src/lib/queries/field-scoped.ts.
+// with their Packed/Ready ticks, and the lists' share/draft flips) roll back
+// field-scoped instead, through fieldScopedCache in
+// src/lib/queries/field-scoped.ts.
 export function makeOptimisticUpdate<TList extends { id: string }, TInput>(opts: CommonOpts & {
   id: (input: TInput) => string
   apply: (item: TList, input: TInput) => TList
@@ -310,10 +312,6 @@ class OptimisticReorderValidationError extends Error {
 // neither half is a permutation of its own subset - which is why the rule is
 // stated per half and the server (server/repos/pack-reorder.ts) does the
 // same.
-export type UnionPackReorderUpdates = {
-  items: { id: string; packSortOrder: number }[]
-  foodItems: { id: string; packSortOrder: number }[]
-}
 
 type FoodCacheShape = {
   dayCount: number
@@ -322,7 +320,7 @@ type FoodCacheShape = {
 }
 
 function validateUnionPackReorderPayload(
-  updates: UnionPackReorderUpdates,
+  updates: ReorderPackPayload,
   cachedGear: { id: string; packSortOrder: number; packingLocationId?: string | null }[] | undefined,
   cachedFood: FoodCacheShape | undefined,
 ): string | null {
@@ -395,7 +393,7 @@ export function makeOptimisticUnionPackReorder<
   return {
     // Synchronous, un-awaited cancels: the drag-animation reason in "When
     // cancelQueries is awaited" at the top of this file.
-    onMutate: (updates: UnionPackReorderUpdates) => {
+    onMutate: (updates: ReorderPackPayload) => {
       void qc.cancelQueries({ queryKey: gearQueryKey })
       void qc.cancelQueries({ queryKey: foodQueryKey })
       const previousGear = qc.getQueryData<T[]>(gearQueryKey)
@@ -450,7 +448,7 @@ export function makeOptimisticUnionPackReorder<
     // follow. onSettled's refetch remains the final authority either way.
     onError: (
       err: unknown,
-      updates: UnionPackReorderUpdates,
+      updates: ReorderPackPayload,
       ctx: { previousGear: T[] | undefined; previousFood: F | undefined } | undefined,
     ) => {
       if (err instanceof OptimisticReorderValidationError) return

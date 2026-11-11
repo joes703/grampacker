@@ -12,26 +12,20 @@ import KebabMenu from '../components/KebabMenu'
 import RowIconButton from '../components/RowIconButton'
 import {
   COL_ICON,
-  packIconSlot,
-  COL_QTY,
   COL_QTY_EDIT,
   COL_QTY_MOBILE,
   COL_WEIGHT,
   COL_WEIGHT_MOBILE,
-  FLAT_TABLE_BODY_TEXT,
   FLAT_TABLE_NUMERIC_TEXT,
   FLAT_TABLE_QUANTITY_TEXT,
-  PACK_ROW_WEIGHT_CELL,
   itemRowShell,
 } from '../components/flat-table-styles'
 import ItemWeightValue from '../components/ItemWeightValue'
 import { MobileRowBody, NameDescriptionCell } from '../components/ItemRowScaffold'
-import PackRowFrame from './PackRowFrame'
 import { RowMenuItem, RowMenuSeparator } from '../components/RowMenuItem'
 import SwipeableRow from '../components/SwipeableRow'
 import InlineWeight from '../components/InlineWeight'
 import InlineQuantity from '../components/InlineQuantity'
-import GearStatusBadge from '../components/gear/GearStatusBadge'
 import GearStatusMenuItems from '../components/gear/GearStatusMenuItems'
 import { WornIcon, ConsumableIcon } from './list-item-flags'
 import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
@@ -66,9 +60,8 @@ import { MAX_LIST_ITEM_QUANTITY } from '../lib/caps'
 //   - `outerRef` / `outerStyle` are the dnd-kit ref + transform style passed
 //     by the sortable wrapper. Share view omits both.
 //
-// Pack-mode rendering branches early and only renders the checklist-style
-// row (checkbox + name + status icons + qty). Pack mode is authed-only;
-// share view never passes packMode.
+// Pack rows are a separate component, PackItemRow, so the share page's
+// bundle does not carry Pack's row (or its frame).
 export type ItemRowProps = {
   item: ListItemWithGear
   weightUnit: WeightUnit
@@ -76,6 +69,9 @@ export type ItemRowProps = {
   // from the page (not via per-row hook) so a 300-row list registers one
   // matchMedia subscription, not 300. Set in sharedGroupProps.
   isBelowLg: boolean
+  // Picks the row: SortableItemRow and PackSection render PackItemRow when it
+  // is set, and ItemRow (the edit and share row) ignores it. Lives on these
+  // props because section-parts' buildRowProps builds one object for both.
   packMode?: boolean
   // Read by the SortableItemRow wrapper only; plain ItemRow ignores it. Lives
   // on the base Props so the sections' buildRowProps() output can spread the
@@ -92,12 +88,10 @@ export type ItemRowProps = {
   // status sub-menu. Omitted on the share view, which can't mutate.
   onSetGearStatus?: (status: GearStatus) => void
   dragHandle?: ReactNode
-  // Trailing control on a PACK-mode row, injected as an opaque node (see the
-  // matching note in PackSection). Pack mode is now also the organizer, so
-  // a row carries a "move to location" menu - the keyboard- and
-  // touch-reachable equivalent of dragging it into another section. Injected
-  // rather than built here because this module renders on the public share
-  // view and must not import the authenticated packing components.
+  // Trailing control on a PACK row (PackItemRow; ItemRow ignores it),
+  // injected as an opaque node by the page. Pack mode is also the organizer,
+  // so a row carries a "move to location" menu - the keyboard- and
+  // touch-reachable equivalent of dragging it into another section.
   rowAction?: ReactNode
   outerRef?: (el: HTMLElement | null) => void
   outerStyle?: React.CSSProperties
@@ -107,7 +101,6 @@ export default function ItemRow({
   item,
   weightUnit,
   isBelowLg,
-  packMode = false,
   onUpdate,
   onSaveName,
   onSaveDescription,
@@ -116,7 +109,6 @@ export default function ItemRow({
   onEditGearItem,
   onSetGearStatus,
   dragHandle,
-  rowAction,
   outerRef,
   outerStyle,
 }: ItemRowProps) {
@@ -130,86 +122,6 @@ export default function ItemRow({
   const editable = Boolean(onUpdate)
   const showKebab = Boolean(onDelete)
 
-  // Pack mode: checklist row — name, worn/consumable status, qty. The
-  // skeleton (shell, grip slot, Ready checkbox, wrapping label, print
-  // squares) is PackRowFrame, shared with SortableFoodRow so gear and food
-  // read as one checklist; this file keeps only the gear-specific cells.
-  if (packMode) {
-    return (
-      <PackRowFrame
-        name={name}
-        isPacked={item.isPacked}
-        isReady={item.isReady}
-        onUpdate={onUpdate}
-        outerRef={outerRef}
-        outerStyle={outerStyle}
-        // Drag grip leads the row: Pack is where rows are reordered and
-        // moved between locations.
-        dragHandle={dragHandle}
-        // Status sits between the packed checkbox and the name. Badge
-        // returns null for 'active' so the common case takes no space.
-        statusBadge={
-          <GearStatusBadge status={item.gearItem.status} compact className="shrink-0 print:hidden" />
-        }
-        description={
-          <span
-            className={`block w-full truncate ${FLAT_TABLE_BODY_TEXT} font-normal ${
-              // gray-500, not gray-300: gray-300 is #d1d5dc, which is
-              // 1.41:1 against the bg-gray-50 a packed row sits on - not
-              // "faint", effectively invisible. A packed row is still
-              // operable (this is inside the label that unpacks it), so
-              // none of it is exempt as an inactive control. gray-500 is
-              // the lightest token that clears 4.5:1 there (4.63:1), which
-              // means the description can no longer fade a step further
-              // than the name; the line-through and the gray row carry
-              // "done" instead, and they carry it without relying on color.
-              item.isPacked ? 'text-gray-500 line-through print:text-gray-600 print:no-underline' : 'text-gray-500'
-            }`}
-          >
-            {description}
-          </span>
-        }
-      >
-        <span className={packIconSlot(item.isWorn)}>
-          {item.isWorn && <WornIcon />}
-        </span>
-        <span className={packIconSlot(item.isConsumable)}>
-          {item.isConsumable && <ConsumableIcon />}
-        </span>
-        <span className={`${COL_QTY} text-center ${FLAT_TABLE_QUANTITY_TEXT} text-gray-500`}>
-          {item.quantity}
-        </span>
-        {/* Weight. A SIBLING of the frame's label, never a child (the frame
-            header owns the rule: anything inside the label joins the Packed
-            toggle gesture). Name and description sit inside the label and so
-            stay in the dialog; weight is the one field you actually want to
-            fix while packing, and it happens to be the one that can be.
-
-            lg+ only. The mobile pack row already drops its description for
-            room, and a w-24 cell at 375px would crush the name - mobile Pack
-            keeps the layout it has.
-
-            print:hidden because the printed checklist keeps its existing
-            geometry (the document column retains max-w-3xl under print: for
-            the same reason). */}
-        <InlineWeight
-          grams={itemWeight}
-          unit={weightUnit}
-          onSave={onSaveWeight}
-          itemName={name}
-          className={PACK_ROW_WEIGHT_CELL}
-          // While editing the cell becomes a flex row (input + unit toggle),
-          // so it cannot keep inline-block.
-          editingClassName={`hidden lg:flex ${COL_WEIGHT} print:hidden`}
-        />
-        {/* Packing menu (move to location / use as container). Not print-hidden
-            here: the injected control is a RowIconButton, which carries
-            print:hidden on its own base, and its portaled menu is hidden by
-            POPOVER_SURFACE. */}
-        {rowAction}
-      </PackRowFrame>
-    )
-  }
 
   // Swipe-to-remove is mobile-only and authed-only: onDelete is undefined on
   // the read-only share view, so share rows never become swipeable. In the
@@ -258,7 +170,7 @@ export default function ItemRow({
           />
         </div>
       ) : (
-        /* Desktop branch (≥ lg). The name/description 2:3 cell is the shared
+        /* Desktop branch (≥ lg). The name/description 3:2 cell is the shared
            NameDescriptionCell (editable per-handler, static on the share
            view); the columns after it are this surface's own. */
         <>

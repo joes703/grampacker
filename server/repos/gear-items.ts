@@ -6,8 +6,9 @@ import type { Db, Tx } from '../db'
 import { categories, gearItems } from '../db/schema'
 import { isTriggerAbort } from './db-errors'
 import { isCategoryCapError } from './categories'
+import { ownedCategoryIds, ownedGearIds, ownsCategory } from './ownership'
 
-const cols = {
+export const gearItemColumns = {
   id: gearItems.id,
   categoryId: gearItems.categoryId,
   name: gearItems.name,
@@ -98,34 +99,15 @@ export function isCapError(err: unknown): boolean {
 // bulk request schemas cap them at 500 ids (shared/gear.ts), 501 bound
 // parameters with the user id; SQLite allows 32766 (server/db/sqlite.test.ts).
 export function createGearItemsRepo(db: Db, userId: string) {
-  function ownsCategory(tx: Tx, categoryId: string): boolean {
-    const row = tx
-      .select({ id: categories.id })
-      .from(categories)
-      .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
-      .limit(1)
-      .get()
-    return Boolean(row)
-  }
-
-  // Owned-set membership in JS rather than inArray over the input: one query
-  // whatever the input size, and the gear cap bounds the scan at 500 rows.
   function ownsAllGearIds(tx: Tx, ids: string[]): boolean {
-    const owned = new Set(
-      tx
-        .select({ id: gearItems.id })
-        .from(gearItems)
-        .where(eq(gearItems.userId, userId))
-        .all()
-        .map((r) => r.id),
-    )
+    const owned = ownedGearIds(tx, userId)
     return ids.every((id) => owned.has(id))
   }
 
   return {
     async list(): Promise<GearItemRow[]> {
       return db
-        .select(cols)
+        .select(gearItemColumns)
         .from(gearItems)
         .where(eq(gearItems.userId, userId))
         .orderBy(asc(gearItems.sortOrder), asc(gearItems.name))
@@ -135,7 +117,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
       try {
         return db.transaction(
           (tx): CreateGearResult => {
-            if (input.categoryId !== null && !ownsCategory(tx, input.categoryId)) {
+            if (input.categoryId !== null && !ownsCategory(tx, userId, input.categoryId)) {
               return { ok: false, reason: 'invalid_category' }
             }
             const now = Date.now()
@@ -155,7 +137,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
                 createdAt: now,
                 updatedAt: now,
               })
-              .returning(cols)
+              .returning(gearItemColumns)
               .get()
             return { ok: true, row }
           },
@@ -203,16 +185,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
         return db.transaction(
           (tx): ImportGearResult => {
             if (existingIds.size > 0) {
-              // Membership against ALL owned category ids: one query
-              // whatever the import size, bounded by the category cap.
-              const owned = new Set(
-                tx
-                  .select({ id: categories.id })
-                  .from(categories)
-                  .where(eq(categories.userId, userId))
-                  .all()
-                  .map((r) => r.id),
-              )
+              const owned = ownedCategoryIds(tx, userId)
               for (const id of existingIds) {
                 if (!owned.has(id)) return { ok: false, reason: 'invalid_category' }
               }
@@ -286,14 +259,14 @@ export function createGearItemsRepo(db: Db, userId: string) {
       if (patch.status !== undefined) set.status = patch.status
       return db.transaction(
         (tx): UpdateGearResult => {
-          if (typeof patch.categoryId === 'string' && !ownsCategory(tx, patch.categoryId)) {
+          if (typeof patch.categoryId === 'string' && !ownsCategory(tx, userId, patch.categoryId)) {
             return { ok: false, reason: 'invalid_category' }
           }
           const row = tx
             .update(gearItems)
             .set(set)
             .where(and(eq(gearItems.id, id), eq(gearItems.userId, userId)))
-            .returning(cols)
+            .returning(gearItemColumns)
             .get()
           return row ? { ok: true, row } : { ok: false, reason: 'not_found' }
         },
@@ -310,8 +283,8 @@ export function createGearItemsRepo(db: Db, userId: string) {
     },
 
     // Bulk ops are all-or-nothing: one non-owned id rejects the whole call
-    // with zero writes (stricter than the old RLS silent-skip; the UI never
-    // legitimately sends foreign ids).
+    // with zero writes, rather than skipping it. The UI never legitimately
+    // sends foreign ids.
     async bulkDelete(ids: string[]): Promise<boolean> {
       return db.transaction(
         (tx) => {
@@ -331,7 +304,7 @@ export function createGearItemsRepo(db: Db, userId: string) {
     ): Promise<'ok' | 'invalid_category' | 'not_found'> {
       return db.transaction(
         (tx) => {
-          if (categoryId !== null && !ownsCategory(tx, categoryId)) {
+          if (categoryId !== null && !ownsCategory(tx, userId, categoryId)) {
             return 'invalid_category'
           }
           if (!ownsAllGearIds(tx, ids)) return 'not_found'

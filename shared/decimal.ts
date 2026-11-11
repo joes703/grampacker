@@ -15,14 +15,11 @@ import { z } from 'zod'
 // use it without importing each other.
 export function decimalNumber(opts: {
   min: number
-  minExclusive?: boolean
   max: number
   decimals: number
 }) {
   const scale = 10 ** opts.decimals
-  let schema = z.number().max(opts.max)
-  schema = opts.minExclusive ? schema.gt(opts.min) : schema.min(opts.min)
-  return schema.refine((v) => Math.round(v * scale) / scale === v, {
+  return z.number().min(opts.min).max(opts.max).refine((v) => Math.round(v * scale) / scale === v, {
     message: `at most ${opts.decimals} decimal places`,
   })
 }

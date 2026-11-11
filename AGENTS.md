@@ -79,8 +79,9 @@ dated.
 - **Route handlers never touch the DB.** They receive user-scoped repositories
   (`reposForUser`) from the session middleware. Lint blocks the DB imports
   in `server/**` outside the exempt list in `eslint.config.js`, and cannot
-  be waived inline. It does not see `c.env.DB`; do not reach for that
-  either. If the rule blocks you, the design is wrong. One exception:
+  be waived inline. It does not see `c.env.db`, the Drizzle instance every
+  request carries for the middleware; do not reach for that either. If the
+  rule blocks you, the design is wrong. One exception:
   `/api/health` in `server/index.ts` runs `select 1` to prove the
   database answers. It reads no table and no user data.
 - **Every query is scoped to the session's user.** Exceptions: the anonymous

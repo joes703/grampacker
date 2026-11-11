@@ -4,6 +4,7 @@ import { queryKeys } from '../lib/queries'
 import { queries } from '../lib/queries/options'
 import { foodItemsShape, updateFoodItem } from '../lib/queries/food'
 import { fieldScopedCache } from '../lib/queries/field-scoped'
+import { burstRefetch } from '../lib/queries/burst-refetch'
 import { mutationKeys } from '../lib/queries/keys'
 import { showToast } from '../lib/toast'
 import { foodGramsFor } from '../lib/weight-breakdown'
@@ -66,17 +67,23 @@ export function useListFood(listId: string) {
   // the fields THIS patch touched rewind, onto the CURRENT row, so a reorder
   // or the sibling checkbox that succeeded while this was in flight survives
   // the rollback.
+  //
+  // And the same burst rule as gear's updateItem: a burst of ticks refetches
+  // once, after the last one settles (src/lib/queries/burst-refetch.ts).
+  const packStateMutKey = mutationKeys.updateFoodPackState(listId)
+  const packStateBurst = burstRefetch(qc, packStateMutKey, queryKeys.listFood(listId))
   const patchPackState = useMutation({
-    mutationKey: mutationKeys.updateFoodPackState(listId),
+    mutationKey: packStateMutKey,
     mutationFn: ({ foodId, patch }: FoodPatchVars) =>
       updateFoodItem(listId, foodId, patch),
-    onMutate: ({ foodId, patch }: FoodPatchVars) => foodCache.patchRow(foodId, patch),
+    onMutate: ({ foodId, patch }: FoodPatchVars) => {
+      packStateBurst.start()
+      return foodCache.patchRow(foodId, patch)
+    },
     onError: (_err, { foodId }, previousFields) => {
       if (previousFields) foodCache.restoreRow(foodId, previousFields)
     },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
-    },
+    onSettled: () => packStateBurst.settle(),
   })
 
   // Moving a food row between packing locations - the write behind both a

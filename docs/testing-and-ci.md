@@ -116,7 +116,10 @@ A local number explains relative cost; it does not prove a CI saving.
 - Use `pull_request`, never `pull_request_target`, for code from a pull
   request.
 - `image.yml` builds and checks the production image on every pull request.
-  A manual dispatch from `main` reruns all checks and publishes the image.
+  A manual dispatch from `main` reruns the build, unit, API and migration
+  checks on that commit and publishes the image. The shipped-migration and
+  action-pin checks do not rerun; they ran on the pull request that brought
+  the commit to `main`.
   Only when `deploy=true` does its final job use the production environment's
   SSH key to deploy that exact digest to the VPS.
 - The `production` environment admits `main` only. Its SSH key is never a

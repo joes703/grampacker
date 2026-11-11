@@ -3,12 +3,11 @@ import { QueryClient } from '@tanstack/react-query'
 import type { PackingLocation } from '../lib/types'
 
 const h = vi.hoisted(() => ({
-  queryKeys: { packingLocations: (id: string) => ['packing-locations', id] as const },
   fetchPackingLocations: vi.fn<(listId: string) => Promise<PackingLocation[]>>(),
 }))
 
-vi.mock('../lib/queries', () => ({
-  queryKeys: h.queryKeys,
+vi.mock('../lib/queries', async () => ({
+  queryKeys: (await import('../lib/queries/keys')).queryKeys,
   fetchPackingLocations: h.fetchPackingLocations,
 }))
 

@@ -28,8 +28,7 @@ import { mutationKeys } from './queries/keys'
 //   If the SortableContext rendered items prop-drilled from a parent
 //   useQuery, React could split the local state and the parent observer
 //   into separate commits, the drop animation runs against the old DOM
-//   order, and the dropped row visibly snaps back before jumping. This
-//   is the b8624ec / 703a936 race class.
+//   order, and the dropped row visibly snaps back before jumping.
 //
 //   The structural fix is that the component rendering SortableContext
 //   subscribes to the cache itself, in the same component as setActiveId.
@@ -40,8 +39,8 @@ import { mutationKeys } from './queries/keys'
 //   For surfaces that don't use this hook (today: list-item rows within
 //   category on /lists/:id, and gear-item rows within category on /gear),
 //   the rule remains narrated in src/lib/queries/optimistic.ts (the
-//   corollary on makeOptimisticReorder) and in CLAUDE.md. The hook
-//   enforces the rule structurally only where it is used.
+//   corollary on makeOptimisticReorder). The hook enforces the rule
+//   structurally only where it is used.
 //
 // Multi-kind pages (e.g. GearLibraryPage owns both category reorder and
 // gear-item reorder under one DndContext) instantiate one hook per
@@ -115,11 +114,6 @@ type UseReorderableOptions<T extends { id: string; sortOrder: number }> = {
   // enforcement described in the file-level comment.
   queryKey: QueryKey
   queryFn: () => Promise<T[]>
-  // First-paint seed when a parent already had this data in hand (e.g.
-  // DesktopListsPanel receives lists from ListDetailPage's useQuery).
-  // The hook's useQuery is still the source of truth on every subsequent
-  // render; initialData just avoids a flash.
-  initialData?: T[]
   mutationFn: (updates: ReorderUpdates) => Promise<unknown>
   // Filter for drag events on this surface. Multi-kind pages instantiate
   // one hook per kind; each handleDragEnd no-ops on drops whose parsed
@@ -157,20 +151,16 @@ type UseReorderableResult<T extends { id: string; sortOrder: number }> = {
 export function useReorderable<T extends { id: string; sortOrder: number }>(
   opts: UseReorderableOptions<T>,
 ): UseReorderableResult<T> {
-  const { queryKey, queryFn, initialData, mutationFn, dndKind } = opts
+  const { queryKey, queryFn, mutationFn, dndKind } = opts
   const qc = useQueryClient()
 
   const {
-    data: items = (initialData ?? ([] as T[])),
+    data: items = [] as T[],
     isPending,
     isError,
     isLoadingError,
     refetch,
-  } = useQuery({
-    queryKey,
-    queryFn,
-    ...(initialData !== undefined ? { initialData } : {}),
-  })
+  } = useQuery({ queryKey, queryFn })
 
   const reorderMut = useMutation({
     mutationKey: mutationKeys.reorder(dndKind),

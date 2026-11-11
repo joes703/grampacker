@@ -1,14 +1,14 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { reorderOwnedSet } from './reorder'
 import { appendSortOrder } from './append-sort-order'
-import { ownsList } from './owns-list'
+import { ownsCategory, ownsList } from './ownership'
 import type { Db, Tx } from '../db'
-import { categories, gearItems, listFoodItems, listItems } from '../db/schema'
+import { gearItems, listFoodItems, listItems } from '../db/schema'
 import {
   isPackRankRangeError,
   isTriggerAbort,
 } from './db-errors'
-import { isCapError as isGearCapError, type GearItemRow } from './gear-items'
+import { gearItemColumns, isCapError as isGearCapError, type GearItemRow } from './gear-items'
 import { nextUnionPackRank } from './pack-reorder'
 
 const itemCols = {
@@ -25,20 +25,6 @@ const itemCols = {
   packSortOrder: listItems.packSortOrder,
   createdAt: listItems.createdAt,
   updatedAt: listItems.updatedAt,
-}
-
-const gearCols = {
-  id: gearItems.id,
-  categoryId: gearItems.categoryId,
-  name: gearItems.name,
-  description: gearItems.description,
-  weightGrams: gearItems.weightGrams,
-  costCents: gearItems.costCents,
-  purchaseDate: gearItems.purchaseDate,
-  status: gearItems.status,
-  sortOrder: gearItems.sortOrder,
-  createdAt: gearItems.createdAt,
-  updatedAt: gearItems.updatedAt,
 }
 
 type ListItemRow = Omit<typeof listItems.$inferSelect, 'userId'>
@@ -120,7 +106,7 @@ export function createListItemsRepo(db: Db, userId: string) {
 
   function ownedGear(tx: Tx, gearItemId: string): GearItemRow | undefined {
     return tx
-      .select(gearCols)
+      .select(gearItemColumns)
       .from(gearItems)
       .where(and(eq(gearItems.id, gearItemId), eq(gearItems.userId, userId)))
       .limit(1)
@@ -170,7 +156,7 @@ export function createListItemsRepo(db: Db, userId: string) {
         // Joined same-owner read; the FK guarantees item.userId ==
         // gear.userId, the join condition re-asserts it anyway.
         return tx
-          .select({ item: itemCols, gear: gearCols })
+          .select({ item: itemCols, gear: gearItemColumns })
           .from(listItems)
           .innerJoin(
             gearItems,
@@ -239,19 +225,8 @@ export function createListItemsRepo(db: Db, userId: string) {
             if (!ownsList(tx, userId, listId)) {
               return { ok: false, reason: 'list_not_found' }
             }
-            if (input.categoryId !== null) {
-              const cat = tx
-                .select({ id: categories.id })
-                .from(categories)
-                .where(
-                  and(
-                    eq(categories.id, input.categoryId),
-                    eq(categories.userId, userId),
-                  ),
-                )
-                .limit(1)
-                .get()
-              if (!cat) return { ok: false, reason: 'invalid_category' }
+            if (input.categoryId !== null && !ownsCategory(tx, userId, input.categoryId)) {
+              return { ok: false, reason: 'invalid_category' }
             }
             const gearId = crypto.randomUUID()
             const now = Date.now()
@@ -268,7 +243,7 @@ export function createListItemsRepo(db: Db, userId: string) {
                 createdAt: now,
                 updatedAt: now,
               })
-              .returning(gearCols)
+              .returning(gearItemColumns)
               .get()
             const item = tx
               .insert(listItems)

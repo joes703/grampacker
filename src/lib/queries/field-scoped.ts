@@ -1,8 +1,9 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 
 // FIELD-SCOPED optimistic cache access: the snapshot/apply/restore primitive
-// behind the per-list caches whose rows are written concurrently (list items
-// and food, with their Packed/Ready ticks, moves and resets).
+// behind the caches whose rows are written concurrently (list items and food,
+// with their Packed/Ready ticks, moves and resets; the lists, with their
+// overlapping share/draft flips).
 //
 // Why not makeOptimisticUpdate: its rollback restores the WHOLE array as it
 // was at onMutate, undoing any other write that landed in the meantime, even
@@ -11,8 +12,8 @@ import type { QueryClient, QueryKey } from '@tanstack/react-query'
 // one write touches, and a rollback restores only those fields onto the
 // CURRENT row, so concurrent writes compose with no mutex.
 //
-// Deliberately NOT owned here, because the five lifecycles genuinely differ:
-// invalidation policy (updateItem's last-one-out gate vs invalidate-on-settle
+// Deliberately NOT owned here, because the callers' lifecycles genuinely differ:
+// invalidation policy (the last-one-out gate vs invalidate-on-settle
 // vs the resets' two-cache finally), promise ownership, and error reporting
 // (which failures toast, and with what copy). Each caller keeps its own.
 //

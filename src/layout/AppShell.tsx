@@ -4,7 +4,6 @@ import { Settings } from 'lucide-react'
 import { authClient } from '../lib/auth-client'
 import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
-import { SidebarDrawerProvider } from './sidebar-drawer-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
 // Lazy + mounted only while open. Settings pulls in passkeys, the data-export
@@ -27,7 +26,6 @@ export default function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
-    <SidebarDrawerProvider>
     <MobilePrimaryNavProvider>
       <div className="min-h-screen bg-gray-50 print:min-h-0 print:bg-white">
         {/* The whole app header is chrome: brand, nav, the signed-in
@@ -93,6 +91,5 @@ export default function AppShell() {
         )}
       </div>
     </MobilePrimaryNavProvider>
-    </SidebarDrawerProvider>
   )
 }
