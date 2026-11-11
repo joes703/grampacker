@@ -175,13 +175,13 @@ export default function PackRowFrame({
       {dragHandle}
       <PackChecks name={name} isPacked={isPacked} isReady={isReady} onUpdate={onUpdate}>
         {statusBadge}
-        {/* Name + description at lg+ in the same 2:3 proportion as edit
+        {/* Name + description at lg+ in the same 3:2 proportion as edit
             mode. <lg keeps the single-column name-only layout. */}
         <div className="flex flex-1 min-w-0 items-center gap-3">
-          <div className="flex-[2] min-w-0">
+          <div className="flex-[3] min-w-0">
             <span className={packedNameClass(isPacked)}>{name}</span>
           </div>
-          <div className="hidden lg:block lg:flex-[3] min-w-0">{description}</div>
+          <div className="hidden lg:block lg:flex-[2] min-w-0">{description}</div>
         </div>
       </PackChecks>
       {children}

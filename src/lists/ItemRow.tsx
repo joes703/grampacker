@@ -258,7 +258,7 @@ export default function ItemRow({
           />
         </div>
       ) : (
-        /* Desktop branch (≥ lg). The name/description 2:3 cell is the shared
+        /* Desktop branch (≥ lg). The name/description 3:2 cell is the shared
            NameDescriptionCell (editable per-handler, static on the share
            view); the columns after it are this surface's own. */
         <>
