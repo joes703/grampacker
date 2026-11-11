@@ -27,10 +27,8 @@ import {
 import { isPackingCollisionTarget, planPackingRowDragEnd } from './packing-dnd'
 import { deriveFilteredItemIds, planListItemReorder } from './list-reorder-plan'
 import { passesPackFilters } from './section-rows'
-import {
-  nextUnionPackRankFor,
-  type UnionRankUpdates,
-} from './pack-rows'
+import { nextUnionPackRankFor } from './pack-rows'
+import type { ReorderPackPayload } from '../../shared/lists'
 import { useDragSensors } from '../lib/use-drag-sensors'
 
 // One shared empty array for every "no food rows here" case: Edit mode, where
@@ -126,7 +124,7 @@ export function useListDnd({
   // link you sent someone.
   const reorderPackItemsMut = useMutation({
     mutationKey: mutationKeys.reorderPackItems(listId),
-    mutationFn: (updates: UnionRankUpdates) =>
+    mutationFn: (updates: ReorderPackPayload) =>
       reorderPackListItems(listId, updates),
     // The union helper spans both caches (one drag can permute gear and
     // food ranks together, and the server applies both halves in one batch).

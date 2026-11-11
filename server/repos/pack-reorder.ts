@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import type { ReorderPackPayload } from '../../shared/lists'
+import { comparePackOrder, type ReorderPackPayload } from '../../shared/lists'
 import type { SQL } from 'drizzle-orm'
 import type { Db, Tx } from '../db'
 import { listFoodItems, listItems } from '../db/schema'
@@ -70,10 +70,9 @@ export function nextUnionPackRank(
   ), 0)`
 }
 
-// Merge a bag's two halves into display order. Shared by the repos that must
-// preserve union order when appending whole cohorts (location delete), and
-// mirrored client-side; rank first, gear before food on a cross-table tie,
-// id as the total-order backstop.
+// Merge a bag's two halves into display order (shared/lists.ts
+// comparePackOrder, the client's comparator too). Used by the repos that must
+// preserve union order when appending whole cohorts (location delete).
 export function unionOrder<
   T extends { packSortOrder: number; id: string },
 >(gear: T[], food: T[]): { kind: 'gear' | 'food'; row: T }[] {
@@ -81,11 +80,11 @@ export function unionOrder<
     ...gear.map((row) => ({ kind: 'gear' as const, row })),
     ...food.map((row) => ({ kind: 'food' as const, row })),
   ]
-  return tagged.sort(
-    (a, b) =>
-      a.row.packSortOrder - b.row.packSortOrder ||
-      (a.kind === b.kind ? 0 : a.kind === 'gear' ? -1 : 1) ||
-      (a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0),
+  return tagged.sort((a, b) =>
+    comparePackOrder(
+      { kind: a.kind, rank: a.row.packSortOrder, id: a.row.id },
+      { kind: b.kind, rank: b.row.packSortOrder, id: b.row.id },
+    ),
   )
 }
 
