@@ -24,8 +24,8 @@ import {
 // has no data, so a failed first load looks exactly like an empty list or
 // 0 g of food. The page must show its error panel instead, and must not
 // replace a page it has already rendered when only a background refetch
-// fails (the query keeps its last data). See AGENTS.md "An empty array is
-// not nothing".
+// fails (the query keeps its last data). See docs/client.md "Loading is not
+// empty".
 
 const gear = makeGearItem({
   id: 'gear-1',

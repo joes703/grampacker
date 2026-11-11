@@ -7,7 +7,7 @@ import type { Sqlite } from './index'
 // chunk as one prepared statement, and the shipped baseline ends with a
 // breakpoint, so its last chunk is empty. better-sqlite3 refuses an empty
 // statement ("contains no statements"), and a shipped migration must never be
-// edited (AGENTS.md "Migrations"). This runner reads the files with Drizzle's
+// edited (docs/server.md "Migrations"). This runner reads the files with Drizzle's
 // own reader and skips blank chunks; everything else matches Drizzle's
 // SQLite migrator:
 //
@@ -43,7 +43,7 @@ export class MigrationStateError extends Error {}
 //   skipped forever without a word;
 // - each ledger row must match the journal entry in the same position, by
 //   timestamp AND hash. A different hash means a shipped migration file was
-//   edited (AGENTS.md forbids it) and the database was built from other SQL.
+//   edited (docs/server.md "Migrations") and the database was built from other SQL.
 //
 // A ledger LONGER than the journal is accepted when its overlap matches: that
 // is the previous image running against a database the newer image already

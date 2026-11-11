@@ -10,7 +10,7 @@ import { setWeightUnit } from '../lib/weight'
 import { clearToasts, shownToasts } from '../test/mutation-hook-harness'
 import { shimDialog } from './test/list-detail-harness'
 
-// FoodView owns the food query's own three-state gate (AGENTS.md), separate
+// FoodView owns the food query's own three-state gate (docs/client.md "Loading is not empty"), separate
 // from ListDetailPage's detail-data composite. This file pins that gate in
 // isolation - ListDetailPage.food.test.tsx pins where FoodView is mounted
 // and that a sibling detail-query failure does not reach it.

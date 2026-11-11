@@ -67,7 +67,7 @@ export const categories = sqliteTable(
 // hand-written SQL (drizzle has no trigger DSL) and is the single
 // enforcement point; the repo maps its error to a friendly 422. CAUTION: the
 // drizzle snapshot does not know the trigger exists - a table rebuild drops
-// it silently (AGENTS.md "Migrations" forbids rebuilds).
+// it silently (docs/server.md "Migrations" forbids rebuilds).
 export const gearItems = sqliteTable(
   'gear_items',
   {

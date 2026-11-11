@@ -46,7 +46,7 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
 
-  # AGENTS.md requires third-party actions to be pinned to a full commit SHA.
+  # docs/testing-and-ci.md "GitHub Actions security" requires third-party actions to be pinned to a full commit SHA.
   # That pin is what makes a workflow reproducible, but it also means an action
   # never picks up an upstream fix unless something moves the SHA. This is what
   # moves it.

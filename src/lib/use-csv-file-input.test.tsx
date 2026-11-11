@@ -36,8 +36,8 @@ describe('useCsvFileInput', () => {
   })
 
   // A defect in the parser or the caller's handler must still reach the user,
-  // not become an unhandled promise rejection (AGENTS.md: every rejected
-  // promise has an owner).
+  // not become an unhandled promise rejection (docs/client.md "Every
+  // rejected promise has an owner").
   it('reports a parser that throws, and leaves nothing unhandled', async () => {
     const onError = vi.fn()
     const escaped: unknown[] = []

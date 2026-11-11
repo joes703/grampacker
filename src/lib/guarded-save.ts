@@ -24,8 +24,8 @@ import { showToast } from './toast'
 //   attempt is gone it is dropped.
 // - `fail(message)` for failure. While the attempt is open the message is its
 //   inline `saveError`. Once it is gone (closed, replaced, or the page
-//   unmounted) the message becomes a toast: AGENTS.md "A failure the user
-//   cannot see is not reported". flushSync makes React run the guarded update
+//   unmounted) the message becomes a toast: docs/client.md "Failures the
+//   user can see". flushSync makes React run the guarded update
 //   before `fail` returns, so the toast decision is made after it, never inside
 //   the updater (React may call an updater twice). If React never runs it
 //   (unmounted), the message is toasted.

@@ -32,7 +32,7 @@ export default function PackLocationControls({
 }) {
   const trimmed = draft.trim()
   const atCap = locations.length >= PACKING_LOCATION_CAP
-  // noValidate makes maxLength inert for SUBMIT purposes (AGENTS.md), so the
+  // noValidate makes maxLength inert for SUBMIT purposes (docs/ui-density.md "Form fields"), so the
   // length check is manual here and the server is the real gate.
   //
   // locationsResolved is part of this, not just of the nudge below: an

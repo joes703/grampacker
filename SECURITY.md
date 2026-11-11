@@ -407,6 +407,11 @@ plugin's callback transaction timing.
   `.npmrc`, exact pins, no core infrastructure on beta or RC releases. We
   never choose a prerelease ourselves: not as a direct dependency, not in
   `overrides`, and not instead of a stable release.
+- A dependency change is an explicit `npm install <pkg>` with a stated reason
+  and a read of the lockfile diff. Never `npm audit fix --force`; plain
+  `npm audit` is fine. `overrides` are ranges tracking their parent, never
+  pins, because Dependabot does not update them. Keep `ignore-scripts` unless
+  a clean `npm ci` and build prove nothing needs a postinstall.
 - **Routine updates wait; security fixes skip routine waiting and get
   prompt review.** Neither path makes a release safe or approves a deploy.
   - *Routine:* Dependabot npm version updates wait 7 days on the registry

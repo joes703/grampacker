@@ -9,7 +9,7 @@ import type { SQLiteColumn, SQLiteTable } from 'drizzle-orm/sqlite-core'
 // Every `where` predicate must reference only `table`'s own columns:
 // drizzle renders interpolated columns unqualified, so a predicate meant to
 // correlate with an OUTER table would silently resolve against `table` and
-// return plausible but wrong data (AGENTS.md "Traps"). The current callers
+// return plausible but wrong data (docs/server.md "SQL and Drizzle"). The current callers
 // all scope by their own table's userId, plus listId where rows nest.
 // packing-locations keeps its hand-aliased raw SQL instead: it also needs
 // the min - 1 prepend variant and documents the aliasing hazard in place.
