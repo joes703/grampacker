@@ -107,7 +107,7 @@ export default function SharePage() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-base font-medium text-gray-700">List not found</p>
-          <p className="mt-1 text-sm text-gray-500">This link may be invalid or sharing has been turned off.</p>
+          <p className="mt-1 text-sm text-gray-500">The link may be wrong, or the owner turned off sharing for this list.</p>
         </div>
       </div>
     )

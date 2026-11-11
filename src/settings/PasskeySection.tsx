@@ -138,8 +138,9 @@ export default function PasskeySection() {
   if (!passkeysSupported()) {
     return (
       <p className="text-sm text-gray-600">
-        This browser doesn't support passkeys. You can still sign in with an
-        email link, and add a passkey later from a browser that does.
+        This browser does not support passkeys. You can still sign in with a
+        link sent by email. To add a passkey, use a browser that supports
+        passkeys.
       </p>
     )
   }
@@ -158,7 +159,8 @@ export default function PasskeySection() {
             round-trip, and losing the mailbox loses the account. */}
         {rows?.length === 0 && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            No passkeys yet. Without one, every sign-in needs an email link.
+            You have no passkeys. Until you add one, you sign in with a link
+            sent by email.
           </p>
         )}
         {rows?.map((row) => {

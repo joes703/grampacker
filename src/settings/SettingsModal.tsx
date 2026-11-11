@@ -56,7 +56,7 @@ export default function SettingsModal({
           <Section
             title="Passkeys"
             subtitle={passkeysSupported()
-              ? 'Sign in without waiting for an email'
+              ? 'Sign in with your fingerprint, face or PIN'
               : 'This browser cannot manage passkeys'}
             icon={<KeyRound size={16} />}
           >
@@ -65,7 +65,7 @@ export default function SettingsModal({
 
           <Section
             title="Download all data"
-            subtitle="A complete archive of your gear, lists, and settings"
+            subtitle="Your gear, lists and food plans, in a .zip file"
             icon={<Download size={16} />}
           >
             <DownloadAllData />

@@ -46,7 +46,7 @@ export default function ListsEmptyState() {
       <div className="w-full max-w-md text-center">
         <h2 className="text-xl font-semibold text-gray-900">Create your first list</h2>
         <p className="mt-2 text-sm text-gray-500">
-          Lists let you build packing lists from your gear inventory and track total weight.
+          A list holds the gear for one trip and shows its total weight.
         </p>
         <div className="mt-6 flex gap-2">
           <input
@@ -85,7 +85,8 @@ export default function ListsEmptyState() {
           <Upload size={14} /> Import CSV
         </button>
         <p className="mt-2 text-xs text-gray-500">
-          Lighterpack format works. The list is named from the file.
+          You can import a CSV file from LighterPack. The new list has the same
+          name as the file. You can rename it.
         </p>
       </div>
 

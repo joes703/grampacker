@@ -240,10 +240,10 @@ describe('PasskeySection fresh-auth gate', () => {
     render(<PasskeySection />)
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }))
 
-    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Email me a sign-in link' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Email me a link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Email me a sign-in link' }))
     await waitFor(() =>
       expect(h.signInMagicLink).toHaveBeenCalledWith({ email: 'joe@example.com' }),
     )

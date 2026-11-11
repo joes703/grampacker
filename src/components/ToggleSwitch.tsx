@@ -10,8 +10,8 @@ type Props = {
 
 // Compact iOS-style switch. Canonical control for binary on/off toggles
 // across the app — settings panels (public-link sharing) AND in-content
-// view toggles (Show unpacked only, Ready
-// checks inside PackingProgress). Single source of truth so the
+// view toggles (the Packed and Ready filters
+// inside PackingProgress). Single source of truth so the
 // surfaces never drift on size, color, or transition feel.
 //
 // See docs/ui-density.md "Toggle Taxonomy" for when to use this vs

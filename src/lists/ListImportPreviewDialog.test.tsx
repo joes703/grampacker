@@ -71,7 +71,7 @@ describe('ListImportPreviewDialog', () => {
   })
 
   const PRICE_NOTICE =
-    'Prices apply only to newly added gear. Items already in your inventory keep the price you already set.'
+    'Prices are imported only for new gear. Gear you already have keeps its price.'
 
   it('explains that prices only apply to newly added gear', () => {
     // The rule is invisible otherwise: a matched row silently keeps its
@@ -130,7 +130,7 @@ describe('ListImportPreviewDialog', () => {
 
     // Dedup subhead + per-flag counts in one paragraph.
     expect(
-      screen.getByText(/Items already in the inventory won't be duplicated\. 1 worn\. 1 consumable\./),
+      screen.getByText(/same name, category and weight\. 1 worn\. 1 consumable\./),
     ).toBeInTheDocument()
     // Flags column: purple W for worn, orange C for consumable.
     expect(screen.getByText('W')).toBeInTheDocument()

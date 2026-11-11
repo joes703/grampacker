@@ -14,7 +14,7 @@ export function authErrorMessage(
 ): string {
   if (!error) return fallback
   if (error.status === 429) {
-    return 'Too many attempts. Please wait a bit and try again.'
+    return 'Too many attempts. Try again later.'
   }
   return error.message || fallback
 }

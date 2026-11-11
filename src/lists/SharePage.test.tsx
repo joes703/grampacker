@@ -93,14 +93,14 @@ describe('SharePage draft banner', () => {
   it('shows the work-in-progress banner when the shared list is a draft', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(share({ list: { isDraft: true } }))
     renderShareView()
-    expect(await screen.findByText('Work in progress')).toBeTruthy()
+    expect(await screen.findByText('The owner has not finished this list yet.')).toBeTruthy()
   })
 
   it('omits the banner when the shared list is complete', async () => {
     vi.mocked(fetchSharedList).mockResolvedValue(share())
     renderShareView()
     expect(await screen.findByText('Trip')).toBeTruthy()
-    expect(screen.queryByText('Work in progress')).toBeNull()
+    expect(screen.queryByText('The owner has not finished this list yet.')).toBeNull()
   })
 })
 

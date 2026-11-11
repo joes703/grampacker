@@ -124,7 +124,7 @@ describe('SignInPage', () => {
     {
       name: 'a returned rate limit',
       answer: () => Promise.resolve({ data: null, error: { status: 429 } }),
-      copy: 'Too many attempts. Please wait a bit and try again.',
+      copy: 'Too many attempts. Try again later.',
     },
     {
       // The browser lets a@b through and the server does not. Its own text reads

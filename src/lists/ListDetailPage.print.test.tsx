@@ -123,7 +123,7 @@ describe('printing renders the full list regardless of the pack filters', () => 
     // Baseline: both rows on screen.
     expect(screen.queryByText('Titanium spork')).toBeTruthy()
 
-    await user.click(screen.getByLabelText('Show unpacked only'))
+    await user.click(screen.getByLabelText('Show only items not packed'))
     // The packed row is GONE from the DOM, not merely hidden - which is the
     // whole reason print CSS cannot rescue it.
     expect(screen.queryByText('Titanium spork')).toBeNull()
@@ -136,14 +136,14 @@ describe('printing renders the full list regardless of the pack filters', () => 
     const user = userEvent.setup()
     await renderPack()
 
-    await user.click(screen.getByLabelText('Show unpacked only'))
+    await user.click(screen.getByLabelText('Show only items not packed'))
     firePrint()
     fireAfterPrint()
 
     expect(screen.queryByText('Titanium spork')).toBeNull()
     // The switch still reads as on: printing overrides what is RENDERED, it
     // does not silently reset the user's setting.
-    expect(screen.getByLabelText('Show unpacked only')).toBeChecked()
+    expect(screen.getByLabelText('Show only items not packed')).toBeChecked()
   })
 
   it('does the same for the ready filter', async () => {
@@ -154,7 +154,7 @@ describe('printing renders the full list regardless of the pack filters', () => 
     ])
     await renderPack()
 
-    await user.click(screen.getByLabelText('Show un-ready only'))
+    await user.click(screen.getByLabelText('Show only items not ready'))
     expect(screen.queryByText('Titanium spork')).toBeNull()
 
     firePrint()

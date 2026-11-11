@@ -130,7 +130,7 @@ describe('WeightTable', () => {
     )
 
     expect(within(rowFor('Consumables')).getByLabelText('50 g')).toBeInTheDocument()
-    expect(within(rowFor('Worn (not added)')).getByLabelText('30 g')).toBeInTheDocument()
+    expect(within(rowFor('Worn (not in total)')).getByLabelText('30 g')).toBeInTheDocument()
     // Worn weight is excluded from pack weight; base + consumables = 150.
     expect(within(rowFor('Base weight')).getByLabelText('100 g')).toBeInTheDocument()
     expect(within(rowFor('Total pack weight')).getByLabelText('150 g')).toBeInTheDocument()

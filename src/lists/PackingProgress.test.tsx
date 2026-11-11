@@ -51,10 +51,10 @@ describe('PackingProgress', () => {
     // must not imply anything about the other.
     renderProgress({ showUnpackedOnly: true, showUnreadyOnly: false })
     expect(
-      screen.getByRole('switch', { name: 'Show unpacked only' }).getAttribute('aria-checked'),
+      screen.getByRole('switch', { name: 'Show only items not packed' }).getAttribute('aria-checked'),
     ).toBe('true')
     expect(
-      screen.getByRole('switch', { name: 'Show un-ready only' }).getAttribute('aria-checked'),
+      screen.getByRole('switch', { name: 'Show only items not ready' }).getAttribute('aria-checked'),
     ).toBe('false')
   })
 
@@ -69,11 +69,11 @@ describe('PackingProgress', () => {
       onToggleShowUnreadyOnly: onToggleUnready,
     })
 
-    await user.click(screen.getByRole('switch', { name: 'Show un-ready only' }))
+    await user.click(screen.getByRole('switch', { name: 'Show only items not ready' }))
     expect(onToggleUnready).toHaveBeenCalledTimes(1)
     expect(onToggleUnpacked).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('switch', { name: 'Show unpacked only' }))
+    await user.click(screen.getByRole('switch', { name: 'Show only items not packed' }))
     expect(onToggleUnpacked).toHaveBeenCalledTimes(1)
     expect(onToggleUnready).toHaveBeenCalledTimes(1)
   })
