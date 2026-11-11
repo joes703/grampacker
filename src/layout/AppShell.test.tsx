@@ -1,27 +1,58 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { readLastListPath, writeLastListPath } from '../lib/last-list-path'
 import AppShell from './AppShell'
+import { noteLinkSignInStart, passkeyOfferClosed } from '../auth/link-sign-in-prompt'
+
+const h = vi.hoisted(() => ({
+  getSession: vi.fn<() => Promise<{ data: unknown; error: unknown }>>(),
+  passkeysSupported: false,
+}))
 
 // The settings modal is lazy and mounts only while open, so the shell's own
-// tests never pull that tree in - passkeysSupported is here so a future eager
-// import fails loudly rather than mysteriously.
+// tests never pull that tree in. passkeysSupported and getSession serve the
+// passkey prompt (src/auth/link-sign-in-prompt.ts).
 vi.mock('../lib/auth-client', () => ({
   authClient: {
-    useSession: () => ({ data: { user: { id: 'user-1', email: 'hiker@example.com' } } }),
+    useSession: () => ({
+      data: {
+        user: { id: 'user-1', email: 'hiker@example.com' },
+        session: { id: 'session-current' },
+      },
+    }),
+    getSession: h.getSession,
   },
-  passkeysSupported: () => false,
+  passkeysSupported: () => h.passkeysSupported,
 }))
 
 vi.mock('./use-sign-out', () => ({
   useSignOut: () => ({ signingOut: false, signOut: vi.fn() }),
 }))
 
+// jsdom does not implement <dialog>.showModal() / .close(); Modal drives both
+// imperatively. Same shim Modal.test.tsx documents in full.
+beforeAll(() => {
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+    }
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.removeAttribute('open')
+      this.dispatchEvent(new Event('close'))
+    }
+  }
+})
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  sessionStorage.clear()
+  passkeyOfferClosed()
+  h.passkeysSupported = false
 })
 
 describe('AppShell', () => {
@@ -73,5 +104,57 @@ describe('AppShell', () => {
     for (const link of screen.getAllByRole('link', { name: 'Gear' })) {
       expect(link.getAttribute('aria-current')).toBeNull()
     }
+  })
+})
+
+describe('AppShell passkey prompt', () => {
+  const PROMPT = 'Sign in faster next time'
+
+  it('offers a passkey after a link sign-in created this session', async () => {
+    h.passkeysSupported = true
+    h.getSession.mockResolvedValue({ data: null, error: null })
+    await noteLinkSignInStart()
+
+    render(<AppShell />, { wrapper: MemoryRouter })
+
+    expect(await screen.findByRole('dialog', { name: PROMPT })).toBeInTheDocument()
+  })
+
+  it('stays closed after Not now, even when the shell mounts again', async () => {
+    // Visiting /privacy unmounts the shell; coming back mounts it again.
+    h.passkeysSupported = true
+    h.getSession.mockResolvedValue({ data: null, error: null })
+    await noteLinkSignInStart()
+    const { unmount } = render(<AppShell />, { wrapper: MemoryRouter })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: PROMPT })).not.toBeInTheDocument(),
+    )
+    unmount()
+    render(<AppShell />, { wrapper: MemoryRouter })
+
+    await expect(screen.findByRole('dialog', { name: PROMPT })).rejects.toThrow()
+  })
+
+  it('does not offer one when a failed link left the same session', async () => {
+    // Signed in, the link failed, and /sign-in sent this session back to '/'.
+    h.passkeysSupported = true
+    h.getSession.mockResolvedValue({ data: { session: { id: 'session-current' } }, error: null })
+    await noteLinkSignInStart()
+
+    render(<AppShell />, { wrapper: MemoryRouter })
+
+    // Positive control for the wait: the prompt chunk loads lazily, and the
+    // test above shows it does appear within findByRole's wait.
+    await expect(screen.findByRole('dialog', { name: PROMPT })).rejects.toThrow()
+  })
+
+  it('does not offer one without a link sign-in', async () => {
+    h.passkeysSupported = true
+
+    render(<AppShell />, { wrapper: MemoryRouter })
+
+    await expect(screen.findByRole('dialog', { name: PROMPT })).rejects.toThrow()
   })
 })

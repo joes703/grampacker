@@ -3,13 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 
+const prompt = vi.hoisted(() => ({
+  noteLinkSignInStart: vi.fn<() => Promise<void>>(),
+}))
+
+vi.mock('./link-sign-in-prompt', () => prompt)
+
 import MagicLinkPage from './MagicLinkPage'
+import { deferred } from '../test/deferred'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
 
 const originalLocation = window.location
 let assignMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  prompt.noteLinkSignInStart.mockReset().mockResolvedValue(undefined)
   assignMock = vi.fn()
   // The page only ever reads window.location.assign; a minimal stand-in avoids
   // jsdom's "Not implemented: navigation" noise and lets us assert the target.
@@ -98,6 +106,23 @@ describe('MagicLinkPage', () => {
     )
   })
 
+  it('notes the current session before it navigates, for the passkey prompt', async () => {
+    // The verify navigation ends this document. The note must be written
+    // first, or the signed-in app cannot tell that a link sign-in finished.
+    const noted = deferred<void>()
+    prompt.noteLinkSignInStart.mockReturnValue(noted.promise)
+    renderAt(`${MAGIC_LINK_PATH}#token=abc123`)
+
+    fireEvent.click(signInButton())
+
+    await waitFor(() => expect(prompt.noteLinkSignInStart).toHaveBeenCalledTimes(1))
+    expect(assignMock).not.toHaveBeenCalled()
+    noted.resolve()
+    await waitFor(() =>
+      expect(assignMock).toHaveBeenCalledWith(expectedVerifyUrl('abc123')),
+    )
+  })
+
   it('still accepts a ?token= link that was already in an inbox', async () => {
     // Links sent before the fragment cutover carry ?token= and stay valid for
     // their 5-minute life. Dropping them would have locked those people out of the
@@ -169,6 +194,7 @@ describe('MagicLinkPage', () => {
     fireEvent.click(button)
     fireEvent.click(button)
 
-    expect(assignMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(assignMock).toHaveBeenCalledTimes(1))
+    expect(prompt.noteLinkSignInStart).toHaveBeenCalledTimes(1)
   })
 })

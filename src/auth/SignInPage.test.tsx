@@ -13,14 +13,19 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 const auth = vi.hoisted(() => ({
   magicLink: vi.fn(),
   passkey: vi.fn(),
+  getSession: vi.fn(),
 }))
 
 vi.mock('../lib/auth-client', () => ({
-  authClient: { signIn: { magicLink: auth.magicLink, passkey: auth.passkey } },
+  authClient: {
+    signIn: { magicLink: auth.magicLink, passkey: auth.passkey },
+    getSession: auth.getSession,
+  },
   passkeysSupported: () => true,
 }))
 
 import SignInPage from './SignInPage'
+import { noteLinkSignInStart, passkeyOfferClosed, shouldOfferPasskey } from './link-sign-in-prompt'
 
 const SENT = 'Check your email'
 const BAD_LINK =
@@ -51,9 +56,28 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  sessionStorage.clear()
+  passkeyOfferClosed()
+  localStorage.clear()
 })
 
 describe('SignInPage', () => {
+  // A failed link lands here (better-auth's errorCallbackURL). No link
+  // sign-in finished in this tab, so a later passkey sign-in in the same tab
+  // must not be mistaken for one and offer the passkey prompt.
+  it('forgets a started link sign-in', async () => {
+    auth.getSession.mockResolvedValue({ data: null, error: null })
+    await noteLinkSignInStart()
+
+    renderAt('/sign-in?error=INVALID_TOKEN')
+    expect(shouldOfferPasskey('session-new')).toBe(false)
+
+    // Positive control: the same note, with no sign-in page, offers it.
+    cleanup()
+    await noteLinkSignInStart()
+    expect(shouldOfferPasskey('session-new')).toBe(true)
+  })
+
   // The page is the front door for someone who has never heard of the app:
   // it says what the app is, how an account is made without a password, and
   // where the privacy page and the contact address are.

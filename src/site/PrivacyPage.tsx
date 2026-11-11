@@ -11,8 +11,8 @@ import SiteFooter, { CONTACT_EMAIL } from './SiteFooter'
 // - no third-party scripts: the CSP in server/middleware/security-headers.ts
 // - cookies: better-auth's session cookie (no cookie cache is configured),
 //   and the passkey plugin's 5-minute challenge cookie
-// - browser storage: src/lib/last-list-path.ts, src/lib/session-hint.ts and
-//   the unit preferences
+// - browser storage: src/lib/last-list-path.ts, src/lib/session-hint.ts,
+//   src/auth/link-sign-in-prompt.ts and the unit preferences
 // - Download all data: src/lib/export/takeout-files.ts
 // - backups and the 30-day promise: docs/vps-runbook.md, "Backups"
 //
@@ -102,11 +102,23 @@ export default function PrivacyPage() {
               grampacker sets one cookie to keep you signed in. While you add
               or use a passkey, it sets a second cookie that lasts 5 minutes.
             </p>
-            <p>
-              Your browser also saves your display settings, such as grams or
-              ounces, the last list you opened, and a note that this browser has
-              signed in before, so the app starts faster.
-            </p>
+            <p>Your browser also saves:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Your display settings, such as grams or ounces.</li>
+              <li>The last list you opened.</li>
+              <li>
+                A note that this browser has signed in before, so the app
+                starts faster.
+              </li>
+              <li>
+                A note that grampacker offered to add a passkey on this
+                browser, so it asks only once.
+              </li>
+              <li>
+                During a sign-in by link, a short note in that browser tab. It
+                is deleted when the sign-in ends or when you close the tab.
+              </li>
+            </ul>
           </Section>
 
           <Section title="Shared lists">

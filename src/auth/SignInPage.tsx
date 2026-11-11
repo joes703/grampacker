@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { authClient, passkeysSupported } from '../lib/auth-client'
 import { authErrorMessage } from './auth-errors'
+import { forgetLinkSignIn } from './link-sign-in-prompt'
 import { AuthCard, ErrorText, FIELD, LABEL, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 
 // The ONE auth surface. There is no separate sign-up page: requesting a link
@@ -20,6 +21,13 @@ export default function SignInPage() {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [passkeyPending, setPasskeyPending] = useState(false)
+
+  // Arriving here means no link sign-in finished in this tab (a good link
+  // lands on '/'). Forget a started one, so a later passkey sign-in here is
+  // not taken for a link sign-in (link-sign-in-prompt.ts).
+  useEffect(() => {
+    forgetLinkSignIn()
+  }, [])
 
   async function handleSendLink(event: FormEvent) {
     event.preventDefault()

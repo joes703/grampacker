@@ -6,10 +6,13 @@ import { ROW_CONTROL_TARGET } from '../components/flat-table-styles'
 import { MobilePrimaryNavProvider } from './mobile-primary-nav-context'
 import MobilePrimaryNav from './MobilePrimaryNav'
 import { useSignOut } from './use-sign-out'
+import { passkeyOfferClosed, shouldOfferPasskey } from '../auth/link-sign-in-prompt'
 // Lazy + mounted only while open. Settings pulls in passkeys, the data-export
 // zipper and react-query; the shell wraps every page, so importing that tree
 // eagerly would put it on the critical path of a view that rarely opens it.
 const SettingsModal = lazy(() => import('../settings/SettingsModal'))
+// Lazy for the same reason: most visits never show it.
+const PasskeyPrompt = lazy(() => import('../auth/PasskeyPrompt'))
 
 // Session-gated layout shell: slim top header (brand, desktop nav links,
 // settings, sign out) plus the mobile primary nav. Route components own their
@@ -24,6 +27,15 @@ export default function AppShell() {
   // Settings is a modal, not a route: four small sections you touch a few
   // times a year do not justify leaving the list you are working on.
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // Once per browser, after a sign-in by link (src/auth/link-sign-in-prompt.ts).
+  // The check keeps answering true until the prompt closes, so a render React
+  // throws away, or a remount while it is open, still shows it. After it
+  // closes, a remount (coming back from /privacy) finds no note.
+  const [passkeyPromptOpen, setPasskeyPromptOpen] = useState(() => {
+    const sessionId = session?.session.id
+    return sessionId ? shouldOfferPasskey(sessionId) : false
+  })
 
   return (
     <MobilePrimaryNavProvider>
@@ -87,6 +99,16 @@ export default function AppShell() {
         {settingsOpen && (
           <Suspense fallback={null}>
             <SettingsModal open onClose={() => setSettingsOpen(false)} />
+          </Suspense>
+        )}
+        {passkeyPromptOpen && (
+          <Suspense fallback={null}>
+            <PasskeyPrompt
+              onClose={() => {
+                passkeyOfferClosed()
+                setPasskeyPromptOpen(false)
+              }}
+            />
           </Suspense>
         )}
       </div>
