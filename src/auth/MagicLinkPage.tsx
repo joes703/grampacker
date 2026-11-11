@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { AuthCard, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
@@ -49,6 +49,17 @@ export default function MagicLinkPage() {
   // here, and keeping a dead error branch would just imply otherwise.
   const [pending, setPending] = useState(false)
 
+  // Set when this page unmounts. The click awaits the session check before it
+  // navigates; if the person has left (Get a new link), this link must not be
+  // used when the check returns.
+  const left = useRef(false)
+  useEffect(() => {
+    left.current = false
+    return () => {
+      left.current = true
+    }
+  }, [])
+
   // A session-minting token has no business sitting in the address bar. The
   // fragment keeps it off the wire, but it is still right there in the URL - in
   // browser history, in a screen share, in whatever the user pastes to ask why
@@ -90,6 +101,7 @@ export default function MagicLinkPage() {
     // ends this document. It never blocks the sign-in: a failure writes no
     // note.
     await noteLinkSignInStart()
+    if (left.current) return
     // No last-list-pointer bookkeeping here. Redeeming a link (re)establishes a
     // session in a BRAND-NEW document that lands on '/', and if this browser was
     // signed in as A while this link is for B, A's pointer survives in

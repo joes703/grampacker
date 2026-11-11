@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  getSession: vi.fn<() => Promise<{ data: unknown; error: unknown }>>(),
+  getSession: vi.fn<
+    (opts?: { fetchOptions?: { signal?: AbortSignal } }) => Promise<{ data: unknown; error: unknown }>
+  >(),
 }))
 
 vi.mock('../lib/auth-client', () => ({
@@ -83,6 +85,26 @@ describe('a sign-in by link, then the signed-in app', () => {
 
     h.getSession.mockRejectedValue(new Error('offline'))
     await expect(noteLinkSignInStart()).resolves.toBeUndefined()
+    expect(shouldOfferPasskey('session-new')).toBe(false)
+  })
+
+  it('gives up on a session check that does not answer, and writes no note', async () => {
+    // The check is optional. A request that never settles must not hold the
+    // sign-in: the caller awaits this before it navigates.
+    vi.useFakeTimers()
+    try {
+      h.getSession.mockImplementation(
+        (opts) =>
+          new Promise((_, reject) => {
+            opts?.fetchOptions?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          }),
+      )
+      const noting = noteLinkSignInStart()
+      await vi.advanceTimersByTimeAsync(3000)
+      await expect(noting).resolves.toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
     expect(shouldOfferPasskey('session-new')).toBe(false)
   })
 

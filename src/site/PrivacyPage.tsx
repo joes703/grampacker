@@ -116,7 +116,8 @@ export default function PrivacyPage() {
               </li>
               <li>
                 During a sign-in by link, a short note in that browser tab. It
-                is deleted when the sign-in ends or when you close the tab.
+                is deleted when grampacker opens again in that tab, or when you
+                close the tab.
               </li>
             </ul>
           </Section>

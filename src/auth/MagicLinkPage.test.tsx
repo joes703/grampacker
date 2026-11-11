@@ -123,6 +123,23 @@ describe('MagicLinkPage', () => {
     )
   })
 
+  it('does not sign in with this link after the person leaves the page', async () => {
+    // Sign in, then Get a new link while the session check is still out: the
+    // old link must not be used when the check returns.
+    const noted = deferred<void>()
+    prompt.noteLinkSignInStart.mockReturnValue(noted.promise)
+    renderAt(`${MAGIC_LINK_PATH}#token=abc123`)
+
+    fireEvent.click(signInButton())
+    fireEvent.click(screen.getByRole('button', { name: 'Get a new link' }))
+    await waitFor(() => expect(currentUrl()).toBe('/sign-in'))
+    noted.resolve()
+    await noted.promise
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
   it('still accepts a ?token= link that was already in an inbox', async () => {
     // Links sent before the fragment cutover carry ?token= and stay valid for
     // their 5-minute life. Dropping them would have locked those people out of the

@@ -22,14 +22,23 @@ import { authClient, passkeysSupported } from '../lib/auth-client'
 const LINK_SIGN_IN = 'gp:link-sign-in'
 const PROMPT_SHOWN = 'gp:passkey-prompt-shown'
 const NONE = 'none'
+// The sign-in waits for this check, so a check that does not answer is
+// abandoned. A healthy one takes well under a second.
+const SESSION_CHECK_MS = 3000
 
 export async function noteLinkSignInStart(): Promise<void> {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), SESSION_CHECK_MS)
   try {
-    const { data, error } = await authClient.getSession()
+    const { data, error } = await authClient.getSession({
+      fetchOptions: { signal: abort.signal },
+    })
     if (error) return
     sessionStorage.setItem(LINK_SIGN_IN, data?.session.id ?? NONE)
   } catch {
     // No note, so no prompt. The sign-in itself goes ahead.
+  } finally {
+    clearTimeout(timer)
   }
 }
 
