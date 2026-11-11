@@ -16,7 +16,7 @@ import {
   ROW_CONTROL_TARGET,
   ROW_LEADING_CONTROL_TARGET,
 } from '../components/flat-table-styles'
-import ItemRow from './ItemRow'
+import PackItemRow from './PackItemRow'
 import { isOrdinarySectionRow, passesPackFilters } from './section-rows'
 import { PackChecks, PackColumnLabels } from './PackRowFrame'
 import { ConsumableIcon, WornIcon } from './list-item-flags'
@@ -28,8 +28,9 @@ import { buildRowProps, SectionHeader, type SharedPackSectionProps } from './sec
 // collapse control (a chevron would occupy the rows' leading column and push
 // the header's checkboxes off the ones they label) and no weight footer.
 //
-// Like CategoryTable, no @dnd-kit import: drag rendering, the drag grip and
-// the admin menus arrive as props, from PackLocationSection and the page.
+// Drag rendering, the drag grip and the admin menus arrive as props, from
+// PackLocationSection and the page, which own them. Pack is authenticated-
+// only, so this is a composition choice, not a share-bundle rule.
 
 type Props = SharedPackSectionProps & {
   name: string
@@ -41,8 +42,8 @@ type Props = SharedPackSectionProps & {
    *  header's checklist row instead of also rendering as an ordinary row. */
   containerItem?: ListItemWithGear | null
   reorderPending?: boolean
-  /** Header chrome, injected because it needs @dnd-kit or authenticated-only
-   *  components. headerLeading sits first (the drag grip). headerAction sits
+  /** Header chrome, injected by the caller that owns it (the drag grip comes
+   *  from the sortable section). headerLeading sits first (the drag grip). headerAction sits
    *  in the rows' menu column, so it must be exactly one row control wide.
    *  titleAction is any other control (the nest handle): it sits at the end
    *  of the flex-1 title region, where its width costs the Qty column
@@ -235,7 +236,7 @@ function PackSection({
                   }
                 : undefined,
             )
-          : visibleItems.map((item) => <ItemRow key={item.id} {...rowPropsFor(item)} />)}
+          : visibleItems.map((item) => <PackItemRow key={item.id} {...rowPropsFor(item)} />)}
         {/* An empty section says WHY. Otherwise "holds nothing" and "a filter
             hides everything" look the same, and a packer scanning for what is
             left could read a filtered-empty section as done. */}

@@ -3,6 +3,7 @@ import { useSortableRow } from '../lib/use-sortable-row'
 import RowIconButton from '../components/RowIconButton'
 import { ROW_HOVER_REVEAL } from '../components/flat-table-styles'
 import ItemRow, { type ItemRowProps } from './ItemRow'
+import PackItemRow from './PackItemRow'
 
 // Drag lives in its own module so that SharePage, the PUBLIC, READ-ONLY
 // share view, does not download a drag-and-drop library it cannot use.
@@ -16,7 +17,8 @@ import ItemRow, { type ItemRowProps } from './ItemRow'
 //
 // Sortable wrapper for the authenticated list view. Calls useSortable, wires
 // the row's outer ref + transform style + drag-handle button, and forwards
-// everything else to ItemRow. Must be rendered inside a SortableContext.
+// everything else to ItemRow, or to PackItemRow in Pack. Must be rendered
+// inside a SortableContext.
 // Drag is disabled while a previous reorder mutation is in flight (prevents
 // the rollback-clobber race when two reorders overlap).
 //
@@ -68,8 +70,9 @@ export default function SortableItemRow({
     />
   )
 
+  const Row = props.packMode ? PackItemRow : ItemRow
   return (
-    <ItemRow
+    <Row
       {...props}
       dragHandle={handle}
       outerRef={outerRef}

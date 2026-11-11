@@ -14,11 +14,11 @@ import {
 import PackRowFrame from './PackRowFrame'
 import { ConsumableIcon } from './list-item-flags'
 
-// A food row in Pack mode - the food half of the gear+food union cohort. Mirrors
-// the pack-mode branch of ItemRow (same tokens, same column skeleton: grip,
-// checkboxes, name, worn/consumable slots, qty, row action) so gear and food
-// read as one checklist, and wraps its own useSortable under the
-// `packing-food-item:` id kind.
+// A food row in Pack mode - the food half of the gear+food union cohort.
+// Mirrors PackItemRow (same tokens, same column skeleton: grip, checkboxes,
+// name, worn/consumable slots, qty, row action) so gear and food read as one
+// checklist, and wraps its own useSortable under the `packing-food-item:` id
+// kind.
 //
 // Renders ONLY in the authenticated Pack view, so unlike ItemRow it may
 // import @dnd-kit directly - no share-path bundling seam applies here.
