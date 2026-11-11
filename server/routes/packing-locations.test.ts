@@ -847,7 +847,7 @@ describe('packing location CRUD, assignment, and integrity', () => {
 // A foreign-key failure inside create's transaction can only be a defect:
 // the ownership and container prechecks run in the same immediate
 // transaction as the insert, so no row can vanish between them. The repo
-// must let it 500 (AGENTS.md "let it 500"), not explain it away as a client
+// must let it 500 (docs/server.md "Repositories and transactions"), not explain it away as a client
 // error that blames a container the request may never have named. Failures
 // are staged with test-only triggers, the
 // server/repos/food-transactions.test.ts pattern.

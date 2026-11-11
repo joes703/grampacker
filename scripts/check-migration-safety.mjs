@@ -10,7 +10,7 @@
 //   3. Migrations this branch adds (not in the merge base with origin/main)
 //      contain none of the statements that can destroy production data. A
 //      table rebuild's DROP TABLE can fire every ON DELETE CASCADE child. That
-//      failure mode is why AGENTS.md bans table rebuilds.
+//      failure mode is why docs/server.md bans table rebuilds.
 //
 // Everything else - including whether the SQL runs on SQLite - is proven by
 // the API suite, which builds its database from this directory.
@@ -103,7 +103,7 @@ const checkNewMigrations = () => {
     throw new Error(
       'New migration(s) contain statements that can destroy production data:\n' +
         refused.map(([name, reasons]) => `  ${name}: ${reasons.join('; ')}`).join('\n') +
-        '\nSee AGENTS.md "Migrations".',
+        '\nSee docs/server.md "Migrations".',
     )
   }
   console.log(`OK: ${pending.length} new migration(s), none rebuilds, renames, or drops a table.`)

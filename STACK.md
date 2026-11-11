@@ -15,7 +15,7 @@ when changing dependencies.
   better-auth's peer range before trying drizzle 1.x.
 - TypeScript remains on 6.x while typescript-eslint rejects 7.x. The linter's
   peer range, not this repository, is the blocker.
-- `overrides` address transitive advisories. Their rules are in `AGENTS.md`.
+- `overrides` address transitive advisories. Their rules are in `SECURITY.md`, "Supply chain".
 
 ## Watch list
 

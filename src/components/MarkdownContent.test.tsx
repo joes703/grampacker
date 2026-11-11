@@ -31,7 +31,7 @@ describe('MarkdownContent XSS hardening', () => {
     expect(anchor?.getAttribute('href')).toBe('https://example.com')
     expect(anchor?.getAttribute('target')).toBe('_blank')
     // rel must pair noopener with noreferrer to prevent tabnabbing /
-    // referrer leakage (codebase convention; see CLAUDE.md).
+    // referrer leakage (docs/client.md "Links").
     expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer')
   })
 })

@@ -11,7 +11,8 @@ type Props = {
 // this geometry - number right-aligned in a fixed-width cell, a 4px grid gap,
 // unit in its own cell - which is what keeps digits on one rail down a column
 // and the number-to-unit gap identical on every surface. Render weights
-// through one of these two components, not with a formatted string.
+// through one of these two components, not with a formatted string. It sets
+// no font or color: wrap it in FLAT_TABLE_NUMERIC_TEXT.
 export default function ItemWeightValue({ grams, unit }: Props) {
   const label = formatItemWeight(grams, unit)
 

@@ -47,7 +47,7 @@ export type PackReorderResult =
 // worn row will come back to.
 //
 // Identifiers are hand-written: drizzle renders interpolated columns
-// unqualified inside correlated subqueries (the AGENTS.md sql`` trap), and
+// unqualified inside correlated subqueries (the sql`` trap in docs/server.md), and
 // this fragment is embedded into UPDATE ... SET on both tables.
 //
 // `is not distinct from` because the Unassigned cohort is keyed by NULL and

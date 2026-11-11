@@ -35,7 +35,7 @@ export function ownsCategory(tx: Tx, userId: string, categoryId: string): boolea
 
 // The whole owned set, for checking many client ids at once: membership in
 // JS is one query whatever the input size, where an inArray over the input
-// would bind one parameter per id (AGENTS.md Traps). The category and gear
+// would bind one parameter per id (docs/server.md "SQL and Drizzle"). The category and gear
 // caps bound each scan at 500 rows.
 export function ownedCategoryIds(tx: Tx, userId: string): Set<string> {
   return new Set(
