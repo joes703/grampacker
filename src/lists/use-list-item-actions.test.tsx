@@ -462,18 +462,24 @@ describe('useListItemActions', () => {
       })
     })
 
-    it('surfaces the errorToast copy on failure (via meta + the global handler)', async () => {
+    // Quick Add is a non-idempotent POST: a rejection does not prove nothing
+    // was created, so the copy must not invite a blind retry (AGENTS.md
+    // Traps), and the caches refetch so a create that did commit shows up.
+    it('on failure, says the add is unconfirmed and refetches both caches', async () => {
       h.quickAddListItem.mockRejectedValueOnce(new Error('boom'))
-      const { result } = setup()
+      const { qc, result } = setup()
+      const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
       result.current.addNewItem.mutate({ categoryId: null, data: sampleAddData })
 
       await waitFor(() =>
         expect(toast.showToast).toHaveBeenCalledWith(
-          "Couldn't add that item. Please try again.",
+          "Couldn't confirm the item was added. Refresh before retrying, in case it was.",
           { type: 'error' },
         ),
       )
+      expect(invalidationsFor(invalidateSpy, ['gear-items'])).toBe(1)
+      expect(invalidationsFor(invalidateSpy, ['list-items', LIST_ID])).toBe(1)
     })
   })
 

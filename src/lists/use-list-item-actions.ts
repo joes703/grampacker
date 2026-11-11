@@ -223,9 +223,11 @@ export function useListItemActions(
 
   // Quick Add creates a gear_item (so it also lands in the gear library) and
   // the matching list_item together in one atomic server call. NON-optimistic:
-  // pure cache-invalidate on success (both the gear and this list's items),
-  // with a meta.errorToast for the failure path. cost/purchaseDate are out of
-  // scope for Quick Add and fixed at null by the server.
+  // it invalidates the gear and this list's items when it settles. On failure
+  // too: it is a non-idempotent POST, and a rejection does not prove nothing
+  // was created, so the refetch shows a create that did commit and the copy
+  // says to check before retrying (AGENTS.md Traps). cost/purchaseDate are out
+  // of scope for Quick Add and fixed at null by the server.
   const addNewItem = useMutation({
     mutationKey: mutationKeys.addNewListItem(listId),
     mutationFn: ({ categoryId, data }: { categoryId: string | null; data: AddItemData }) =>
@@ -238,8 +240,8 @@ export function useListItemActions(
         isWorn: data.isWorn,
         isConsumable: data.isConsumable,
       }),
-    meta: { errorToast: "Couldn't add that item. Please try again." },
-    onSuccess: () => {
+    meta: { errorToast: "Couldn't confirm the item was added. Refresh before retrying, in case it was." },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.gearItems() })
       void qc.invalidateQueries({ queryKey: queryKeys.listItems(listId) })
     },
