@@ -18,6 +18,7 @@ import { chunkForParamCap } from './chunk-ids'
 import { isCapError as isGearCapError } from './gear-items'
 import { isCategoryCapError } from './categories'
 import { isListItemCapError } from './list-items'
+import { ownedCategoryIds, ownedGearIds } from './ownership'
 
 const cols = {
   id: lists.id,
@@ -181,30 +182,6 @@ function remapPackingLocationId(
 export function createListsRepo(db: Db, userId: string) {
   function nextSortOrder() {
     return appendSortOrder(lists, lists.sortOrder, eq(lists.userId, userId))
-  }
-
-  // The caller's category and gear ids, for the import and from-selection
-  // ownership checks. The caps bound each scan at 500 rows.
-  function ownedCategoryIds(tx: Tx): Set<string> {
-    return new Set(
-      tx
-        .select({ id: categories.id })
-        .from(categories)
-        .where(eq(categories.userId, userId))
-        .all()
-        .map((r) => r.id),
-    )
-  }
-
-  function ownedGearIds(tx: Tx): Set<string> {
-    return new Set(
-      tx
-        .select({ id: gearItems.id })
-        .from(gearItems)
-        .where(eq(gearItems.userId, userId))
-        .all()
-        .map((r) => r.id),
-    )
   }
 
   return {
@@ -371,13 +348,13 @@ export function createListsRepo(db: Db, userId: string) {
           db.transaction(
             (tx): ImportListResult => {
               if (existingCategoryIds.size > 0) {
-                const owned = ownedCategoryIds(tx)
+                const owned = ownedCategoryIds(tx, userId)
                 for (const id of existingCategoryIds) {
                   if (!owned.has(id)) return { ok: false, reason: 'invalid_category' }
                 }
               }
               if (existingGearIds.size > 0) {
-                const owned = ownedGearIds(tx)
+                const owned = ownedGearIds(tx, userId)
                 for (const id of existingGearIds) {
                   if (!owned.has(id)) return { ok: false, reason: 'invalid_gear' }
                 }
@@ -479,7 +456,7 @@ export function createListsRepo(db: Db, userId: string) {
       return withFreshSlugCapped((slug): FromSelectionResult =>
         db.transaction(
           (tx): FromSelectionResult => {
-            const owned = ownedGearIds(tx)
+            const owned = ownedGearIds(tx, userId)
             if (!gearItemIds.every((id) => owned.has(id))) {
               return { ok: false, reason: 'invalid_gear' }
             }

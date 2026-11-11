@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import { appendSortOrder } from './append-sort-order'
-import { ownsList } from './owns-list'
+import { ownsList } from './ownership'
 import type { Db, Tx } from '../db'
 import {
   listFoodItemSlots,
