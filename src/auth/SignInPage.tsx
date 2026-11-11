@@ -68,15 +68,19 @@ export default function SignInPage() {
   // One copy for every address, known or unknown, so this screen cannot be
   // turned into an account-enumeration oracle. The unconditional claim is
   // also simply true here: signup is redemption, so an unknown address gets
-  // a working link too. The old "if you have an account" hedge was false for
-  // this app and contradicted the sign-in page's "no sign-up step" promise.
+  // a working link too. Do not add "if you have an account": an unknown
+  // address also gets a link, and the link creates the account.
   if (sent) {
     return (
       <AuthCard title="Check your email">
         <p className="text-sm text-gray-700">
-          A sign-in link is on its way to{' '}
-          <span className="font-medium">{email}</span>. It works once and
-          expires in 5 minutes.
+          We sent a sign-in link to{' '}
+          <span className="font-medium">{email}</span>. Open the link in this
+          browser to sign in on this device. The link works one time and
+          expires after 5 minutes.
+        </p>
+        <p className="mt-3 text-sm text-gray-600">
+          If you do not see the email, check your spam folder.
         </p>
         <p className="mt-4 text-sm text-gray-600">
           <button
@@ -95,11 +99,11 @@ export default function SignInPage() {
   }
 
   return (
-    <AuthCard title="Sign in">
+    <AuthCard title="Sign in or create an account" about={<AboutGrampacker />}>
       {badLink && (
         <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          That sign-in link is invalid, already used, or expired. Request a new
-          one.
+          This sign-in link does not work anymore. Each link works one time,
+          for 5 minutes. Enter your email address to get a new link.
         </p>
       )}
 
@@ -160,10 +164,58 @@ export default function SignInPage() {
         </button>
       </form>
 
-      <p className="mt-4 text-sm text-gray-600">
-        No sign-up step - the email link creates your account the first time
-        you use it.
-      </p>
+      <HowSignInWorks />
     </AuthCard>
+  )
+}
+
+// The page's description of the app, for a visitor who arrives without
+// knowing what it is. Literal statements of what the app does: no idioms,
+// for readers whose first language is not English.
+function AboutGrampacker() {
+  return (
+    <>
+      <p>
+        Enter your gear and its weight, and grampacker shows the total weight
+        of your pack.
+      </p>
+      <ul className="mt-3 list-disc space-y-1 pl-5">
+        <li>Base weight, worn weight and consumable weight, shown separately</li>
+        <li>
+          Pack mode: items sorted by where they go in your pack, with a Ready
+          checkbox and a Packed checkbox for each item
+        </li>
+        <li>Packing lists you can print</li>
+        <li>Read-only links to share a list, for example to ask for a shakedown</li>
+        <li>Food planning by day and meal</li>
+      </ul>
+    </>
+  )
+}
+
+// Beside the form because the model is unusual: no password, the first
+// sign-in link creates the account, and a passkey only reaches the devices
+// it syncs to. "Fingerprint, face or PIN" follows the FIDO Alliance's
+// research: many people do not know the term "screen lock".
+function HowSignInWorks() {
+  return (
+    <section className="mt-5 space-y-2 border-t border-gray-200 pt-4 text-sm text-gray-600">
+      <h3 className="font-medium text-gray-800">How sign-in works</h3>
+      <p>
+        grampacker does not use passwords. To create an account, enter your
+        email address. We send you a link. Open the link to sign in.
+      </p>
+      <p>
+        After you sign in, add a passkey in Settings. Then you can sign in with
+        your fingerprint, face or PIN, the same way you unlock your phone or
+        computer.
+      </p>
+      <p>
+        On a new device, you can use the same passkey if your passkeys sync to
+        that device, for example with iCloud Keychain, Google Password Manager
+        or 1Password. If they do not sync, get a sign-in link by email. Then
+        add a passkey on that device.
+      </p>
+    </section>
   )
 }

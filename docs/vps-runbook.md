@@ -222,6 +222,29 @@ docker image prune -f
 
 Do not use `docker image prune -a` on this host.
 
+### Backups
+
+A nightly Kopia snapshot of the database is encrypted on the VPS and
+uploaded to Backblaze B2. The privacy page (`src/site/PrivacyPage.tsx`)
+promises that backups are deleted after 30 days, so these settings are part
+of that promise:
+
+- Kopia keeps daily snapshots only:
+  `kopia policy set <path> --keep-daily 28 --keep-weekly 0 --keep-monthly 0 --keep-annual 0`.
+  28, not 30, leaves room for the two delays below. Check it with
+  `kopia policy show <path>`.
+- Kopia's full maintenance runs on schedule. An expired snapshot's data
+  leaves B2 only when maintenance deletes it.
+- The B2 bucket's lifecycle setting is "Keep only the last version of the
+  file". The default keeps every version of a deleted file forever.
+- The Kopia repository password is never stored at Backblaze.
+
+A restore brings back every account deleted after that backup was taken, and
+the app keeps no record of deletions. Before replacing the live database,
+list the user ids in the backup that are missing from the live database;
+after the restore, delete those accounts again. If the live database is
+unreadable, this check is not possible, and deleted accounts can come back.
+
 ## 5. Deployment files and access
 
 Repository files install as follows:

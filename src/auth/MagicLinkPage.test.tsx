@@ -151,9 +151,9 @@ describe('MagicLinkPage', () => {
     expect(new URLSearchParams(target.split('?')[1]).get('callbackURL')).toBe('/')
   })
 
-  it('shows the broken-link card when there is no token at all', () => {
+  it('shows the incomplete-link card when there is no token at all', () => {
     renderAt(MAGIC_LINK_PATH)
-    expect(screen.getByRole('heading', { name: 'Broken link' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Incomplete link' })).toBeInTheDocument()
     expect(assignMock).not.toHaveBeenCalled()
   })
 

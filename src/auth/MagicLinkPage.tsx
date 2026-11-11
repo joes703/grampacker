@@ -102,9 +102,10 @@ export default function MagicLinkPage() {
 
   if (!token) {
     return (
-      <AuthCard title="Broken link">
+      <AuthCard title="Incomplete link">
         <p className="text-sm text-gray-700">
-          That link is missing its token. Request a new one.
+          This link is missing part of its address. Copy the full link from the
+          email, or get a new link.
         </p>
         <p className="mt-4 text-sm text-gray-600">
           <button type="button" className={TEXT_LINK} onClick={() => void navigate('/sign-in')}>
@@ -118,7 +119,7 @@ export default function MagicLinkPage() {
   return (
     <AuthCard title="Sign in to grampacker">
       <p className="text-sm text-gray-700">
-        Confirm it is you to finish signing in on this device.
+        To finish signing in on this device, select Sign in.
       </p>
       <div className="mt-4 space-y-3">
         <button
@@ -131,7 +132,7 @@ export default function MagicLinkPage() {
         </button>
         <p className="text-sm text-gray-600">
           <button type="button" className={TEXT_LINK} onClick={() => void navigate('/sign-in')}>
-            Request a new link
+            Get a new link
           </button>
         </p>
       </div>

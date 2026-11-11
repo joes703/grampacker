@@ -45,6 +45,7 @@ vi.mock('./lists/SharePage', () => ({
 }))
 vi.mock('./auth/SignInPage', () => ({ default: () => <div data-testid="sign-in" /> }))
 vi.mock('./auth/MagicLinkPage', () => ({ default: () => <div data-testid="magic-link" /> }))
+vi.mock('./site/PrivacyPage', () => ({ default: () => <div data-testid="privacy" /> }))
 
 const SIGNED_IN = { data: { user: { id: 'u1' } }, isPending: false }
 const SIGNED_OUT = { data: null, isPending: false }
@@ -162,6 +163,18 @@ describe('the public paths', () => {
   it('still redirects the retired /sign-up to /sign-in', async () => {
     renderAt('/sign-up', SIGNED_OUT)
     expect(await screen.findByTestId('sign-in')).toBeInTheDocument()
+  })
+
+  // The footer links here from the sign-in page, so a signed-out visitor
+  // must reach it; a signed-in user reading it must not be sent home.
+  it.each([
+    ['signed out', SIGNED_OUT],
+    ['signed in', SIGNED_IN],
+  ])('serves the privacy page to a %s visitor, with no app chrome', async (_label, session) => {
+    renderAt('/privacy', session)
+    expect(await screen.findByTestId('privacy')).toBeInTheDocument()
+    expect(screen.queryByTestId('shell')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('root-redirect')).not.toBeInTheDocument()
   })
 
   it('renders the magic-link page even for a signed-in user', async () => {
