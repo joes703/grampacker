@@ -4,8 +4,8 @@ import { flushSync } from 'react-dom'
 // True while the browser is preparing a printed rendering of the page.
 //
 // Why this exists at all: some of what a screen shows is decided in
-// JavaScript, not CSS. Pack mode's "Show unpacked only" / "Show un-ready
-// only" filters remove rows from the rendered array, so no print stylesheet
+// JavaScript, not CSS. Pack mode's "Show only items not packed" and "Show
+// only items not ready" filters remove rows from the rendered array, so no print stylesheet
 // can bring them back - print with a filter on and the sheet is silently
 // missing items, with the filter controls themselves hidden from the paper so
 // there is no clue why. A checklist that quietly omits gear is worse than no

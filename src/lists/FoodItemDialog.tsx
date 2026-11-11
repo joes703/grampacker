@@ -238,8 +238,8 @@ export default function FoodItemDialog({
                 One container for the whole trip
               </label>
               <span id="fi-one-container-help" className="block text-xs text-gray-500">
-                Count its weight once, however many meals it's in — like one jar of
-                peanut butter.
+                Its weight counts once, no matter how many meals it is in. For
+                example, one jar of peanut butter.
               </span>
             </span>
           </div>
@@ -338,10 +338,10 @@ function startedFrom(
   const [first] = named
   if (!first) return null
   if (named.length === 1) {
-    return `Started from Day ${first.dayNumber} ${MEAL_LABELS[first.meal].toLowerCase()} — adjust the meals below.`
+    return `Started from Day ${first.dayNumber} ${MEAL_LABELS[first.meal].toLowerCase()}. You can change the meals below.`
   }
   if (named.every((slot) => slot.dayNumber === first.dayNumber)) {
-    return `Started from Day ${first.dayNumber} — adjust the meals below.`
+    return `Started from Day ${first.dayNumber}. You can change the meals below.`
   }
   return null
 }

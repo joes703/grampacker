@@ -44,7 +44,7 @@ describe('SettingsModal', () => {
     ).toBeInTheDocument()
     expect(ui.getByText('download-all-data')).toBeInTheDocument()
     expect(
-      ui.getByText('A complete archive of your gear, lists, and settings'),
+      ui.getByText('Your gear, lists and food plans, in a .zip file'),
     ).toBeInTheDocument()
 
     // Danger zone: delete account.

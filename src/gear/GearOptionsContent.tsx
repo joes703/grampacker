@@ -42,10 +42,10 @@ export default function GearOptionsContent({
   return (
     <div role="group" aria-label="Gear options" className="space-y-1">
       <OptionRow icon={<FolderPlus size={16} />} label="New category" onClick={run(onNewCategory)} />
-      <OptionRow icon={<Upload size={16} />} label="Import from CSV" onClick={run(onImport)} />
+      <OptionRow icon={<Upload size={16} />} label="Import CSV" onClick={run(onImport)} />
       <OptionRow
         icon={<Download size={16} />}
-        label="Export to CSV"
+        label="Export CSV"
         onClick={run(onExport)}
         disabled={!canExport}
       />

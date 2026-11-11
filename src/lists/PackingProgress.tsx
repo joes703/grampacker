@@ -141,7 +141,7 @@ export default function PackingProgress({
         pct={pct}
         count={packed}
         barClass={done ? 'bg-green-500' : 'bg-blue-500'}
-        filterLabel="Show unpacked only"
+        filterLabel="Show only items not packed"
         filterChecked={showUnpackedOnly}
         onFilterChange={onToggleShowUnpackedOnly}
         onReset={() => setConfirmingReset(true)}
@@ -155,7 +155,7 @@ export default function PackingProgress({
         pct={readyPct}
         count={readyCount}
         barClass={readyDone ? 'bg-green-500' : 'bg-amber-500'}
-        filterLabel="Show un-ready only"
+        filterLabel="Show only items not ready"
         filterChecked={showUnreadyOnly}
         onFilterChange={onToggleShowUnreadyOnly}
         onReset={() => setConfirmingResetReady(true)}
@@ -165,8 +165,8 @@ export default function PackingProgress({
         // Reset is recoverable (just clears is_packed flags), so the confirm
         // uses ConfirmDialog's default neutral styling — no `dangerous` flag.
         <ConfirmDialog
-          title="Reset packing?"
-          message="All items will be marked unpacked. This won't change your inventory, weights, or quantities."
+          title="Reset packed?"
+          message="This clears the Packed checkbox on every item in this list. Nothing else changes."
           confirmLabel="Reset"
           onCancel={() => setConfirmingReset(false)}
           onConfirm={() => {
@@ -178,7 +178,7 @@ export default function PackingProgress({
       {confirmingResetReady && (
         <ConfirmDialog
           title="Reset ready?"
-          message="All items will be marked not ready. This won't change packed checkmarks, your inventory, weights, or quantities."
+          message="This clears the Ready checkbox on every item in this list. Nothing else changes."
           confirmLabel="Reset"
           onCancel={() => setConfirmingResetReady(false)}
           onConfirm={() => {

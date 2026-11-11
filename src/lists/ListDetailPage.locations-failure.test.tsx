@@ -159,7 +159,7 @@ describe('a list that genuinely has no packing locations', () => {
   it('still offers the onboarding nudge, which is only true when resolved', async () => {
     await renderDetail(`/lists/${listId}/pack`)
     expect(
-      screen.getByRole('heading', { name: 'Start with where your gear lives' }),
+      screen.getByRole('heading', { name: 'Add packing locations' }),
     ).toBeInTheDocument()
   })
 
@@ -173,7 +173,7 @@ describe('a list that genuinely has no packing locations', () => {
     // locations RESOLVED empty, which is the state under test - without this
     // anchor the drag fires while the query is still pending and the guard
     // (correctly) refuses it, making the control pass for the wrong reason.
-    await screen.findByRole('heading', { name: 'Start with where your gear lives' })
+    await screen.findByRole('heading', { name: 'Add packing locations' })
 
     fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
 
@@ -210,7 +210,7 @@ describe('a packing-locations query that failed to load', () => {
   it('does not claim the list has no locations', async () => {
     await renderDetail(`/lists/${listId}/pack`)
     expect(
-      screen.queryByRole('heading', { name: 'Start with where your gear lives' }),
+      screen.queryByRole('heading', { name: 'Add packing locations' }),
     ).not.toBeInTheDocument()
   })
 
@@ -295,7 +295,7 @@ describe('a pack reorder in flight', () => {
     await renderDetail(`/lists/${listId}/pack`)
     // Same anchor as the drag test above: fire only once locations RESOLVED
     // empty, or the drag is refused for the unrelated still-loading reason.
-    await screen.findByRole('heading', { name: 'Start with where your gear lives' })
+    await screen.findByRole('heading', { name: 'Add packing locations' })
 
     fireEvent.click(screen.getByRole('button', { name: 'fire drag end' }))
     await waitFor(() => expect(h.reorderPackListItems).toHaveBeenCalledTimes(1))

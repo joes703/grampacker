@@ -93,9 +93,10 @@ export default function PackLocationControls({
 
       {locationsResolved && locations.length === 0 ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <h2 className="text-sm font-semibold text-blue-950">Start with where your gear lives</h2>
+          <h2 className="text-sm font-semibold text-blue-950">Add packing locations</h2>
           <p className="mt-1 text-sm text-blue-900">
-            Add one or more pack locations. Your checklist will switch from gear categories to these locations.
+            Add the places in your pack where items go. Pack mode then groups
+            items by these locations instead of by category.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {['Main pack', 'Top lid', 'Hip belt pockets'].map((name) => (

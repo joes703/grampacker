@@ -434,7 +434,7 @@ describe('assertListImportWithinCaps', () => {
 
   it('rejects an import that would push the inventory over the gear cap', () => {
     expect(() => assertListImportWithinCaps(planOf(2, 2), GEAR_ITEM_CAP - 1, 0)).toThrow(
-      `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Reduce the new entries or delete unused gear from your inventory.`,
+      `This import would add 2 new gear items to your ${GEAR_ITEM_CAP - 1} existing, exceeding the ${GEAR_ITEM_CAP}-item inventory limit. Remove rows from the file, or delete gear you no longer use.`,
     )
     // Singular form for a single new item.
     expect(() => assertListImportWithinCaps(planOf(1, 1), GEAR_ITEM_CAP, 0)).toThrow(
@@ -447,7 +447,7 @@ describe('assertListImportWithinCaps', () => {
     // per-file bound cannot see the existing library, so a valid file can
     // still blow the cap.
     expect(() => assertListImportWithinCaps(planOf(2, 2, 2), 0, CATEGORY_CAP - 1)).toThrow(
-      `This import would add 2 new categories to your ${CATEGORY_CAP - 1} existing, exceeding the ${CATEGORY_CAP}-category limit. Reuse existing categories or trim the file.`,
+      `This import would add 2 new categories to your ${CATEGORY_CAP - 1} existing, exceeding the ${CATEGORY_CAP}-category limit. Use categories you already have, or remove rows from the file.`,
     )
     // Singular form for a single new category.
     expect(() => assertListImportWithinCaps(planOf(1, 1, 1), 0, CATEGORY_CAP)).toThrow(
@@ -499,7 +499,7 @@ describe('assertGearImportWithinCaps', () => {
   it('rejects when existing + new gear exceeds the inventory cap', () => {
     expect(() =>
       assertGearImportWithinCaps(gearPlanOf(2, 0), GEAR_ITEM_CAP - 1, 0),
-    ).toThrow(/inventory limit\. Reduce the new entries or delete unused gear from your inventory\./)
+    ).toThrow(/inventory limit\. Remove rows from the file, or delete gear you no longer use\./)
   })
 
   it('rejects when existing + new categories exceeds the category cap', () => {

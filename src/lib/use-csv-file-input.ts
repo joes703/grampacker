@@ -30,7 +30,7 @@ export function useCsvFileInput<T>(
     if (!file) return
     if (file.size > MAX_CSV_BYTES) {
       handlers.onError(
-        'This CSV is larger than 2 MB. Try splitting it into smaller files or check that you uploaded the right file.',
+        'This CSV file is larger than 2 MB. Check that it is the right file, or split it into smaller files.',
       )
       return
     }

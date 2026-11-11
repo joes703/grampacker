@@ -162,7 +162,7 @@ and nothing on the paper shows the gap, because the control that removed it
 is hidden too. Two cases exist. Both render differently while
 `useIsPrinting()` is true, instead of using a class:
 
-- Pack's row filters (`Show unpacked only` / `Show un-ready only`).
+- Pack's row filters (`Show only items not packed` / `Show only items not ready`).
   `ListDetailPage` turns them off while printing; `PackSection` applies them.
 - A collapsed `CategoryTable` section removes its body. `CategoryTable`
   shows every section as open while printing.

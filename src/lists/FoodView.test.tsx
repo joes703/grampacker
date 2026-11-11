@@ -218,7 +218,7 @@ describe('FoodView empty state', () => {
     h.fetchListFood.mockResolvedValue({ dayCount: 0, slots: [], items: [] })
     await renderFoodView()
     expect(
-      await screen.findByText(/Add what you are eating and when/),
+      await screen.findByText(/add each food to the\s+meals where you will eat it/),
     ).toBeInTheDocument()
   })
 })
@@ -624,7 +624,7 @@ describe('FoodView add dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      `Food item limit reached (${FOOD_ITEM_CAP} per list).`,
+      `A list can have at most ${FOOD_ITEM_CAP} food items.`,
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
     expect(screen.getByLabelText('Weight (one item)')).toHaveValue(80)
@@ -639,7 +639,7 @@ describe('FoodView add dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't add that food - check the name, weight and meals and try again.",
+      "Couldn't add that food. Check the name, weight and meals, then try again.",
     )
   })
 

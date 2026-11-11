@@ -31,7 +31,7 @@ export function parseCsvWithCommonColumns(
 ): { rows: CsvRecord[]; cols: CommonCsvColumns } | string {
   const rows = parseCsv(text)
   const [sample] = rows
-  if (!sample) return 'File appears empty or has no data rows.'
+  if (!sample) return 'This file is empty or has no rows of data.'
   if (rows.length > MAX_CSV_ROWS) {
     return `This file has more than ${MAX_CSV_ROWS.toLocaleString('en-US')} rows, which is too many to import at once. Split it into smaller files and import them one at a time.`
   }

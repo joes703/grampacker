@@ -173,12 +173,12 @@ export default function FoodView({ listId }: { listId: string }) {
       reportDialogFailure(
         vars.seq,
         status === 422
-          ? `Food item limit reached (${FOOD_ITEM_CAP} per list).`
+          ? `A list can have at most ${FOOD_ITEM_CAP} food items.`
           : status === 400
             // 400 covers a pruned slot AND a value the server rejects, and the
             // client cannot tell which from the status alone - so the message
             // must not assert one of them.
-            ? "Couldn't add that food - check the name, weight and meals and try again."
+            ? "Couldn't add that food. Check the name, weight and meals, then try again."
             : "Couldn't confirm the food was added. Check the plan before trying again.",
       )
     },
@@ -498,8 +498,8 @@ function FoodDocument({
 
       {food.dayCount === 0 ? (
         <p className="px-3 py-3 text-sm text-gray-500">
-          Set a trip length and every meal appears. Add what you are eating
-          and when; that is what you need to pack.
+          Set the trip length to see each meal. Then add each food to the
+          meals where you will eat it.
         </p>
       ) : (
         days.map((day) => (

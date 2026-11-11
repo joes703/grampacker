@@ -23,7 +23,7 @@ describe('foodItemSummary', () => {
   it('per-meal unscheduled counts one meal’s worth, and says so', () => {
     const s = foodItemSummary(draft({ slotIds: [] }), 'g')
     expect(s.unitCount).toBe(2)
-    expect(s.note).toBe("not scheduled yet — counted as one meal's worth")
+    expect(s.note).toBe('not scheduled yet, counted as one meal')
   })
 
   it('one container ignores the schedule in the count', () => {

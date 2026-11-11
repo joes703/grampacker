@@ -468,7 +468,7 @@ describe('parseGearCsv parser edge cases', () => {
 
   it('returns the user-facing error string for header-only CSVs (no data rows)', () => {
     const parsed = parseGearCsv('Item Name,weight\n')
-    expect(parsed).toBe('File appears empty or has no data rows.')
+    expect(parsed).toBe('This file is empty or has no rows of data.')
   })
 })
 

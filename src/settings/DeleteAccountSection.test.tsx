@@ -156,7 +156,7 @@ describe('DeleteAccountSection submission', () => {
 
     expect(await screen.findByText(/Confirm it is you/i)).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Use a passkey' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Email me a sign-in link' })).toBeInTheDocument()
     expect(assignMock).not.toHaveBeenCalled()
   })
 
@@ -218,7 +218,7 @@ describe('DeleteAccountSection submission', () => {
     typeConfirm('delete')
     fireEvent.click(button())
 
-    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Email me a sign-in link' })).toBeInTheDocument()
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
   })
@@ -230,7 +230,7 @@ describe('DeleteAccountSection submission', () => {
     typeConfirm('delete')
     fireEvent.click(button())
 
-    expect(await screen.findByRole('button', { name: 'Email me a link' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Email me a sign-in link' })).toBeInTheDocument()
     await waitFor(() => expect(h.listUserPasskeys).toHaveBeenCalledTimes(1))
     expect(screen.queryByRole('button', { name: 'Use a passkey' })).not.toBeInTheDocument()
   })
@@ -244,7 +244,7 @@ describe('DeleteAccountSection submission', () => {
     typeConfirm('delete')
     fireEvent.click(button())
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Email me a link' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Email me a sign-in link' }))
 
     await waitFor(() =>
       expect(h.signInMagicLink).toHaveBeenCalledWith({ email: 'joe@example.com' }),

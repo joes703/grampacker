@@ -63,7 +63,7 @@ export default function WeightTable({ items, breakdown }: Props) {
           )}
           {wornGrams > 0 && (
             <tr className="text-gray-500">
-              <td className={labelCell}>Worn (not added)</td>
+              <td className={labelCell}>Worn (not in total)</td>
               <td className={valueCell}><GramCell grams={wornGrams} /></td>
               <td className={valueCell}><TotalWeightValue grams={wornGrams} unit="oz" /></td>
             </tr>

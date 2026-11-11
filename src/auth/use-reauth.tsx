@@ -210,7 +210,7 @@ export function ReauthPrompt({
             onClick={onEmail}
             disabled={busy}
           >
-            Email me a link
+            Email me a sign-in link
           </button>
           {onCancel && (
             <button
