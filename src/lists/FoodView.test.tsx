@@ -624,7 +624,7 @@ describe('FoodView add dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add food' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      `A list can have at most ${FOOD_ITEM_CAP} food items.`,
+      `Couldn't add that food. A list can have at most ${FOOD_ITEM_CAP} food items, and this list may be full.`,
     )
     expect(screen.getByLabelText('Name')).toHaveValue('Oatmeal')
     expect(screen.getByLabelText('Weight (one item)')).toHaveValue(80)

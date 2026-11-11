@@ -24,8 +24,8 @@ export default function ListImportPreviewDialog({ rows, saving, onConfirm, onClo
       titleSuffix=" into a new list"
       notesAbove={
         <p className="text-xs text-gray-500 mt-0.5">
-          Items that are not in your gear yet are added to your gear. Items
-          already in your gear are not added again.
+          Each item is added to your gear, unless your gear already has an
+          item with the same name, category and weight.
           {wornCount > 0 && ` ${wornCount} worn.`}
           {consumCount > 0 && ` ${consumCount} consumable.`}
         </p>

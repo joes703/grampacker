@@ -173,7 +173,7 @@ export default function FoodView({ listId }: { listId: string }) {
       reportDialogFailure(
         vars.seq,
         status === 422
-          ? `A list can have at most ${FOOD_ITEM_CAP} food items.`
+          ? `Couldn't add that food. A list can have at most ${FOOD_ITEM_CAP} food items, and this list may be full.`
           : status === 400
             // 400 covers a pruned slot AND a value the server rejects, and the
             // client cannot tell which from the status alone - so the message

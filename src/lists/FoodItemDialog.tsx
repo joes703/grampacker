@@ -274,7 +274,7 @@ export default function FoodItemDialog({
                     </span>
                   </>
                 )}{' '}
-                <span className="text-gray-500">— {summary.note}</span>
+                <span className="text-gray-500">({summary.note})</span>
               </>
             ) : (
               <span className="text-gray-500">

@@ -34,7 +34,7 @@ export function foodItemSummary(draft: FoodItemDraft, unit: WeightUnit): FoodIte
       draft.slotIds.length === 0
         ? // Mirrors foodUnitCount: an unscheduled per-meal item counts one
           // meal's worth rather than zero, so it is never weightless.
-          'not scheduled yet, counted as one meal'
+          `${draft.quantity} per meal, not scheduled yet`
         : `${draft.quantity} per meal × ${meals}`
   } else {
     const amount = draft.quantity === 1 ? 'one container' : `${draft.quantity} total`

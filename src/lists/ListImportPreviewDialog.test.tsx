@@ -130,7 +130,7 @@ describe('ListImportPreviewDialog', () => {
 
     // Dedup subhead + per-flag counts in one paragraph.
     expect(
-      screen.getByText(/already in your gear are not added again\. 1 worn\. 1 consumable\./),
+      screen.getByText(/same name, category and weight\. 1 worn\. 1 consumable\./),
     ).toBeInTheDocument()
     // Flags column: purple W for worn, orange C for consumable.
     expect(screen.getByText('W')).toBeInTheDocument()
