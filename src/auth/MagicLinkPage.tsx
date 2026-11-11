@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { AuthCard, PRIMARY_BUTTON, TEXT_LINK } from './auth-ui'
 import { MAGIC_LINK_PATH } from '../../shared/auth'
+import { noteLinkSignInStart } from './link-sign-in-prompt'
 
 // The emailed link carries the token in the FRAGMENT (`/auth/magic#token=...`),
 // because a browser puts the fragment in neither the request line nor the
@@ -48,6 +49,17 @@ export default function MagicLinkPage() {
   // here, and keeping a dead error branch would just imply otherwise.
   const [pending, setPending] = useState(false)
 
+  // Aborts when this page unmounts. The click awaits the session check before
+  // it navigates; if the person has left (Get a new link), the check stops,
+  // and this link must not be used. A new controller per mount, because
+  // StrictMode unmounts and mounts again.
+  const leave = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    leave.current = controller
+    return () => controller.abort()
+  }, [])
+
   // A session-minting token has no business sitting in the address bar. The
   // fragment keeps it off the wire, but it is still right there in the URL - in
   // browser history, in a screen share, in whatever the user pastes to ask why
@@ -81,9 +93,16 @@ export default function MagicLinkPage() {
   //
   // Scanner safety is unaffected: this runs on a CLICK. The emailed URL still
   // points at this page, which has no side effects on load.
-  function handleVerify() {
+  async function handleVerify() {
     if (pending || !token) return
     setPending(true)
+    // Lets the signed-in app tell that this link worked, to offer a passkey
+    // once (link-sign-in-prompt.ts). It must happen before the navigation
+    // ends this document. It never blocks the sign-in: a failure writes no
+    // note.
+    const left = leave.current?.signal ?? AbortSignal.abort()
+    await noteLinkSignInStart(left)
+    if (left.aborted) return
     // No last-list-pointer bookkeeping here. Redeeming a link (re)establishes a
     // session in a BRAND-NEW document that lands on '/', and if this browser was
     // signed in as A while this link is for B, A's pointer survives in
@@ -125,7 +144,7 @@ export default function MagicLinkPage() {
         <button
           type="button"
           className={PRIMARY_BUTTON}
-          onClick={handleVerify}
+          onClick={() => void handleVerify()}
           disabled={pending}
         >
           {pending ? 'Signing in...' : 'Sign in'}

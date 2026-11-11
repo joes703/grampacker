@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { authClient, passkeysSupported } from '../lib/auth-client'
 import InlineRenameInput from '../components/InlineRenameInput'
-import { authErrorMessage } from '../auth/auth-errors'
+import { authErrorMessage, isReauthRequired } from '../auth/auth-errors'
 import { ErrorText } from '../auth/auth-ui'
 import { ReauthPrompt, useReauth, type ReauthOutcome } from '../auth/use-reauth'
 import { authenticatorName } from '../lib/passkey-authenticator-names'
@@ -17,27 +17,6 @@ type PasskeyRow = {
 // re-authenticated. Actions are data, not closures, so the retry path is
 // obvious and testable.
 type PasskeyAction = { kind: 'add' } | { kind: 'delete'; id: string }
-
-// Adding or removing a passkey needs a FRESH session - one created by a recent
-// sign-in ceremony (the deny-by-default hooks.before gate in server/auth.ts).
-// Renaming does not; it is a display label.
-//
-// The refusal is 403 SESSION_NOT_FRESH: the auth.ts gate and better-auth's own
-// freshSessionMiddleware (which the passkey plugin mounts on the two REGISTER
-// endpoints) both answer with it. Missing it would strand "Add a passkey" on a
-// raw error message with no way forward. The status alone is not enough to key
-// on: better-auth answers 403 for other reasons (a failed origin check), and
-// those must not masquerade as "just re-authenticate".
-//
-// better-auth's client error type does not declare `code` even though it passes
-// the field through, so it is narrowed here rather than trusted.
-function isReauthRequired(error: { status: number }): boolean {
-  const code = (error as { code?: unknown }).code
-  return (
-    error.status === 403 &&
-    code === 'SESSION_NOT_FRESH'
-  )
-}
 
 function createdLabel(createdAt: PasskeyRow['createdAt']): string {
   if (!createdAt) return ''
