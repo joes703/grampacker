@@ -83,6 +83,9 @@ export function PackChecks({
       <PackModeCheckbox
         variant="ready"
         checked={isReady}
+        // No handler: a read-only row (a pending add), so the tick must not
+        // look operable.
+        disabled={!onUpdate}
         onChange={(checked) => onUpdate?.({ isReady: checked })}
         ariaLabel={`Mark ${name} ready`}
         title="Ready"
@@ -93,6 +96,7 @@ export function PackChecks({
         <PackModeCheckbox
           variant="packed"
           checked={isPacked}
+          disabled={!onUpdate}
           onChange={(checked) => onUpdate?.({ isPacked: checked })}
         />
         <PrintCheckboxSquare variant="packed" checked={isPacked} />
