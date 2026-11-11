@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import GearItemRow, { SortableGearItemRow } from './GearItemRow'
 import type { GearItem } from '../lib/types'
 import { expectNameCanShrink } from '../test/row-shrink'
+import { unconfirmedId } from '../lib/unconfirmed-id'
 
 // Locks the entity-aware row callback contract introduced with the gear-row
 // memoization (P5). The row now binds its own item/id internally, so these
@@ -204,5 +205,38 @@ describe('GearItemRow mobile name', () => {
       <GearItemRow item={gear()} {...baseProps()} isBelowLg selectMode={selectMode} />,
     )
     expectNameCanShrink(screen.getByText('Tent'), container.firstElementChild as HTMLElement)
+  })
+})
+
+// A pending create's row is in the gear cache so it shows at once, but it has
+// no server row yet: every action on it would send an id the server does not
+// know. It renders as a static row until the server row replaces it.
+describe('a gear row whose create is still pending', () => {
+  const pending = () => gear({ id: unconfirmedId(), name: 'Stove', description: 'Canister' })
+
+  it('desktop: no options menu, and name, description and weight are not editable', () => {
+    const props = baseProps()
+    render(<GearItemRow item={pending()} {...props} />)
+    expect(screen.queryByRole('button', { name: 'Item options' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Edit weight/ })).toBeNull()
+    fireEvent.click(screen.getByText('Stove'))
+    fireEvent.click(screen.getByText('Canister'))
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('in select mode: offers no checkbox', () => {
+    render(<GearItemRow item={pending()} {...baseProps()} selectMode />)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
+
+  it('mobile: the row is not a button and does not swipe to delete', () => {
+    render(<GearItemRow item={pending()} {...baseProps()} isBelowLg />)
+    expect(screen.queryByRole('button', { name: 'Edit item' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Delete from inventory' })).toBeNull()
+  })
+
+  it('cannot be dragged', () => {
+    render(<SortableGearItemRow item={pending()} {...baseProps()} />)
+    expect(screen.getByRole('button', { name: 'Reorder Stove' })).toBeDisabled()
   })
 })

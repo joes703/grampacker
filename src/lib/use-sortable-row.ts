@@ -6,9 +6,8 @@ import { makeDnDId, type DnDIdKind } from './dnd-ids'
 // The shared dnd-kit sortable-row recipe: typed id, the transform/transition/
 // drag-fade outer style, and the spreadable activator props every grip button
 // wires the same way. Per-surface rules stay at the call site: what disables
-// dragging (select mode, an in-flight reorder) and what the grip looks like.
-// Only packing locations disable an unconfirmed row (src/lib/unconfirmed-id.ts)
-// today.
+// dragging (select mode, an in-flight reorder, an unconfirmed row from
+// src/lib/unconfirmed-id.ts) and what the grip looks like.
 //
 // The container pack section (useSortableContainerSection) stays on raw
 // useSortable + useDraggable: its node carries two drag identities whose

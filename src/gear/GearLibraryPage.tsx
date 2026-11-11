@@ -36,6 +36,7 @@ import { runGuardedSave } from '../lib/guarded-save'
 import { groupGearItemsByCategory, assignSortOrderSlots } from '../lib/grouping'
 import { useReorderable } from '../lib/use-reorderable'
 import { makeDnDId, parseDnDId } from '../lib/dnd-ids'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import { SortableCategorySection, StaticCategorySection } from './CategorySection'
 import GearItemRow from './GearItemRow'
 import GearItemDialog from '../components/gear/GearItemDialog'
@@ -180,6 +181,9 @@ export default function GearLibraryPage() {
   // a within-category drag plans against. Declared up here, ahead of the drag
   // handler that reads it.
   const searchFiltered = useMemo(() => filterGearBySearch(allItems, search), [allItems, search])
+  // What select-all may pick: a pending create's row has no server row, so a
+  // bulk action naming it would fail.
+  const selectable = useMemo(() => searchFiltered.filter((i) => !isUnconfirmed(i.id)), [searchFiltered])
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const { set: selectedIds, toggle: toggleSelect, clear: clearSelected, reset: resetSelected } = useToggleSet<string>()
@@ -360,7 +364,10 @@ export default function GearLibraryPage() {
 
     // Case 2 — within-category gear-item reorder. The drop target must be
     // another gear-item AND in the same category as the dragged item.
+    // A pending create's placeholder is never part of a reorder: the server
+    // rejects a payload naming an id it does not own.
     if (activeParsed.kind !== 'gear-item' || overParsed.kind !== 'gear-item') return
+    if (isUnconfirmed(activeParsed.id) || isUnconfirmed(overParsed.id)) return
     const activeItem = allItemsById.get(activeParsed.id)
     if (!activeItem) return
     const overItem = allItemsById.get(overParsed.id)
@@ -375,7 +382,9 @@ export default function GearLibraryPage() {
     // rewrite that row's position. assignSortOrderSlots permutes only these
     // rows' own slots, so hidden rows keep theirs; a hidden endpoint is not in
     // the slice, so its drag writes nothing.
-    const itemsInCat = searchFiltered.filter((i) => (i.categoryId ?? null) === activeCat)
+    const itemsInCat = searchFiltered.filter(
+      (i) => (i.categoryId ?? null) === activeCat && !isUnconfirmed(i.id),
+    )
     const oldIndex = itemsInCat.findIndex((i) => i.id === activeParsed.id)
     const newIndex = itemsInCat.findIndex((i) => i.id === overParsed.id)
     if (oldIndex === -1 || newIndex === -1) return
@@ -564,9 +573,9 @@ export default function GearLibraryPage() {
       {selectMode && (
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
-          selectableTotal={searchFiltered.length}
+          selectableTotal={selectable.length}
           onClose={exitSelectMode}
-          onSelectAll={() => resetSelected(searchFiltered.map((i) => i.id))}
+          onSelectAll={() => resetSelected(selectable.map((i) => i.id))}
           onDeselectAll={clearSelected}
           onCreateList={() => setDialog({ type: 'create-list-from-selection', saveError: null })}
           busy={bulkDelete.isPending || bulkMove.isPending}

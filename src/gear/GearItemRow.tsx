@@ -4,6 +4,7 @@ import type { GearItem } from '../lib/types'
 import type { GearStatus } from '../lib/gear-status'
 import type { WeightUnit } from '../lib/weight'
 import { useSortableRow } from '../lib/use-sortable-row'
+import { isUnconfirmed } from '../lib/unconfirmed-id'
 import ItemWeightValue from '../components/ItemWeightValue'
 import InlineWeight from '../components/InlineWeight'
 import KebabMenu from '../components/KebabMenu'
@@ -62,7 +63,12 @@ export default function GearItemRow({
   outerRef,
   outerStyle,
 }: Props) {
-  const mobileSwipe = isBelowLg && !selectMode
+  // A pending create's row has no server row yet, so every action on it would
+  // send an id the server does not know. It renders static, the way select
+  // mode renders every row, until makeOptimisticInsert swaps in the server row.
+  const pending = isUnconfirmed(item.id)
+  const editable = !selectMode && !pending
+  const mobileSwipe = isBelowLg && editable
 
   // The shared badge+name body; this surface's only trailing cell is weight.
   const mobileBody = (
@@ -70,7 +76,7 @@ export default function GearItemRow({
       <MobileRowBody
         status={item.status}
         name={item.name}
-        onTap={selectMode ? () => onToggleSelect(item.id) : () => onEdit(item)}
+        onTap={pending ? undefined : selectMode ? () => onToggleSelect(item.id) : () => onEdit(item)}
         tapLabel={selectMode ? (selected ? 'Deselect item' : 'Select item') : 'Edit item'}
       >
         <span className={`${COL_WEIGHT_MOBILE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-600`}>
@@ -83,7 +89,7 @@ export default function GearItemRow({
   return (
     <div
       ref={outerRef}
-      style={outerStyle}
+      style={pending ? { ...outerStyle, opacity: 0.6 } : outerStyle}
       // The shared shell recipe (and its px-3 mobile inset rationale) lives
       // in itemRowShell; this row adds its selection tint on top.
       className={`${itemRowShell(mobileSwipe)} ${
@@ -91,7 +97,7 @@ export default function GearItemRow({
       }`}
     >
       {dragHandle}
-      {selectMode && (
+      {selectMode && !pending && (
         <input
           type="checkbox"
           checked={selected}
@@ -147,9 +153,9 @@ export default function GearItemRow({
             status={item.status}
             name={item.name}
             description={item.description ?? ''}
-            onSaveName={selectMode ? undefined : (v) => onInlineSave(item.id, { name: v })}
+            onSaveName={editable ? (v) => onInlineSave(item.id, { name: v }) : undefined}
             onSaveDescription={
-              selectMode ? undefined : (v) => onInlineSave(item.id, { description: v || null })
+              editable ? (v) => onInlineSave(item.id, { description: v || null }) : undefined
             }
           />
           <span className={`${COL_PRICE} text-right ${FLAT_TABLE_NUMERIC_TEXT} text-gray-500`}>
@@ -166,11 +172,11 @@ export default function GearItemRow({
           <InlineWeight
             grams={item.weightGrams}
             unit={weightUnit}
-            onSave={selectMode ? undefined : (w) => onInlineSave(item.id, { weightGrams: w })}
+            onSave={editable ? (w) => onInlineSave(item.id, { weightGrams: w }) : undefined}
             itemName={item.name}
             className={`${COL_WEIGHT} text-gray-600`}
           />
-          {!selectMode && (
+          {editable && (
             <GearRowKebab
               status={item.status}
               onEdit={() => onEdit(item)}
@@ -278,7 +284,7 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
   const { outerRef, outerStyle, handleProps } = useSortableRow({
     kind: 'gear-item',
     id: props.item.id,
-    disabled: props.selectMode || props.reorderPending,
+    disabled: props.selectMode || props.reorderPending || isUnconfirmed(props.item.id),
   })
 
   // Use a dedicated grip at every viewport. Keep it inside the flat-table
@@ -290,6 +296,7 @@ export const SortableGearItemRow = memo(function SortableGearItemRow(
     props.selectMode ? undefined : (
       <RowIconButton
         {...handleProps}
+        disabled={isUnconfirmed(props.item.id)}
         variant="dragHandle"
         touchSafe
         ariaLabel={`Reorder ${props.item.name}`}
