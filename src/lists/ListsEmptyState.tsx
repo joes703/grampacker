@@ -86,7 +86,7 @@ export default function ListsEmptyState() {
         </button>
         <p className="mt-2 text-xs text-gray-500">
           You can import a CSV file from LighterPack. The new list has the same
-          name as the file.
+          name as the file. You can rename it.
         </p>
       </div>
 
