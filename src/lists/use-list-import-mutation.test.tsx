@@ -74,4 +74,23 @@ describe('useListImportMutation while a create is pending', () => {
     await waitFor(() => expect(api.importListFromCsv).toHaveBeenCalledTimes(1))
     expect(JSON.stringify(api.importListFromCsv.mock.calls[0]?.[0])).not.toContain('temp-')
   })
+
+  // Independent of the category filter: an uncategorized pending item that a
+  // CSV row matches by name alone.
+  it('does not match a row to an uncategorized pending gear item', async () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 }, mutations: { retry: false } },
+    })
+    qc.setQueryData(queryKeys.gearItems(), [{ ...pendingGear, categoryId: null }])
+    qc.setQueryData(queryKeys.categories(), [])
+    api.importListFromCsv.mockResolvedValue({ id: 'new-list' })
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, createElement(MemoryRouter, null, children))
+    const { result } = renderHook(() => useListImportMutation(), { wrapper })
+
+    act(() => { result.current.mutate({ name: 'Trip', rows: [{ ...row, categoryName: '' }] }) })
+
+    await waitFor(() => expect(api.importListFromCsv).toHaveBeenCalledTimes(1))
+    expect(JSON.stringify(api.importListFromCsv.mock.calls[0]?.[0])).not.toContain('temp-')
+  })
 })
