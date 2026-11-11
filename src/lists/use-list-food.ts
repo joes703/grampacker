@@ -66,8 +66,14 @@ export function useListFood(listId: string) {
   // the fields THIS patch touched rewind, onto the CURRENT row, so a reorder
   // or the sibling checkbox that succeeded while this was in flight survives
   // the rollback.
+  //
+  // And the same last-one-out refetch as gear's updateItem: a refetch fired
+  // while a sibling tick is pending could land stale server data over its
+  // optimistic value, so a burst refetches once, after the last tick settles
+  // (the settling mutation counts itself in isMutating, hence `> 1`).
+  const packStateMutKey = mutationKeys.updateFoodPackState(listId)
   const patchPackState = useMutation({
-    mutationKey: mutationKeys.updateFoodPackState(listId),
+    mutationKey: packStateMutKey,
     mutationFn: ({ foodId, patch }: FoodPatchVars) =>
       updateFoodItem(listId, foodId, patch),
     onMutate: ({ foodId, patch }: FoodPatchVars) => foodCache.patchRow(foodId, patch),
@@ -75,6 +81,7 @@ export function useListFood(listId: string) {
       if (previousFields) foodCache.restoreRow(foodId, previousFields)
     },
     onSettled: () => {
+      if (qc.isMutating({ mutationKey: packStateMutKey }) > 1) return
       void qc.invalidateQueries({ queryKey: queryKeys.listFood(listId) })
     },
   })
