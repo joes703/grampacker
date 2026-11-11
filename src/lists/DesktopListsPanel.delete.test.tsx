@@ -27,11 +27,12 @@ vi.mock('./use-current-list-actions', () => ({
 vi.mock('./use-list-import-mutation', () => ({
   useListImportMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }))
-// The panel's lists subscription and reorder machine; the seed is all this
+// The panel's lists subscription and reorder machine; the rows are all this
 // suite needs.
+const cached = vi.hoisted(() => ({ lists: [] as List[] }))
 vi.mock('../lib/use-reorderable', () => ({
-  useReorderable: ({ initialData }: { initialData: List[] }) => ({
-    items: initialData,
+  useReorderable: () => ({
+    items: cached.lists,
     activeItem: null,
     reorderPending: false,
     handleDragStart: vi.fn(),
@@ -78,10 +79,11 @@ function LocationProbe() {
 }
 
 function renderPanel(lists: List[], currentListId: string) {
+  cached.lists = lists
   render(
     <MemoryRouter initialEntries={[`/lists/${currentListId}`]}>
       <Routes>
-        <Route path="*" element={<DesktopListsPanel lists={lists} currentListId={currentListId} />} />
+        <Route path="*" element={<DesktopListsPanel currentListId={currentListId} />} />
       </Routes>
       <LocationProbe />
     </MemoryRouter>,

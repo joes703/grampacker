@@ -49,15 +49,13 @@ import { useDragSensors } from '../lib/use-drag-sensors'
 //     open list, not in the Lists switcher.
 //   - Mobile rendering. Bottom nav + /lists own that path today.
 
+// The panel reads the lists from its own cache subscription (useReorderable
+// below), never from a parent prop: the panel's setActiveId and the lists
+// cache update MUST land in the same React commit so dnd-kit's drop
+// animation measures rects against the new DOM order. It mounts only once
+// ListDetailPage has found the open list in that cache, so the cache already
+// holds data on first paint.
 type Props = {
-  // Initial seed for the local lists subscription. Lets the parent's
-  // useQuery render the first paint without a flash; once mounted, the
-  // panel subscribes to the lists cache itself (see useReorderable below)
-  // and that subscription is the source of truth. Required for DnD: the
-  // panel's setActiveId state and the lists cache update MUST land in
-  // the same React commit so dnd-kit's drop animation measures rects
-  // against the new DOM order.
-  lists: List[]
   currentListId: string
   // Wraps the panel's outer FLAT_TABLE_SURFACE element. Lets the caller
   // (ListDetailPage's left aside) size/scroll the panel without this
@@ -93,7 +91,6 @@ function HeaderPlusTrigger({ ref, onClick, open }: Omit<KebabTriggerProps, 'disa
 }
 
 export default function DesktopListsPanel({
-  lists: listsSeed,
   currentListId,
   className,
 }: Props) {
@@ -122,7 +119,6 @@ export default function DesktopListsPanel({
   } = useReorderable<List>({
     queryKey: queryKeys.lists(),
     queryFn: fetchLists,
-    initialData: listsSeed,
     mutationFn: reorderLists,
     dndKind: 'list-card',
     // The reorder route writes sortOrder only and preserves updatedAt

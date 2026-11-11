@@ -751,7 +751,6 @@ function ListDetailInner({ listId, mode }: { listId: string; mode: ListDetailMod
                 cap and the gear picker below always has room. */}
             {mode === 'edit' && (
               <DesktopListsPanel
-                lists={lists}
                 currentListId={listId}
                 className="shrink-0 max-h-72"
               />
